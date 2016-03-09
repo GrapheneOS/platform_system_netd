@@ -27,10 +27,10 @@ include $(BUILD_NATIVE_TEST)
 include $(CLEAR_VARS)
 LOCAL_MODULE := netd_test
 EXTRA_LDLIBS := -lpthread
-LOCAL_SHARED_LIBRARIES += libcutils libutils liblog libnetd_client
+LOCAL_SHARED_LIBRARIES += libbase libcutils libutils liblog libnetd_client
 LOCAL_STATIC_LIBRARIES += libtestUtil
-LOCAL_C_INCLUDES += system/netd/include system/extras/tests/include
+LOCAL_C_INCLUDES += system/core/base/include system/netd/include \
+                    system/extras/tests/include bionic/libc/dns/include
 LOCAL_SRC_FILES := netd_test.cpp dns_responder.cpp
 LOCAL_MODULE_TAGS := eng tests
 include $(BUILD_NATIVE_TEST)
-
