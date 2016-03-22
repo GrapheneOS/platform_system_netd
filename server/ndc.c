@@ -131,48 +131,51 @@ static int do_monitor(int sock, int stop_after_cmd) {
         FD_ZERO(&read_fds);
         FD_SET(sock, &read_fds);
 
-        if ((rc = select(sock +1, &read_fds, NULL, NULL, &to)) < 0) {
+        rc = TEMP_FAILURE_RETRY(select(sock +1, &read_fds, NULL, NULL, &to));
+        if (rc < 0) {
             int res = errno;
-            fprintf(stderr, "Error in select (%s)\n", strerror(errno));
+            fprintf(stderr, "Error in select (%s)\n", strerror(res));
             free(buffer);
             return res;
-        } else if (!rc) {
+        }
+        if (rc == 0) {
             continue;
-            fprintf(stderr, "[TIMEOUT]\n");
-            return ETIMEDOUT;
-        } else if (FD_ISSET(sock, &read_fds)) {
-            memset(buffer, 0, 4096);
-            if ((rc = read(sock, buffer, 4096)) <= 0) {
-                int res = errno;
-                if (rc == 0)
-                    fprintf(stderr, "Lost connection to Netd - did it crash?\n");
-                else
-                    fprintf(stderr, "Error reading data (%s)\n", strerror(errno));
-                free(buffer);
-                if (rc == 0)
-                    return ECONNRESET;
-                return res;
-            }
+        }
+        if (!FD_ISSET(sock, &read_fds)) {
+            continue;
+        }
 
-            int offset = 0;
-            int i = 0;
+        memset(buffer, 0, 4096);
+        if ((rc = read(sock, buffer, 4096)) <= 0) {
+            int res = errno;
+            if (rc == 0)
+                fprintf(stderr, "Lost connection to Netd - did it crash?\n");
+            else
+                fprintf(stderr, "Error reading data (%s)\n", strerror(res));
+            free(buffer);
+            if (rc == 0)
+                return ECONNRESET;
+            return res;
+        }
 
-            for (i = 0; i < rc; i++) {
-                if (buffer[i] == '\0') {
-                    int code;
-                    char tmp[4];
+        int offset = 0;
+        int i = 0;
 
-                    strncpy(tmp, buffer + offset, 3);
-                    tmp[3] = '\0';
-                    code = atoi(tmp);
+        for (i = 0; i < rc; i++) {
+            if (buffer[i] == '\0') {
+                int code;
+                char tmp[4];
 
-                    printf("%s\n", buffer + offset);
-                    if (stop_after_cmd) {
-                        if (code >= 200 && code < 600)
-                            return 0;
-                    }
-                    offset = i + 1;
+                strncpy(tmp, buffer + offset, 3);
+                tmp[3] = '\0';
+                code = atoi(tmp);
+
+                printf("%s\n", buffer + offset);
+                if (stop_after_cmd) {
+                    if (code >= 200 && code < 600)
+                        return 0;
                 }
+                offset = i + 1;
             }
         }
     }
