@@ -21,6 +21,7 @@ include $(CLEAR_VARS)
 
 LOCAL_CFLAGS := -Wall -Werror
 LOCAL_CLANG := true
+LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := libnetdaidl
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
@@ -47,6 +48,7 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_CLANG := true
 LOCAL_CPPFLAGS := -std=c++11 -Wall -Werror
+LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := netd
 
 LOCAL_INIT_RC := netd.rc
@@ -117,6 +119,7 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 
 LOCAL_CFLAGS := -Wall -Werror
+LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_CLANG := true
 LOCAL_MODULE := ndc
 LOCAL_SHARED_LIBRARIES := libcutils
