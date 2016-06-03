@@ -76,7 +76,7 @@ void UidRange::setStart(int32_t uid) {
 
 void UidRange::setStop(int32_t uid) {
     if (mStart != -1) {
-        ALOG_ASSERT(uid <= mStop, "stop UID must be greater than or equal to start UID");
+        ALOG_ASSERT(mStart <= uid, "stop UID must be greater than or equal to start UID");
     }
     mStop = uid;
 }
