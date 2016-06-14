@@ -120,7 +120,7 @@ LOCAL_CFLAGS := -Wall -Werror
 LOCAL_CLANG := true
 LOCAL_MODULE := ndc
 LOCAL_SHARED_LIBRARIES := libcutils
-LOCAL_SRC_FILES := ndc.c
+LOCAL_SRC_FILES := ndc.cpp
 
 include $(BUILD_EXECUTABLE)
 
