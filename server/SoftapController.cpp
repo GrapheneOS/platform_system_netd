@@ -39,7 +39,7 @@
 #include <cutils/log.h>
 #include <netutils/ifc.h>
 #include <private/android_filesystem_config.h>
-#include "wifi.h"
+#include "wifi_system/wifi.h"
 #include "ResponseCode.h"
 
 #include "SoftapController.h"
