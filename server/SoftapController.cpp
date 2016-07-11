@@ -37,6 +37,7 @@
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
+#include <cutils/properties.h>
 #include <hardware_legacy/wifi.h>
 #include <netutils/ifc.h>
 #include <private/android_filesystem_config.h>
@@ -48,19 +49,21 @@
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 
-static const char HOSTAPD_CONF_FILE[]    = "/data/misc/wifi/hostapd.conf";
-static const char HOSTAPD_BIN_FILE[]    = "/system/bin/hostapd";
+namespace {
+
+const char HOSTAPD_CONF_FILE[]    = "/data/misc/wifi/hostapd.conf";
+const char HOSTAPD_SERVICE_NAME[] = "hostapd";
+
+}  // namespace
 
 SoftapController::SoftapController()
-    : mPid(0) {}
+    : mHostapdStarted(false) {}
 
 SoftapController::~SoftapController() {
 }
 
 int SoftapController::startSoftap() {
-    pid_t pid = 1;
-
-    if (mPid) {
+    if (mHostapdStarted) {
         ALOGE("SoftAP is already running");
         return ResponseCode::SoftapStatusResult;
     }
@@ -69,47 +72,40 @@ int SoftapController::startSoftap() {
         ALOGE("Wi-Fi entropy file was not created");
     }
 
-    if ((pid = fork()) < 0) {
-        ALOGE("fork failed (%s)", strerror(errno));
-        return ResponseCode::ServiceStartFailed;
+    if (property_set("ctl.start", HOSTAPD_SERVICE_NAME) != 0) {
+        ALOGE("Failed to start SoftAP");
+        return ResponseCode::OperationFailed;
     }
 
-    if (!pid) {
-        android::wifi_system::ensure_entropy_file_exists();
-        if (execl(HOSTAPD_BIN_FILE, HOSTAPD_BIN_FILE,
-                  "-e", android::wifi_system::kWiFiEntropyFile,
-                  HOSTAPD_CONF_FILE, (char *) NULL)) {
-            ALOGE("execl failed (%s)", strerror(errno));
-        }
-        ALOGE("SoftAP failed to start");
-        return ResponseCode::ServiceStartFailed;
-    } else {
-        mPid = pid;
-        ALOGD("SoftAP started successfully");
-        usleep(AP_BSS_START_DELAY);
-    }
+    mHostapdStarted = true;
+    ALOGD("SoftAP started successfully");
+    usleep(AP_BSS_START_DELAY);
+
     return ResponseCode::SoftapStatusResult;
 }
 
 int SoftapController::stopSoftap() {
 
-    if (mPid == 0) {
+    if (!mHostapdStarted) {
         ALOGE("SoftAP is not running");
         return ResponseCode::SoftapStatusResult;
     }
 
     ALOGD("Stopping the SoftAP service...");
-    kill(mPid, SIGTERM);
-    waitpid(mPid, NULL, 0);
 
-    mPid = 0;
+    if (property_set("ctl.stop", HOSTAPD_SERVICE_NAME) < 0) {
+      ALOGE("Failed to stop hostapd service!");
+      // But what can we really do at this point?
+    }
+
+    mHostapdStarted = false;
     ALOGD("SoftAP stopped successfully");
     usleep(AP_BSS_STOP_DELAY);
     return ResponseCode::SoftapStatusResult;
 }
 
 bool SoftapController::isSoftapStarted() {
-    return (mPid != 0);
+    return mHostapdStarted;
 }
 
 /*
