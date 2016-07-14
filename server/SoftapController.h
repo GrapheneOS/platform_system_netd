@@ -38,7 +38,7 @@ public:
     int setSoftap(int argc, char *argv[]);
     int fwReloadSoftap(int argc, char *argv[]);
 private:
-    pid_t mPid;
+    bool mHostapdStarted;
     bool generatePsk(char *ssid, char *passphrase, char *psk);
 };
 
