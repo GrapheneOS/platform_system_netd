@@ -17,15 +17,7 @@
 #ifndef _SOFTAP_CONTROLLER_H
 #define _SOFTAP_CONTROLLER_H
 
-#include <linux/in.h>
-#include <net/if.h>
-
-#define SOFTAP_MAX_BUFFER_SIZE	4096
-#define AP_BSS_START_DELAY	200000
-#define AP_BSS_STOP_DELAY	500000
-#define AP_SET_CFG_DELAY	500000
-#define AP_DRIVER_START_DELAY	800000
-#define AP_CHANNEL_DEFAULT	6
+#include <wifi_system/hostapd_manager.h>
 
 class SoftapController {
 public:
@@ -38,8 +30,7 @@ public:
     int setSoftap(int argc, char *argv[]);
     int fwReloadSoftap(int argc, char *argv[]);
 private:
-    bool mHostapdStarted;
-    bool generatePsk(char *ssid, char *passphrase, char *psk);
+    android::wifi_system::HostapdManager hostapd_manager_;
 };
 
 #endif

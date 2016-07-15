@@ -14,98 +14,68 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <string.h>
-
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-#include <linux/wireless.h>
-
-#include <openssl/evp.h>
-#include <openssl/sha.h>
-
-#define LOG_TAG "SoftapController"
-#include <android-base/file.h>
-#include <android-base/stringprintf.h>
-#include <cutils/log.h>
-#include <cutils/properties.h>
-#include <hardware_legacy/wifi.h>
-#include <netutils/ifc.h>
-#include <private/android_filesystem_config.h>
-#include <wifi_system/wifi.h>
-#include "ResponseCode.h"
-
 #include "SoftapController.h"
 
-using android::base::StringPrintf;
-using android::base::WriteStringToFile;
+#include <errno.h>
+#include <string.h>
+
+#include <vector>
+#include <string>
+
+#define LOG_TAG "SoftapController"
+#include <cutils/log.h>
+#include <hardware_legacy/wifi.h>
+
+#include "ResponseCode.h"
+
+#define AP_BSS_START_DELAY_MICROSECONDS	200000
+#define AP_BSS_STOP_DELAY_MICROSECONDS	500000
+
+using android::wifi_system::HostapdManager;
+using std::vector;
+using std::string;
 
 namespace {
 
-const char HOSTAPD_CONF_FILE[]    = "/data/misc/wifi/hostapd.conf";
-const char HOSTAPD_SERVICE_NAME[] = "hostapd";
+vector<uint8_t> cstr2vector(const char* data) {
+    return vector<uint8_t>(data, data + strlen(data));
+}
 
 }  // namespace
 
-SoftapController::SoftapController()
-    : mHostapdStarted(false) {}
+SoftapController::SoftapController() {
+}
 
 SoftapController::~SoftapController() {
 }
 
 int SoftapController::startSoftap() {
-    if (mHostapdStarted) {
-        ALOGE("SoftAP is already running");
-        return ResponseCode::SoftapStatusResult;
-    }
-
-    if (android::wifi_system::ensure_entropy_file_exists() < 0) {
-        ALOGE("Wi-Fi entropy file was not created");
-    }
-
-    if (property_set("ctl.start", HOSTAPD_SERVICE_NAME) != 0) {
+    if (!hostapd_manager_.StartHostapd()) {
         ALOGE("Failed to start SoftAP");
         return ResponseCode::OperationFailed;
     }
 
-    mHostapdStarted = true;
     ALOGD("SoftAP started successfully");
-    usleep(AP_BSS_START_DELAY);
+    usleep(AP_BSS_START_DELAY_MICROSECONDS);
 
     return ResponseCode::SoftapStatusResult;
 }
 
 int SoftapController::stopSoftap() {
-
-    if (!mHostapdStarted) {
-        ALOGE("SoftAP is not running");
-        return ResponseCode::SoftapStatusResult;
-    }
-
     ALOGD("Stopping the SoftAP service...");
 
-    if (property_set("ctl.stop", HOSTAPD_SERVICE_NAME) < 0) {
+    if (!hostapd_manager_.StopHostapd()) {
       ALOGE("Failed to stop hostapd service!");
       // But what can we really do at this point?
     }
 
-    mHostapdStarted = false;
     ALOGD("SoftAP stopped successfully");
-    usleep(AP_BSS_STOP_DELAY);
+    usleep(AP_BSS_STOP_DELAY_MICROSECONDS);
     return ResponseCode::SoftapStatusResult;
 }
 
 bool SoftapController::isSoftapStarted() {
-    return mHostapdStarted;
+    return hostapd_manager_.IsHostapdRunning();
 }
 
 /*
@@ -118,61 +88,44 @@ bool SoftapController::isSoftapStarted() {
  *  argv[7] - Key
  */
 int SoftapController::setSoftap(int argc, char *argv[]) {
-    int hidden = 0;
-    int channel = AP_CHANNEL_DEFAULT;
-
     if (argc < 5) {
         ALOGE("Softap set is missing arguments. Please use:");
         ALOGE("softap <wlan iface> <SSID> <hidden/broadcast> <channel> <wpa2?-psk|open> <passphrase>");
         return ResponseCode::CommandSyntaxError;
     }
 
+    bool is_hidden = false;
     if (!strcasecmp(argv[4], "hidden"))
-        hidden = 1;
+        is_hidden = true;
 
+    int channel = -1;
     if (argc >= 5) {
         channel = atoi(argv[5]);
-        if (channel <= 0)
-            channel = AP_CHANNEL_DEFAULT;
     }
 
-    std::string wbuf(StringPrintf("interface=%s\n"
-            "driver=nl80211\n"
-            "ctrl_interface=/data/misc/wifi/hostapd\n"
-            "ssid=%s\n"
-            "channel=%d\n"
-            "ieee80211n=1\n"
-            "hw_mode=%c\n"
-            "ignore_broadcast_ssid=%d\n"
-            "wowlan_triggers=any\n",
-            argv[2], argv[3], channel, (channel <= 14) ? 'g' : 'a', hidden));
-
-    std::string fbuf;
-    if (argc > 7) {
-        char psk_str[2*SHA256_DIGEST_LENGTH+1];
-        if (!strcmp(argv[6], "wpa-psk")) {
-            if (!generatePsk(argv[3], argv[7], psk_str)) {
-                return ResponseCode::OperationFailed;
-            }
-            fbuf = StringPrintf("%swpa=3\nwpa_pairwise=TKIP CCMP\nwpa_psk=%s\n", wbuf.c_str(), psk_str);
-        } else if (!strcmp(argv[6], "wpa2-psk")) {
-            if (!generatePsk(argv[3], argv[7], psk_str)) {
-                return ResponseCode::OperationFailed;
-            }
-            fbuf = StringPrintf("%swpa=2\nrsn_pairwise=CCMP\nwpa_psk=%s\n", wbuf.c_str(), psk_str);
-        } else if (!strcmp(argv[6], "open")) {
-            fbuf = wbuf;
-        }
-    } else if (argc > 6) {
-        if (!strcmp(argv[6], "open")) {
-            fbuf = wbuf;
-        }
-    } else {
-        fbuf = wbuf;
+    const char* passphrase = (argc > 7) ? argv[7] : nullptr;
+    const char* security_type = (argc > 6) ? argv[6] : nullptr;
+    HostapdManager::EncryptionType encryption_type =
+        HostapdManager::EncryptionType::kOpen;
+    vector<uint8_t> passphrase_bytes;
+    if (security_type && passphrase && !strcmp(argv[6], "wpa-psk")) {
+      encryption_type = HostapdManager::EncryptionType::kWpa;
+      passphrase_bytes = cstr2vector(argv[7]);
+    } else if (security_type && passphrase && !strcmp(argv[6], "wpa2-psk")) {
+      encryption_type = HostapdManager::EncryptionType::kWpa2;
+      passphrase_bytes = cstr2vector(argv[7]);
     }
 
-    if (!WriteStringToFile(fbuf, HOSTAPD_CONF_FILE, 0660, AID_SYSTEM, AID_WIFI)) {
-        ALOGE("Cannot write to \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
+    string config = hostapd_manager_.CreateHostapdConfig(
+        argv[2],
+        cstr2vector(argv[3]),
+        is_hidden,
+        channel,
+        encryption_type,
+        passphrase_bytes);
+
+    if (!hostapd_manager_.WriteHostapdConfig(config)) {
+        ALOGE("Cannot write to hostapd conf file: %s", strerror(errno));
         return ResponseCode::OperationFailed;
     }
     return ResponseCode::SoftapStatusResult;
@@ -213,23 +166,4 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
         ALOGD("Softap fwReload - Ok");
     }
     return ResponseCode::SoftapStatusResult;
-}
-
-bool SoftapController::generatePsk(char *ssid, char *passphrase, char *psk_str) {
-    unsigned char psk[SHA256_DIGEST_LENGTH];
-
-    // Use the PKCS#5 PBKDF2 with 4096 iterations
-    if (PKCS5_PBKDF2_HMAC_SHA1(passphrase, strlen(passphrase),
-                               reinterpret_cast<const unsigned char *>(ssid),
-                               strlen(ssid), 4096, SHA256_DIGEST_LENGTH,
-                               psk) != 1) {
-        ALOGE("Cannot generate PSK using PKCS#5 PBKDF2");
-        return false;
-    }
-
-    for (int j=0; j < SHA256_DIGEST_LENGTH; j++) {
-        sprintf(&psk_str[j*2], "%02x", psk[j]);
-    }
-
-    return true;
 }
