@@ -44,7 +44,7 @@ private:
 
     class GetAddrInfoCmd : public NetdCommand {
     public:
-        GetAddrInfoCmd(DnsProxyListener* dnsProxyListener);
+        explicit GetAddrInfoCmd(DnsProxyListener* dnsProxyListener);
         virtual ~GetAddrInfoCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
@@ -78,7 +78,7 @@ private:
     /* ------ gethostbyname ------*/
     class GetHostByNameCmd : public NetdCommand {
     public:
-        GetHostByNameCmd(DnsProxyListener* dnsProxyListener);
+        explicit GetHostByNameCmd(DnsProxyListener* dnsProxyListener);
         virtual ~GetHostByNameCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
@@ -109,7 +109,7 @@ private:
     /* ------ gethostbyaddr ------*/
     class GetHostByAddrCmd : public NetdCommand {
     public:
-        GetHostByAddrCmd(const DnsProxyListener* dnsProxyListener);
+        explicit GetHostByAddrCmd(const DnsProxyListener* dnsProxyListener);
         virtual ~GetHostByAddrCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
