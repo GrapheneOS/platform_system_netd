@@ -176,7 +176,7 @@ int SockDiag::sendDumpRequest(uint8_t proto, uint8_t family, const char *addrstr
     return checkError(mSock);
 }
 
-int SockDiag::readDiagMsg(uint8_t proto, SockDiag::DumpCallback callback) {
+int SockDiag::readDiagMsg(uint8_t proto, const SockDiag::DumpCallback& callback) {
     char buf[kBufferSize];
 
     ssize_t bytesread;
