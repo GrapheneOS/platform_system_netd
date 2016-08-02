@@ -58,7 +58,6 @@ LOCAL_INIT_RC := netd.rc
 
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
-        libcrypto \
         libcutils \
         libdl \
         liblog \
@@ -69,8 +68,6 @@ LOCAL_SHARED_LIBRARIES := \
         libnl \
         libsysutils \
         libbase \
-        libwifi-hal \
-        libwifi-system \
         libutils \
 
 LOCAL_STATIC_LIBRARIES := \
@@ -103,7 +100,6 @@ LOCAL_SRC_FILES := \
         ResolverController.cpp \
         RouteController.cpp \
         SockDiag.cpp \
-        SoftapController.cpp \
         StrictController.cpp \
         TetherController.cpp \
         UidRanges.cpp \
