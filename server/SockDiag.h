@@ -23,7 +23,7 @@ class SockDiag {
     virtual ~SockDiag() { closeSocks(); }
 
     int sendDumpRequest(uint8_t proto, uint8_t family, const char *addrstr);
-    int readDiagMsg(uint8_t proto, DumpCallback callback);
+    int readDiagMsg(uint8_t proto, const DumpCallback& callback);
     int sockDestroy(uint8_t proto, const inet_diag_msg *);
     int destroySockets(const char *addrstr);
 
