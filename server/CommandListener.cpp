@@ -192,7 +192,6 @@ CommandListener::CommandListener() :
     registerLockingCmd(new NatCmd());
     registerLockingCmd(new ListTtysCmd());
     registerLockingCmd(new PppdCmd());
-    registerLockingCmd(new SoftapCmd());
     registerLockingCmd(new BandwidthControlCmd(), gCtls->bandwidthCtrl.lock);
     registerLockingCmd(new IdletimerControlCmd());
     registerLockingCmd(new ResolverCmd());
@@ -744,52 +743,6 @@ int CommandListener::PppdCmd::runCommand(SocketClient *cli,
     } else {
         cli->sendMsg(ResponseCode::OperationFailed, "Pppd operation failed", true);
     }
-
-    return 0;
-}
-
-CommandListener::SoftapCmd::SoftapCmd() :
-                 NetdCommand("softap") {
-}
-
-int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
-                                        int argc, char **argv) {
-    int rc = ResponseCode::SoftapStatusResult;
-    char *retbuf = NULL;
-
-    if (gCtls == nullptr) {
-      cli->sendMsg(ResponseCode::ServiceStartFailed, "SoftAP is not available", false);
-      return -1;
-    }
-    if (argc < 2) {
-        cli->sendMsg(ResponseCode::CommandSyntaxError,
-                     "Missing argument in a SoftAP command", false);
-        return 0;
-    }
-
-    if (!strcmp(argv[1], "startap")) {
-        rc = gCtls->softapCtrl.startSoftap();
-    } else if (!strcmp(argv[1], "stopap")) {
-        rc = gCtls->softapCtrl.stopSoftap();
-    } else if (!strcmp(argv[1], "fwreload")) {
-        rc = gCtls->softapCtrl.fwReloadSoftap(argc, argv);
-    } else if (!strcmp(argv[1], "status")) {
-        asprintf(&retbuf, "Softap service %s running",
-                 (gCtls->softapCtrl.isSoftapStarted() ? "is" : "is not"));
-        cli->sendMsg(rc, retbuf, false);
-        free(retbuf);
-        return 0;
-    } else if (!strcmp(argv[1], "set")) {
-        rc = gCtls->softapCtrl.setSoftap(argc, argv);
-    } else {
-        cli->sendMsg(ResponseCode::CommandSyntaxError, "Unrecognized SoftAP command", false);
-        return 0;
-    }
-
-    if (rc >= 400 && rc < 600)
-      cli->sendMsg(rc, "SoftAP command has failed", false);
-    else
-      cli->sendMsg(rc, "Ok", false);
 
     return 0;
 }
