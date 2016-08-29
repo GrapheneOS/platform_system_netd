@@ -59,7 +59,6 @@ LOCAL_SHARED_LIBRARIES := \
         libcrypto \
         libcutils \
         libdl \
-        libhardware_legacy \
         liblog \
         liblogwrap \
         libmdnssd \
@@ -68,6 +67,7 @@ LOCAL_SHARED_LIBRARIES := \
         libnl \
         libsysutils \
         libbase \
+        libwifi-system \
         libutils \
 
 LOCAL_STATIC_LIBRARIES := \
