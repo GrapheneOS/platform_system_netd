@@ -23,7 +23,6 @@
 #include "TetherController.h"
 #include "NatController.h"
 #include "PppController.h"
-#include "SoftapController.h"
 #include "BandwidthController.h"
 #include "IdletimerController.h"
 #include "InterfaceController.h"
@@ -42,7 +41,6 @@ struct Controllers {
     TetherController tetherCtrl;
     NatController natCtrl;
     PppController pppCtrl;
-    SoftapController softapCtrl;
     BandwidthController bandwidthCtrl;
     IdletimerController idletimerCtrl;
     ResolverController resolverCtrl;
