@@ -65,7 +65,7 @@ int SoftapController::startSoftap() {
         return ResponseCode::SoftapStatusResult;
     }
 
-    if (ensure_entropy_file_exists() < 0) {
+    if (android::wifi_system::ensure_entropy_file_exists() < 0) {
         ALOGE("Wi-Fi entropy file was not created");
     }
 
@@ -75,9 +75,9 @@ int SoftapController::startSoftap() {
     }
 
     if (!pid) {
-        ensure_entropy_file_exists();
+        android::wifi_system::ensure_entropy_file_exists();
         if (execl(HOSTAPD_BIN_FILE, HOSTAPD_BIN_FILE,
-                  "-e", WIFI_ENTROPY_FILE,
+                  "-e", android::wifi_system::kWiFiEntropyFile,
                   HOSTAPD_CONF_FILE, (char *) NULL)) {
             ALOGE("execl failed (%s)", strerror(errno));
         }
