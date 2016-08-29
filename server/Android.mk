@@ -67,6 +67,7 @@ LOCAL_SHARED_LIBRARIES := \
         libnl \
         libsysutils \
         libbase \
+        libwifi-hal \
         libwifi-system \
         libutils \
 

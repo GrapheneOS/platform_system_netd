@@ -37,9 +37,10 @@
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
+#include <hardware_legacy/wifi.h>
 #include <netutils/ifc.h>
 #include <private/android_filesystem_config.h>
-#include "wifi_system/wifi.h"
+#include <wifi_system/wifi.h>
 #include "ResponseCode.h"
 
 #include "SoftapController.h"
