@@ -59,6 +59,7 @@ private:
                            char* service,
                            struct addrinfo* hints,
                            const struct android_net_context& netcontext,
+                           const int reportingLevel,
                            const android::sp<android::net::metrics::INetdEventListener>& listener);
         ~GetAddrInfoHandler();
 
@@ -72,6 +73,7 @@ private:
         char* mService; // owned
         struct addrinfo* mHints;  // owned
         struct android_net_context mNetContext;
+        const int mReportingLevel;
         android::sp<android::net::metrics::INetdEventListener> mNetdEventListener;
     };
 
@@ -92,6 +94,7 @@ private:
                             int af,
                             unsigned netId,
                             uint32_t mark,
+                            int reportingLevel,
                             const android::sp<android::net::metrics::INetdEventListener>& listener);
         ~GetHostByNameHandler();
         static void* threadStart(void* handler);
@@ -103,6 +106,7 @@ private:
         int mAf;
         unsigned mNetId;
         uint32_t mMark;
+        const int mReportingLevel;
         android::sp<android::net::metrics::INetdEventListener> mNetdEventListener;
     };
 

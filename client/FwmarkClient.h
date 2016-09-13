@@ -27,12 +27,25 @@ public:
     // its SO_MARK set.
     static bool shouldSetFwmark(int family);
 
+    // Returns true if an additional call should be made after ON_CONNECT calls, to log extra
+    // information like latency and source IP.
+    static bool shouldReportConnectComplete(int family);
+
     FwmarkClient();
     ~FwmarkClient();
 
     // Sends |data| to the fwmark server, along with |fd| as ancillary data using cmsg(3).
     // Returns 0 on success or a negative errno value on failure.
     int send(FwmarkCommand* data, int fd);
+
+    // Env flag to control whether FwmarkClient sends any information at all about network events
+    // back to the system server through FwmarkServer.
+    static constexpr const char* ANDROID_NO_USE_FWMARK_CLIENT = "ANDROID_NO_USE_FWMARK_CLIENT";
+
+    // Env flag to control whether FwmarkClient should exclude detailed information like IP
+    // addresses and only send basic information necessary for marking sockets.
+    // Has no effect if ANDROID_NO_USE_FWMARK_CLIENT is set.
+    static constexpr const char* ANDROID_FWMARK_METRICS_ONLY = "ANDROID_FWMARK_METRICS_ONLY";
 
 private:
     int mChannel;
