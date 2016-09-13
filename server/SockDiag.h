@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#ifndef _SOCK_DIAG_H
+#define _SOCK_DIAG_H
+
 #include <unistd.h>
 #include <sys/socket.h>
 
@@ -76,3 +79,5 @@ class SockDiag {
     void closeSocks() { close(mSock); close(mWriteSock); mSock = mWriteSock = -1; }
     static bool isLoopbackSocket(const inet_diag_msg *msg);
 };
+
+#endif  // _SOCK_DIAG_H
