@@ -17,11 +17,11 @@
 package android.net.metrics;
 
 /**
- * Logs DNS lookups.
+ * Logs netd events.
  *
  * {@hide}
  */
-oneway interface IDnsEventListener {
+oneway interface INetdEventListener {
     const int EVENT_GETADDRINFO = 1;
     const int EVENT_GETHOSTBYNAME = 2;
 
