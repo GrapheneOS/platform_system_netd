@@ -60,21 +60,6 @@ int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, ui
 
 const uid_t INVALID_UID = static_cast<uid_t>(-1);
 
-class Stopwatch {
-public:
-    Stopwatch() : mStart(std::chrono::steady_clock::now()) {}
-    virtual ~Stopwatch() {};
-
-    float timeTaken() const {
-        using ms = std::chrono::duration<float, std::ratio<1, 1000>>;
-        return (std::chrono::duration_cast<ms>(
-                std::chrono::steady_clock::now() - mStart)).count();
-    }
-
-private:
-    std::chrono::time_point<std::chrono::steady_clock> mStart;
-};
-
 
 struct AddrinfoDeleter {
     void operator()(struct addrinfo* p) const {
