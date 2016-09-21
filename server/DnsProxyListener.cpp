@@ -45,6 +45,7 @@
 #include "NetdConstants.h"
 #include "NetworkController.h"
 #include "ResponseCode.h"
+#include "Stopwatch.h"
 #include "android/net/metrics/INetdEventListener.h"
 
 using android::String16;
