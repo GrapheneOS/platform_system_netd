@@ -23,25 +23,22 @@ LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
 LOCAL_CFLAGS += -Wno-varargs
 
 EXTRA_LDLIBS := -lpthread
-LOCAL_SHARED_LIBRARIES += libbase libbinder libcutils liblog liblogwrap libnetdaidl \
-                          libnetutils libutils libnetd_client
-LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder libtestUtil
+LOCAL_SHARED_LIBRARIES += libbase libbinder liblog libnetd_client
+LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder libtestUtil libutils
 
 LOCAL_AIDL_INCLUDES := system/netd/server/binder
 LOCAL_C_INCLUDES += system/netd/include \
                     system/extras/tests/include \
-                    system/netd/binder/include \
                     system/netd/client \
                     system/netd/server \
+                    system/netd/server/binder \
                     system/netd/tests/dns_responder \
-                    system/core/logwrapper/include \
-                    system/core/libnetutils/include \
-                    system/extras/tests/include bionic/libc/dns/include
+                    system/extras/tests/include \
+                    bionic/libc/dns/include
 
 LOCAL_SRC_FILES := main.cpp \
                    connect_benchmark.cpp \
-                   dns_benchmark.cpp \
-                   ../../server/NetdConstants.cpp
+                   dns_benchmark.cpp
 
 LOCAL_MODULE_TAGS := eng tests
 
