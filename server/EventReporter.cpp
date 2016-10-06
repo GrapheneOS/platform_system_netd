@@ -37,6 +37,7 @@ int EventReporter::getMetricsReportingLevel() const {
 }
 
 android::sp<INetdEventListener> EventReporter::getNetdEventListener() {
+    std::lock_guard<std::mutex> lock(mutex);
     if (mNetdEventListener == nullptr) {
         // Use checkService instead of getService because getService waits for 5 seconds for the
         // service to become available. The DNS resolver inside netd is started much earlier in the

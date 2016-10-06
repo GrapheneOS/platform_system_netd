@@ -48,4 +48,15 @@ oneway interface INetdEventListener {
      */
     void onDnsEvent(int netId, int eventType, int returnCode, int latencyMs, String hostname,
             in String[] ipAddresses, int ipAddressesCount, int uid);
+
+    /**
+     * Logs a single connect library call.
+     *
+     * @param netId the ID of the network the lookup was performed on.
+     * @param latencyMs the latency of the function call.
+     * @param ipAddr destination IP address.
+     * @param port destination port number.
+     * @param uid the UID of the application that performed the connection.
+     */
+    void onConnectEvent(int netId, int latencyMs, String ipAddr, int port, int uid);
 }
