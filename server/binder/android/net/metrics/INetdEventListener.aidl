@@ -25,6 +25,10 @@ oneway interface INetdEventListener {
     const int EVENT_GETADDRINFO = 1;
     const int EVENT_GETHOSTBYNAME = 2;
 
+    const int REPORTING_LEVEL_NONE = 3;
+    const int REPORTING_LEVEL_METRICS = 4;
+    const int REPORTING_LEVEL_FULL = 5;
+
     // Logs a single DNS lookup.
     void onDnsEvent(int netId, int eventType, int returnCode, int latencyMs);
 }
