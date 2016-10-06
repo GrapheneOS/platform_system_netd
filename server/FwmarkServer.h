@@ -17,13 +17,15 @@
 #ifndef NETD_SERVER_FWMARK_SERVER_H
 #define NETD_SERVER_FWMARK_SERVER_H
 
+#include "android/net/metrics/INetdEventListener.h"
+#include "EventReporter.h"
 #include "sysutils/SocketListener.h"
 
 class NetworkController;
 
 class FwmarkServer : public SocketListener {
 public:
-    explicit FwmarkServer(NetworkController* networkController);
+    explicit FwmarkServer(NetworkController* networkController, EventReporter* eventReporter);
 
 private:
     // Overridden from SocketListener:
@@ -33,6 +35,7 @@ private:
     int processClient(SocketClient* client, int* socketFd);
 
     NetworkController* const mNetworkController;
+    EventReporter* mEventReporter;
 };
 
 #endif  // NETD_SERVER_FWMARK_SERVER_H
