@@ -78,6 +78,7 @@ LOCAL_SRC_FILES := \
         DnsProxyListener.cpp \
         DummyNetwork.cpp \
         DumpWriter.cpp \
+        EventReporter.cpp \
         FirewallController.cpp \
         FwmarkServer.cpp \
         IdletimerController.cpp \

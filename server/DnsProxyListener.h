@@ -22,25 +22,19 @@
 #include <sysutils/FrameworkListener.h>
 
 #include "android/net/metrics/INetdEventListener.h"
+#include "EventReporter.h"
 #include "NetdCommand.h"
 
 class NetworkController;
 
 class DnsProxyListener : public FrameworkListener {
 public:
-    explicit DnsProxyListener(const NetworkController* netCtrl);
+    explicit DnsProxyListener(const NetworkController* netCtrl, EventReporter* eventReporter);
     virtual ~DnsProxyListener() {}
-
-    // Returns the binder reference to the netd events listener service, attempting to fetch it if
-    // we do not have it already. This method mutates internal state without taking a lock and must
-    // only be called on one thread. This is safe because we only call this in the runCommand
-    // methods of our commands, which are only called by FrameworkListener::onDataAvailable, which
-    // is only called from SocketListener::runListener, which is a single-threaded select loop.
-    android::sp<android::net::metrics::INetdEventListener> getNetdEventListener();
 
 private:
     const NetworkController *mNetCtrl;
-    android::sp<android::net::metrics::INetdEventListener> mNetdEventListener;
+    EventReporter *mEventReporter;
 
     class GetAddrInfoCmd : public NetdCommand {
     public:

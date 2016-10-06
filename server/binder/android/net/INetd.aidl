@@ -195,6 +195,7 @@ interface INetd {
      * Reporting level is one of:
      *     0 (NONE)
      *     1 (METRICS)
+     *     2 (FULL)
      */
     int getMetricsReportingLevel();
     void setMetricsReportingLevel(int level);

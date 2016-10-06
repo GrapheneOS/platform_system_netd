@@ -31,6 +31,7 @@
 #include "FirewallController.h"
 #include "ClatdController.h"
 #include "StrictController.h"
+#include "EventReporter.h"
 
 namespace android {
 namespace net {
@@ -49,6 +50,7 @@ struct Controllers {
     FirewallController firewallCtrl;
     ClatdController clatdCtrl;
     StrictController strictCtrl;
+    EventReporter eventReporter;
 };
 
 extern Controllers* gCtls;
