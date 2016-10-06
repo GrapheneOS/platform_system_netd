@@ -236,13 +236,10 @@ static void ipv4_metrics_reporting_no_load(::benchmark::State& state) {
 }
 BENCHMARK(ipv4_metrics_reporting_no_load)->MinTime(MIN_TIME)->UseManualTime();
 
-/*
-// TODO: uncomment once full reporting is available.
 static void ipv4_full_reporting_no_load(::benchmark::State& state) {
     run_at_reporting_level(ipv4_loopback, state, INetdEventListener::REPORTING_LEVEL_FULL, true);
 }
 BENCHMARK(ipv4_full_reporting_no_load)->MinTime(MIN_TIME)->UseManualTime();
-*/
 
 // IPv4 benchmarks under high load
 static void ipv4_metrics_reporting_high_load(::benchmark::State& state) {
@@ -252,14 +249,11 @@ static void ipv4_metrics_reporting_high_load(::benchmark::State& state) {
 BENCHMARK(ipv4_metrics_reporting_high_load)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)->MinTime(MIN_TIME)->UseRealTime();
 
-/*
-// TODO: uncomment once full reporting is available.
 static void ipv4_full_reporting_high_load(::benchmark::State& state) {
     run_at_reporting_level(ipv4_loopback, state, INetdEventListener::REPORTING_LEVEL_FULL, false);
 }
 BENCHMARK(ipv4_full_reporting_high_load)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)->MinTime(MIN_TIME)->UseRealTime();
-*/
 
 // IPv6 raw connect() without using fwmark
 static void ipv6_metrics_reporting_no_fwmark(::benchmark::State& state) {
@@ -273,13 +267,10 @@ static void ipv6_metrics_reporting_no_load(::benchmark::State& state) {
 }
 BENCHMARK(ipv6_metrics_reporting_no_load)->MinTime(MIN_TIME)->UseManualTime();
 
-/*
-// TODO: uncomment once full reporting is available.
 static void ipv6_full_reporting_no_load(::benchmark::State& state) {
     run_at_reporting_level(ipv6_loopback, state, INetdEventListener::REPORTING_LEVEL_FULL, true);
 }
 BENCHMARK(ipv6_full_reporting_no_load)->MinTime(MIN_TIME)->UseManualTime();
-*/
 
 // IPv6 benchmarks under high load
 static void ipv6_metrics_reporting_high_load(::benchmark::State& state) {
@@ -289,11 +280,8 @@ static void ipv6_metrics_reporting_high_load(::benchmark::State& state) {
 BENCHMARK(ipv6_metrics_reporting_high_load)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)->MinTime(MIN_TIME)->UseRealTime();
 
-/*
-// TODO: uncomment once full reporting is available.
 static void ipv6_full_reporting_high_load(::benchmark::State& state) {
     run_at_reporting_level(ipv6_loopback, state, INetdEventListener::REPORTING_LEVEL_FULL, false);
 }
 BENCHMARK(ipv6_full_reporting_high_load)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)->MinTime(MIN_TIME)->UseRealTime();
-*/

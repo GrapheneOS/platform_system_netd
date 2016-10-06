@@ -18,14 +18,20 @@
 
 #include "Fwmark.h"
 #include "FwmarkCommand.h"
+#include "NetdConstants.h"
 #include "NetworkController.h"
 #include "resolv_netid.h"
 
 #include <sys/socket.h>
 #include <unistd.h>
+#include <utils/String16.h>
 
-FwmarkServer::FwmarkServer(NetworkController* networkController) :
-        SocketListener("fwmarkd", true), mNetworkController(networkController) {
+using android::String16;
+using android::net::metrics::INetdEventListener;
+
+FwmarkServer::FwmarkServer(NetworkController* networkController, EventReporter* eventReporter) :
+        SocketListener("fwmarkd", true), mNetworkController(networkController),
+        mEventReporter(eventReporter) {
 }
 
 bool FwmarkServer::onDataAvailable(SocketClient* client) {
@@ -47,15 +53,16 @@ bool FwmarkServer::onDataAvailable(SocketClient* client) {
 
 int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
     FwmarkCommand command;
+    FwmarkConnectInfo connectInfo;
 
-    iovec iov;
-    iov.iov_base = &command;
-    iov.iov_len = sizeof(command);
-
+    iovec iov[2] = {
+        { &command, sizeof(command) },
+        { &connectInfo, sizeof(connectInfo) },
+    };
     msghdr message;
     memset(&message, 0, sizeof(message));
-    message.msg_iov = &iov;
-    message.msg_iovlen = 1;
+    message.msg_iov = iov;
+    message.msg_iovlen = ARRAY_SIZE(iov);
 
     union {
         cmsghdr cmh;
@@ -71,7 +78,9 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
         return -errno;
     }
 
-    if (messageLength != sizeof(command)) {
+    if (!((command.cmdId != FwmarkCommand::ON_CONNECT_COMPLETE && messageLength == sizeof(command))
+            || (command.cmdId == FwmarkCommand::ON_CONNECT_COMPLETE
+            && messageLength == sizeof(command) + sizeof(connectInfo)))) {
         return -EBADMSG;
     }
 
@@ -148,6 +157,27 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
                 } else if (!mNetworkController->isVirtualNetwork(fwmark.netId)) {
                     fwmark.netId = mNetworkController->getDefaultNetwork();
                 }
+            }
+            break;
+        }
+
+        case FwmarkCommand::ON_CONNECT_COMPLETE: {
+            // Called after a socket connect() completes.
+            // This reports connect event including netId, destination IP address, destination port,
+            // uid and connect latency
+            android::sp<android::net::metrics::INetdEventListener> netdEventListener =
+                    mEventReporter->getNetdEventListener();
+
+            if (netdEventListener != nullptr) {
+                char addrstr[INET6_ADDRSTRLEN];
+                char portstr[sizeof("65536")];
+                const int ret = getnameinfo((sockaddr*) &connectInfo.addr, sizeof(connectInfo.addr),
+                        addrstr, sizeof(addrstr), portstr, sizeof(portstr),
+                        NI_NUMERICHOST | NI_NUMERICSERV);
+
+                netdEventListener->onConnectEvent(fwmark.netId, connectInfo.latencyMs,
+                        (ret == 0) ? String16(addrstr) : String16(""),
+                        (ret == 0) ? strtoul(portstr, NULL, 10) : 0, client->getUid());
             }
             break;
         }

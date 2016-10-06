@@ -19,6 +19,7 @@
 
 #include <atomic>
 #include <binder/IServiceManager.h>
+#include <mutex>
 
 #include "android/net/metrics/INetdEventListener.h"
 
@@ -31,16 +32,20 @@ public:
     int getMetricsReportingLevel() const;
 
     // Returns the binder reference to the netd events listener service, attempting to fetch it if
-    // we do not have it already. This method mutates internal state without taking a lock and must
-    // only be called on one thread. This is safe because we only call this in the runCommand
-    // methods of our commands, which are only called by FrameworkListener::onDataAvailable, which
-    // is only called from SocketListener::runListener, which is a single-threaded select loop.
+    // we do not have it already. This method is threadsafe.
     android::sp<android::net::metrics::INetdEventListener> getNetdEventListener();
 
 private:
     std::atomic_int mReportingLevel{
             android::net::metrics::INetdEventListener::REPORTING_LEVEL_FULL};
+    // TODO: consider changing this into an atomic type such as
+    // std::atomic<android::net::metrics::INetdEventListener> and deleting the mutex.
+    //
+    // Alternatively, if this locking causes a performance penalty, have each single-threaded
+    // caller (DnsProxyListener, FwmarkServer) keep their own per-thread copy of NetdEventListener
+    // and remove mNetdEventListener entirely.
     android::sp<android::net::metrics::INetdEventListener> mNetdEventListener;
+    std::mutex mutex;
 
 };
 
