@@ -36,8 +36,6 @@
 #include <chrono>
 
 #include <cutils/log.h>
-#include <binder/IServiceManager.h>
-#include <utils/String16.h>
 #include <sysutils/SocketClient.h>
 
 #include "Fwmark.h"
@@ -48,12 +46,10 @@
 #include "Stopwatch.h"
 #include "android/net/metrics/INetdEventListener.h"
 
-using android::String16;
-using android::interface_cast;
 using android::net::metrics::INetdEventListener;
 
-DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl) :
-        FrameworkListener("dnsproxyd"), mNetCtrl(netCtrl) {
+DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl, EventReporter* eventReporter) :
+        FrameworkListener("dnsproxyd"), mNetCtrl(netCtrl), mEventReporter(eventReporter) {
     registerCmd(new GetAddrInfoCmd(this));
     registerCmd(new GetHostByAddrCmd(this));
     registerCmd(new GetHostByNameCmd(this));
@@ -91,25 +87,6 @@ void* DnsProxyListener::GetAddrInfoHandler::threadStart(void* obj) {
     delete handler;
     pthread_exit(NULL);
     return NULL;
-}
-
-android::sp<INetdEventListener> DnsProxyListener::getNetdEventListener() {
-    if (mNetdEventListener == nullptr) {
-        // Use checkService instead of getService because getService waits for 5 seconds for the
-        // service to become available. The DNS resolver inside netd is started much earlier in the
-        // boot sequence than the framework DNS listener, and we don't want to delay all DNS lookups
-        // for 5 seconds until the DNS listener starts up.
-        android::sp<android::IBinder> b = android::defaultServiceManager()->checkService(
-                android::String16("netd_listener"));
-        if (b != nullptr) {
-            mNetdEventListener = interface_cast<INetdEventListener>(b);
-        }
-    }
-    // If the DNS listener service is dead, the binder call will just return an error, which should
-    // be fine because the only impact is that we can't log DNS events. In any case, this should
-    // only happen if the system server is going down, which means it will shortly be taking us down
-    // with it.
-    return mNetdEventListener;
 }
 
 static bool sendBE32(SocketClient* c, uint32_t data) {
@@ -220,19 +197,18 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     }
     mClient->decRef();
     if (mNetdEventListener != nullptr) {
-        const int reportingLevel = mReportingLevel;
-        switch (reportingLevel) {
-            case 0:
+        switch (mReportingLevel) {
+            case INetdEventListener::REPORTING_LEVEL_NONE:
                 // Skip reporting.
                 break;
-            case 1:
+            case INetdEventListener::REPORTING_LEVEL_METRICS:
                 // Reporting is on. Send metrics.
                 mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
                                               INetdEventListener::EVENT_GETADDRINFO, (int32_t) rv,
                                               latencyMs);
                 break;
-            default:
-                ALOGW("Unknown metrics reporting level %d; skipping onDnsEvent", reportingLevel);
+            case INetdEventListener::REPORTING_LEVEL_FULL:
+                // TODO add full info reporting
                 break;
         }
     } else {
@@ -304,13 +280,12 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
              netcontext.uid);
     }
 
-    const int metricsLevel = mDnsProxyListener->mNetCtrl->getMetricsReportingLevel();
+    const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
 
     cli->incRef();
     DnsProxyListener::GetAddrInfoHandler* handler =
             new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, netcontext,
-                                                     metricsLevel,
-                                                     mDnsProxyListener->getNetdEventListener());
+                    metricsLevel, mDnsProxyListener->mEventReporter->getNetdEventListener());
     handler->start();
 
     return 0;
@@ -352,12 +327,12 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
     }
 
     uint32_t mark = mDnsProxyListener->mNetCtrl->getNetworkForDns(&netId, uid);
-    const int metricsLevel = mDnsProxyListener->mNetCtrl->getMetricsReportingLevel();
+    const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
 
     cli->incRef();
     DnsProxyListener::GetHostByNameHandler* handler =
             new DnsProxyListener::GetHostByNameHandler(cli, name, af, netId, mark, metricsLevel,
-                                                       mDnsProxyListener->getNetdEventListener());
+                    mDnsProxyListener->mEventReporter->getNetdEventListener());
     handler->start();
 
     return 0;
@@ -424,18 +399,17 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     mClient->decRef();
 
     if (mNetdEventListener != nullptr) {
-        const int reportingLevel = mReportingLevel;
-        switch (reportingLevel) {
-            case 0:
+        switch (mReportingLevel) {
+            case INetdEventListener::REPORTING_LEVEL_NONE:
                 // Reporting is off.
                 break;
-            case 1:
+            case INetdEventListener::REPORTING_LEVEL_METRICS:
                 // Reporting is on. Send metrics.
                 mNetdEventListener->onDnsEvent(mNetId, INetdEventListener::EVENT_GETHOSTBYNAME,
                                               h_errno, latencyMs);
                 break;
-            default:
-                ALOGW("Unknown metrics reporting level %d; skipping onDnsEvent", reportingLevel);
+            case INetdEventListener::REPORTING_LEVEL_FULL:
+                // TODO add full info reporting
                 break;
         }
     }
