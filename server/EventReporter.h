@@ -39,7 +39,7 @@ public:
 
 private:
     std::atomic_int mReportingLevel{
-            android::net::metrics::INetdEventListener::REPORTING_LEVEL_METRICS};
+            android::net::metrics::INetdEventListener::REPORTING_LEVEL_FULL};
     android::sp<android::net::metrics::INetdEventListener> mNetdEventListener;
 
 };
