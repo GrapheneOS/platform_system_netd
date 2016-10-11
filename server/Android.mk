@@ -46,7 +46,7 @@ LOCAL_C_INCLUDES := \
         system/netd/include \
 
 LOCAL_CLANG := true
-LOCAL_CPPFLAGS := -std=c++11 -Wall -Werror
+LOCAL_CPPFLAGS := -Wall -Werror
 LOCAL_MODULE := netd
 
 # Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
