@@ -35,6 +35,8 @@ public:
 private:
     const NetworkController *mNetCtrl;
     EventReporter *mEventReporter;
+    static void addIpAddrWithinLimit(std::vector<android::String16>& ip_addrs, const sockaddr* addr,
+            socklen_t addrlen);
 
     class GetAddrInfoCmd : public NetdCommand {
     public:
