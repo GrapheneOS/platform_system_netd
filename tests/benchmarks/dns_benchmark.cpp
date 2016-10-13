@@ -28,8 +28,10 @@
 
 #include "dns_responder_client.h"
 #include "NetdClient.h"
+#include "android/net/metrics/INetdEventListener.h"
 
 using android::base::StringPrintf;
+using android::net::metrics::INetdEventListener;
 
 constexpr int MIN_THREADS = 1;
 constexpr int MAX_THREADS = 32;
@@ -126,7 +128,7 @@ public:
 
 // DNS calls without any metrics logged or sent.
 BENCHMARK_DEFINE_F(DnsFixture, getaddrinfo_log_nothing)(benchmark::State& state) {
-    benchmark_at_reporting_level(state, 0);
+    benchmark_at_reporting_level(state, INetdEventListener::REPORTING_LEVEL_NONE);
 }
 BENCHMARK_REGISTER_F(DnsFixture, getaddrinfo_log_nothing)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)
@@ -134,7 +136,7 @@ BENCHMARK_REGISTER_F(DnsFixture, getaddrinfo_log_nothing)
 
 // DNS calls with metrics only (netId, latency, return code) sent to the system server.
 BENCHMARK_DEFINE_F(DnsFixture, getaddrinfo_log_metrics)(benchmark::State& state) {
-    benchmark_at_reporting_level(state, 1);
+    benchmark_at_reporting_level(state, INetdEventListener::REPORTING_LEVEL_METRICS);
 }
 BENCHMARK_REGISTER_F(DnsFixture, getaddrinfo_log_metrics)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)
@@ -142,7 +144,7 @@ BENCHMARK_REGISTER_F(DnsFixture, getaddrinfo_log_metrics)
 
 // DNS calls with all information logged and sent to the system server.
 BENCHMARK_DEFINE_F(DnsFixture, getaddrinfo_log_everything)(benchmark::State& state) {
-    benchmark_at_reporting_level(state, 2);
+    benchmark_at_reporting_level(state, INetdEventListener::REPORTING_LEVEL_FULL);
 }
 BENCHMARK_REGISTER_F(DnsFixture, getaddrinfo_log_everything)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)
