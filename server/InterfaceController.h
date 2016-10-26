@@ -17,20 +17,39 @@
 #ifndef _INTERFACE_CONTROLLER_H
 #define _INTERFACE_CONTROLLER_H
 
-class InterfaceController {
- public:
-	InterfaceController();
-	virtual ~InterfaceController();
-	int setEnableIPv6(const char *interface, const int on);
-	int setIPv6PrivacyExtensions(const char *interface, const int on);
-	int setIPv6NdOffload(char* interface, const int on);
-	int setMtu(const char *interface, const char *mtu);
+#include <string>
 
- private:
-	void setAcceptRA(const char* value);
-	void setAcceptRARouteTable(int tableOrOffset);
-	void setBaseReachableTimeMs(unsigned int millis);
-	void setIPv6OptimisticMode(const char *value);
+class InterfaceController {
+public:
+    static void initializeAll();
+
+    static int setEnableIPv6(const char *interface, const int on);
+    static int setAcceptIPv6Ra(const char *interface, const int on);
+    static int setAcceptIPv6Dad(const char *interface, const int on);
+    static int setIPv6DadTransmits(const char *interface, const char *value);
+    static int setIPv6PrivacyExtensions(const char *interface, const int on);
+    static int setIPv6NdOffload(char* interface, const int on);
+    static int setMtu(const char *interface, const char *mtu);
+    static int addAddress(const char *interface, const char *addrString, int prefixLength);
+    static int delAddress(const char *interface, const char *addrString, int prefixLength);
+
+    // Read and write values in files of the form:
+    //     /proc/sys/net/<family>/<which>/<interface>/<parameter>
+    static int getParameter(
+            const char *family, const char *which, const char *interface, const char *parameter,
+            std::string *value);
+    static int setParameter(
+            const char *family, const char *which, const char *interface, const char *parameter,
+            const char *value);
+
+private:
+    static void setAcceptRA(const char* value);
+    static void setAcceptRARouteTable(int tableOrOffset);
+    static void setBaseReachableTimeMs(unsigned int millis);
+    static void setIPv6OptimisticMode(const char *value);
+
+    InterfaceController() = delete;
+    ~InterfaceController() = delete;
 };
 
 #endif

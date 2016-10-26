@@ -29,6 +29,7 @@
 
 #include "Controllers.h"
 #include "DumpWriter.h"
+#include "InterfaceController.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
 #include "RouteController.h"
@@ -164,7 +165,8 @@ binder::Status NetdNativeService::socketDestroy(const std::vector<UidRange>& uid
     }
 
     UidRanges uidRanges(uids);
-    int err = sd.destroySockets(uidRanges, std::set<uid_t>(skipUids.begin(), skipUids.end()));
+    int err = sd.destroySockets(uidRanges, std::set<uid_t>(skipUids.begin(), skipUids.end()),
+                                true /* excludeLoopback */);
 
     if (err) {
         return binder::Status::fromServiceSpecificError(-err,
@@ -194,6 +196,78 @@ binder::Status NetdNativeService::getResolverInfo(int32_t netId,
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
 
     int err = gCtls->resolverCtrl.getResolverInfo(netId, servers, domains, params, stats);
+    if (err != 0) {
+        return binder::Status::fromServiceSpecificError(-err,
+                String8::format("ResolverController error: %s", strerror(-err)));
+    }
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::tetherApplyDnsInterfaces(bool *ret) {
+    NETD_BIG_LOCK_RPC(CONNECTIVITY_INTERNAL);
+
+    *ret = gCtls->tetherCtrl.applyDnsInterfaces();
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::interfaceAddAddress(const std::string &ifName,
+        const std::string &addrString, int prefixLength) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+
+    const int err = InterfaceController::addAddress(
+            ifName.c_str(), addrString.c_str(), prefixLength);
+    if (err != 0) {
+        return binder::Status::fromServiceSpecificError(-err,
+                String8::format("InterfaceController error: %s", strerror(-err)));
+    }
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::interfaceDelAddress(const std::string &ifName,
+        const std::string &addrString, int prefixLength) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+
+    const int err = InterfaceController::delAddress(
+            ifName.c_str(), addrString.c_str(), prefixLength);
+    if (err != 0) {
+        return binder::Status::fromServiceSpecificError(-err,
+                String8::format("InterfaceController error: %s", strerror(-err)));
+    }
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::setProcSysNet(
+        int32_t family, int32_t which, const std::string &ifname, const std::string &parameter,
+        const std::string &value) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+
+    const char *familyStr;
+    switch (family) {
+        case INetd::IPV4:
+            familyStr = "ipv4";
+            break;
+        case INetd::IPV6:
+            familyStr = "ipv6";
+            break;
+        default:
+            return binder::Status::fromServiceSpecificError(EAFNOSUPPORT, String8("Bad family"));
+    }
+
+    const char *whichStr;
+    switch (which) {
+        case INetd::CONF:
+            whichStr = "conf";
+            break;
+        case INetd::NEIGH:
+            whichStr = "neigh";
+            break;
+        default:
+            return binder::Status::fromServiceSpecificError(EINVAL, String8("Bad category"));
+    }
+
+    const int err = InterfaceController::setParameter(
+            familyStr, whichStr, ifname.c_str(), parameter.c_str(),
+            value.c_str());
     if (err != 0) {
         return binder::Status::fromServiceSpecificError(-err,
                 String8::format("ResolverController error: %s", strerror(-err)));

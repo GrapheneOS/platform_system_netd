@@ -45,7 +45,6 @@ struct Controllers {
     IdletimerController idletimerCtrl;
     ResolverController resolverCtrl;
     FirewallController firewallCtrl;
-    InterfaceController interfaceCtrl;
     ClatdController clatdCtrl;
     StrictController strictCtrl;
 };

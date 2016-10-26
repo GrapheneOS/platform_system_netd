@@ -145,4 +145,47 @@ interface INetd {
      */
     void getResolverInfo(int netId, out @utf8InCpp String[] servers,
             out @utf8InCpp String[] domains, out int[] params, out int[] stats);
+
+    /**
+     * Instruct the tethering DNS server to reevaluated serving interfaces.
+     * This is needed to for the DNS server to observe changes in the set
+     * of potential listening IP addresses. (Listening on wildcard addresses
+     * can turn the device into an open resolver; b/7530468)
+     *
+     * TODO: Return something richer than just a boolean.
+     */
+    boolean tetherApplyDnsInterfaces();
+
+    /**
+     * Add/Remove and IP address from an interface.
+     *
+     * @param ifName the interface name
+     * @param addrString the IP address to add/remove as a string literal
+     * @param prefixLength the prefix length associated with this IP address
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void interfaceAddAddress(in @utf8InCpp String ifName, in @utf8InCpp String addrString,
+            int prefixLength);
+    void interfaceDelAddress(in @utf8InCpp String ifName, in @utf8InCpp String addrString,
+            int prefixLength);
+
+    /*
+     * Set and get /proc/sys/net interface configuration parameters.
+     *
+     * @param family One of IPV4/IPV6 integers, indicating the desired address family directory.
+     * @param which One of CONF/NEIGH integers, indicating the desired parameter category directory.
+     * @param ifname The interface name portion of the path; may also be "all" or "default".
+     * @param parameter The parameter name portion of the path.
+     * @param value The value string to be written into the assembled path.
+     */
+
+    const int IPV4  = 4;
+    const int IPV6  = 6;
+    const int CONF  = 1;
+    const int NEIGH = 2;
+    void setProcSysNet(int family, int which, in @utf8InCpp String ifname,
+            in @utf8InCpp String parameter, in @utf8InCpp String value);
+    // TODO: add corresponding getProcSysNet().
 }
