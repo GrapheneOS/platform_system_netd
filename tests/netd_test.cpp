@@ -380,8 +380,7 @@ protected:
            thread = std::thread([this, &servers, &dns, &mappings, num_queries]() {
                 for (unsigned i = 0 ; i < num_queries ; ++i) {
                     uint32_t ofs = arc4random_uniform(mappings.size());
-                    ASSERT_TRUE(ofs < mappings.size());
-                    auto& mapping = mappings[i];
+                    auto& mapping = mappings[ofs];
                     addrinfo* result = nullptr;
                     int rv = getaddrinfo(mapping.host.c_str(), nullptr, nullptr, &result);
                     EXPECT_EQ(0, rv) << "error [" << rv << "] " << gai_strerror(rv);
