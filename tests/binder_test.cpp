@@ -104,7 +104,7 @@ char BinderTest::sDstStr[INET6_ADDRSTRLEN];
 
 class TimedOperation : public Stopwatch {
 public:
-    TimedOperation(std::string name): mName(name) {}
+    explicit TimedOperation(const std::string &name): mName(name) {}
     virtual ~TimedOperation() {
         fprintf(stderr, "    %s: %6.1f ms\n", mName.c_str(), timeTaken());
     }
