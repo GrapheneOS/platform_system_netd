@@ -171,7 +171,7 @@ interface INetd {
     void interfaceDelAddress(in @utf8InCpp String ifName, in @utf8InCpp String addrString,
             int prefixLength);
 
-    /*
+    /**
      * Set and get /proc/sys/net interface configuration parameters.
      *
      * @param family One of IPV4/IPV6 integers, indicating the desired address family directory.
@@ -188,4 +188,14 @@ interface INetd {
     void setProcSysNet(int family, int which, in @utf8InCpp String ifname,
             in @utf8InCpp String parameter, in @utf8InCpp String value);
     // TODO: add corresponding getProcSysNet().
+
+    /**
+     * Get/Set metrics reporting level.
+     *
+     * Reporting level is one of:
+     *     0 (NONE)
+     *     1 (METRICS)
+     */
+    int getMetricsReportingLevel();
+    void setMetricsReportingLevel(int level);
 }

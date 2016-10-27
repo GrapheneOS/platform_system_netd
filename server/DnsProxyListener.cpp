@@ -61,13 +61,14 @@ DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl) :
 
 DnsProxyListener::GetAddrInfoHandler::GetAddrInfoHandler(
         SocketClient *c, char* host, char* service, struct addrinfo* hints,
-        const struct android_net_context& netcontext,
+        const struct android_net_context& netcontext, const int reportingLevel,
         const android::sp<android::net::metrics::INetdEventListener>& netdEventListener)
         : mClient(c),
           mHost(host),
           mService(service),
           mHints(hints),
           mNetContext(netcontext),
+          mReportingLevel(reportingLevel),
           mNetdEventListener(netdEventListener) {
 }
 
@@ -219,9 +220,23 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     }
     mClient->decRef();
     if (mNetdEventListener != nullptr) {
-        mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
-                                       INetdEventListener::EVENT_GETADDRINFO, (int32_t) rv,
-                                       latencyMs);
+        const int reportingLevel = mReportingLevel;
+        switch (reportingLevel) {
+            case 0:
+                // Skip reporting.
+                break;
+            case 1:
+                // Reporting is on. Send metrics.
+                mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
+                                              INetdEventListener::EVENT_GETADDRINFO, (int32_t) rv,
+                                              latencyMs);
+                break;
+            default:
+                ALOGW("Unknown metrics reporting level %d; skipping onDnsEvent", reportingLevel);
+                break;
+        }
+    } else {
+        ALOGW("Netd event listener is not available; skipping.");
     }
 }
 
@@ -289,9 +304,12 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
              netcontext.uid);
     }
 
+    const int metricsLevel = mDnsProxyListener->mNetCtrl->getMetricsReportingLevel();
+
     cli->incRef();
     DnsProxyListener::GetAddrInfoHandler* handler =
             new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, netcontext,
+                                                     metricsLevel,
                                                      mDnsProxyListener->getNetdEventListener());
     handler->start();
 
@@ -334,10 +352,11 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
     }
 
     uint32_t mark = mDnsProxyListener->mNetCtrl->getNetworkForDns(&netId, uid);
+    const int metricsLevel = mDnsProxyListener->mNetCtrl->getMetricsReportingLevel();
 
     cli->incRef();
     DnsProxyListener::GetHostByNameHandler* handler =
-            new DnsProxyListener::GetHostByNameHandler(cli, name, af, netId, mark,
+            new DnsProxyListener::GetHostByNameHandler(cli, name, af, netId, mark, metricsLevel,
                                                        mDnsProxyListener->getNetdEventListener());
     handler->start();
 
@@ -345,13 +364,14 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
 }
 
 DnsProxyListener::GetHostByNameHandler::GetHostByNameHandler(
-        SocketClient* c, char* name, int af, unsigned netId, uint32_t mark,
+        SocketClient* c, char* name, int af, unsigned netId, uint32_t mark, const int metricsLevel,
         const android::sp<android::net::metrics::INetdEventListener>& netdEventListener)
         : mClient(c),
           mName(name),
           mAf(af),
           mNetId(netId),
           mMark(mark),
+          mReportingLevel(metricsLevel),
           mNetdEventListener(netdEventListener) {
 }
 
@@ -404,8 +424,20 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     mClient->decRef();
 
     if (mNetdEventListener != nullptr) {
-        mNetdEventListener->onDnsEvent(mNetId, INetdEventListener::EVENT_GETHOSTBYNAME,
-                                      h_errno, latencyMs);
+        const int reportingLevel = mReportingLevel;
+        switch (reportingLevel) {
+            case 0:
+                // Reporting is off.
+                break;
+            case 1:
+                // Reporting is on. Send metrics.
+                mNetdEventListener->onDnsEvent(mNetId, INetdEventListener::EVENT_GETHOSTBYNAME,
+                                              h_errno, latencyMs);
+                break;
+            default:
+                ALOGW("Unknown metrics reporting level %d; skipping onDnsEvent", reportingLevel);
+                break;
+        }
     }
 }
 

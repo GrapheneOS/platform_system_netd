@@ -666,3 +666,16 @@ int NetworkController::modifyFallthroughLocked(unsigned vpnNetId, bool add) {
     }
     return 0;
 }
+
+int NetworkController::setMetricsReportingLevel(const int level) {
+    if (level < 0 || level > 1) {
+        ALOGE("Invalid reporting level %d", level);
+        return -EINVAL;
+    }
+    mReportingLevel = level;
+    return 0;
+}
+
+int NetworkController::getMetricsReportingLevel() const {
+    return mReportingLevel;
+}
