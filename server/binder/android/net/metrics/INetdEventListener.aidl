@@ -29,6 +29,23 @@ oneway interface INetdEventListener {
     const int REPORTING_LEVEL_METRICS = 4;
     const int REPORTING_LEVEL_FULL = 5;
 
-    // Logs a single DNS lookup.
-    void onDnsEvent(int netId, int eventType, int returnCode, int latencyMs);
+    // Maximum number of IP addresses logged for DNS lookups before we truncate the full list.
+    const int DNS_REPORTED_IP_ADDRESSES_LIMIT = 10;
+
+    /**
+     * Logs a DNS lookup function call (getaddrinfo and gethostbyname).
+     *
+     * @param netId the ID of the network the lookup was performed on.
+     * @param eventType one of the EVENT_* constants in this interface.
+     * @param returnCode the return value of the function call.
+     * @param latencyMs the latency of the function call.
+     * @param hostname the name that was looked up.
+     * @param ipAddresses (possibly a subset of) the IP addresses returned.
+     *        At most {@link #DNS_REPORTED_IP_ADDRESSES_LIMIT} addresses are logged.
+     * @param ipAddressesCount the number of IP addresses returned. May be different from the length
+     *        of ipAddresses if there were too many addresses to log.
+     * @param uid the UID of the application that performed the query.
+     */
+    void onDnsEvent(int netId, int eventType, int returnCode, int latencyMs, String hostname,
+            in String[] ipAddresses, int ipAddressesCount, int uid);
 }
