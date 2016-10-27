@@ -34,9 +34,9 @@
 #define VDBG 0
 
 #include <chrono>
+#include <vector>
 
 #include <cutils/log.h>
-#include <binder/IServiceManager.h>
 #include <utils/String16.h>
 #include <sysutils/SocketClient.h>
 
@@ -45,14 +45,14 @@
 #include "NetdConstants.h"
 #include "NetworkController.h"
 #include "ResponseCode.h"
+#include "Stopwatch.h"
 #include "android/net/metrics/INetdEventListener.h"
 
 using android::String16;
-using android::interface_cast;
 using android::net::metrics::INetdEventListener;
 
-DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl) :
-        FrameworkListener("dnsproxyd"), mNetCtrl(netCtrl) {
+DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl, EventReporter* eventReporter) :
+        FrameworkListener("dnsproxyd"), mNetCtrl(netCtrl), mEventReporter(eventReporter) {
     registerCmd(new GetAddrInfoCmd(this));
     registerCmd(new GetHostByAddrCmd(this));
     registerCmd(new GetHostByNameCmd(this));
@@ -60,13 +60,14 @@ DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl) :
 
 DnsProxyListener::GetAddrInfoHandler::GetAddrInfoHandler(
         SocketClient *c, char* host, char* service, struct addrinfo* hints,
-        const struct android_net_context& netcontext,
+        const struct android_net_context& netcontext, const int reportingLevel,
         const android::sp<android::net::metrics::INetdEventListener>& netdEventListener)
         : mClient(c),
           mHost(host),
           mService(service),
           mHints(hints),
           mNetContext(netcontext),
+          mReportingLevel(reportingLevel),
           mNetdEventListener(netdEventListener) {
 }
 
@@ -89,25 +90,6 @@ void* DnsProxyListener::GetAddrInfoHandler::threadStart(void* obj) {
     delete handler;
     pthread_exit(NULL);
     return NULL;
-}
-
-android::sp<INetdEventListener> DnsProxyListener::getNetdEventListener() {
-    if (mNetdEventListener == nullptr) {
-        // Use checkService instead of getService because getService waits for 5 seconds for the
-        // service to become available. The DNS resolver inside netd is started much earlier in the
-        // boot sequence than the framework DNS listener, and we don't want to delay all DNS lookups
-        // for 5 seconds until the DNS listener starts up.
-        android::sp<android::IBinder> b = android::defaultServiceManager()->checkService(
-                android::String16("netd_listener"));
-        if (b != nullptr) {
-            mNetdEventListener = interface_cast<INetdEventListener>(b);
-        }
-    }
-    // If the DNS listener service is dead, the binder call will just return an error, which should
-    // be fine because the only impact is that we can't log DNS events. In any case, this should
-    // only happen if the system server is going down, which means it will shortly be taking us down
-    // with it.
-    return mNetdEventListener;
 }
 
 static bool sendBE32(SocketClient* c, uint32_t data) {
@@ -213,14 +195,56 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
             ALOGW("Error writing DNS result to client");
         }
     }
+    std::vector<String16> ip_addrs;
+    int total_ip_addr_count = 0;
     if (result) {
+        if (mNetdEventListener != nullptr
+                && mReportingLevel == INetdEventListener::REPORTING_LEVEL_FULL) {
+            for (addrinfo* ai = result; ai; ai = ai->ai_next) {
+                sockaddr* ai_addr = ai->ai_addr;
+                if (ai_addr) {
+                    addIpAddrWithinLimit(ip_addrs, ai_addr, ai->ai_addrlen);
+                    total_ip_addr_count++;
+                }
+            }
+        }
         freeaddrinfo(result);
     }
     mClient->decRef();
     if (mNetdEventListener != nullptr) {
-        mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
-                                       INetdEventListener::EVENT_GETADDRINFO, (int32_t) rv,
-                                       latencyMs);
+        switch (mReportingLevel) {
+            case INetdEventListener::REPORTING_LEVEL_NONE:
+                // Skip reporting.
+                break;
+            case INetdEventListener::REPORTING_LEVEL_METRICS:
+                // Metrics reporting is on. Send metrics.
+                mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
+                                               INetdEventListener::EVENT_GETADDRINFO, (int32_t) rv,
+                                               latencyMs, String16(""), {}, -1, -1);
+                break;
+            case INetdEventListener::REPORTING_LEVEL_FULL:
+                // Full event info reporting is on. Send full info.
+                mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
+                                               INetdEventListener::EVENT_GETADDRINFO, (int32_t) rv,
+                                               latencyMs, String16(mHost), ip_addrs,
+                                               total_ip_addr_count, mNetContext.uid);
+                break;
+        }
+    } else {
+        ALOGW("Netd event listener is not available; skipping.");
+    }
+}
+
+void DnsProxyListener::addIpAddrWithinLimit(std::vector<android::String16>& ip_addrs,
+        const sockaddr* addr, socklen_t addrlen) {
+    // ipAddresses array is limited to first INetdEventListener::DNS_REPORTED_IP_ADDRESSES_LIMIT
+    // addresses for A and AAAA. Total count of addresses is provided, to be able to tell whether
+    // some addresses didn't get logged.
+    if (ip_addrs.size() < INetdEventListener::DNS_REPORTED_IP_ADDRESSES_LIMIT) {
+        char ip_addr[INET6_ADDRSTRLEN];
+        if (getnameinfo(addr, addrlen, ip_addr, sizeof(ip_addr), nullptr, 0, NI_NUMERICHOST) == 0) {
+            ip_addrs.push_back(String16(ip_addr));
+        }
     }
 }
 
@@ -288,10 +312,12 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
              netcontext.uid);
     }
 
+    const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
+
     cli->incRef();
     DnsProxyListener::GetAddrInfoHandler* handler =
             new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, netcontext,
-                                                     mDnsProxyListener->getNetdEventListener());
+                    metricsLevel, mDnsProxyListener->mEventReporter->getNetdEventListener());
     handler->start();
 
     return 0;
@@ -333,24 +359,26 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
     }
 
     uint32_t mark = mDnsProxyListener->mNetCtrl->getNetworkForDns(&netId, uid);
+    const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
 
     cli->incRef();
     DnsProxyListener::GetHostByNameHandler* handler =
-            new DnsProxyListener::GetHostByNameHandler(cli, name, af, netId, mark,
-                                                       mDnsProxyListener->getNetdEventListener());
+            new DnsProxyListener::GetHostByNameHandler(cli, name, af, netId, mark, metricsLevel,
+                    mDnsProxyListener->mEventReporter->getNetdEventListener());
     handler->start();
 
     return 0;
 }
 
 DnsProxyListener::GetHostByNameHandler::GetHostByNameHandler(
-        SocketClient* c, char* name, int af, unsigned netId, uint32_t mark,
+        SocketClient* c, char* name, int af, unsigned netId, uint32_t mark, const int metricsLevel,
         const android::sp<android::net::metrics::INetdEventListener>& netdEventListener)
         : mClient(c),
           mName(name),
           mAf(af),
           mNetId(netId),
           mMark(mark),
+          mReportingLevel(metricsLevel),
           mNetdEventListener(netdEventListener) {
 }
 
@@ -403,8 +431,41 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     mClient->decRef();
 
     if (mNetdEventListener != nullptr) {
-        mNetdEventListener->onDnsEvent(mNetId, INetdEventListener::EVENT_GETHOSTBYNAME,
-                                      h_errno, latencyMs);
+        std::vector<String16> ip_addrs;
+        int total_ip_addr_count = 0;
+        if (mReportingLevel == INetdEventListener::REPORTING_LEVEL_FULL) {
+            if (hp->h_addrtype == AF_INET) {
+                in_addr** list = (in_addr**) hp->h_addr_list;
+                for (int i = 0; list[i] != NULL; i++) {
+                    sockaddr_in sin = { .sin_family = AF_INET, .sin_addr = *list[i] };
+                    addIpAddrWithinLimit(ip_addrs, (sockaddr*) &sin, sizeof(sin));
+                    total_ip_addr_count++;
+                }
+            } else if (hp->h_addrtype == AF_INET6) {
+                in6_addr** list = (in6_addr**) hp->h_addr_list;
+                for (int i = 0; list[i] != NULL; i++) {
+                    sockaddr_in6 sin6 = { .sin6_family = AF_INET6, .sin6_addr = *list[i] };
+                    addIpAddrWithinLimit(ip_addrs, (sockaddr*) &sin6, sizeof(sin6));
+                    total_ip_addr_count++;
+                }
+            }
+        }
+        switch (mReportingLevel) {
+            case INetdEventListener::REPORTING_LEVEL_NONE:
+                // Reporting is off.
+                break;
+            case INetdEventListener::REPORTING_LEVEL_METRICS:
+                // Metrics reporting is on. Send metrics.
+                mNetdEventListener->onDnsEvent(mNetId, INetdEventListener::EVENT_GETHOSTBYNAME,
+                                               h_errno, latencyMs, String16(""), {}, -1, -1);
+                break;
+            case INetdEventListener::REPORTING_LEVEL_FULL:
+                // Full event info reporting is on. Send full info.
+                mNetdEventListener->onDnsEvent(mNetId, INetdEventListener::EVENT_GETHOSTBYNAME,
+                                               h_errno, latencyMs, String16(mName), ip_addrs,
+                                               total_ip_addr_count, mClient->getUid());
+                break;
+        }
     }
 }
 

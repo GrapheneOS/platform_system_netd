@@ -25,18 +25,21 @@ LOCAL_CFLAGS += -Wno-varargs
 EXTRA_LDLIBS := -lpthread
 LOCAL_SHARED_LIBRARIES += libbase libbinder libcutils liblog liblogwrap libnetdaidl libnetd_client \
                           libnetutils libutils
-LOCAL_STATIC_LIBRARIES += libtestUtil
+LOCAL_STATIC_LIBRARIES += libtestUtil libnetd_test_dnsresponder
 LOCAL_AIDL_INCLUDES := system/netd/server/binder
 LOCAL_C_INCLUDES += system/netd/include system/extras/tests/include system/netd/binder/include \
                     system/netd/server system/core/logwrapper/include \
+                    system/netd/tests/dns_responder \
                     system/core/libnetutils/include \
                     system/extras/tests/include bionic/libc/dns/include
 # netd_integration_test.cpp is currently empty and exists only so that we can do:
 # runtest -x system/netd/tests/netd_integration_test.cpp
 LOCAL_SRC_FILES := binder_test.cpp \
-                   dns_responder.cpp \
+                   dns_responder/dns_responder.cpp \
                    netd_integration_test.cpp \
                    netd_test.cpp \
                    ../server/NetdConstants.cpp
 LOCAL_MODULE_TAGS := eng tests
 include $(BUILD_NATIVE_TEST)
+
+include $(call all-makefiles-under, $(LOCAL_PATH))

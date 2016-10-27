@@ -20,6 +20,7 @@
 
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
+#include <cutils/properties.h>
 #include <utils/Errors.h>
 #include <utils/String16.h>
 
@@ -29,6 +30,7 @@
 
 #include "Controllers.h"
 #include "DumpWriter.h"
+#include "EventReporter.h"
 #include "InterfaceController.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
@@ -56,6 +58,17 @@ binder::Status checkPermission(const char *permission) {
         auto err = StringPrintf("UID %d / PID %d lacks permission %s", uid, pid, permission);
         return binder::Status::fromExceptionCode(binder::Status::EX_SECURITY, String8(err.c_str()));
     }
+}
+
+#define ENFORCE_DEBUGGABLE() {                              \
+    char value[PROPERTY_VALUE_MAX + 1];                     \
+    if (property_get("ro.debuggable", value, NULL) != 1     \
+            || value[0] != '1') {                           \
+        return binder::Status::fromExceptionCode(           \
+            binder::Status::EX_SECURITY,                    \
+            String8("Not available in production builds.")  \
+        );                                                  \
+    }                                                       \
 }
 
 #define ENFORCE_PERMISSION(permission) {                    \
@@ -273,6 +286,27 @@ binder::Status NetdNativeService::setProcSysNet(
                 String8::format("ResolverController error: %s", strerror(-err)));
     }
     return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::getMetricsReportingLevel(int *reportingLevel) {
+    // This function intentionally does not lock, since the only thing it does is one read from an
+    // atomic_int.
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    ENFORCE_DEBUGGABLE();
+
+    *reportingLevel = gCtls->eventReporter.getMetricsReportingLevel();
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::setMetricsReportingLevel(const int reportingLevel) {
+    // This function intentionally does not lock, since the only thing it does is one write to an
+    // atomic_int.
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    ENFORCE_DEBUGGABLE();
+
+    return (gCtls->eventReporter.setMetricsReportingLevel(reportingLevel) == 0)
+            ? binder::Status::ok()
+            : binder::Status::fromExceptionCode(binder::Status::EX_ILLEGAL_ARGUMENT);
 }
 
 }  // namespace net

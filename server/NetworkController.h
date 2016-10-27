@@ -113,6 +113,7 @@ private:
     std::map<unsigned, Network*> mNetworks;  // Map keys are NetIds.
     std::map<uid_t, Permission> mUsers;
     std::set<uid_t> mProtectableUsers;
+
 };
 
 #endif  // NETD_SERVER_NETWORK_CONTROLLER_H
