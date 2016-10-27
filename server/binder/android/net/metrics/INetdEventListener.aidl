@@ -25,9 +25,9 @@ oneway interface INetdEventListener {
     const int EVENT_GETADDRINFO = 1;
     const int EVENT_GETHOSTBYNAME = 2;
 
-    const int REPORTING_LEVEL_NONE = 3;
-    const int REPORTING_LEVEL_METRICS = 4;
-    const int REPORTING_LEVEL_FULL = 5;
+    const int REPORTING_LEVEL_NONE = 0;
+    const int REPORTING_LEVEL_METRICS = 1;
+    const int REPORTING_LEVEL_FULL = 2;
 
     // Maximum number of IP addresses logged for DNS lookups before we truncate the full list.
     const int DNS_REPORTED_IP_ADDRESSES_LIMIT = 10;
