@@ -38,7 +38,8 @@ LOCAL_C_INCLUDES += system/netd/include \
 
 LOCAL_SRC_FILES := main.cpp \
                    connect_benchmark.cpp \
-                   dns_benchmark.cpp
+                   dns_benchmark.cpp \
+                   ../../server/binder/android/net/metrics/INetdEventListener.aidl
 
 LOCAL_MODULE_TAGS := eng tests
 

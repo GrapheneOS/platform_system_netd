@@ -34,14 +34,10 @@
 #include "FwmarkClient.h"
 #include "SockDiag.h"
 #include "Stopwatch.h"
+#include "android/net/metrics/INetdEventListener.h"
 
 using android::base::StringPrintf;
-
-enum ReportingLevel {
-    NONE,
-    METRICS,
-    FULL
-};
+using android::net::metrics::INetdEventListener;
 
 static int bindAndListen(int s) {
     sockaddr_in6 sin6 = { .sin6_family = AF_INET6 };
@@ -175,7 +171,7 @@ static void ipv6_loopback(benchmark::State& state, const bool waitBetweenRuns) {
 }
 
 static void run_at_reporting_level(decltype(ipv4_loopback) benchmarkFunction,
-                                   ::benchmark::State& state, const ReportingLevel reportingLevel,
+                                   ::benchmark::State& state, const int reportingLevel,
                                    const bool waitBetweenRuns) {
     // Our master thread (thread_index == 0) will control setup and teardown for other threads.
     const bool isMaster = (state.thread_index == 0);
@@ -196,14 +192,14 @@ static void run_at_reporting_level(decltype(ipv4_loopback) benchmarkFunction,
             }
         }
         switch (reportingLevel) {
-            case NONE:
+            case INetdEventListener::REPORTING_LEVEL_NONE:
                 setenv(FwmarkClient::ANDROID_NO_USE_FWMARK_CLIENT, "", 1);
                 break;
-            case METRICS:
+            case INetdEventListener::REPORTING_LEVEL_METRICS:
                 unsetenv(FwmarkClient::ANDROID_NO_USE_FWMARK_CLIENT);
                 setenv(FwmarkClient::ANDROID_FWMARK_METRICS_ONLY, "", 1);
                 break;
-            case FULL:
+            case INetdEventListener::REPORTING_LEVEL_FULL:
                 unsetenv(FwmarkClient::ANDROID_NO_USE_FWMARK_CLIENT);
                 unsetenv(FwmarkClient::ANDROID_FWMARK_METRICS_ONLY);
                 break;
@@ -230,27 +226,28 @@ constexpr int MAX_THREADS = 1;
 constexpr double MIN_TIME = 0.5 /* seconds */;
 
 static void ipv4_metrics_reporting_no_fwmark(::benchmark::State& state) {
-    run_at_reporting_level(ipv4_loopback, state, NONE, true);
+    run_at_reporting_level(ipv4_loopback, state, INetdEventListener::REPORTING_LEVEL_NONE, true);
 }
 BENCHMARK(ipv4_metrics_reporting_no_fwmark)->MinTime(MIN_TIME)->UseManualTime();
 
 // IPv4 metrics under low load
 static void ipv4_metrics_reporting_no_load(::benchmark::State& state) {
-    run_at_reporting_level(ipv4_loopback, state, METRICS, true);
+    run_at_reporting_level(ipv4_loopback, state, INetdEventListener::REPORTING_LEVEL_METRICS, true);
 }
 BENCHMARK(ipv4_metrics_reporting_no_load)->MinTime(MIN_TIME)->UseManualTime();
 
 /*
 // TODO: uncomment once full reporting is available.
 static void ipv4_full_reporting_no_load(::benchmark::State& state) {
-    run_at_reporting_level(ipv4_loopback, state, FULL, true);
+    run_at_reporting_level(ipv4_loopback, state, INetdEventListener::REPORTING_LEVEL_FULL, true);
 }
 BENCHMARK(ipv4_full_reporting_no_load)->MinTime(MIN_TIME)->UseManualTime();
 */
 
 // IPv4 benchmarks under high load
 static void ipv4_metrics_reporting_high_load(::benchmark::State& state) {
-    run_at_reporting_level(ipv4_loopback, state, METRICS, false);
+    run_at_reporting_level(ipv4_loopback, state, INetdEventListener::REPORTING_LEVEL_METRICS,
+            false);
 }
 BENCHMARK(ipv4_metrics_reporting_high_load)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)->MinTime(MIN_TIME)->UseRealTime();
@@ -258,7 +255,7 @@ BENCHMARK(ipv4_metrics_reporting_high_load)
 /*
 // TODO: uncomment once full reporting is available.
 static void ipv4_full_reporting_high_load(::benchmark::State& state) {
-    run_at_reporting_level(ipv4_loopback, state, FULL, false);
+    run_at_reporting_level(ipv4_loopback, state, INetdEventListener::REPORTING_LEVEL_FULL, false);
 }
 BENCHMARK(ipv4_full_reporting_high_load)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)->MinTime(MIN_TIME)->UseRealTime();
@@ -266,27 +263,28 @@ BENCHMARK(ipv4_full_reporting_high_load)
 
 // IPv6 raw connect() without using fwmark
 static void ipv6_metrics_reporting_no_fwmark(::benchmark::State& state) {
-    run_at_reporting_level(ipv6_loopback, state, NONE, true);
+    run_at_reporting_level(ipv6_loopback, state, INetdEventListener::REPORTING_LEVEL_NONE, true);
 }
 BENCHMARK(ipv6_metrics_reporting_no_fwmark)->MinTime(MIN_TIME)->UseManualTime();
 
 // IPv6 metrics under low load
 static void ipv6_metrics_reporting_no_load(::benchmark::State& state) {
-    run_at_reporting_level(ipv6_loopback, state, METRICS, true);
+    run_at_reporting_level(ipv6_loopback, state, INetdEventListener::REPORTING_LEVEL_METRICS, true);
 }
 BENCHMARK(ipv6_metrics_reporting_no_load)->MinTime(MIN_TIME)->UseManualTime();
 
 /*
 // TODO: uncomment once full reporting is available.
 static void ipv6_full_reporting_no_load(::benchmark::State& state) {
-    run_at_reporting_level(ipv6_loopback, state, FULL, true);
+    run_at_reporting_level(ipv6_loopback, state, INetdEventListener::REPORTING_LEVEL_FULL, true);
 }
 BENCHMARK(ipv6_full_reporting_no_load)->MinTime(MIN_TIME)->UseManualTime();
 */
 
 // IPv6 benchmarks under high load
 static void ipv6_metrics_reporting_high_load(::benchmark::State& state) {
-    run_at_reporting_level(ipv6_loopback, state, METRICS, false);
+    run_at_reporting_level(ipv6_loopback, state, INetdEventListener::REPORTING_LEVEL_METRICS,
+            false);
 }
 BENCHMARK(ipv6_metrics_reporting_high_load)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)->MinTime(MIN_TIME)->UseRealTime();
@@ -294,7 +292,7 @@ BENCHMARK(ipv6_metrics_reporting_high_load)
 /*
 // TODO: uncomment once full reporting is available.
 static void ipv6_full_reporting_high_load(::benchmark::State& state) {
-    run_at_reporting_level(ipv6_loopback, state, FULL, false);
+    run_at_reporting_level(ipv6_loopback, state, INetdEventListener::REPORTING_LEVEL_FULL, false);
 }
 BENCHMARK(ipv6_full_reporting_high_load)
     ->ThreadRange(MIN_THREADS, MAX_THREADS)->MinTime(MIN_TIME)->UseRealTime();
