@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 
 struct FwmarkCommand;
+struct FwmarkConnectInfo;
 
 class FwmarkClient {
 public:
@@ -35,8 +36,9 @@ public:
     ~FwmarkClient();
 
     // Sends |data| to the fwmark server, along with |fd| as ancillary data using cmsg(3).
+    // For ON_CONNECT_COMPLETE |data| command, |connectInfo| should be provided.
     // Returns 0 on success or a negative errno value on failure.
-    int send(FwmarkCommand* data, int fd);
+    int send(FwmarkCommand* data, int fd, FwmarkConnectInfo* connectInfo);
 
     // Env flag to control whether FwmarkClient sends any information at all about network events
     // back to the system server through FwmarkServer.
