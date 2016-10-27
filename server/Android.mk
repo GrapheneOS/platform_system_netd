@@ -21,6 +21,7 @@ include $(CLEAR_VARS)
 
 LOCAL_CFLAGS := -Wall -Werror
 LOCAL_CLANG := true
+LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := libnetdaidl
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
@@ -47,6 +48,7 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_CLANG := true
 LOCAL_CPPFLAGS := -Wall -Werror
+LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := netd
 
 # Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
@@ -117,6 +119,7 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 
 LOCAL_CFLAGS := -Wall -Werror
+LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_CLANG := true
 LOCAL_MODULE := ndc
 LOCAL_SHARED_LIBRARIES := libcutils
