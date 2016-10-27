@@ -32,7 +32,11 @@ const sockaddr_un FWMARK_SERVER_PATH = {AF_UNIX, "/dev/socket/fwmarkd"};
 }  // namespace
 
 bool FwmarkClient::shouldSetFwmark(int family) {
-    return (family == AF_INET || family == AF_INET6) && !getenv("ANDROID_NO_USE_FWMARK_CLIENT");
+    return (family == AF_INET || family == AF_INET6) && !getenv(ANDROID_NO_USE_FWMARK_CLIENT);
+}
+
+bool FwmarkClient::shouldReportConnectComplete(int family) {
+    return shouldSetFwmark(family) && !getenv(ANDROID_FWMARK_METRICS_ONLY);
 }
 
 FwmarkClient::FwmarkClient() : mChannel(-1) {
