@@ -47,6 +47,7 @@
 #include <testUtil.h>
 
 #include "dns_responder.h"
+#include "dns_responder_client.h"
 #include "resolv_params.h"
 #include "ResolverStats.h"
 
@@ -77,51 +78,6 @@ bool UnorderedCompareArray(const A& a, const B& b) {
         if (a_count != b_count) return false;
     }
     return true;
-}
-
-// The only response code used in this test, see
-// frameworks/base/services/java/com/android/server/NetworkManagementService.java
-// for others.
-static constexpr int ResponseCodeOK = 200;
-
-// Returns ResponseCode.
-int netdCommand(const char* sockname, const char* command) {
-    int sock = socket_local_client(sockname,
-                                   ANDROID_SOCKET_NAMESPACE_RESERVED,
-                                   SOCK_STREAM);
-    if (sock < 0) {
-        perror("Error connecting");
-        return -1;
-    }
-
-    // FrameworkListener expects the whole command in one read.
-    char buffer[256];
-    int nwritten = snprintf(buffer, sizeof(buffer), "0 %s", command);
-    if (write(sock, buffer, nwritten + 1) < 0) {
-        perror("Error sending netd command");
-        close(sock);
-        return -1;
-    }
-
-    int nread = read(sock, buffer, sizeof(buffer));
-    if (nread < 0) {
-        perror("Error reading response");
-        close(sock);
-        return -1;
-    }
-    close(sock);
-    return atoi(buffer);
-}
-
-bool expectNetdResult(int expected, const char* sockname, const char* format, ...) {
-    char command[256];
-    va_list args;
-    va_start(args, format);
-    vsnprintf(command, sizeof(command), format, args);
-    va_end(args);
-    int result = netdCommand(sockname, command);
-    EXPECT_EQ(expected, result) << command;
-    return (200 <= expected && expected < 300);
 }
 
 class AddrInfo {
@@ -168,131 +124,15 @@ class AddrInfo {
     int error_;
 };
 
-class ResolverTest : public ::testing::Test {
+class ResolverTest : public ::testing::Test, public DnsResponderClient {
 protected:
-    struct Mapping {
-        std::string host;
-        std::string entry;
-        std::string ip4;
-        std::string ip6;
-    };
-
     virtual void SetUp() {
         // Ensure resolutions go via proxy.
-        setenv("ANDROID_DNS_MODE", "", 1);
-        uid = getuid();
-        pid = getpid();
-        SetupOemNetwork();
-
-        // binder setup
-        auto binder = android::defaultServiceManager()->getService(android::String16("netd"));
-        ASSERT_TRUE(binder != nullptr);
-        mNetdSrv = android::interface_cast<android::net::INetd>(binder);
+        DnsResponderClient::SetUp();
     }
 
     virtual void TearDown() {
-        TearDownOemNetwork();
-        netdCommand("netd", "network destroy " TEST_OEM_NETWORK);
-    }
-
-    void SetupOemNetwork() {
-        netdCommand("netd", "network destroy " TEST_OEM_NETWORK);
-        if (expectNetdResult(ResponseCodeOK, "netd",
-                             "network create %s", TEST_OEM_NETWORK)) {
-            oemNetId = TEST_NETID;
-        }
-        setNetworkForProcess(oemNetId);
-        ASSERT_EQ((unsigned) oemNetId, getNetworkForProcess());
-    }
-
-    void SetupMappings(unsigned num_hosts, const std::vector<std::string>& domains,
-            std::vector<Mapping>* mappings) const {
-        mappings->resize(num_hosts * domains.size());
-        auto mappings_it = mappings->begin();
-        for (unsigned i = 0 ; i < num_hosts ; ++i) {
-            for (const auto& domain : domains) {
-                ASSERT_TRUE(mappings_it != mappings->end());
-                mappings_it->host = StringPrintf("host%u", i);
-                mappings_it->entry = StringPrintf("%s.%s.", mappings_it->host.c_str(),
-                        domain.c_str());
-                mappings_it->ip4 = StringPrintf("192.0.2.%u", i%253 + 1);
-                mappings_it->ip6 = StringPrintf("2001:db8::%x", i%65534 + 1);
-                ++mappings_it;
-            }
-        }
-    }
-
-    void SetupDNSServers(unsigned num_servers, const std::vector<Mapping>& mappings,
-            std::vector<std::unique_ptr<test::DNSResponder>>* dns,
-            std::vector<std::string>* servers) const {
-        ASSERT_TRUE(num_servers != 0 && num_servers < 100);
-        const char* listen_srv = "53";
-        dns->resize(num_servers);
-        servers->resize(num_servers);
-        for (unsigned i = 0 ; i < num_servers ; ++i) {
-            auto& server = (*servers)[i];
-            auto& d = (*dns)[i];
-            server = StringPrintf("127.0.0.%u", i + 100);
-            d = std::make_unique<test::DNSResponder>(server, listen_srv, 250,
-                    ns_rcode::ns_r_servfail, 1.0);
-            ASSERT_TRUE(d.get() != nullptr);
-            for (const auto& mapping : mappings) {
-                d->addMapping(mapping.entry.c_str(), ns_type::ns_t_a, mapping.ip4.c_str());
-                d->addMapping(mapping.entry.c_str(), ns_type::ns_t_aaaa, mapping.ip6.c_str());
-            }
-            ASSERT_TRUE(d->startServer());
-        }
-    }
-
-    void ShutdownDNSServers(std::vector<std::unique_ptr<test::DNSResponder>>* dns) const {
-        for (const auto& d : *dns) {
-            ASSERT_TRUE(d.get() != nullptr);
-            d->stopServer();
-        }
-        dns->clear();
-    }
-
-    void TearDownOemNetwork() {
-        if (oemNetId != -1) {
-            expectNetdResult(ResponseCodeOK, "netd",
-                             "network destroy %s", TEST_OEM_NETWORK);
-        }
-    }
-
-    bool SetResolversForNetwork(const std::vector<std::string>& servers,
-            const std::vector<std::string>& domains, const std::vector<int>& params) {
-        auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params);
-        return rv.isOk();
-    }
-
-    bool SetResolversForNetwork(const std::vector<std::string>& searchDomains,
-            const std::vector<std::string>& servers, const std::string& params) {
-        std::string cmd = StringPrintf("resolver setnetdns %d \"", oemNetId);
-        if (!searchDomains.empty()) {
-            cmd += searchDomains[0].c_str();
-            for (size_t i = 1 ; i < searchDomains.size() ; ++i) {
-                cmd += " ";
-                cmd += searchDomains[i];
-            }
-        }
-        cmd += "\"";
-
-        for (const auto& str : servers) {
-            cmd += " ";
-            cmd += str;
-        }
-
-        if (!params.empty()) {
-            cmd += " --params \"";
-            cmd += params;
-            cmd += "\"";
-        }
-
-        int rv = netdCommand("netd", cmd.c_str());
-        if (rv != ResponseCodeOK) {
-            return false;
-        }
-        return true;
+        DnsResponderClient::TearDown();
     }
 
     bool GetResolverInfo(std::vector<std::string>* servers, std::vector<std::string>* domains,
@@ -368,7 +208,7 @@ protected:
         std::vector<std::string> domains = { "example.com" };
         std::vector<std::unique_ptr<test::DNSResponder>> dns;
         std::vector<std::string> servers;
-        std::vector<Mapping> mappings;
+        std::vector<DnsResponderClient::Mapping> mappings;
         ASSERT_NO_FATAL_FAILURE(SetupMappings(num_hosts, domains, &mappings));
         ASSERT_NO_FATAL_FAILURE(SetupDNSServers(MAXNS, mappings, &dns, &servers));
 
@@ -407,10 +247,6 @@ protected:
         ASSERT_NO_FATAL_FAILURE(ShutdownDNSServers(&dns));
     }
 
-    int pid;
-    int uid;
-    int oemNetId = -1;
-    android::sp<android::net::INetd> mNetdSrv = nullptr;
     const std::vector<std::string> mDefaultSearchDomains = { "example.com" };
     // <sample validity in s> <success threshold in percent> <min samples> <max samples>
     const std::string mDefaultParams = "300 25 8 8";
