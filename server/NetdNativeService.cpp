@@ -30,6 +30,7 @@
 
 #include "Controllers.h"
 #include "DumpWriter.h"
+#include "EventReporter.h"
 #include "InterfaceController.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
@@ -293,7 +294,7 @@ binder::Status NetdNativeService::getMetricsReportingLevel(int *reportingLevel) 
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ENFORCE_DEBUGGABLE();
 
-    *reportingLevel = gCtls->netCtrl.getMetricsReportingLevel();
+    *reportingLevel = gCtls->eventReporter.getMetricsReportingLevel();
     return binder::Status::ok();
 }
 
@@ -303,10 +304,9 @@ binder::Status NetdNativeService::setMetricsReportingLevel(const int reportingLe
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ENFORCE_DEBUGGABLE();
 
-    if (int err = gCtls->netCtrl.setMetricsReportingLevel(reportingLevel)) {
-        return binder::Status::fromExceptionCode(binder::Status::EX_ILLEGAL_ARGUMENT);
-    }
-    return binder::Status::ok();
+    return (gCtls->eventReporter.setMetricsReportingLevel(reportingLevel) == 0)
+            ? binder::Status::ok()
+            : binder::Status::fromExceptionCode(binder::Status::EX_ILLEGAL_ARGUMENT);
 }
 
 }  // namespace net

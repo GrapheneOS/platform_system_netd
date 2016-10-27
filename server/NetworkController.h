@@ -22,7 +22,6 @@
 
 #include "utils/RWLock.h"
 
-#include <atomic>
 #include <list>
 #include <map>
 #include <set>
@@ -94,9 +93,6 @@ public:
 
     void dump(DumpWriter& dw);
 
-    int setMetricsReportingLevel(const int level);
-    int getMetricsReportingLevel() const;
-
 private:
     bool isValidNetwork(unsigned netId) const;
     Network* getNetworkLocked(unsigned netId) const;
@@ -117,7 +113,6 @@ private:
     std::map<unsigned, Network*> mNetworks;  // Map keys are NetIds.
     std::map<uid_t, Permission> mUsers;
     std::set<uid_t> mProtectableUsers;
-    std::atomic_int mReportingLevel{1};
 
 };
 
