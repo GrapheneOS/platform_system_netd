@@ -87,13 +87,13 @@ int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
     }
     // Latency measurement does not include time of sending commands to Fwmark
     Stopwatch s;
-    int ret = libcConnect(sockfd, addr, addrlen);
+    const int ret = libcConnect(sockfd, addr, addrlen);
     // Save errno so it isn't clobbered by sending ON_CONNECT_COMPLETE
     const int connectErrno = errno;
     const unsigned latencyMs = lround(s.timeTaken());
     // Send an ON_CONNECT_COMPLETE command that includes sockaddr and connect latency for reporting
     if (shouldSetFwmark && FwmarkClient::shouldReportConnectComplete(addr->sa_family)) {
-        FwmarkConnectInfo connectInfo(latencyMs, addr);
+        FwmarkConnectInfo connectInfo(ret == 0 ? 0 : connectErrno, latencyMs, addr);
         // TODO: get the netId from the socket mark once we have continuous benchmark runs
         FwmarkCommand command = {FwmarkCommand::ON_CONNECT_COMPLETE, /* netId (ignored) */ 0,
                 /* uid (filled in by the server) */ 0};
