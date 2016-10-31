@@ -52,11 +52,12 @@ oneway interface INetdEventListener {
     /**
      * Logs a single connect library call.
      *
-     * @param netId the ID of the network the lookup was performed on.
-     * @param latencyMs the latency of the function call.
+     * @param netId the ID of the network the connect was performed on.
+     * @param error 0 if the connect call succeeded, otherwise errno if it failed.
+     * @param latencyMs the latency of the connect call.
      * @param ipAddr destination IP address.
      * @param port destination port number.
      * @param uid the UID of the application that performed the connection.
      */
-    void onConnectEvent(int netId, int latencyMs, String ipAddr, int port, int uid);
+    void onConnectEvent(int netId, int error, int latencyMs, String ipAddr, int port, int uid);
 }
