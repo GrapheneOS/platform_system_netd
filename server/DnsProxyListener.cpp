@@ -434,14 +434,14 @@ void DnsProxyListener::GetHostByNameHandler::run() {
         std::vector<String16> ip_addrs;
         int total_ip_addr_count = 0;
         if (mReportingLevel == INetdEventListener::REPORTING_LEVEL_FULL) {
-            if (hp->h_addrtype == AF_INET) {
+            if (hp != nullptr && hp->h_addrtype == AF_INET) {
                 in_addr** list = (in_addr**) hp->h_addr_list;
                 for (int i = 0; list[i] != NULL; i++) {
                     sockaddr_in sin = { .sin_family = AF_INET, .sin_addr = *list[i] };
                     addIpAddrWithinLimit(ip_addrs, (sockaddr*) &sin, sizeof(sin));
                     total_ip_addr_count++;
                 }
-            } else if (hp->h_addrtype == AF_INET6) {
+            } else if (hp != nullptr && hp->h_addrtype == AF_INET6) {
                 in6_addr** list = (in6_addr**) hp->h_addr_list;
                 for (int i = 0; list[i] != NULL; i++) {
                     sockaddr_in6 sin6 = { .sin6_family = AF_INET6, .sin6_addr = *list[i] };

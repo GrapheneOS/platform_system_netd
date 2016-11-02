@@ -52,11 +52,13 @@
 #include "ResolverStats.h"
 
 #include "android/net/INetd.h"
+#include "android/net/metrics/INetdEventListener.h"
 #include "binder/IServiceManager.h"
 
 using android::base::StringPrintf;
 using android::base::StringAppendF;
 using android::net::ResolverStats;
+using android::net::metrics::INetdEventListener;
 
 // Emulates the behavior of UnorderedElementsAreArray, which currently cannot be used.
 // TODO: Use UnorderedElementsAreArray, which depends on being able to compile libgmock_host,
@@ -125,13 +127,29 @@ class AddrInfo {
 };
 
 class ResolverTest : public ::testing::Test, public DnsResponderClient {
+private:
+    int mOriginalMetricsLevel;
+
 protected:
     virtual void SetUp() {
         // Ensure resolutions go via proxy.
         DnsResponderClient::SetUp();
+
+        // If DNS reporting is off: turn it on so we run through everything.
+        auto rv = mNetdSrv->getMetricsReportingLevel(&mOriginalMetricsLevel);
+        ASSERT_TRUE(rv.isOk());
+        if (mOriginalMetricsLevel != INetdEventListener::REPORTING_LEVEL_FULL) {
+            rv = mNetdSrv->setMetricsReportingLevel(INetdEventListener::REPORTING_LEVEL_FULL);
+            ASSERT_TRUE(rv.isOk());
+        }
     }
 
     virtual void TearDown() {
+        if (mOriginalMetricsLevel != INetdEventListener::REPORTING_LEVEL_FULL) {
+            auto rv = mNetdSrv->setMetricsReportingLevel(mOriginalMetricsLevel);
+            ASSERT_TRUE(rv.isOk());
+        }
+
         DnsResponderClient::TearDown();
     }
 
@@ -257,20 +275,30 @@ TEST_F(ResolverTest, GetHostByName) {
     const char* listen_addr = "127.0.0.3";
     const char* listen_srv = "53";
     const char* host_name = "hello.example.com.";
+    const char *nonexistent_host_name = "nonexistent.example.com.";
     test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail, 1.0);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
     ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
+    const hostent* result;
+
     dns.clearQueries();
-    const hostent* result = gethostbyname("hello");
+    result = gethostbyname("nonexistent");
+    EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, nonexistent_host_name));
+    ASSERT_TRUE(result == nullptr);
+    ASSERT_EQ(HOST_NOT_FOUND, h_errno);
+
+    dns.clearQueries();
+    result = gethostbyname("hello");
     EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, host_name));
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
     EXPECT_EQ("1.2.3.3", ToString(result));
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
+
     dns.stopServer();
 }
 
