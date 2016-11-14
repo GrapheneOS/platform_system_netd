@@ -428,7 +428,6 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     if (!success) {
         ALOGW("GetHostByNameHandler: Error writing DNS result to client\n");
     }
-    mClient->decRef();
 
     if (mNetdEventListener != nullptr) {
         std::vector<String16> ip_addrs;
@@ -467,6 +466,8 @@ void DnsProxyListener::GetHostByNameHandler::run() {
                 break;
         }
     }
+
+    mClient->decRef();
 }
 
 
