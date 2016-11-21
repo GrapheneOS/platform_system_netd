@@ -46,7 +46,7 @@ const char IPV6_FORWARDING_PROC_FILE[] = "/proc/sys/net/ipv6/conf/all/forwarding
 const char SEPARATOR[] = "|";
 
 bool writeToFile(const char* filename, const char* value) {
-    int fd = open(filename, O_WRONLY);
+    int fd = open(filename, O_WRONLY | O_CLOEXEC);
     if (fd < 0) {
         ALOGE("Failed to open %s: %s", filename, strerror(errno));
         return false;
