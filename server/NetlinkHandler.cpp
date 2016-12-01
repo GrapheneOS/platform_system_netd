@@ -215,9 +215,9 @@ void NetlinkHandler::notifyRouteChange(NetlinkEvent::Action action, const char *
            "Route %s %s%s%s%s%s",
            (action == NetlinkEvent::Action::kRouteUpdated) ? kUpdated : kRemoved,
            route,
-           *gateway ? " via " : "",
+           (gateway && *gateway) ? " via " : "",
            gateway,
-           *iface ? " dev " : "",
+           (iface && *iface) ? " dev " : "",
            iface);
 }
 
