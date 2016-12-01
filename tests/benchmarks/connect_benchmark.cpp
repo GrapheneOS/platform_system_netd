@@ -82,7 +82,7 @@ static void ipv4_loopback(benchmark::State& state, const bool waitBetweenRuns) {
         const Stopwatch stopwatch;
 
         sockaddr_in server = { .sin_family = AF_INET, .sin_port = htons(port) };
-        if (auto ret = connect(sock, (sockaddr*) &server, sizeof(server))) {
+        if (connect(sock, (sockaddr*) &server, sizeof(server))) {
             state.SkipWithError(StringPrintf("connect() failed with errno=%d", errno).c_str());
             close(sock);
             break;
@@ -139,7 +139,7 @@ static void ipv6_loopback(benchmark::State& state, const bool waitBetweenRuns) {
         const Stopwatch stopwatch;
 
         sockaddr_in6 server = { .sin6_family = AF_INET6, .sin6_port = htons(port) };
-        if (auto ret = connect(sock, (sockaddr*) &server, sizeof(server))) {
+        if (connect(sock, (sockaddr*) &server, sizeof(server))) {
             state.SkipWithError(StringPrintf("connect() failed with errno=%d", errno).c_str());
             close(sock);
             break;
