@@ -386,60 +386,60 @@ TEST_F(ResolverTest, GetAddrInfo) {
     dns2.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
     ASSERT_TRUE(dns2.startServer());
 
-    for (size_t i = 0 ; i < 1000 ; ++i) {
-        std::vector<std::string> servers = { listen_addr };
-        ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
-        dns.clearQueries();
-        dns2.clearQueries();
 
-        EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
-        size_t found = GetNumQueries(dns, host_name);
-        EXPECT_LE(1U, found);
-        // Could be A or AAAA
-        std::string result_str = ToString(result);
-        EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
-            << ", result_str='" << result_str << "'";
-        // TODO: Use ScopedAddrinfo or similar once it is available in a common header file.
-        if (result) {
-            freeaddrinfo(result);
-            result = nullptr;
-        }
+    std::vector<std::string> servers = { listen_addr };
+    ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
+    dns.clearQueries();
+    dns2.clearQueries();
 
-        // Verify that the name is cached.
-        size_t old_found = found;
-        EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
-        found = GetNumQueries(dns, host_name);
-        EXPECT_LE(1U, found);
-        EXPECT_EQ(old_found, found);
-        result_str = ToString(result);
-        EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
-            << result_str;
-        if (result) {
-            freeaddrinfo(result);
-            result = nullptr;
-        }
-
-        // Change the DNS resolver, ensure that queries are no longer cached.
-        servers = { listen_addr2 };
-        ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
-        dns.clearQueries();
-        dns2.clearQueries();
-
-        EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
-        found = GetNumQueries(dns, host_name);
-        size_t found2 = GetNumQueries(dns2, host_name);
-        EXPECT_EQ(0U, found);
-        EXPECT_LE(1U, found2);
-
-        // Could be A or AAAA
-        result_str = ToString(result);
-        EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
-            << ", result_str='" << result_str << "'";
-        if (result) {
-            freeaddrinfo(result);
-            result = nullptr;
-        }
+    EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
+    size_t found = GetNumQueries(dns, host_name);
+    EXPECT_LE(1U, found);
+    // Could be A or AAAA
+    std::string result_str = ToString(result);
+    EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
+        << ", result_str='" << result_str << "'";
+    // TODO: Use ScopedAddrinfo or similar once it is available in a common header file.
+    if (result) {
+        freeaddrinfo(result);
+        result = nullptr;
     }
+
+    // Verify that the name is cached.
+    size_t old_found = found;
+    EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
+    found = GetNumQueries(dns, host_name);
+    EXPECT_LE(1U, found);
+    EXPECT_EQ(old_found, found);
+    result_str = ToString(result);
+    EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
+        << result_str;
+    if (result) {
+        freeaddrinfo(result);
+        result = nullptr;
+    }
+
+    // Change the DNS resolver, ensure that queries are still cached.
+    servers = { listen_addr2 };
+    ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
+    dns.clearQueries();
+    dns2.clearQueries();
+
+    EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
+    found = GetNumQueries(dns, host_name);
+    size_t found2 = GetNumQueries(dns2, host_name);
+    EXPECT_EQ(0U, found);
+    EXPECT_LE(0U, found2);
+
+    // Could be A or AAAA
+    result_str = ToString(result);
+    EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
+        << ", result_str='" << result_str << "'";
+    if (result) {
+        freeaddrinfo(result);
+        result = nullptr;
+    }
+
     dns.stopServer();
     dns2.stopServer();
 }
