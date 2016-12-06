@@ -89,6 +89,13 @@ int32_t UidRange::getStop() const {
     return mStop;
 }
 
+uint32_t UidRange::length() const {
+    if (mStart == -1 || mStop == -1) {
+        return 0;
+    }
+    return static_cast<uint32_t>(mStop - mStart + 1);
+}
+
 }  // namespace net
 
 }  // namespace android
