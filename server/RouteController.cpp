@@ -39,6 +39,7 @@
 #include "resolv_netid.h"
 
 using android::base::WriteStringToFile;
+using android::net::UidRange;
 
 namespace {
 
@@ -775,11 +776,11 @@ WARN_UNUSED_RESULT int modifyRejectNonSecureNetworkRule(const UidRanges& uidRang
     fwmark.protectedFromVpn = false;
     mask.protectedFromVpn = true;
 
-    for (const UidRanges::Range& range : uidRanges.getRanges()) {
+    for (const UidRange& range : uidRanges.getRanges()) {
         if (int ret = modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE,
                                    RULE_PRIORITY_PROHIBIT_NON_VPN, FR_ACT_PROHIBIT, RT_TABLE_UNSPEC,
                                    fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE,
-                                   range.first, range.second)) {
+                                   range.getStart(), range.getStop())) {
             return ret;
         }
     }
@@ -795,16 +796,17 @@ WARN_UNUSED_RESULT int modifyVirtualNetwork(unsigned netId, const char* interfac
         return -ESRCH;
     }
 
-    for (const UidRanges::Range& range : uidRanges.getRanges()) {
-        if (int ret = modifyVpnUidRangeRule(table, range.first, range.second, secure, add)) {
+    for (const UidRange& range : uidRanges.getRanges()) {
+        if (int ret = modifyVpnUidRangeRule(table, range.getStart(), range.getStop(), secure, add))
+                {
             return ret;
         }
-        if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, range.first,
-                                                range.second, add)) {
+        if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, range.getStart(),
+                                                range.getStop(), add)) {
             return ret;
         }
-        if (int ret = modifyOutputInterfaceRules(interface, table, PERMISSION_NONE, range.first,
-                                                 range.second, add)) {
+        if (int ret = modifyOutputInterfaceRules(interface, table, PERMISSION_NONE,
+                                                 range.getStart(), range.getStop(), add)) {
             return ret;
         }
     }
