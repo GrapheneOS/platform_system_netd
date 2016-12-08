@@ -29,11 +29,9 @@ LOCAL_STATIC_LIBRARIES += libutils
 LOCAL_AIDL_INCLUDES += system/netd/server/binder
 
 LOCAL_C_INCLUDES += system/netd/include \
-                    system/extras/tests/include \
                     system/netd/server \
                     system/netd/server/binder \
                     system/netd/tests/dns_responder \
-                    system/extras/tests/include \
                     bionic/libc/dns/include
 
 LOCAL_SRC_FILES := dns_responder.cpp \
