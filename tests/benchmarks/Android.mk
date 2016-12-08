@@ -24,16 +24,14 @@ LOCAL_CFLAGS += -Wno-varargs
 
 EXTRA_LDLIBS := -lpthread
 LOCAL_SHARED_LIBRARIES += libbase libbinder liblog libnetd_client
-LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder libtestUtil libutils
+LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder libutils
 
 LOCAL_AIDL_INCLUDES := system/netd/server/binder
 LOCAL_C_INCLUDES += system/netd/include \
-                    system/extras/tests/include \
                     system/netd/client \
                     system/netd/server \
                     system/netd/server/binder \
                     system/netd/tests/dns_responder \
-                    system/extras/tests/include \
                     bionic/libc/dns/include
 
 LOCAL_SRC_FILES := main.cpp \
