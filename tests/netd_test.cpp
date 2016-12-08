@@ -44,8 +44,6 @@
 
 #include <utils/Log.h>
 
-#include <testUtil.h>
-
 #include "dns_responder.h"
 #include "dns_responder_client.h"
 #include "resolv_params.h"
