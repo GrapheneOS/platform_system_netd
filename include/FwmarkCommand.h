@@ -23,6 +23,7 @@
 
 // Additional information sent with ON_CONNECT_COMPLETE command
 struct FwmarkConnectInfo {
+    int error;
     unsigned latencyMs;
     union {
         sockaddr s;
@@ -32,7 +33,8 @@ struct FwmarkConnectInfo {
 
     FwmarkConnectInfo() {}
 
-    FwmarkConnectInfo(const unsigned latency, const sockaddr* saddr) {
+    FwmarkConnectInfo(const int connectErrno, const unsigned latency, const sockaddr* saddr) {
+        error = connectErrno;
         latencyMs = latency;
         if (saddr->sa_family == AF_INET) {
             addr.sin = *((struct sockaddr_in*) saddr);
