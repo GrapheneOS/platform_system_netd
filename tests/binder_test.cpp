@@ -297,7 +297,7 @@ static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
 TEST_F(BinderTest, TestNetworkRejectNonSecureVpn) {
     constexpr uint32_t RULE_PRIORITY = 12500;
 
-    constexpr int baseUid = MULTIUSER_APP_PER_USER_RANGE * 5;
+    constexpr int baseUid = AID_USER_OFFSET * 5;
     std::vector<UidRange> uidRanges = {
         {baseUid + 150, baseUid + 224},
         {baseUid + 226, baseUid + 300}
