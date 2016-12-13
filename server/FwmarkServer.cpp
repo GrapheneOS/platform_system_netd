@@ -22,6 +22,7 @@
 #include "NetworkController.h"
 #include "resolv_netid.h"
 
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <utils/String16.h>
@@ -165,6 +166,15 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
             // Called after a socket connect() completes.
             // This reports connect event including netId, destination IP address, destination port,
             // uid and connect latency
+
+            // Skip reporting if connect() happened on a UDP socket.
+            int socketProto;
+            socklen_t intSize = sizeof(socketProto);
+            const int ret = getsockopt(*socketFd, SOL_SOCKET, SO_PROTOCOL, &socketProto, &intSize);
+            if ((ret != 0) || (socketProto == IPPROTO_UDP)) {
+                break;
+            }
+
             android::sp<android::net::metrics::INetdEventListener> netdEventListener =
                     mEventReporter->getNetdEventListener();
 
