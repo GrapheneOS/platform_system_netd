@@ -69,8 +69,6 @@ LOCAL_SHARED_LIBRARIES := \
         libsysutils \
         libbase \
         libutils \
-
-LOCAL_STATIC_LIBRARIES := \
         libpcap \
 
 LOCAL_SRC_FILES := \
