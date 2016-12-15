@@ -65,6 +65,9 @@ using android::os::PersistableBundle;
 
 static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
+static const int TEST_NETID1 = 65501;
+static const int TEST_NETID2 = 65502;
+constexpr int BASE_UID = AID_USER_OFFSET * 5;
 
 static const std::string NO_SOCKET_ALLOW_RULE("! owner UID match 0-4294967294");
 static const std::string ESP_ALLOW_RULE("esp");
@@ -82,6 +85,11 @@ public:
 
     void SetUp() override {
         ASSERT_NE(nullptr, mNetd.get());
+    }
+
+    void TearDown() override {
+        mNetd->networkDestroy(TEST_NETID1);
+        mNetd->networkDestroy(TEST_NETID2);
     }
 
     // Static because setting up the tun interface takes about 40ms.
@@ -336,13 +344,56 @@ static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
     return existsIp4;
 }
 
+TEST_F(BinderTest, TestNetworkInterfaces) {
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, "").isOk());
+    EXPECT_EQ(EEXIST, mNetd->networkCreatePhysical(TEST_NETID1, "").serviceSpecificErrorCode());
+    EXPECT_EQ(EEXIST, mNetd->networkCreateVpn(TEST_NETID1, false, true).serviceSpecificErrorCode());
+    EXPECT_TRUE(mNetd->networkCreateVpn(TEST_NETID2, false, true).isOk());
+
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+    EXPECT_EQ(EBUSY,
+              mNetd->networkAddInterface(TEST_NETID2, sTun.name()).serviceSpecificErrorCode());
+
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID2, sTun.name()).isOk());
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID2).isOk());
+}
+
+TEST_F(BinderTest, TestNetworkUidRules) {
+    const uint32_t RULE_PRIORITY_SECURE_VPN = 12000;
+
+    EXPECT_TRUE(mNetd->networkCreateVpn(TEST_NETID1, false, true).isOk());
+    EXPECT_EQ(EEXIST, mNetd->networkCreateVpn(TEST_NETID1, false, true).serviceSpecificErrorCode());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    std::vector<UidRange> uidRanges = {
+        {BASE_UID + 8005, BASE_UID + 8012},
+        {BASE_UID + 8090, BASE_UID + 8099}
+    };
+    UidRange otherRange(BASE_UID + 8190, BASE_UID + 8299);
+    std::string suffix = StringPrintf("lookup %s ", sTun.name().c_str());
+
+    EXPECT_TRUE(mNetd->networkAddUidRanges(TEST_NETID1, uidRanges).isOk());
+
+    EXPECT_TRUE(ipRuleExistsForRange(RULE_PRIORITY_SECURE_VPN, uidRanges[0], suffix));
+    EXPECT_FALSE(ipRuleExistsForRange(RULE_PRIORITY_SECURE_VPN, otherRange, suffix));
+    EXPECT_TRUE(mNetd->networkRemoveUidRanges(TEST_NETID1, uidRanges).isOk());
+    EXPECT_FALSE(ipRuleExistsForRange(RULE_PRIORITY_SECURE_VPN, uidRanges[0], suffix));
+
+    EXPECT_TRUE(mNetd->networkAddUidRanges(TEST_NETID1, uidRanges).isOk());
+    EXPECT_TRUE(ipRuleExistsForRange(RULE_PRIORITY_SECURE_VPN, uidRanges[1], suffix));
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+    EXPECT_FALSE(ipRuleExistsForRange(RULE_PRIORITY_SECURE_VPN, uidRanges[1], suffix));
+
+    EXPECT_EQ(ENONET, mNetd->networkDestroy(TEST_NETID1).serviceSpecificErrorCode());
+}
+
 TEST_F(BinderTest, TestNetworkRejectNonSecureVpn) {
     constexpr uint32_t RULE_PRIORITY = 12500;
 
-    constexpr int baseUid = AID_USER_OFFSET * 5;
     std::vector<UidRange> uidRanges = {
-        {baseUid + 150, baseUid + 224},
-        {baseUid + 226, baseUid + 300}
+        {BASE_UID + 150, BASE_UID + 224},
+        {BASE_UID + 226, BASE_UID + 300}
     };
 
     const std::vector<std::string> initialRulesV4 = listIpRules(IP_RULE_V4);
