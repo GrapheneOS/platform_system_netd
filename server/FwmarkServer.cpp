@@ -74,7 +74,7 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
     message.msg_control = cmsgu.cmsg;
     message.msg_controllen = sizeof(cmsgu.cmsg);
 
-    int messageLength = TEMP_FAILURE_RETRY(recvmsg(client->getSocket(), &message, 0));
+    int messageLength = TEMP_FAILURE_RETRY(recvmsg(client->getSocket(), &message, MSG_CMSG_CLOEXEC));
     if (messageLength <= 0) {
         return -errno;
     }
