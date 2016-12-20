@@ -73,8 +73,8 @@ bool SockDiag::open() {
         return false;
     }
 
-    mSock = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_INET_DIAG);
-    mWriteSock = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_INET_DIAG);
+    mSock = socket(PF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, NETLINK_INET_DIAG);
+    mWriteSock = socket(PF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, NETLINK_INET_DIAG);
     if (!hasSocks()) {
         closeSocks();
         return false;
