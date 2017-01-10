@@ -74,12 +74,6 @@ const char* const ROUTE_TABLE_NAME_LEGACY_SYSTEM  = "legacy_system";
 const char* const ROUTE_TABLE_NAME_LOCAL = "local";
 const char* const ROUTE_TABLE_NAME_MAIN  = "main";
 
-// TODO: These values aren't defined by the Linux kernel, because legacy UID routing (as used in N
-// and below) was not upstreamed. Now that the UID routing code is upstream, we should remove these
-// and rely on the kernel header values.
-const uint16_t FRA_UID_START = 18;
-const uint16_t FRA_UID_END   = 19;
-
 // These values are upstream, but not yet in our headers.
 // TODO: delete these definitions when updating the headers.
 const uint16_t FRA_UID_RANGE = 20;
@@ -122,8 +116,6 @@ rtattr FRATTR_PRIORITY  = { U16_RTA_LENGTH(sizeof(uint32_t)),           FRA_PRIO
 rtattr FRATTR_TABLE     = { U16_RTA_LENGTH(sizeof(uint32_t)),           FRA_TABLE };
 rtattr FRATTR_FWMARK    = { U16_RTA_LENGTH(sizeof(uint32_t)),           FRA_FWMARK };
 rtattr FRATTR_FWMASK    = { U16_RTA_LENGTH(sizeof(uint32_t)),           FRA_FWMASK };
-rtattr FRATTR_UID_START = { U16_RTA_LENGTH(sizeof(uid_t)),              FRA_UID_START };
-rtattr FRATTR_UID_END   = { U16_RTA_LENGTH(sizeof(uid_t)),              FRA_UID_END };
 rtattr FRATTR_UID_RANGE = { U16_RTA_LENGTH(sizeof(fib_rule_uid_range)), FRA_UID_RANGE };
 
 rtattr RTATTR_TABLE     = { U16_RTA_LENGTH(sizeof(uint32_t)),           RTA_TABLE };
@@ -327,18 +319,6 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint8_t 
         { &fwmark,           mask ? sizeof(fwmark) : 0 },
         { &FRATTR_FWMASK,    mask ? sizeof(FRATTR_FWMASK) : 0 },
         { &mask,             mask ? sizeof(mask) : 0 },
-        // Rules that contain both legacy and new UID routing attributes will work on old kernels,
-        // which will simply ignore the FRA_UID_RANGE attribute since it is larger than their
-        // FRA_MAX. They will also work on kernels that are not too new:
-        // - FRA_UID_START clashes with FRA_PAD in 4.7, but that shouldn't be a problem because
-        //   FRA_PAD has no validation.
-        // - FRA_UID_END clashes with FRA_L3MDEV in 4.8 and above, and will cause an error because
-        //   FRA_L3MDEV has a maximum length of 1.
-        // TODO: delete the legacy UID routing code before running it on 4.8 or above.
-        { &FRATTR_UID_START, isUidRule ? sizeof(FRATTR_UID_START) : 0 },
-        { &uidStart,         isUidRule ? sizeof(uidStart) : 0 },
-        { &FRATTR_UID_END,   isUidRule ? sizeof(FRATTR_UID_END) : 0 },
-        { &uidEnd,           isUidRule ? sizeof(uidEnd) : 0 },
         { &FRATTR_UID_RANGE, isUidRule ? sizeof(FRATTR_UID_RANGE) : 0 },
         { &uidRange,         isUidRule ? sizeof(uidRange) : 0 },
         { &fraIifName,       iif != IIF_NONE ? sizeof(fraIifName) : 0 },
