@@ -16,6 +16,49 @@
 
 #define LOG_TAG "dns_benchmark"
 
+/*
+ * See README.md for general notes.
+ *
+ * This set of benchmarks measures the throughput of getaddrinfo() on between 1 and 32 threads for
+ * the purpose of keeping track of the maximum load that netd can reasonably handle.
+ *
+ * The benchmark fixture runs in 3 different modes:
+ *
+ *  - getaddrinfo_log_nothing
+ *
+ *      The control case. Switches all kinds of DNS events reporting off and runs getaddrinfo() in a
+ *      loop until the timer expires.
+ *
+ *      This was the default and only mode in all versions before 7.0.
+ *
+ *  - getaddrinfo_log_metrics
+ *
+ *      DNS Logging Lite™ includes staple favourites such as event type (getaddrinfo/gethostbyname),
+ *      return code, and latency, but misses out in-depth information such as resolved IP addresses.
+ *
+ *      It is expected that this is a little slower than getaddrinfo_log_nothing because of the
+ *      overhead, but not particularly worse, since it is a oneway binder call without too much data
+ *      being sent per event.
+ *
+ *      This was the default mode between versions 7.0 and 7.1 inclusive.
+ *
+ *  - getaddrinfo_log_everything
+ *
+ *      DNS Logging, in full HD, includes extra non-metrics fields such as hostname, a truncated
+ *      list of resolved addresses, total resolved address count, and originating UID.
+ *
+ * Useful measurements
+ * ===================
+ *
+ *  - real_time: the average time taken to make a single getaddrinfo lookup on a local DNS resolver
+ *               run by DnsFixture. This will usually be higher on multithreaded tests as threads
+ *               block on DNS lookups and Binder connections.
+ *
+ *  - iterations: total number of runs finished within the time limit. Higher is better. This is
+ *                roughly proportional to MinTime * nThreads / real_time.
+ *
+ */
+
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/types.h>
