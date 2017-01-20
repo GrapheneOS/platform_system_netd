@@ -16,6 +16,68 @@
 
 #define LOG_TAG "connect_benchmark"
 
+/*
+ * See README.md for general notes.
+ *
+ * This set of benchmarks measures the throughput of connect() calls on a single thread for IPv4 and
+ * IPv6 under the following scenarios:
+ *
+ *  - FWmark disabled (::ANDROID_NO_USE_FWMARK_CLIENT).
+ *
+ *      The control case for other high load benchmarks. Essentially just testing performance of
+ *      the kernel connect call. In real world use fwmark should stay on in order for traffic to
+ *      be routed properly.
+ *
+ *  - FWmark enabled only for metrics (::ANDROID_FWMARK_METRICS_ONLY).
+ *
+ *      The default mode up to and including 7.1. Every time connect() is called on an AF_INET or
+ *      AF_INET6 socket, netdclient sends a synchronous message to fwmarkserver to get the socket
+ *      marked. Only the fields that are useful for marking or for metrics are sent in this mode;
+ *      other fields are set to null for the RPC and ignored.
+ *
+ *  - FWmark enabled for all events.
+ *
+ *      The default mode starting from 7.1.2. As well as the normal connect() reporting, extra
+ *      fields are filled in to log the IP and port of the connection.
+ *
+ *      A second synchronous message is sent to fwmarkserver after the connection completes, to
+ *      record latency. This message is forwarded to the system server over a oneway binder call.
+ *
+ * Realtime timed tests
+ * ====================
+ *
+ * The tests named *_high_load record the following useful information:
+ *
+ *   - real_time: the mean roundtrip time for one connect() call under load
+ *
+ *   - iterations: the number of times the test was run within the timelimit --- approximately
+ *                 MinTime / real_time
+ *
+ * Manually timed tests
+ * ====================
+ *
+ * All other sets of tests apart from *_high_load run with manual timing. The purpose of these is to
+ * measure 90th-percentile latency for connect() calls compared to mean latency.
+ *
+ * (TODO: ideally this should be against median latency, but google-benchmark only supports one
+ *        custom 'label' output for graphing. Stddev isn't appropriate because the latency
+ *        distribution is usually spiky, not in a nice neat normal-like distribution.)
+ *
+ * The manually timed tests record the following useful information:
+ *
+ *  - real_time: the average time taken to complete a test run. Unlike the real_time used in high
+ *               load tests, this is calculated from before-and-after values of the realtime clock
+ *               over many iterations so may be less accurate than the under-load times.
+ *
+ *  - iterations: the number of times the test was run within the timelimit --- approximately
+ *                MinTime / real_time, although as explained, may not be as meaningful because of
+ *                overhead from timing.
+ *
+ *  - label: a manually-recorded time giving the 90th-percentile value of real_time over all
+ *           individual runs. Should be compared to real_time.
+ *
+ */
+
 #include <arpa/inet.h>
 #include <cutils/sockets.h>
 #include <errno.h>
