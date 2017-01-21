@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <errno.h>
+#include <math.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -40,6 +41,7 @@
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
 #include "NetlinkManager.h"
+#include "Stopwatch.h"
 #include "DnsProxyListener.h"
 #include "MDnsSdListener.h"
 #include "FwmarkServer.h"
@@ -63,6 +65,7 @@ android::RWLock android::net::gBigNetdLock;
 
 int main() {
     using android::net::gCtls;
+    Stopwatch s;
 
     ALOGI("Netd 1.0 starting");
     remove_pid_file();
@@ -121,6 +124,8 @@ int main() {
     }
 
     write_pid_file();
+
+    ALOGI("Netd started in %dms", static_cast<int>(s.timeTaken()));
 
     IPCThreadState::self()->joinThreadPool();
 
