@@ -84,6 +84,7 @@ LOCAL_SRC_FILES := \
         FwmarkServer.cpp \
         IdletimerController.cpp \
         InterfaceController.cpp \
+        IptablesRestoreController.cpp \
         LocalNetwork.cpp \
         MDnsSdListener.cpp \
         NatController.cpp \
@@ -143,7 +144,9 @@ LOCAL_C_INCLUDES := \
         system/core/logwrapper/include \
 
 LOCAL_SRC_FILES := \
+        Controllers.cpp \
         NetdConstants.cpp IptablesBaseTest.cpp \
+        IptablesRestoreController.cpp IptablesRestoreControllerTest.cpp \
         BandwidthController.cpp BandwidthControllerTest.cpp \
         FirewallControllerTest.cpp FirewallController.cpp \
         NatControllerTest.cpp NatController.cpp \
@@ -151,8 +154,9 @@ LOCAL_SRC_FILES := \
         StrictController.cpp StrictControllerTest.cpp \
         UidRanges.cpp \
         binder/android/net/UidRange.cpp \
+        binder/android/net/metrics/INetdEventListener.aidl \
 
 LOCAL_MODULE_TAGS := tests
-LOCAL_SHARED_LIBRARIES := libbinder liblog libbase libcutils liblogwrap libsysutils
+LOCAL_SHARED_LIBRARIES := libbinder liblog libbase libcutils liblogwrap libsysutils libutils
 include $(BUILD_NATIVE_TEST)
 
