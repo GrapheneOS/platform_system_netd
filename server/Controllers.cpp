@@ -21,6 +21,7 @@ namespace net {
 
 Controllers::Controllers() : clatdCtrl(&netCtrl) {
     InterfaceController::initializeAll();
+    IptablesRestoreController::installSignalHandler(&iptablesRestoreCtrl);
 }
 
 Controllers* gCtls = nullptr;
