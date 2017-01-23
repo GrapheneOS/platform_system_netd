@@ -26,6 +26,7 @@
 #include "BandwidthController.h"
 #include "IdletimerController.h"
 #include "InterfaceController.h"
+#include "IptablesRestoreController.h"
 #include "ResolverController.h"
 #include "FirewallController.h"
 #include "ClatdController.h"
@@ -49,6 +50,7 @@ struct Controllers {
     ClatdController clatdCtrl;
     StrictController strictCtrl;
     EventReporter eventReporter;
+    IptablesRestoreController iptablesRestoreCtrl;
 };
 
 extern Controllers* gCtls;
