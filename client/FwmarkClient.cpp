@@ -19,6 +19,7 @@
 #include "FwmarkCommand.h"
 
 #include <errno.h>
+#include <cutils/properties.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -31,16 +32,26 @@ namespace {
 
 const sockaddr_un FWMARK_SERVER_PATH = {AF_UNIX, "/dev/socket/fwmarkd"};
 
+const bool isBuildDebuggable = property_get_bool("ro.debuggable", 0) == 1;
+
+bool isOverriddenBy(const char *name) {
+    return isBuildDebuggable && getenv(name);
+}
+
 }  // namespace
 
 bool FwmarkClient::shouldSetFwmark(int family) {
-    return (family == AF_INET || family == AF_INET6) && !getenv(ANDROID_NO_USE_FWMARK_CLIENT);
+    if (isOverriddenBy(ANDROID_NO_USE_FWMARK_CLIENT)) {
+        return false;
+    }
+    return family == AF_INET || family == AF_INET6;
 }
 
 bool FwmarkClient::shouldReportConnectComplete(int family) {
-    // TODO: put getenv(ANDROID_FWMARK_METRICS_ONLY) behind the ro.debuggable system property
-    // or else an app can evade connect logging just by setting the env variable
-    return shouldSetFwmark(family) && !getenv(ANDROID_FWMARK_METRICS_ONLY);
+    if (isOverriddenBy(ANDROID_FWMARK_METRICS_ONLY)) {
+        return false;
+    }
+    return shouldSetFwmark(family);
 }
 
 FwmarkClient::FwmarkClient() : mChannel(-1) {
