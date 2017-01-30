@@ -38,7 +38,7 @@ typedef std::function<void(nlmsghdr *)> NetlinkDumpCallback;
 typedef std::function<bool(nlmsghdr *)> NetlinkDumpFilter;
 
 // Opens an RTNetlink socket and connects it to the kernel.
-WARN_UNUSED_RESULT int openRtNetlinkSocket();
+WARN_UNUSED_RESULT int openNetlinkSocket(int protocol);
 
 // Receives a netlink ACK. Returns 0 if the command succeeded or negative errno if the command
 // failed or receiving the ACK failed.
