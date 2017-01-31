@@ -34,6 +34,9 @@ public:
     // Execute |commands| on the given |target|.
     int execute(const IptablesTarget target, const std::string& commands);
 
+    // Execute |commands| on the given |target|, and populate |output| with stdout.
+    int execute(const IptablesTarget target, const std::string& commands, std::string *output);
+
     enum IptablesProcessType {
         IPTABLES_PROCESS,
         IP6TABLES_PROCESS,
@@ -53,11 +56,12 @@ protected:
 private:
     static IptablesProcess* forkAndExec(const IptablesProcessType type);
 
-    int sendCommand(const IptablesProcessType type, const std::string& command);
+    int sendCommand(const IptablesProcessType type, const std::string& command,
+                    std::string *output);
 
     static std::string fixCommandString(const std::string& command);
 
-    bool drainAndWaitForAck(const std::unique_ptr<IptablesProcess> &process);
+    bool drainAndWaitForAck(const std::unique_ptr<IptablesProcess> &process, std::string *output);
 
     static void maybeLogStderr(const std::unique_ptr<IptablesProcess> &process,
                                const char* buf, const ssize_t numBytes);

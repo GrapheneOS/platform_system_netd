@@ -130,8 +130,8 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
     int stderr_pipe[2];
 
     if (pipe2(stdin_pipe, 0) == -1 ||
-        pipe2(stdout_pipe, 0) == -1 ||
-        pipe2(stderr_pipe, 0) == -1) {
+        pipe2(stdout_pipe, O_NONBLOCK) == -1 ||
+        pipe2(stderr_pipe, O_NONBLOCK) == -1) {
 
         PLOG(ERROR) << "pipe2() failed";
         return nullptr;
@@ -199,7 +199,8 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
 // TODO: Maybe we should keep a rotating buffer of the last N commands
 // so that they can be dumped on dumpsys.
 int IptablesRestoreController::sendCommand(const IptablesProcessType type,
-                                           const std::string& command) {
+                                           const std::string& command,
+                                           std::string *output) {
    std::unique_ptr<IptablesProcess> *process =
            (type == IPTABLES_PROCESS) ? &mIpRestore : &mIp6Restore;
 
@@ -247,7 +248,7 @@ int IptablesRestoreController::sendCommand(const IptablesProcessType type,
         return -1;
     }
 
-    if (!drainAndWaitForAck(*process)) {
+    if (!drainAndWaitForAck(*process, output)) {
         // drainAndWaitForAck has already logged an error.
         return -1;
     }
@@ -291,11 +292,10 @@ static constexpr int MAX_RETRIES = 10;
 static constexpr int POLL_TIMEOUT_MS = 100;
 
 /* static */
-bool IptablesRestoreController::drainAndWaitForAck(
-        const std::unique_ptr<IptablesProcess> &process) {
+bool IptablesRestoreController::drainAndWaitForAck(const std::unique_ptr<IptablesProcess> &process,
+                                                   std::string *output) {
     bool receivedAck = false;
     int timeout = 0;
-    std::string out;
     while (!receivedAck && (timeout++ < MAX_RETRIES)) {
         int numEvents = TEMP_FAILURE_RETRY(
             poll(process->pollFds, ARRAY_SIZE(process->pollFds), POLL_TIMEOUT_MS));
@@ -311,37 +311,40 @@ bool IptablesRestoreController::drainAndWaitForAck(
             continue;
         }
 
-        char buffer[256];
+        char buffer[PIPE_BUF];
         for (size_t i = 0; i < ARRAY_SIZE(process->pollFds); ++i) {
             const struct pollfd &pollfd = process->pollFds[i];
             if (pollfd.revents & POLLIN) {
-                // TODO: We read a maximum of 256 bytes for each call to poll.
-                // We should change this so that we can read as much input as we
-                // can from the descriptor without blocking.
-                const ssize_t size = TEMP_FAILURE_RETRY(read(pollfd.fd, buffer, sizeof(buffer)));
+                ssize_t size;
+                do {
+                    size = TEMP_FAILURE_RETRY(read(pollfd.fd, buffer, sizeof(buffer)));
 
-                // This should never happen. Poll just told us that we have
-                // something available.
-                if (size == -1) {
-                    PLOG(ERROR) << "Unable to read from descriptor";
-                    return false;
-                }
-
-                if (i == IptablesProcess::STDOUT_IDX) {
-                    // i == STDOUT_IDX : look for the ping response. We use
-                    // a string buffer here because it's possible (but unlikely)
-                    // that only a subsection of the PING response is available
-                    // on the pipe when poll returns for the first time. We use
-                    // find instead of operator== to be robust in the case of
-                    // additional stdout logging.
-                    out.append(buffer, size);
-                    if (out.find(PING) != std::string::npos) {
-                        receivedAck = true;
+                    if (size == -1) {
+                        if (errno != EAGAIN) {
+                            PLOG(ERROR) << "Unable to read from descriptor";
+                        }
+                        break;
                     }
-                } else {
-                    // i == STDERR_IDX implies stderr, log.
-                    IptablesRestoreController::maybeLogStderr(process, buffer, size);
-                }
+
+                    if (i == IptablesProcess::STDOUT_IDX) {
+                        // i == STDOUT_IDX: accumulate stdout into *output, and look
+                        // for the ping response.
+                        output->append(buffer, size);
+                        size_t pos = output->find(PING);
+                        if (pos != std::string::npos) {
+                            if (output->size() > pos + PING_SIZE) {
+                                size_t extra = output->size() - (pos + PING_SIZE);
+                                ALOGW("%zd extra characters after iptables response: '%s...'",
+                                      extra, output->substr(pos + PING_SIZE, 128).c_str());
+                            }
+                            output->resize(pos);
+                            receivedAck = true;
+                        }
+                    } else {
+                        // i == STDERR_IDX implies stderr, log.
+                        IptablesRestoreController::maybeLogStderr(process, buffer, size);
+                    }
+                } while (size > 0);
             }
             if (pollfd.revents & POLLHUP) {
                 // The pipe was closed. This likely means the subprocess is exiting, since
@@ -362,15 +365,21 @@ bool IptablesRestoreController::drainAndWaitForAck(
     return receivedAck;
 }
 
-int IptablesRestoreController::execute(const IptablesTarget target, const std::string& command) {
+int IptablesRestoreController::execute(const IptablesTarget target, const std::string& command,
+                                       std::string *output) {
     std::lock_guard<std::mutex> lock(mLock);
+
+    std::string buffer;
+    if (output == nullptr) {
+        output = &buffer;
+    }
 
     int res = 0;
     if (target == V4 || target == V4V6) {
-        res |= sendCommand(IPTABLES_PROCESS, command);
+        res |= sendCommand(IPTABLES_PROCESS, command, output);
     }
     if (target == V6 || target == V4V6) {
-        res |= sendCommand(IP6TABLES_PROCESS, command);
+        res |= sendCommand(IP6TABLES_PROCESS, command, output);
     }
     return res;
 }
