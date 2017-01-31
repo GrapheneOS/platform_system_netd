@@ -27,6 +27,7 @@
 #include <gtest/gtest.h>
 
 #include <android-base/strings.h>
+#include <android-base/stringprintf.h>
 
 #include "BandwidthController.h"
 #include "IptablesBaseTest.h"
@@ -36,7 +37,7 @@ public:
     BandwidthControllerTest() {
         BandwidthController::execFunction = fake_android_fork_exec;
         BandwidthController::popenFunction = fake_popen;
-        BandwidthController::iptablesRestoreFunction = fakeExecIptablesRestore;
+        BandwidthController::iptablesRestoreFunction = fakeExecIptablesRestoreWithOutput;
     }
     BandwidthController mBw;
 
@@ -52,49 +53,84 @@ public:
     void clearPopenContents() {
         sPopenContents.clear();
     }
+
+    void addIptablesRestoreOutput(std::string contents) {
+        sIptablesRestoreOutput.push_back(contents);
+    }
+
+    void clearIptablesRestoreOutput() {
+        sIptablesRestoreOutput.clear();
+    }
+
+    void expectSetupCommands(const std::string& expectedClean, std::string expectedAccounting) {
+        std::string expectedList =
+            "*filter\n"
+            "-S\n"
+            "COMMIT\n";
+
+        std::string expectedFlush =
+            "*filter\n"
+            ":bw_INPUT -\n"
+            ":bw_OUTPUT -\n"
+            ":bw_FORWARD -\n"
+            ":bw_happy_box -\n"
+            ":bw_penalty_box -\n"
+            ":bw_data_saver -\n"
+            ":bw_costly_shared -\n"
+            "COMMIT\n"
+            "*raw\n"
+            ":bw_raw_PREROUTING -\n"
+            "COMMIT\n"
+            "*mangle\n"
+            ":bw_mangle_POSTROUTING -\n"
+            "COMMIT\n";
+
+        ExpectedIptablesCommands expected = {{ V4, expectedList }};
+        if (expectedClean.size()) {
+            expected.push_back({ V4V6, expectedClean });
+        }
+        expected.push_back({ V4V6, expectedFlush });
+        if (expectedAccounting.size()) {
+            expected.push_back({ V4V6, expectedAccounting });
+        }
+
+        expectIptablesRestoreCommands(expected);
+    }
 };
 
 TEST_F(BandwidthControllerTest, TestSetupIptablesHooks) {
-    mBw.setupIptablesHooks();
-    std::vector<std::string> expected = {
+    // Pretend some bw_costly_shared_<iface> rules already exist...
+    addIptablesRestoreOutput(
+        "-P OUTPUT ACCEPT\n"
+        "-N bw_costly_rmnet_data0\n"
+        "-N bw_costly_shared\n"
+        "-N unrelated\n"
+        "-N bw_costly_rmnet_data7\n");
+
+    // ... and expect that they be flushed and deleted.
+    std::string expectedCleanCmds =
         "*filter\n"
-        ":bw_INPUT -\n"
-        ":bw_OUTPUT -\n"
-        ":bw_FORWARD -\n"
-        ":bw_happy_box -\n"
-        ":bw_penalty_box -\n"
-        ":bw_data_saver -\n"
-        ":bw_costly_shared -\n"
-        "COMMIT\n"
-        "*raw\n"
-        ":bw_raw_PREROUTING -\n"
-        "COMMIT\n"
-        "*mangle\n"
-        ":bw_mangle_POSTROUTING -\n"
-        "COMMIT\n\x04"
-    };
-    expectIptablesRestoreCommands(expected);
+        ":bw_costly_rmnet_data0 -\n"
+        "-X bw_costly_rmnet_data0\n"
+        ":bw_costly_rmnet_data7 -\n"
+        "-X bw_costly_rmnet_data7\n"
+        "COMMIT\n";
+
+    mBw.setupIptablesHooks();
+    expectSetupCommands(expectedCleanCmds, "");
 }
 
 TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
-    mBw.enableBandwidthControl(false);
-    std::string expectedFlush =
-        "*filter\n"
-        ":bw_INPUT -\n"
-        ":bw_OUTPUT -\n"
-        ":bw_FORWARD -\n"
-        ":bw_happy_box -\n"
-        ":bw_penalty_box -\n"
-        ":bw_data_saver -\n"
-        ":bw_costly_shared -\n"
-        "COMMIT\n"
-        "*raw\n"
-        ":bw_raw_PREROUTING -\n"
-        "COMMIT\n"
-        "*mangle\n"
-        ":bw_mangle_POSTROUTING -\n"
-        "COMMIT\n\x04";
-     std::string expectedAccounting =
+    // Pretend no bw_costly_shared_<iface> rules already exist...
+    addIptablesRestoreOutput(
+        "-P OUTPUT ACCEPT\n"
+        "-N bw_costly_shared\n"
+        "-N unrelated\n");
+
+    // ... so none are flushed or deleted.
+    std::string expectedClean = "";
+
+    std::string expectedAccounting =
         "*filter\n"
         "-A bw_INPUT -m owner --socket-exists\n"
         "-A bw_OUTPUT -m owner --socket-exists\n"
@@ -109,30 +145,30 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
         "COMMIT\n"
         "*mangle\n"
         "-A bw_mangle_POSTROUTING -m owner --socket-exists\n"
-        "COMMIT\n\x04";
+        "COMMIT\n";
 
-    expectIptablesRestoreCommands({ expectedFlush, expectedAccounting });
+    mBw.enableBandwidthControl(false);
+    expectSetupCommands(expectedClean, expectedAccounting);
 }
 
 TEST_F(BandwidthControllerTest, TestDisableBandwidthControl) {
-    mBw.disableBandwidthControl();
-    const std::string expected =
+    // Pretend some bw_costly_shared_<iface> rules already exist...
+    addIptablesRestoreOutput(
+        "-P OUTPUT ACCEPT\n"
+        "-N bw_costly_rmnet_data0\n"
+        "-N bw_costly_shared\n"
+        "-N unrelated\n"
+        "-N bw_costly_rmnet_data7\n");
+
+    // ... and expect that they be flushed.
+    std::string expectedCleanCmds =
         "*filter\n"
-        ":bw_INPUT -\n"
-        ":bw_OUTPUT -\n"
-        ":bw_FORWARD -\n"
-        ":bw_happy_box -\n"
-        ":bw_penalty_box -\n"
-        ":bw_data_saver -\n"
-        ":bw_costly_shared -\n"
-        "COMMIT\n"
-        "*raw\n"
-        ":bw_raw_PREROUTING -\n"
-        "COMMIT\n"
-        "*mangle\n"
-        ":bw_mangle_POSTROUTING -\n"
-        "COMMIT\n\x04";
-    expectIptablesRestoreCommands({ expected });
+        ":bw_costly_rmnet_data0 -\n"
+        ":bw_costly_rmnet_data7 -\n"
+        "COMMIT\n";
+
+    mBw.disableBandwidthControl();
+    expectSetupCommands(expectedCleanCmds, "");
 }
 
 TEST_F(BandwidthControllerTest, TestEnableDataSaver) {

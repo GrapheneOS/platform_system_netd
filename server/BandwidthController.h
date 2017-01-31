@@ -195,7 +195,7 @@ protected:
      * Deals with both ip4 and ip6 tables.
      */
     void flushExistingCostlyTables(bool doClean);
-    static void parseAndFlushCostlyTables(FILE *fp, bool doRemove);
+    static void parseAndFlushCostlyTables(const std::string& ruleList, bool doRemove);
 
     /*
      * Attempt to flush our tables.
@@ -226,7 +226,7 @@ protected:
     friend class BandwidthControllerTest;
     static int (*execFunction)(int, char **, int *, bool, bool);
     static FILE *(*popenFunction)(const char *, const char *);
-    static int (*iptablesRestoreFunction)(IptablesTarget, const std::string&);
+    static int (*iptablesRestoreFunction)(IptablesTarget, const std::string&, std::string *);
 };
 
 #endif

@@ -66,7 +66,7 @@ const char* BandwidthController::LOCAL_MANGLE_POSTROUTING = "bw_mangle_POSTROUTI
 
 auto BandwidthController::execFunction = android_fork_execvp;
 auto BandwidthController::popenFunction = popen;
-auto BandwidthController::iptablesRestoreFunction = execIptablesRestore;
+auto BandwidthController::iptablesRestoreFunction = execIptablesRestoreWithOutput;
 
 namespace {
 
@@ -75,6 +75,7 @@ const int  MAX_CMD_ARGS = 32;
 const int  MAX_CMD_LEN = 1024;
 const int  MAX_IFACENAME_LEN = 64;
 const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
+const std::string NEW_CHAIN_COMMAND = "-N ";
 
 /**
  * Some comments about the rules:
@@ -138,7 +139,7 @@ const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
  *      iptables -R 1 bw_data_saver --jump RETURN
  */
 
-const std::string COMMIT_AND_CLOSE = "COMMIT\n\x04";
+const std::string COMMIT_AND_CLOSE = "COMMIT\n";
 const std::string DATA_SAVER_ENABLE_COMMAND = "-R bw_data_saver 1";
 const std::string HAPPY_BOX_WHITELIST_COMMAND = android::base::StringPrintf(
     "-I bw_happy_box -m owner --uid-owner %d-%d --jump RETURN", 0, MAX_SYSTEM_UID);
@@ -270,7 +271,7 @@ void BandwidthController::flushCleanTables(bool doClean) {
     flushExistingCostlyTables(doClean);
 
     std::string commands = android::base::Join(IPT_FLUSH_COMMANDS, '\n');
-    iptablesRestoreFunction(V4V6, commands);
+    iptablesRestoreFunction(V4V6, commands, nullptr);
 }
 
 int BandwidthController::setupIptablesHooks(void) {
@@ -297,7 +298,7 @@ int BandwidthController::enableBandwidthControl(bool force) {
 
     flushCleanTables(false);
     std::string commands = android::base::Join(IPT_BASIC_ACCOUNTING_COMMANDS, '\n');
-    return iptablesRestoreFunction(V4V6, commands);
+    return iptablesRestoreFunction(V4V6, commands, nullptr);
 }
 
 int BandwidthController::disableBandwidthControl(void) {
@@ -1273,47 +1274,45 @@ int BandwidthController::getTetherStats(SocketClient *cli, TetherStats& filter,
 }
 
 void BandwidthController::flushExistingCostlyTables(bool doClean) {
-    std::string fullCmd;
-    FILE *iptOutput;
+    std::string fullCmd = "*filter\n-S\nCOMMIT\n";
+    std::string ruleList;
 
     /* Only lookup ip4 table names as ip6 will have the same tables ... */
-    fullCmd = IPTABLES_PATH;
-    fullCmd += " -w -S";
-    iptOutput = popenFunction(fullCmd.c_str(), "r");
-    if (!iptOutput) {
-            ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
+    if (int ret = iptablesRestoreFunction(V4, fullCmd, &ruleList)) {
+        ALOGE("Failed to list existing costly tables ret=%d", ret);
         return;
     }
     /* ... then flush/clean both ip4 and ip6 iptables. */
-    parseAndFlushCostlyTables(iptOutput, doClean);
-    pclose(iptOutput);
+    parseAndFlushCostlyTables(ruleList, doClean);
 }
 
-void BandwidthController::parseAndFlushCostlyTables(FILE *fp, bool doRemove) {
-    int res;
-    char lineBuffer[MAX_IPT_OUTPUT_LINE_LEN];
-    char costlyIfaceName[MAX_IPT_OUTPUT_LINE_LEN];
-    char cmd[MAX_CMD_LEN];
-    char *buffPtr;
+void BandwidthController::parseAndFlushCostlyTables(const std::string& ruleList, bool doRemove) {
+    std::stringstream stream(ruleList);
+    std::string rule;
+    std::vector<std::string> clearCommands = { "*filter" };
+    std::string chainName;
 
-    while (NULL != (buffPtr = fgets(lineBuffer, MAX_IPT_OUTPUT_LINE_LEN, fp))) {
-        costlyIfaceName[0] = '\0';   /* So that debugging output always works */
-        res = sscanf(buffPtr, "-N bw_costly_%s", costlyIfaceName);
-        ALOGV("parse res=%d costly=<%s> orig line=<%s>", res,
-            costlyIfaceName, buffPtr);
-        if (res != 1) {
-            continue;
-        }
-        /* Exclusions: "shared" is not an ifacename */
-        if (!strcmp(costlyIfaceName, "shared")) {
+    // Find and flush all rules starting with "-N bw_costly_<iface>" except "-N bw_costly_shared".
+    while (std::getline(stream, rule, '\n')) {
+        if (rule.find(NEW_CHAIN_COMMAND) != 0) continue;
+        chainName = rule.substr(NEW_CHAIN_COMMAND.size());
+        ALOGV("parse chainName=<%s> orig line=<%s>", chainName.c_str(), rule.c_str());
+
+        if (chainName.find("bw_costly_") != 0 || chainName == std::string("bw_costly_shared")) {
             continue;
         }
 
-        snprintf(cmd, sizeof(cmd), "-F bw_costly_%s", costlyIfaceName);
-        runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
+        clearCommands.push_back(android::base::StringPrintf(":%s -", chainName.c_str()));
         if (doRemove) {
-            snprintf(cmd, sizeof(cmd), "-X bw_costly_%s", costlyIfaceName);
-            runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
+            clearCommands.push_back(android::base::StringPrintf("-X %s", chainName.c_str()));
         }
     }
+
+    if (clearCommands.size() == 1) {
+        // No rules found.
+        return;
+    }
+
+    clearCommands.push_back("COMMIT\n");
+    iptablesRestoreFunction(V4V6, android::base::Join(clearCommands, '\n'), nullptr);
 }
