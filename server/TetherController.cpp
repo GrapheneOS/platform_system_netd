@@ -34,6 +34,7 @@
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
 #include <cutils/properties.h>
+#include <netdutils/StatusOr.h>
 
 #include "Fwmark.h"
 #include "NetdConstants.h"
@@ -46,6 +47,8 @@
 using android::base::Join;
 using android::base::StringPrintf;
 using android::base::StringAppendF;
+using android::netdutils::StatusOr;
+using android::netdutils::statusFromErrno;
 
 namespace {
 
@@ -652,7 +655,7 @@ int TetherController::addForwardChainStats(TetherStatsList& statsList,
         extraProcessingInfo += statsLine + "\n";
         if (statsLine.empty()) {
             ALOGE("Empty header while parsing tethering stats");
-            return -1;
+            return -EREMOTEIO;
         }
     }
 
@@ -706,7 +709,7 @@ int TetherController::addForwardChainStats(TetherStatsList& statsList,
 
     /* It is always an error to find only one side of the stats. */
     if (((stats.rxBytes == -1) != (stats.txBytes == -1)) || !statsFound) {
-        return -1;
+        return -EREMOTEIO;
     }
     return 0;
 }
@@ -718,22 +721,34 @@ std::string TetherController::TetherStats::getStatsLine() const {
     return msg;
 }
 
-int TetherController::getTetherStats(SocketClient *cli, std::string &extraProcessingInfo) {
+StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats(
+        std::string& extraProcessingInfo) {
     TetherStatsList statsList;
 
     for (const IptablesTarget target : {V4, V6}) {
         std::string statsString;
         if (int ret = iptablesRestoreFunction(target, GET_TETHER_STATS_COMMAND, &statsString)) {
-            ALOGE("Failed to run %s err=%d", GET_TETHER_STATS_COMMAND.c_str(), ret);
-            return -1;
+            return statusFromErrno(-ret, StringPrintf("failed to fetch tether stats (%d): %d",
+                                                      target, ret));
         }
 
         if (int ret = addForwardChainStats(statsList, statsString, extraProcessingInfo)) {
-            return ret;
+            return statusFromErrno(-ret, StringPrintf("failed to parse %s tether stats:\n%s",
+                                                      target == V4 ? "IPv4": "IPv6",
+                                                      extraProcessingInfo.c_str()));
         }
     }
 
-    for (const auto& stats: statsList) {
+    return statsList;
+}
+
+int TetherController::getTetherStats(SocketClient *cli, std::string &extraProcessingInfo) {
+    StatusOr<TetherStatsList> statsList = getTetherStats(extraProcessingInfo);
+    if (!isOk(statsList)) {
+        return -1;
+    }
+
+    for (const auto& stats: statsList.value()) {
         cli->sendMsg(ResponseCode::TetheringStatsListResult,
                      stats.getStatsLine().c_str(), false);
     }

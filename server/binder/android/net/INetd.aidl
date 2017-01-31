@@ -17,6 +17,7 @@
 package android.net;
 
 import android.net.UidRange;
+import android.os.PersistableBundle;
 
 /** {@hide} */
 interface INetd {
@@ -192,6 +193,25 @@ interface INetd {
      * TODO: Return something richer than just a boolean.
      */
     boolean tetherApplyDnsInterfaces();
+
+    // Ordering of the elements in the arrays returned by tetherGetStats.
+    const int TETHER_STATS_RX_BYTES   = 0;
+    const int TETHER_STATS_RX_PACKETS = 1;
+    const int TETHER_STATS_TX_BYTES   = 2;
+    const int TETHER_STATS_TX_PACKETS = 3;
+    const int TETHER_STATS_ARRAY_SIZE = 4;
+
+    /**
+     * Return tethering statistics.
+     *
+     * @return a PersistableBundle, where each entry maps the upstream interface name to an array
+     *         of longs representing stats. The array is TETHER_STATS_ARRAY_SIZE elements long and
+     *         the order of the elements is specified by the TETHER_STATS_{RX,TX}_{PACKETS,BYTES}
+     *         constants.
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *         cause of the the failure.
+     */
+    PersistableBundle tetherGetStats();
 
     /**
      * Add/Remove and IP address from an interface.

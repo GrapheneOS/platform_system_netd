@@ -106,9 +106,9 @@ void CommandListener::registerLockingCmd(FrameworkCommand *cmd, android::RWLock&
 
 CommandListener::CommandListener() : FrameworkListener(SOCKET_NAME, true) {
     registerLockingCmd(new InterfaceCmd());
-    registerLockingCmd(new IpFwdCmd());
-    registerLockingCmd(new TetherCmd());
-    registerLockingCmd(new NatCmd());
+    registerLockingCmd(new IpFwdCmd(), gCtls->tetherCtrl.lock);
+    registerLockingCmd(new TetherCmd(), gCtls->tetherCtrl.lock);
+    registerLockingCmd(new NatCmd(), gCtls->tetherCtrl.lock);
     registerLockingCmd(new ListTtysCmd());
     registerLockingCmd(new PppdCmd());
     registerLockingCmd(new BandwidthControlCmd(), gCtls->bandwidthCtrl.lock);

@@ -41,6 +41,7 @@
 #include "UidRanges.h"
 
 using android::base::StringPrintf;
+using android::os::PersistableBundle;
 
 namespace android {
 namespace net {
@@ -278,9 +279,60 @@ binder::Status NetdNativeService::removePrivateDnsServer(const std::string& serv
 }
 
 binder::Status NetdNativeService::tetherApplyDnsInterfaces(bool *ret) {
-    NETD_BIG_LOCK_RPC(CONNECTIVITY_INTERNAL);
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock)
 
     *ret = gCtls->tetherCtrl.applyDnsInterfaces();
+    return binder::Status::ok();
+}
+
+namespace {
+
+void tetherAddStats(PersistableBundle *bundle, const TetherController::TetherStats& stats) {
+    String16 iface = String16(stats.extIface.c_str());
+    std::vector<int64_t> statsVector(INetd::TETHER_STATS_ARRAY_SIZE);
+
+    bundle->getLongVector(iface, &statsVector);
+    if (statsVector.size() == 0) {
+        for (int i = 0; i < INetd::TETHER_STATS_ARRAY_SIZE; i++) statsVector.push_back(0);
+    }
+
+    // Note: currently, TetherController::addForwardChainStats swaps TX and RX counters.
+    // Specifically, when parsing iptables counters like this:
+    //
+    // Chain tetherctrl_counters (0 references)
+    //     pkts      bytes target     prot opt in     out     source               destination
+    //     4107   214602 RETURN     all  --  rndis0 rmnet_data0  0.0.0.0/0            0.0.0.0/0
+    //     6937 10361624 RETURN     all  --  rmnet_data0 rndis0  0.0.0.0/0            0.0.0.0/0
+    //
+    // it will return a TetherStatsList with one element that has intIface rndis0 and extIface
+    // rmnet_data0 (correct) but with rxBytes=214602 and txBytes=10361624 (swapped). Because the
+    // code in getTetherStats and the corresponding code in NetworkManagementService swaps the
+    // counters again, this all works.
+    //
+    // TODO: once "bandwidth gettetherstats" is gone, swap the counters in addForwardChainStats.
+    statsVector[INetd::TETHER_STATS_RX_BYTES]   += stats.txBytes;
+    statsVector[INetd::TETHER_STATS_RX_PACKETS] += stats.txPackets;
+    statsVector[INetd::TETHER_STATS_TX_BYTES]   += stats.rxBytes;
+    statsVector[INetd::TETHER_STATS_TX_PACKETS] += stats.rxPackets;
+
+    bundle->putLongVector(iface, statsVector);
+}
+
+}  // namespace
+
+binder::Status NetdNativeService::tetherGetStats(PersistableBundle *bundle) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock)
+
+    std::string extraProcessingInfo;
+    const auto& statsList = gCtls->tetherCtrl.getTetherStats(extraProcessingInfo);
+    if (!isOk(statsList)) {
+        return toBinderStatus(statsList);
+    }
+
+    for (const auto& stats : statsList.value()) {
+        tetherAddStats(bundle, stats);
+    }
+
     return binder::Status::ok();
 }
 

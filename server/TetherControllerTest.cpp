@@ -291,7 +291,6 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
     clearIptablesRestoreOutput();
 
     // But if interfaces aren't paired, it's always an error.
-    err = "";
     counterLines.resize(3);
     counters = Join(counterLines, "\n") + "\n";
     addIptablesRestoreOutput(counters, counters);
@@ -302,7 +301,8 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
     // Token unit test of the fact that we return the stats in the error message which the caller
     // ignores.
     std::string expectedError = counters;
-    EXPECT_EQ(expectedError, err);
+    ASSERT_LE(expectedError.size(), err.size());
+    EXPECT_TRUE(std::equal(expectedError.rbegin(), expectedError.rend(), err.rbegin()));
 }
 
 }  // namespace net
