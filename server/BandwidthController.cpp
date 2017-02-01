@@ -76,6 +76,11 @@ const int  MAX_CMD_LEN = 1024;
 const int  MAX_IFACENAME_LEN = 64;
 const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
 const std::string NEW_CHAIN_COMMAND = "-N ";
+const std::string GET_TETHER_STATS_COMMAND = android::base::StringPrintf(
+    "*filter\n"
+    "-nvx -L %s\n"
+    "COMMIT\n", NatController::LOCAL_TETHER_COUNTERS_CHAIN);
+
 
 /**
  * Some comments about the rules:
@@ -1111,16 +1116,17 @@ void BandwidthController::addStats(TetherStatsList& statsList, const TetherStats
  * helps detect complete parsing failure.
  */
 int BandwidthController::addForwardChainStats(const TetherStats& filter,
-                                              TetherStatsList& statsList, FILE *fp,
+                                              TetherStatsList& statsList,
+                                              const std::string& statsOutput,
                                               std::string &extraProcessingInfo) {
     int res;
-    char lineBuffer[MAX_IPT_OUTPUT_LINE_LEN];
+    std::string statsLine;
     char iface0[MAX_IPT_OUTPUT_LINE_LEN];
     char iface1[MAX_IPT_OUTPUT_LINE_LEN];
     char rest[MAX_IPT_OUTPUT_LINE_LEN];
 
     TetherStats stats;
-    char *buffPtr;
+    const char *buffPtr;
     int64_t packets, bytes;
     int statsFound = 0;
 
@@ -1132,7 +1138,10 @@ int BandwidthController::addForwardChainStats(const TetherStats& filter,
 
     stats = filter;
 
-    while (NULL != (buffPtr = fgets(lineBuffer, MAX_IPT_OUTPUT_LINE_LEN, fp))) {
+    std::stringstream stream(statsOutput);
+    while (std::getline(stream, statsLine, '\n')) {
+        buffPtr = statsLine.c_str();
+
         /* Clean up, so a failed parse can still print info */
         iface0[0] = iface1[0] = rest[0] = packets = bytes = 0;
         if (strstr(buffPtr, "0.0.0.0")) {
@@ -1149,6 +1158,7 @@ int BandwidthController::addForwardChainStats(const TetherStats& filter,
         ALOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%" PRId64" bytes=%" PRId64" rest=<%s> orig line=<%s>", res,
              iface0, iface1, packets, bytes, rest, buffPtr);
         extraProcessingInfo += buffPtr;
+        extraProcessingInfo += "\n";
 
         if (res != 5) {
             continue;
@@ -1223,37 +1233,21 @@ char *BandwidthController::TetherStats::getStatsLine(void) const {
     return msg;
 }
 
-std::string getTetherStatsCommand(const char *binary) {
-    /*
-     * Why not use some kind of lib to talk to iptables?
-     * Because the only libs are libiptc and libip6tc in iptables, and they are
-     * not easy to use. They require the known iptables match modules to be
-     * preloaded/linked, and require apparently a lot of wrapper code to get
-     * the wanted info.
-     */
-    return android::base::StringPrintf("%s -nvx -w -L %s", binary,
-                                       NatController::LOCAL_TETHER_COUNTERS_CHAIN);
-}
-
 int BandwidthController::getTetherStats(SocketClient *cli, TetherStats& filter,
                                         std::string &extraProcessingInfo) {
     int res = 0;
-    std::string fullCmd;
-    FILE *iptOutput;
 
     TetherStatsList statsList;
 
-    for (const auto binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
-        fullCmd = getTetherStatsCommand(binary);
-        iptOutput = popenFunction(fullCmd.c_str(), "r");
-        if (!iptOutput) {
-                ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
-                extraProcessingInfo += "Failed to run iptables.";
+    for (const IptablesTarget target : {V4, V6}) {
+        std::string statsString;
+        res = iptablesRestoreFunction(target, GET_TETHER_STATS_COMMAND, &statsString);
+        if (res != 0) {
+            ALOGE("Failed to run %s err=%d", GET_TETHER_STATS_COMMAND.c_str(), res);
             return -1;
         }
 
-        res = addForwardChainStats(filter, statsList, iptOutput, extraProcessingInfo);
-        pclose(iptOutput);
+        res = addForwardChainStats(filter, statsList, statsString, extraProcessingInfo);
         if (res != 0) {
             return res;
         }
