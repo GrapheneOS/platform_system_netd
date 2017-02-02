@@ -36,7 +36,8 @@
 namespace android {
 namespace net {
 
-struct Controllers {
+class Controllers {
+public:
     Controllers();
 
     NetworkController netCtrl;
@@ -51,6 +52,11 @@ struct Controllers {
     StrictController strictCtrl;
     EventReporter eventReporter;
     IptablesRestoreController iptablesRestoreCtrl;
+
+    void init();
+
+private:
+    void initIptablesRules();
 };
 
 extern Controllers* gCtls;
