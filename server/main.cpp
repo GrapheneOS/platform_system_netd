@@ -18,7 +18,6 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <errno.h>
-#include <math.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -79,6 +78,8 @@ int main() {
     };
 
     gCtls = new android::net::Controllers();
+    gCtls->init();
+
     CommandListener cl;
     nm->setBroadcaster((SocketListener *) &cl);
 
