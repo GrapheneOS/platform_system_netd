@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "Netd"
+#include <cutils/log.h>
+
 #include "Controllers.h"
 #include "IdletimerController.h"
 #include "NetworkController.h"
 #include "RouteController.h"
+#include "Stopwatch.h"
 #include "oem_iptables_hook.h"
 
 namespace android {
@@ -119,6 +123,7 @@ void Controllers::initIptablesRules() {
      */
 
     // Create chains for children modules
+    Stopwatch s;
     createChildChains(V4V6, "filter", "INPUT", FILTER_INPUT);
     createChildChains(V4V6, "filter", "FORWARD", FILTER_FORWARD);
     createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT);
@@ -127,34 +132,46 @@ void Controllers::initIptablesRules() {
     createChildChains(V4V6, "mangle", "FORWARD", MANGLE_FORWARD);
     createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING);
     createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
+    ALOGI("Creating child chains: %.1fms", s.getTimeAndReset());
 
     // Let each module setup their child chains
     setupOemIptablesHook();
+    ALOGI("Setting up OEM hooks: %.1fms", s.getTimeAndReset());
 
     /* When enabled, DROPs all packets except those matching rules. */
     firewallCtrl.setupIptablesHooks();
+    ALOGI("Setting up FirewallController hooks: %.1fms", s.getTimeAndReset());
 
     /* Does DROPs in FORWARD by default */
     natCtrl.setupIptablesHooks();
+    ALOGI("Setting up NatController hooks: %.1fms", s.getTimeAndReset());
+
     /*
      * Does REJECT in INPUT, OUTPUT. Does counting also.
      * No DROP/REJECT allowed later in netfilter-flow hook order.
      */
     bandwidthCtrl.setupIptablesHooks();
+    ALOGI("Setting up BandwidthController hooks: %.1fms", s.getTimeAndReset());
+
     /*
      * Counts in nat: PREROUTING, POSTROUTING.
      * No DROP/REJECT allowed later in netfilter-flow hook order.
      */
     idletimerCtrl.setupIptablesHooks();
+    ALOGI("Setting up IdletimerController hooks: %.1fms", s.getTimeAndReset());
 }
 
 void Controllers::init() {
     initIptablesRules();
+
+    Stopwatch s;
     bandwidthCtrl.enableBandwidthControl(false);
+    ALOGI("Disabling bandwidth control: %.1fms", s.getTimeAndReset());
 
     if (int ret = RouteController::Init(NetworkController::LOCAL_NET_ID)) {
         ALOGE("failed to initialize RouteController (%s)", strerror(-ret));
     }
+    ALOGI("Initializing RouteController: %.1fms", s.getTimeAndReset());
 }
 
 Controllers* gCtls = nullptr;
