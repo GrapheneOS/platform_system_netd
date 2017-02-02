@@ -79,6 +79,8 @@ int main() {
     };
 
     gCtls = new android::net::Controllers();
+    gCtls->init();
+
     CommandListener cl;
     nm->setBroadcaster((SocketListener *) &cl);
 
