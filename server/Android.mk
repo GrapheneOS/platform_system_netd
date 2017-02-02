@@ -149,6 +149,7 @@ LOCAL_SRC_FILES := \
         IptablesRestoreController.cpp IptablesRestoreControllerTest.cpp \
         BandwidthController.cpp BandwidthControllerTest.cpp \
         FirewallControllerTest.cpp FirewallController.cpp \
+        IdletimerController.cpp \
         NatControllerTest.cpp NatController.cpp \
         SockDiagTest.cpp SockDiag.cpp \
         StrictController.cpp StrictControllerTest.cpp \
