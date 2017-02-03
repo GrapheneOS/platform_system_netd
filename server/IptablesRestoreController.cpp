@@ -91,8 +91,11 @@ public:
             ALOGE("Error killing iptables child process %d: %s", pid, strerror(err));
         }
 
-        if (waitpid(pid, nullptr, 0) == -1) {
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
             ALOGE("Error waiting for iptables child process %d: %s", pid, strerror(errno));
+        } else {
+            ALOGW("iptables-restore process %d terminated status=%d", pid, status);
         }
 
         processTerminated = true;
@@ -133,7 +136,7 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
         pipe2(stdout_pipe, O_NONBLOCK) == -1 ||
         pipe2(stderr_pipe, O_NONBLOCK) == -1) {
 
-        PLOG(ERROR) << "pipe2() failed";
+        ALOGE("pipe2() failed: %s", strerror(errno));
         return nullptr;
     }
 
@@ -148,7 +151,7 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
             close(stdout_pipe[0]) == -1 ||
             close(stderr_pipe[0]) == -1) {
 
-            PLOG(WARNING) << "close() failed";
+            ALOGW("close() failed: %s", strerror(errno));
         }
 
         // stdin_pipe[0] : The read end of the stdin pipe.
@@ -157,7 +160,7 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
         if (dup2(stdin_pipe[0], 0) == -1 ||
             dup2(stdout_pipe[1], 1) == -1 ||
             dup2(stderr_pipe[1], 2) == -1) {
-            PLOG(ERROR) << "dup2() failed";
+            ALOGE("dup2() failed: %s", strerror(errno));
             abort();
         }
 
@@ -168,7 +171,7 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
                   "-v",         // Verbose mode, to make sure our ping is echoed
                                 // back to us.
                   nullptr) == -1) {
-            PLOG(ERROR) << "execl(" << cmd << ", ...) failed";
+            ALOGE("execl(%s, ...) failed: %s", cmd, strerror(errno));
             abort();
         }
 
@@ -179,7 +182,7 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
 
     // The parent process. Writes to stdout and stderr and reads from stdin.
     if (child_pid == -1) {
-        PLOG(ERROR) << "fork() failed";
+        ALOGE("fork() failed: %s", strerror(errno));
         return nullptr;
     }
 
@@ -189,7 +192,7 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
     if (close(stdin_pipe[0]) == -1 ||
         close(stdout_pipe[1]) == -1 ||
         close(stderr_pipe[1]) == -1) {
-        PLOG(WARNING) << "close() failed";
+        ALOGW("close() failed: %s", strerror(errno));
     }
 
     return new IptablesProcess(child_pid, stdin_pipe[1], stdout_pipe[0], stderr_pipe[0]);
@@ -239,16 +242,16 @@ int IptablesRestoreController::sendCommand(const IptablesProcessType type,
     if (!android::base::WriteFully((*process)->stdIn,
                                    fixedCommand.data(),
                                    fixedCommand.length())) {
-        PLOG(ERROR) << "Unable to send command";
+        ALOGE("Unable to send command: %s", strerror(errno));
         return -1;
     }
 
     if (!android::base::WriteFully((*process)->stdIn, PING, PING_SIZE)) {
-        PLOG(ERROR) << "Unable to send ping command : " << type;
+        ALOGE("Unable to send ping command: %s", strerror(errno));
         return -1;
     }
 
-    if (!drainAndWaitForAck(*process, output)) {
+    if (!drainAndWaitForAck(*process, fixedCommand, output)) {
         // drainAndWaitForAck has already logged an error.
         return -1;
     }
@@ -264,23 +267,19 @@ std::string IptablesRestoreController::fixCommandString(const std::string& comma
 }
 
 void IptablesRestoreController::maybeLogStderr(const std::unique_ptr<IptablesProcess> &process,
-                                               const char* buf, ssize_t numBytes) {
-    ssize_t lastNewline = 0;
-    for (ssize_t i = 0; i < numBytes; ++i) {
-        if (buf[i] == '\n') {
-            process->errBuf.append(buf + lastNewline, (i - lastNewline));
-            LOG(ERROR) << "Iptables : " << process->errBuf;
-            process->errBuf.clear();
-            lastNewline = i;
-        }
+                                               const std::string& command) {
+    if (process->errBuf.empty()) {
+        return;
     }
 
-    // Append all remaining characters to the buffer so that they're logged the
-    // next time 'round.
-    if (lastNewline < (static_cast<ssize_t>(numBytes) - 1)) {
-        process->errBuf.append(buf + lastNewline,
-                               static_cast<ssize_t>(numBytes) - 1 - lastNewline);
-    }
+    ALOGE("iptables error:\n"
+          "------- COMMAND -------\n"
+          "%s\n"
+          "-------  ERROR -------\n"
+          "%s"
+          "----------------------\n",
+          command.c_str(), process->errBuf.c_str());
+    process->errBuf.clear();
 }
 
 // The maximum number of times we poll(2) for a response on our set of polled
@@ -293,6 +292,7 @@ static constexpr int POLL_TIMEOUT_MS = 100;
 
 /* static */
 bool IptablesRestoreController::drainAndWaitForAck(const std::unique_ptr<IptablesProcess> &process,
+                                                   const std::string& command,
                                                    std::string *output) {
     bool receivedAck = false;
     int timeout = 0;
@@ -300,7 +300,7 @@ bool IptablesRestoreController::drainAndWaitForAck(const std::unique_ptr<Iptable
         int numEvents = TEMP_FAILURE_RETRY(
             poll(process->pollFds, ARRAY_SIZE(process->pollFds), POLL_TIMEOUT_MS));
         if (numEvents == -1) {
-            PLOG(ERROR) << "Poll failed.";
+            ALOGE("Poll failed: %s", strerror(errno));
             return false;
         }
 
@@ -321,7 +321,7 @@ bool IptablesRestoreController::drainAndWaitForAck(const std::unique_ptr<Iptable
 
                     if (size == -1) {
                         if (errno != EAGAIN) {
-                            PLOG(ERROR) << "Unable to read from descriptor";
+                            ALOGE("Unable to read from descriptor: %s", strerror(errno));
                         }
                         break;
                     }
@@ -341,8 +341,8 @@ bool IptablesRestoreController::drainAndWaitForAck(const std::unique_ptr<Iptable
                             receivedAck = true;
                         }
                     } else {
-                        // i == STDERR_IDX implies stderr, log.
-                        IptablesRestoreController::maybeLogStderr(process, buffer, size);
+                        // i == STDERR_IDX: accumulate stderr into errBuf.
+                        process->errBuf.append(buffer, size);
                     }
                 } while (size > 0);
             }
@@ -355,12 +355,11 @@ bool IptablesRestoreController::drainAndWaitForAck(const std::unique_ptr<Iptable
         }
     }
 
-    if (!receivedAck) {
-        if (process->processTerminated)
-            ALOGE("iptables-restore process %d terminated", process->pid);
-        else
-            ALOGE("Timed out waiting for response from iptables process %d", process->pid);
+    if (!receivedAck && !process->processTerminated) {
+        ALOGE("Timed out waiting for response from iptables process %d", process->pid);
     }
+
+    maybeLogStderr(process, command);
 
     return receivedAck;
 }

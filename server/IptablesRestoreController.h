@@ -61,10 +61,12 @@ private:
 
     static std::string fixCommandString(const std::string& command);
 
-    bool drainAndWaitForAck(const std::unique_ptr<IptablesProcess> &process, std::string *output);
+    static bool drainAndWaitForAck(const std::unique_ptr<IptablesProcess> &process,
+                                   const std::string& command,
+                                   std::string *output);
 
     static void maybeLogStderr(const std::unique_ptr<IptablesProcess> &process,
-                               const char* buf, const ssize_t numBytes);
+                               const std::string& command);
 
     // Guards calls to execute().
     std::mutex mLock;
