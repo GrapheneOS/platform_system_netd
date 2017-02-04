@@ -21,6 +21,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#define LOG_TAG "IptablesRestoreController"
 #include <android-base/logging.h>
 #include <android-base/file.h>
 
@@ -55,13 +56,55 @@ public:
         close(pollFds[STDERR_IDX].fd);
     }
 
+    bool outputReady() {
+        struct pollfd pollfd = { .fd = stdIn, .events = POLLOUT };
+        int ret = poll(&pollfd, 1, 0);
+        if (ret == -1) {
+            ALOGE("outputReady poll failed: %s", strerror(errno));
+            return false;
+        }
+        return (ret == 1) && !(pollfd.revents & POLLERR);
+    }
+
+    void stop() {
+        if (processTerminated) return;
+
+        // This can be called by drainAndWaitForAck (after a POLLHUP) or by sendCommand (if the
+        // process was killed by something else on the system). In both cases, it's safe to send the
+        // PID a SIGTERM, because the PID continues to exist until its parent (i.e., us) calls
+        // waitpid on it, so there's no risk that the PID is reused.
+        int err = kill(pid, SIGTERM);
+        if (err) {
+            err = errno;
+        }
+
+        if (err == ESRCH) {
+            // This means that someone else inside netd but outside this class called waitpid(),
+            // which is a programming error. There's no point in calling waitpid() here since we
+            // know that the process is gone.
+            ALOGE("iptables child process %d unexpectedly disappeared", pid);
+            processTerminated = true;
+            return;
+        }
+
+        if (err) {
+            ALOGE("Error killing iptables child process %d: %s", pid, strerror(err));
+        }
+
+        if (waitpid(pid, nullptr, 0) == -1) {
+            ALOGE("Error waiting for iptables child process %d: %s", pid, strerror(errno));
+        }
+
+        processTerminated = true;
+    }
+
     const pid_t pid;
     const int stdIn;
 
     struct pollfd pollFds[2];
     std::string errBuf;
 
-    bool processTerminated;
+    std::atomic_bool processTerminated;
 
     static constexpr size_t STDOUT_IDX = 0;
     static constexpr size_t STDERR_IDX = 1;
@@ -152,76 +195,6 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
     return new IptablesProcess(child_pid, stdin_pipe[1], stdout_pipe[0], stderr_pipe[0]);
 }
 
-void sigchldHandler(int /* signal_number */, siginfo_t *siginfo, void* /* context */) {
-    // Save and restore errno to prevent threads from spuriously seeing
-    // incorrect errors due to errors from this signal handler.
-    int saved_errno = errno;
-
-    // Notify the IptablesRestoreController so that it can try to recover. Log
-    // relevant information if it's one of the process we care about. netd
-    // forks other processes as well, so there's no need to spam the logs
-    // every time one of those dies.
-    const pid_t child_pid = siginfo->si_pid;
-    const IptablesRestoreController::IptablesProcessType process =
-            sInstance->notifyChildTermination(child_pid);
-
-    if (process != IptablesRestoreController::INVALID_PROCESS) {
-        // This should return immediately because we've been informed that
-        // |child_pid| just exited.
-        pid_t wait_result = waitpid(child_pid, nullptr, WNOHANG);
-        if (wait_result < 0) {
-            PLOG(WARNING) << "waitpid for child " << child_pid << " unexpectedly failed";
-        }
-
-        if (siginfo->si_code == CLD_EXITED) {
-            LOG(WARNING) << "iptables[6]-restore process exited (pid=" << child_pid
-                         << ") exit_status=" << siginfo->si_status
-                         << " type=" << process;
-        } else {
-            LOG(WARNING) << "iptables[6]-restore process was signalled (pid=" << child_pid
-                         << ") signal=" << siginfo->si_status
-                         << " type=" << process;
-        }
-    }
-
-    errno = saved_errno;
-}
-
-/* static */
-void IptablesRestoreController::installSignalHandler(IptablesRestoreController *singleton) {
-    if (singleton == nullptr) {
-        LOG(ERROR) << "installSignalHandler: singleton == nullptr";
-    }
-
-    sInstance = singleton;
-
-    struct sigaction sa = {};
-    sa.sa_flags = SA_SIGINFO;
-    sa.sa_sigaction = sigchldHandler;
-    const int err = sigaction(SIGCHLD, &sa, nullptr);
-    if (err < 0) {
-        PLOG(ERROR) << "Unable to set SIGCHLD handler.";
-    }
-}
-
-IptablesRestoreController::IptablesProcessType
-IptablesRestoreController::notifyChildTermination(pid_t pid) {
-    // We minimize the amount of work that we do from the signal handler, given
-    // that this can be called at any arbitrary point of time.
-
-    if (mIpRestore != nullptr && mIpRestore->pid == pid) {
-        mIpRestore->processTerminated = true;
-        return IPTABLES_PROCESS;
-    }
-
-    if (mIp6Restore != nullptr && mIp6Restore->pid == pid) {
-        mIp6Restore->processTerminated = true;
-        return IP6TABLES_PROCESS;
-    }
-
-    return INVALID_PROCESS;
-}
-
 // TODO: Return -errno on failure instead of -1.
 // TODO: Maybe we should keep a rotating buffer of the last N commands
 // so that they can be dumped on dumpsys.
@@ -230,6 +203,7 @@ int IptablesRestoreController::sendCommand(const IptablesProcessType type,
    std::unique_ptr<IptablesProcess> *process =
            (type == IPTABLES_PROCESS) ? &mIpRestore : &mIp6Restore;
 
+
     // We might need to fork a new process if we haven't forked one yet, or
     // if the forked process terminated.
     //
@@ -237,7 +211,13 @@ int IptablesRestoreController::sendCommand(const IptablesProcessType type,
     // recover from a child death. If the child dies at some later point during
     // the execution of this method, we will receive an EPIPE and return an
     // error. The command will then need to be retried at a higher level.
-    if (process->get() == nullptr || (*process)->processTerminated) {
+    IptablesProcess *existingProcess = process->get();
+    if (existingProcess != nullptr && !existingProcess->outputReady()) {
+        existingProcess->stop();
+        existingProcess = nullptr;
+    }
+
+    if (existingProcess == nullptr) {
         // Fork a new iptables[6]-restore process.
         IptablesProcess *newProcess = IptablesRestoreController::forkAndExec(type);
         if (newProcess == nullptr) {
@@ -259,6 +239,7 @@ int IptablesRestoreController::sendCommand(const IptablesProcessType type,
                                    fixedCommand.data(),
                                    fixedCommand.length())) {
         PLOG(ERROR) << "Unable to send command";
+        return -1;
     }
 
     if (!android::base::WriteFully((*process)->stdIn, PING, PING_SIZE)) {
@@ -267,7 +248,7 @@ int IptablesRestoreController::sendCommand(const IptablesProcessType type,
     }
 
     if (!drainAndWaitForAck(*process)) {
-        LOG(ERROR) << "Timed out waiting for response from iptables process: " << (*process)->pid;
+        // drainAndWaitForAck has already logged an error.
         return -1;
     }
 
@@ -324,7 +305,8 @@ bool IptablesRestoreController::drainAndWaitForAck(
         }
 
         // We've timed out, which means something has gone wrong - we know that stdout should have
-        // become available to read with the ACK message.
+        // become available to read with the ACK message, or that stderr should have been available
+        // to read with an error message.
         if (numEvents == 0) {
             continue;
         }
@@ -361,7 +343,20 @@ bool IptablesRestoreController::drainAndWaitForAck(
                     IptablesRestoreController::maybeLogStderr(process, buffer, size);
                 }
             }
+            if (pollfd.revents & POLLHUP) {
+                // The pipe was closed. This likely means the subprocess is exiting, since
+                // iptables-restore only closes stdin on error.
+                process->stop();
+                break;
+            }
         }
+    }
+
+    if (!receivedAck) {
+        if (process->processTerminated)
+            ALOGE("iptables-restore process %d terminated", process->pid);
+        else
+            ALOGE("Timed out waiting for response from iptables process %d", process->pid);
     }
 
     return receivedAck;
@@ -378,4 +373,8 @@ int IptablesRestoreController::execute(const IptablesTarget target, const std::s
         res |= sendCommand(IP6TABLES_PROCESS, command);
     }
     return res;
+}
+
+int IptablesRestoreController::getIpRestorePid(const IptablesProcessType type) {
+    return type == IPTABLES_PROCESS ? mIpRestore->pid : mIp6Restore->pid;
 }

@@ -129,7 +129,6 @@ static void createChildChainsFast(IptablesTarget target, const char* table, cons
 
 Controllers::Controllers() : clatdCtrl(&netCtrl) {
     InterfaceController::initializeAll();
-    IptablesRestoreController::installSignalHandler(&iptablesRestoreCtrl);
 }
 
 void Controllers::initIptablesRules() {
