@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#include <android-base/stringprintf.h>
-
 #define LOG_TAG "Netd"
 #include <cutils/log.h>
 
@@ -66,7 +64,6 @@ static const char* RAW_PREROUTING[] = {
 };
 
 static const char* MANGLE_POSTROUTING[] = {
-        OEM_IPTABLES_MANGLE_POSTROUTING,
         BandwidthController::LOCAL_MANGLE_POSTROUTING,
         IdletimerController::LOCAL_MANGLE_POSTROUTING,
         NULL,
@@ -107,24 +104,6 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
     } while (*(++childChain) != NULL);
 }
 
-// Fast version of createChildChains. This is only safe to use if the parent chain contains nothing
-// apart from the specified child chains.
-static void createChildChainsFast(IptablesTarget target, const char* table, const char* parentChain,
-        const char** childChains) {
-    const char** childChain = childChains;
-    std::string command = android::base::StringPrintf("*%s\n", table);
-    command += android::base::StringPrintf(":%s -\n", parentChain);
-    // Just running ":chain -" flushes user-defined chains, but not built-in chains like INPUT.
-    // Since at this point we don't know if parentChain is a built-in chain, do both.
-    command += android::base::StringPrintf("-F %s\n", parentChain);
-    do {
-        command += android::base::StringPrintf(":%s -\n", *childChain);
-        command += android::base::StringPrintf("-A %s -j %s\n", parentChain, *childChain);
-    } while (*(++childChain) != NULL);
-    command += "COMMIT\n\n";
-    execIptablesRestore(target, command);
-}
-
 }  // namespace
 
 Controllers::Controllers() : clatdCtrl(&netCtrl) {
@@ -143,18 +122,16 @@ void Controllers::initIptablesRules() {
      * otherwise DROP/REJECT.
      */
 
-    // Create chains for child modules.
-    // We cannot use createChildChainsFast for all chains because vendor code modifies filter OUTPUT
-    // and mangle POSTROUTING directly.
+    // Create chains for children modules
     Stopwatch s;
-    createChildChainsFast(V4V6, "filter", "INPUT", FILTER_INPUT);
-    createChildChainsFast(V4V6, "filter", "FORWARD", FILTER_FORWARD);
+    createChildChains(V4V6, "filter", "INPUT", FILTER_INPUT);
+    createChildChains(V4V6, "filter", "FORWARD", FILTER_FORWARD);
     createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT);
-    createChildChainsFast(V4V6, "raw", "PREROUTING", RAW_PREROUTING);
+    createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING);
     createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING);
-    createChildChainsFast(V4V6, "mangle", "FORWARD", MANGLE_FORWARD);
-    createChildChainsFast(V4, "nat", "PREROUTING", NAT_PREROUTING);
-    createChildChainsFast(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
+    createChildChains(V4V6, "mangle", "FORWARD", MANGLE_FORWARD);
+    createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING);
+    createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
     ALOGI("Creating child chains: %.1fms", s.getTimeAndReset());
 
     // Let each module setup their child chains
