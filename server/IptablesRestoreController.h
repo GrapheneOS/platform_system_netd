@@ -31,10 +31,6 @@ public:
     // to get an instance of this class.
     IptablesRestoreController();
 
-    // Called precisely once in netd's lifetime, when the singleton
-    // Controllers object is created.
-    static void installSignalHandler(IptablesRestoreController *singleton);
-
     // Execute |commands| on the given |target|.
     int execute(const IptablesTarget target, const std::string& commands);
 
@@ -50,6 +46,10 @@ public:
 
     virtual ~IptablesRestoreController();
 
+protected:
+    friend class IptablesRestoreControllerTest;
+    pid_t getIpRestorePid(const IptablesProcessType type);
+
 private:
     static IptablesProcess* forkAndExec(const IptablesProcessType type);
 
@@ -62,11 +62,11 @@ private:
     static void maybeLogStderr(const std::unique_ptr<IptablesProcess> &process,
                                const char* buf, const ssize_t numBytes);
 
-    std::unique_ptr<IptablesProcess> mIpRestore;
-    std::unique_ptr<IptablesProcess> mIp6Restore;
-
     // Guards calls to execute().
     std::mutex mLock;
+
+    std::unique_ptr<IptablesProcess> mIpRestore;
+    std::unique_ptr<IptablesProcess> mIp6Restore;
 };
 
 #endif  // NETD_SERVER_IPTABLES_RESTORE_CONTROLLER_H
