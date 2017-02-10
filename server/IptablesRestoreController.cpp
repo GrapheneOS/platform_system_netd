@@ -232,16 +232,7 @@ int IptablesRestoreController::sendCommand(const IptablesProcessType type,
         process->reset(newProcess);
     }
 
-    // TODO: Investigate why this horrible hackery is necessary. We're currently
-    // sending iptables[6]-restore malformed commands. They appear to contain garbage
-    // after the last "\n". They obviously "work" because we fork a new process
-    // for every command so it doesn't matter whether the process chokes after
-    // the last successful COMMIT.
-    const std::string fixedCommand = fixCommandString(command);
-
-    if (!android::base::WriteFully((*process)->stdIn,
-                                   fixedCommand.data(),
-                                   fixedCommand.length())) {
+    if (!android::base::WriteFully((*process)->stdIn, command.data(), command.length())) {
         ALOGE("Unable to send command: %s", strerror(errno));
         return -1;
     }
@@ -251,19 +242,12 @@ int IptablesRestoreController::sendCommand(const IptablesProcessType type,
         return -1;
     }
 
-    if (!drainAndWaitForAck(*process, fixedCommand, output)) {
+    if (!drainAndWaitForAck(*process, command, output)) {
         // drainAndWaitForAck has already logged an error.
         return -1;
     }
 
     return 0;
-}
-
-/* static */
-std::string IptablesRestoreController::fixCommandString(const std::string& command) {
-    std::string commandDup = command;
-    commandDup.erase(commandDup.find_last_of("\n") + 1);
-    return commandDup;
 }
 
 void IptablesRestoreController::maybeLogStderr(const std::unique_ptr<IptablesProcess> &process,

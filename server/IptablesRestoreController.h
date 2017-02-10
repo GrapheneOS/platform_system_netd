@@ -59,8 +59,6 @@ private:
     int sendCommand(const IptablesProcessType type, const std::string& command,
                     std::string *output);
 
-    static std::string fixCommandString(const std::string& command);
-
     static bool drainAndWaitForAck(const std::unique_ptr<IptablesProcess> &process,
                                    const std::string& command,
                                    std::string *output);
