@@ -82,9 +82,21 @@ FILE *IptablesBaseTest::fake_popen(const char * /* cmd */, const char *type) {
     return popen(realCmd.c_str(), "r");
 }
 
-int IptablesBaseTest::fakeExecIptablesRestore(IptablesTarget target, const std::string& commands) {
+int IptablesBaseTest::fakeExecIptablesRestoreWithOutput(IptablesTarget target,
+                                                        const std::string& commands,
+                                                        std::string *output) {
     sRestoreCmds.push_back({ target, commands });
+    if (output != nullptr) {
+        *output = sIptablesRestoreOutput.size() ? sIptablesRestoreOutput.front().c_str() : "";
+    }
+    if (sIptablesRestoreOutput.size()) {
+        sIptablesRestoreOutput.pop_front();
+    }
     return 0;
+}
+
+int IptablesBaseTest::fakeExecIptablesRestore(IptablesTarget target, const std::string& commands) {
+    return fakeExecIptablesRestoreWithOutput(target, commands, nullptr);
 }
 
 int IptablesBaseTest::expectIptablesCommand(IptablesTarget target, int pos,
@@ -160,3 +172,4 @@ void IptablesBaseTest::expectIptablesRestoreCommands(const ExpectedIptablesComma
 std::vector<std::string> IptablesBaseTest::sCmds = {};
 IptablesBaseTest::ExpectedIptablesCommands IptablesBaseTest::sRestoreCmds = {};
 std::deque<std::string> IptablesBaseTest::sPopenContents = {};
+std::deque<std::string> IptablesBaseTest::sIptablesRestoreOutput = {};

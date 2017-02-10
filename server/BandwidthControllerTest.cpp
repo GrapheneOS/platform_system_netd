@@ -27,6 +27,7 @@
 #include <gtest/gtest.h>
 
 #include <android-base/strings.h>
+#include <android-base/stringprintf.h>
 
 #include "BandwidthController.h"
 #include "IptablesBaseTest.h"
@@ -36,65 +37,92 @@ public:
     BandwidthControllerTest() {
         BandwidthController::execFunction = fake_android_fork_exec;
         BandwidthController::popenFunction = fake_popen;
-        BandwidthController::iptablesRestoreFunction = fakeExecIptablesRestore;
+        BandwidthController::iptablesRestoreFunction = fakeExecIptablesRestoreWithOutput;
     }
     BandwidthController mBw;
 
-    void addPopenContents(std::string contents) {
-        sPopenContents.push_back(contents);
+    void addIptablesRestoreOutput(std::string contents) {
+        sIptablesRestoreOutput.push_back(contents);
     }
 
-    void addPopenContents(std::string contents1, std::string contents2) {
-        sPopenContents.push_back(contents1);
-        sPopenContents.push_back(contents2);
+    void addIptablesRestoreOutput(std::string contents1, std::string contents2) {
+        sIptablesRestoreOutput.push_back(contents1);
+        sIptablesRestoreOutput.push_back(contents2);
     }
 
-    void clearPopenContents() {
-        sPopenContents.clear();
+    void clearIptablesRestoreOutput() {
+        sIptablesRestoreOutput.clear();
+    }
+
+    void expectSetupCommands(const std::string& expectedClean, std::string expectedAccounting) {
+        std::string expectedList =
+            "*filter\n"
+            "-S\n"
+            "COMMIT\n";
+
+        std::string expectedFlush =
+            "*filter\n"
+            ":bw_INPUT -\n"
+            ":bw_OUTPUT -\n"
+            ":bw_FORWARD -\n"
+            ":bw_happy_box -\n"
+            ":bw_penalty_box -\n"
+            ":bw_data_saver -\n"
+            ":bw_costly_shared -\n"
+            "COMMIT\n"
+            "*raw\n"
+            ":bw_raw_PREROUTING -\n"
+            "COMMIT\n"
+            "*mangle\n"
+            ":bw_mangle_POSTROUTING -\n"
+            "COMMIT\n";
+
+        ExpectedIptablesCommands expected = {{ V4, expectedList }};
+        if (expectedClean.size()) {
+            expected.push_back({ V4V6, expectedClean });
+        }
+        expected.push_back({ V4V6, expectedFlush });
+        if (expectedAccounting.size()) {
+            expected.push_back({ V4V6, expectedAccounting });
+        }
+
+        expectIptablesRestoreCommands(expected);
     }
 };
 
 TEST_F(BandwidthControllerTest, TestSetupIptablesHooks) {
-    mBw.setupIptablesHooks();
-    std::vector<std::string> expected = {
+    // Pretend some bw_costly_shared_<iface> rules already exist...
+    addIptablesRestoreOutput(
+        "-P OUTPUT ACCEPT\n"
+        "-N bw_costly_rmnet_data0\n"
+        "-N bw_costly_shared\n"
+        "-N unrelated\n"
+        "-N bw_costly_rmnet_data7\n");
+
+    // ... and expect that they be flushed and deleted.
+    std::string expectedCleanCmds =
         "*filter\n"
-        ":bw_INPUT -\n"
-        ":bw_OUTPUT -\n"
-        ":bw_FORWARD -\n"
-        ":bw_happy_box -\n"
-        ":bw_penalty_box -\n"
-        ":bw_data_saver -\n"
-        ":bw_costly_shared -\n"
-        "COMMIT\n"
-        "*raw\n"
-        ":bw_raw_PREROUTING -\n"
-        "COMMIT\n"
-        "*mangle\n"
-        ":bw_mangle_POSTROUTING -\n"
-        "COMMIT\n\x04"
-    };
-    expectIptablesRestoreCommands(expected);
+        ":bw_costly_rmnet_data0 -\n"
+        "-X bw_costly_rmnet_data0\n"
+        ":bw_costly_rmnet_data7 -\n"
+        "-X bw_costly_rmnet_data7\n"
+        "COMMIT\n";
+
+    mBw.setupIptablesHooks();
+    expectSetupCommands(expectedCleanCmds, "");
 }
 
 TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
-    mBw.enableBandwidthControl(false);
-    std::string expectedFlush =
-        "*filter\n"
-        ":bw_INPUT -\n"
-        ":bw_OUTPUT -\n"
-        ":bw_FORWARD -\n"
-        ":bw_happy_box -\n"
-        ":bw_penalty_box -\n"
-        ":bw_data_saver -\n"
-        ":bw_costly_shared -\n"
-        "COMMIT\n"
-        "*raw\n"
-        ":bw_raw_PREROUTING -\n"
-        "COMMIT\n"
-        "*mangle\n"
-        ":bw_mangle_POSTROUTING -\n"
-        "COMMIT\n\x04";
-     std::string expectedAccounting =
+    // Pretend no bw_costly_shared_<iface> rules already exist...
+    addIptablesRestoreOutput(
+        "-P OUTPUT ACCEPT\n"
+        "-N bw_costly_shared\n"
+        "-N unrelated\n");
+
+    // ... so none are flushed or deleted.
+    std::string expectedClean = "";
+
+    std::string expectedAccounting =
         "*filter\n"
         "-A bw_INPUT -m owner --socket-exists\n"
         "-A bw_OUTPUT -m owner --socket-exists\n"
@@ -109,30 +137,30 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
         "COMMIT\n"
         "*mangle\n"
         "-A bw_mangle_POSTROUTING -m owner --socket-exists\n"
-        "COMMIT\n\x04";
+        "COMMIT\n";
 
-    expectIptablesRestoreCommands({ expectedFlush, expectedAccounting });
+    mBw.enableBandwidthControl(false);
+    expectSetupCommands(expectedClean, expectedAccounting);
 }
 
 TEST_F(BandwidthControllerTest, TestDisableBandwidthControl) {
-    mBw.disableBandwidthControl();
-    const std::string expected =
+    // Pretend some bw_costly_shared_<iface> rules already exist...
+    addIptablesRestoreOutput(
+        "-P OUTPUT ACCEPT\n"
+        "-N bw_costly_rmnet_data0\n"
+        "-N bw_costly_shared\n"
+        "-N unrelated\n"
+        "-N bw_costly_rmnet_data7\n");
+
+    // ... and expect that they be flushed.
+    std::string expectedCleanCmds =
         "*filter\n"
-        ":bw_INPUT -\n"
-        ":bw_OUTPUT -\n"
-        ":bw_FORWARD -\n"
-        ":bw_happy_box -\n"
-        ":bw_penalty_box -\n"
-        ":bw_data_saver -\n"
-        ":bw_costly_shared -\n"
-        "COMMIT\n"
-        "*raw\n"
-        ":bw_raw_PREROUTING -\n"
-        "COMMIT\n"
-        "*mangle\n"
-        ":bw_mangle_POSTROUTING -\n"
-        "COMMIT\n\x04";
-    expectIptablesRestoreCommands({ expected });
+        ":bw_costly_rmnet_data0 -\n"
+        ":bw_costly_rmnet_data7 -\n"
+        "COMMIT\n";
+
+    mBw.disableBandwidthControl();
+    expectSetupCommands(expectedCleanCmds, "");
 }
 
 TEST_F(BandwidthControllerTest, TestEnableDataSaver) {
@@ -193,17 +221,17 @@ TEST_F(BandwidthControllerTest, TestGetTetherStats) {
     BandwidthController::TetherStats filter;
 
     // If no filter is specified, both IPv4 and IPv6 counters must have at least one interface pair.
-    addPopenContents(kIPv4TetherCounters, "");
+    addIptablesRestoreOutput(kIPv4TetherCounters);
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
     expectNoSocketClientResponse(socketPair[1]);
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
-    addPopenContents("", kIPv6TetherCounters);
+    addIptablesRestoreOutput(kIPv6TetherCounters);
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
     // IPv4 and IPv6 counters are properly added together.
-    addPopenContents(kIPv4TetherCounters, kIPv6TetherCounters);
+    addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
     filter = BandwidthController::TetherStats();
     std::string expected =
             "114 wlan0 rmnet0 10002373 10026 20002002 20027\n"
@@ -212,83 +240,89 @@ TEST_F(BandwidthControllerTest, TestGetTetherStats) {
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
     expectNoSocketClientResponse(socketPair[1]);
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
     // Test filtering.
-    addPopenContents(kIPv4TetherCounters, kIPv6TetherCounters);
+    addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
     filter = BandwidthController::TetherStats("bt-pan", "rmnet0", -1, -1, -1, -1);
     expected = "221 bt-pan rmnet0 107471 1040 1708806 1450\n";
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
     expectNoSocketClientResponse(socketPair[1]);
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
-    addPopenContents(kIPv4TetherCounters, kIPv6TetherCounters);
+    addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
     filter = BandwidthController::TetherStats("wlan0", "rmnet0", -1, -1, -1, -1);
     expected = "221 wlan0 rmnet0 10002373 10026 20002002 20027\n";
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
     // Select nonexistent interfaces.
-    addPopenContents(kIPv4TetherCounters, kIPv6TetherCounters);
+    addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
     filter = BandwidthController::TetherStats("rmnet0", "foo0", -1, -1, -1, -1);
     expected = "200 Tethering stats list completed\n";
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
     // No stats with a filter: no error.
-    addPopenContents("", "");
+    addIptablesRestoreOutput("", "");
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ("200 Tethering stats list completed\n", readSocketClientResponse(socketPair[1]));
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
-    addPopenContents("foo", "foo");
+    addIptablesRestoreOutput("foo", "foo");
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ("200 Tethering stats list completed\n", readSocketClientResponse(socketPair[1]));
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
     // No stats and empty filter: error.
     filter = BandwidthController::TetherStats();
-    addPopenContents("", kIPv6TetherCounters);
+    addIptablesRestoreOutput("", kIPv6TetherCounters);
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
     expectNoSocketClientResponse(socketPair[1]);
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
-    addPopenContents(kIPv4TetherCounters, "");
+    addIptablesRestoreOutput(kIPv4TetherCounters, "");
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
     expectNoSocketClientResponse(socketPair[1]);
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
     // Include only one pair of interfaces and things are fine.
     std::vector<std::string> counterLines = android::base::Split(kIPv4TetherCounters, "\n");
     std::vector<std::string> brokenCounterLines = counterLines;
     counterLines.resize(4);
     std::string counters = android::base::Join(counterLines, "\n") + "\n";
-    addPopenContents(counters, counters);
+    addIptablesRestoreOutput(counters, counters);
     expected =
             "114 wlan0 rmnet0 4746 52 4004 54\n"
             "200 Tethering stats list completed\n";
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 
     // But if interfaces aren't paired, it's always an error.
+    err = "";
     counterLines.resize(3);
     counters = android::base::Join(counterLines, "\n") + "\n";
-    addPopenContents(counters, counters);
+    addIptablesRestoreOutput(counters, counters);
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
     expectNoSocketClientResponse(socketPair[1]);
-    clearPopenContents();
+    clearIptablesRestoreOutput();
+
+    // Token unit test of the fact that we return the stats in the error message which the caller
+    // ignores.
+    std::string expectedError = counters;
+    EXPECT_EQ(expectedError, err);
 
     // popen() failing is always an error.
-    addPopenContents(kIPv4TetherCounters);
+    addIptablesRestoreOutput(kIPv4TetherCounters);
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
     expectNoSocketClientResponse(socketPair[1]);
-    clearPopenContents();
-    addPopenContents(kIPv6TetherCounters);
+    clearIptablesRestoreOutput();
+    addIptablesRestoreOutput(kIPv6TetherCounters);
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
     expectNoSocketClientResponse(socketPair[1]);
-    clearPopenContents();
+    clearIptablesRestoreOutput();
 }
