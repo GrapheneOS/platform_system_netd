@@ -45,6 +45,8 @@ enum IptablesTarget { V4, V6, V4V6 };
 int execIptables(IptablesTarget target, ...);
 int execIptablesSilently(IptablesTarget target, ...);
 int execIptablesRestore(IptablesTarget target, const std::string& commands);
+int execIptablesRestoreWithOutput(IptablesTarget target, const std::string& commands,
+                                  std::string *output);
 bool isIfaceName(const char *name);
 int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, uint8_t *prefixlen);
 

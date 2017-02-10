@@ -171,11 +171,6 @@ protected:
 
     static void addStats(TetherStatsList& statsList, const TetherStats& stats);
 
-    static int addForwardChainStats(const TetherStats& filter,
-                                    TetherStatsList& statsList, FILE *fp,
-                                    std::string &extraProcessingInfo);
-
-
     /*
      * stats should never have only intIface initialized. Other 3 combos are ok.
      * fp should be a file to the apropriate FORWARD chain of iptables rules.
@@ -185,8 +180,9 @@ protected:
      *  in:extIface out:intIface
      * and the rules are grouped in pairs when more that one tethering was setup.
      */
-    static int parseForwardChainStats(SocketClient *cli, const TetherStats filter, FILE *fp,
-                                      std::string &extraProcessingInfo);
+    static int addForwardChainStats(const TetherStats& filter,
+                                    TetherStatsList& statsList, const std::string& iptOutput,
+                                    std::string &extraProcessingInfo);
 
     /*
      * Attempt to find the bw_costly_* tables that need flushing,
@@ -195,7 +191,7 @@ protected:
      * Deals with both ip4 and ip6 tables.
      */
     void flushExistingCostlyTables(bool doClean);
-    static void parseAndFlushCostlyTables(FILE *fp, bool doRemove);
+    static void parseAndFlushCostlyTables(const std::string& ruleList, bool doRemove);
 
     /*
      * Attempt to flush our tables.
@@ -226,7 +222,7 @@ protected:
     friend class BandwidthControllerTest;
     static int (*execFunction)(int, char **, int *, bool, bool);
     static FILE *(*popenFunction)(const char *, const char *);
-    static int (*iptablesRestoreFunction)(IptablesTarget, const std::string&);
+    static int (*iptablesRestoreFunction)(IptablesTarget, const std::string&, std::string *);
 };
 
 #endif
