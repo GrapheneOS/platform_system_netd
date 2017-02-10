@@ -42,17 +42,13 @@ protected:
         return mFw.makeUidRules(a, b, c, d);
     }
 
-    int createChain(const char* a, const char* b , FirewallType c) {
-        return mFw.createChain(a, b, c);
+    int createChain(const char* a, FirewallType b) {
+        return mFw.createChain(a, b);
     }
 };
 
 
 TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
-    ExpectedIptablesCommands expectedCommands = {
-        { V4V6, "-t filter -D INPUT -j fw_whitelist" },
-    };
-
     std::vector<std::string> expectedRestore4 = {
         "*filter",
         ":fw_whitelist -",
@@ -60,7 +56,7 @@ TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
         "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN",
         "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
         "-A fw_whitelist -j DROP",
-        "COMMIT\n\x04"
+        "COMMIT\n"
     };
     std::vector<std::string> expectedRestore6 = {
         "*filter",
@@ -75,37 +71,31 @@ TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
         "-A fw_whitelist -p icmpv6 --icmpv6-type redirect -j RETURN",
         "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
         "-A fw_whitelist -j DROP",
-        "COMMIT\n\x04"
+        "COMMIT\n"
     };
     std::vector<std::pair<IptablesTarget, std::string>> expectedRestoreCommands = {
         { V4, android::base::Join(expectedRestore4, '\n') },
         { V6, android::base::Join(expectedRestore6, '\n') },
     };
 
-    createChain("fw_whitelist", "INPUT", WHITELIST);
-    expectIptablesCommands(expectedCommands);
+    createChain("fw_whitelist", WHITELIST);
     expectIptablesRestoreCommands(expectedRestoreCommands);
 }
 
 TEST_F(FirewallControllerTest, TestCreateBlacklistChain) {
-    ExpectedIptablesCommands expectedCommands = {
-        { V4V6, "-t filter -D INPUT -j fw_blacklist" },
-    };
-
     std::vector<std::string> expectedRestore = {
         "*filter",
         ":fw_blacklist -",
         "-A fw_blacklist -i lo -o lo -j RETURN",
         "-A fw_blacklist -p tcp --tcp-flags RST RST -j RETURN",
-        "COMMIT\n\x04"
+        "COMMIT\n"
     };
     std::vector<std::pair<IptablesTarget, std::string>> expectedRestoreCommands = {
         { V4, android::base::Join(expectedRestore, '\n') },
         { V6, android::base::Join(expectedRestore, '\n') },
     };
 
-    createChain("fw_blacklist", "INPUT", BLACKLIST);
-    expectIptablesCommands(expectedCommands);
+    createChain("fw_blacklist", BLACKLIST);
     expectIptablesRestoreCommands(expectedRestoreCommands);
 }
 
@@ -158,7 +148,7 @@ TEST_F(FirewallControllerTest, TestReplaceWhitelistUidRule) {
             "-A FW_whitechain -m owner --uid-owner 210153 -j RETURN\n"
             "-A FW_whitechain -m owner --uid-owner 210024 -j RETURN\n"
             "-A FW_whitechain -j DROP\n"
-            "COMMIT\n\x04";
+            "COMMIT\n";
 
     std::vector<int32_t> uids = { 10023, 10059, 10124, 10111, 110122, 210153, 210024 };
     EXPECT_EQ(expected, makeUidRules(V6, "FW_whitechain", true, uids));
@@ -173,7 +163,7 @@ TEST_F(FirewallControllerTest, TestReplaceBlacklistUidRule) {
             "-A FW_blackchain -m owner --uid-owner 10023 -j DROP\n"
             "-A FW_blackchain -m owner --uid-owner 10059 -j DROP\n"
             "-A FW_blackchain -m owner --uid-owner 10124 -j DROP\n"
-            "COMMIT\n\x04";
+            "COMMIT\n";
 
     std::vector<int32_t> uids = { 10023, 10059, 10124 };
     EXPECT_EQ(expected, makeUidRules(V4 ,"FW_blackchain", false, uids));

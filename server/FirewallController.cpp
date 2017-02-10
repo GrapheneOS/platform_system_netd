@@ -63,16 +63,9 @@ FirewallController::FirewallController(void) {
 
 int FirewallController::setupIptablesHooks(void) {
     int res = 0;
-    // child chains are created but not attached, they will be attached explicitly.
-    FirewallType firewallType = getFirewallType(DOZABLE);
-    res |= createChain(LOCAL_DOZABLE, LOCAL_INPUT, firewallType);
-
-    firewallType = getFirewallType(STANDBY);
-    res |= createChain(LOCAL_STANDBY, LOCAL_INPUT, firewallType);
-
-    firewallType = getFirewallType(POWERSAVE);
-    res |= createChain(LOCAL_POWERSAVE, LOCAL_INPUT, firewallType);
-
+    res |= createChain(LOCAL_DOZABLE, getFirewallType(DOZABLE));
+    res |= createChain(LOCAL_STANDBY, getFirewallType(STANDBY));
+    res |= createChain(LOCAL_POWERSAVE, getFirewallType(POWERSAVE));
     return res;
 }
 
@@ -288,11 +281,9 @@ int FirewallController::detachChain(const char* childChain, const char* parentCh
     return execIptables(V4V6, "-t", TABLE, "-D", parentChain, "-j", childChain, NULL);
 }
 
-int FirewallController::createChain(const char* childChain,
-        const char* parentChain, FirewallType type) {
-    execIptablesSilently(V4V6, "-t", TABLE, "-D", parentChain, "-j", childChain, NULL);
-    std::vector<int32_t> uids;
-    return replaceUidChain(childChain, type == WHITELIST, uids);
+int FirewallController::createChain(const char* chain, FirewallType type) {
+    static const std::vector<int32_t> NO_UIDS;
+    return replaceUidChain(chain, type == WHITELIST, NO_UIDS);
 }
 
 std::string FirewallController::makeUidRules(IptablesTarget target, const char *name,
@@ -333,7 +324,7 @@ std::string FirewallController::makeUidRules(IptablesTarget target, const char *
         StringAppendF(&commands, "-A %s -j DROP\n", name);
     }
 
-    StringAppendF(&commands, "COMMIT\n\x04");  // EOT.
+    StringAppendF(&commands, "COMMIT\n");
 
     return commands;
 }
