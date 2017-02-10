@@ -94,6 +94,7 @@ struct fib_rule_uid_range {
 
 const uint16_t NETLINK_REQUEST_FLAGS = NLM_F_REQUEST | NLM_F_ACK;
 const uint16_t NETLINK_CREATE_REQUEST_FLAGS = NETLINK_REQUEST_FLAGS | NLM_F_CREATE | NLM_F_EXCL;
+const uint16_t NETLINK_DUMP_FLAGS = NLM_F_REQUEST | NLM_F_DUMP;
 
 const uint8_t AF_FAMILIES[] = {AF_INET, AF_INET6};
 
@@ -837,21 +838,71 @@ WARN_UNUSED_RESULT int modifyTetheredNetwork(uint16_t action, const char* inputI
                         inputInterface, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
-// Returns 0 on success or negative errno on failure.
-WARN_UNUSED_RESULT int flushRules() {
-    for (size_t i = 0; i < ARRAY_SIZE(IP_VERSIONS); ++i) {
-        const char* argv[] = {
-            IP_PATH,
-            IP_VERSIONS[i],
-            "rule",
-            "flush",
-        };
-        if (android_fork_execvp(ARRAY_SIZE(argv), const_cast<char**>(argv), NULL, false, false)) {
-            ALOGE("failed to flush rules");
-            return -EREMOTEIO;
+uint32_t getRulePriority(const nlmsghdr *nlh) {
+    uint32_t rta_len = RTM_PAYLOAD(nlh);
+    rtmsg *msg = reinterpret_cast<rtmsg *>(NLMSG_DATA(nlh));
+    rtattr *rta = reinterpret_cast<rtattr *> RTM_RTA(msg);
+    for (; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
+        if (rta->rta_type == FRA_PRIORITY) {
+            return *(static_cast<uint32_t *>(RTA_DATA(rta)));
         }
     }
     return 0;
+}
+
+// Returns 0 on success or negative errno on failure.
+WARN_UNUSED_RESULT int flushRules() {
+    int readSock = openRtNetlinkSocket();
+    if (readSock < 0) {
+        return readSock;
+    }
+
+    int writeSock = openRtNetlinkSocket();
+    if (writeSock < 0) {
+        close(readSock);
+        return writeSock;
+    }
+
+    NetlinkDumpCallback callback = [writeSock] (nlmsghdr *nlh) {
+        if (nlh == nullptr) return;
+        // Don't touch rules at priority 0 because by default they are used for local input.
+        if (getRulePriority(nlh) == 0) return;
+
+        nlh->nlmsg_type = RTM_DELRULE;
+        nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+        if (write(writeSock, nlh, nlh->nlmsg_len) == -1) {
+            ALOGE("Error writing flush request: %s", strerror(errno));
+            return;
+        }
+
+        int ret = recvNetlinkAck(writeSock);
+        if (ret != 0 && ret != -ENOENT) {
+            ALOGW("Flushing rules: %s", strerror(-ret));
+        }
+    };
+
+    int ret = 0;
+    for (const int family : { AF_INET, AF_INET6 }) {
+        // struct fib_rule_hdr and struct rtmsg are functionally identical.
+        rtmsg rule = {
+            .rtm_family = static_cast<uint8_t>(family),
+        };
+        iovec iov[] = {
+            { NULL,  0 },
+            { &rule, sizeof(rule) },
+        };
+        uint16_t action = RTM_GETRULE;
+        uint16_t flags = NETLINK_DUMP_FLAGS;
+
+        if ((ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), callback)) != 0) {
+            break;
+        }
+    }
+
+    close(readSock);
+    close(writeSock);
+
+    return ret;
 }
 
 // Adds or removes an IPv4 or IPv6 route to the specified table and, if it's a directly-connected
