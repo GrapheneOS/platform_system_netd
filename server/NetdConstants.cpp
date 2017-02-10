@@ -119,8 +119,13 @@ int execIptablesSilently(IptablesTarget target, ...) {
     return res;
 }
 
+int execIptablesRestoreWithOutput(IptablesTarget target, const std::string& commands,
+                                  std::string *output) {
+    return android::net::gCtls->iptablesRestoreCtrl.execute(target, commands, output);
+}
+
 int execIptablesRestore(IptablesTarget target, const std::string& commands) {
-    return android::net::gCtls->iptablesRestoreCtrl.execute(target, commands);
+    return execIptablesRestoreWithOutput(target, commands, nullptr);
 }
 
 /*
