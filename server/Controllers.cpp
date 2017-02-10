@@ -88,36 +88,25 @@ static const char* NAT_POSTROUTING[] = {
 };
 
 static void createChildChains(IptablesTarget target, const char* table, const char* parentChain,
-        const char** childChains) {
-    const char** childChain = childChains;
-    do {
-        // Order is important:
-        // -D to delete any pre-existing jump rule (removes references
-        //    that would prevent -X from working)
-        // -F to flush any existing chain
-        // -X to delete any existing chain
-        // -N to create the chain
-        // -A to append the chain to parent
-
-        execIptablesSilently(target, "-t", table, "-D", parentChain, "-j", *childChain, NULL);
-        execIptablesSilently(target, "-t", table, "-F", *childChain, NULL);
-        execIptablesSilently(target, "-t", table, "-X", *childChain, NULL);
-        execIptables(target, "-t", table, "-N", *childChain, NULL);
-        execIptables(target, "-t", table, "-A", parentChain, "-j", *childChain, NULL);
-    } while (*(++childChain) != NULL);
-}
-
-// Fast version of createChildChains. This is only safe to use if the parent chain contains nothing
-// apart from the specified child chains.
-static void createChildChainsFast(IptablesTarget target, const char* table, const char* parentChain,
-        const char** childChains) {
-    const char** childChain = childChains;
+        const char** childChains, bool exclusive) {
     std::string command = android::base::StringPrintf("*%s\n", table);
-    command += android::base::StringPrintf(":%s -\n", parentChain);
-    // Just running ":chain -" flushes user-defined chains, but not built-in chains like INPUT.
-    // Since at this point we don't know if parentChain is a built-in chain, do both.
-    command += android::base::StringPrintf("-F %s\n", parentChain);
+
+    // If we're the exclusive owner of this chain, clear it entirely. This saves us from having to
+    // run one execIptablesSilently command to delete each child chain. We can't use -D in
+    // iptables-restore because it's a fatal error if the rule doesn't exist.
+    // TODO: Make all chains exclusive once vendor code uses the oem_* rules.
+    if (exclusive) {
+        // Just running ":chain -" flushes user-defined chains, but not built-in chains like INPUT.
+        // Since at this point we don't know if parentChain is a built-in chain, do both.
+        command += android::base::StringPrintf(":%s -\n", parentChain);
+        command += android::base::StringPrintf("-F %s\n", parentChain);
+    }
+
+    const char** childChain = childChains;
     do {
+        if (!exclusive) {
+            execIptablesSilently(target, "-t", table, "-D", parentChain, "-j", *childChain, NULL);
+        }
         command += android::base::StringPrintf(":%s -\n", *childChain);
         command += android::base::StringPrintf("-A %s -j %s\n", parentChain, *childChain);
     } while (*(++childChain) != NULL);
@@ -146,14 +135,14 @@ void Controllers::initIptablesRules() {
     // We cannot use createChildChainsFast for all chains because vendor code modifies filter OUTPUT
     // and mangle POSTROUTING directly.
     Stopwatch s;
-    createChildChainsFast(V4V6, "filter", "INPUT", FILTER_INPUT);
-    createChildChainsFast(V4V6, "filter", "FORWARD", FILTER_FORWARD);
-    createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT);
-    createChildChainsFast(V4V6, "raw", "PREROUTING", RAW_PREROUTING);
-    createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING);
-    createChildChainsFast(V4V6, "mangle", "FORWARD", MANGLE_FORWARD);
-    createChildChainsFast(V4, "nat", "PREROUTING", NAT_PREROUTING);
-    createChildChainsFast(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
+    createChildChains(V4V6, "filter", "INPUT", FILTER_INPUT, true);
+    createChildChains(V4V6, "filter", "FORWARD", FILTER_FORWARD, true);
+    createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT, false);
+    createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING, true);
+    createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
+    createChildChains(V4V6, "mangle", "FORWARD", MANGLE_FORWARD, true);
+    createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING, true);
+    createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING, true);
     ALOGI("Creating child chains: %.1fms", s.getTimeAndReset());
 
     // Let each module setup their child chains
