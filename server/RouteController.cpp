@@ -27,9 +27,9 @@
 
 #include <map>
 
+#include "DummyNetwork.h"
 #include "Fwmark.h"
 #include "UidRanges.h"
-#include "DummyNetwork.h"
 
 #include "android-base/file.h"
 #define LOG_TAG "Netd"
@@ -40,6 +40,9 @@
 
 using android::base::WriteStringToFile;
 using android::net::UidRange;
+
+namespace android {
+namespace net {
 
 namespace {
 
@@ -1164,3 +1167,6 @@ int RouteController::removeVirtualNetworkFallthrough(unsigned vpnNetId,
                                                      Permission permission) {
     return modifyVpnFallthroughRule(RTM_DELRULE, vpnNetId, physicalInterface, permission);
 }
+
+}  // namespace net
+}  // namespace android

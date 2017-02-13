@@ -45,6 +45,9 @@
 
 #define INET_DIAG_BC_MARK_COND 10
 
+namespace android {
+namespace net {
+
 namespace {
 
 int checkError(int fd) {
@@ -497,3 +500,6 @@ int SockDiag::destroySocketsLackingPermission(unsigned netId, Permission permiss
 
     return 0;
 }
+
+}  // namespace net
+}  // namespace android

@@ -50,7 +50,11 @@ using android::sp;
 using android::IPCThreadState;
 using android::ProcessState;
 using android::defaultServiceManager;
+using android::net::CommandListener;
+using android::net::DnsProxyListener;
+using android::net::FwmarkServer;
 using android::net::NetdNativeService;
+using android::net::NetlinkManager;
 
 static void blockSigpipe();
 static void remove_pid_file();

@@ -30,6 +30,9 @@
 using android::String16;
 using android::net::metrics::INetdEventListener;
 
+namespace android {
+namespace net {
+
 FwmarkServer::FwmarkServer(NetworkController* networkController, EventReporter* eventReporter) :
         SocketListener("fwmarkd", true), mNetworkController(networkController),
         mEventReporter(eventReporter) {
@@ -252,3 +255,6 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
 
     return 0;
 }
+
+}  // namespace net
+}  // namespace android

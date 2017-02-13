@@ -30,6 +30,9 @@
 #include "SockDiag.h"
 #include "UidRanges.h"
 
+namespace android {
+namespace net {
+
 class SockDiagTest : public ::testing::Test {
 protected:
     static bool isLoopbackSocket(const inet_diag_msg *msg) {
@@ -534,3 +537,6 @@ INSTANTIATE_TEST_CASE_P(Address, SockDiagMicroBenchmarkTest,
                         testing::Values(ADDRESS, UID, UIDRANGE,
                                         UID_EXCLUDE_LOOPBACK, UIDRANGE_EXCLUDE_LOOPBACK,
                                         PERMISSION));
+
+}  // namespace net
+}  // namespace android

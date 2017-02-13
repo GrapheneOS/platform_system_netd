@@ -33,6 +33,9 @@
 struct inet_diag_msg;
 class SockDiagTest;
 
+namespace android {
+namespace net {
+
 class SockDiag {
 
   public:
@@ -79,5 +82,8 @@ class SockDiag {
     void closeSocks() { close(mSock); close(mWriteSock); mSock = mWriteSock = -1; }
     static bool isLoopbackSocket(const inet_diag_msg *msg);
 };
+
+}  // namespace net
+}  // namespace android
 
 #endif  // _SOCK_DIAG_H
