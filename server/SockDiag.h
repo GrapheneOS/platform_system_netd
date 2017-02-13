@@ -27,6 +27,7 @@
 #include <functional>
 #include <set>
 
+#include "NetlinkCommands.h"
 #include "Permission.h"
 #include "UidRanges.h"
 
@@ -43,7 +44,7 @@ class SockDiag {
 
     // Callback function that is called once for every socket in the dump. A return value of true
     // means destroy the socket.
-    typedef std::function<bool(uint8_t proto, const inet_diag_msg *)> DumpCallback;
+    typedef std::function<bool(uint8_t proto, const inet_diag_msg *)> DestroyFilter;
 
     struct DestroyRequest {
         nlmsghdr nlh;
@@ -56,7 +57,8 @@ class SockDiag {
 
     int sendDumpRequest(uint8_t proto, uint8_t family, uint32_t states);
     int sendDumpRequest(uint8_t proto, uint8_t family, const char *addrstr);
-    int readDiagMsg(uint8_t proto, const DumpCallback& callback);
+    int readDiagMsg(uint8_t proto, const DestroyFilter& callback);
+
     int sockDestroy(uint8_t proto, const inet_diag_msg *);
     // Destroys all sockets on the given IPv4 or IPv6 address.
     int destroySockets(const char *addrstr);
@@ -77,7 +79,7 @@ class SockDiag {
     int mSocketsDestroyed;
     int sendDumpRequest(uint8_t proto, uint8_t family, uint32_t states, iovec *iov, int iovcnt);
     int destroySockets(uint8_t proto, int family, const char *addrstr);
-    int destroyLiveSockets(DumpCallback destroy, const char *what, iovec *iov, int iovcnt);
+    int destroyLiveSockets(DestroyFilter destroy, const char *what, iovec *iov, int iovcnt);
     bool hasSocks() { return mSock != -1 && mWriteSock != -1; }
     void closeSocks() { close(mSock); close(mWriteSock); mSock = mWriteSock = -1; }
     static bool isLoopbackSocket(const inet_diag_msg *msg);
