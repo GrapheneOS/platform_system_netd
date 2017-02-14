@@ -864,7 +864,6 @@ WARN_UNUSED_RESULT int flushRules() {
     }
 
     NetlinkDumpCallback callback = [writeSock] (nlmsghdr *nlh) {
-        if (nlh == nullptr) return;
         // Don't touch rules at priority 0 because by default they are used for local input.
         if (getRulePriority(nlh) == 0) return;
 

@@ -134,7 +134,6 @@ int processNetlinkDump(int sock, const NetlinkDumpCallback& callback) {
              nlh = NLMSG_NEXT(nlh, len)) {
             switch (nlh->nlmsg_type) {
               case NLMSG_DONE:
-                callback(nullptr);
                 return 0;
               case NLMSG_ERROR: {
                 nlmsgerr *err = reinterpret_cast<nlmsgerr *>(NLMSG_DATA(nlh));

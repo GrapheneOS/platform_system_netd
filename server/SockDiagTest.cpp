@@ -100,18 +100,12 @@ TEST_F(SockDiagTest, TestDump) {
 
     int v4SocketsSeen = 0;
     bool seenclient46 = false;
-    bool seenNull = false;
     char src[INET6_ADDRSTRLEN], dst[INET6_ADDRSTRLEN];
 
     fprintf(stderr, "Ports:\n  server=%d. client46=%d, client6=%d\n",
             port, ntohs(client46.sin6_port), ntohs(client6.sin6_port));
 
     auto checkIPv4Dump = [&] (uint8_t /* proto */, const inet_diag_msg *msg) {
-        if (msg == nullptr) {
-            EXPECT_FALSE(seenNull);
-            seenNull = true;
-            return false;
-        }
         EXPECT_EQ(htonl(INADDR_LOOPBACK), msg->id.idiag_src[0]);
         v4SocketsSeen++;
         seenclient46 |= (msg->id.idiag_sport == client46.sin6_port);
@@ -131,11 +125,6 @@ TEST_F(SockDiagTest, TestDump) {
     bool seenClient6 = false, seenServer46 = false, seenServer6 = false;
 
     auto checkIPv6Dump = [&] (uint8_t /* proto */, const inet_diag_msg *msg) {
-        if (msg == nullptr) {
-            EXPECT_FALSE(seenNull);
-            seenNull = true;
-            return false;
-        }
         struct in6_addr *saddr = (struct in6_addr *) msg->id.idiag_src;
         EXPECT_TRUE(
             IN6_IS_ADDR_LOOPBACK(saddr) ||
@@ -159,7 +148,6 @@ TEST_F(SockDiagTest, TestDump) {
     SockDiag sd;
     ASSERT_TRUE(sd.open()) << "Failed to open SOCK_DIAG socket";
 
-    seenNull = false;
     int ret = sd.sendDumpRequest(IPPROTO_TCP, AF_INET, "127.0.0.1");
     ASSERT_EQ(0, ret) << "Failed to send IPv4 dump request: " << strerror(-ret);
     fprintf(stderr, "Sent IPv4 dump\n");
@@ -168,14 +156,12 @@ TEST_F(SockDiagTest, TestDump) {
     EXPECT_TRUE(seenclient46);
     EXPECT_FALSE(seenServer46);
 
-    seenNull = false;
     ret = sd.sendDumpRequest(IPPROTO_TCP, AF_INET6, "127.0.0.1");
     ASSERT_EQ(0, ret) << "Failed to send mapped dump request: " << strerror(-ret);
     fprintf(stderr, "Sent mapped dump\n");
     sd.readDiagMsg(IPPROTO_TCP, checkIPv6Dump);
     EXPECT_TRUE(seenServer46);
 
-    seenNull = false;
     ret = sd.sendDumpRequest(IPPROTO_TCP, AF_INET6, "::1");
     ASSERT_EQ(0, ret) << "Failed to send IPv6 dump request: " << strerror(-ret);
     fprintf(stderr, "Sent IPv6 dump\n");

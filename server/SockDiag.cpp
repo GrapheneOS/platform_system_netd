@@ -205,7 +205,6 @@ int SockDiag::sendDumpRequest(uint8_t proto, uint8_t family, const char *addrstr
 
 int SockDiag::readDiagMsg(uint8_t proto, const SockDiag::DestroyFilter& shouldDestroy) {
     NetlinkDumpCallback callback = [this, proto, shouldDestroy] (nlmsghdr *nlh) {
-        if (nlh == nullptr) return;
         const inet_diag_msg *msg = reinterpret_cast<inet_diag_msg *>(NLMSG_DATA(nlh));
         if (shouldDestroy(proto, msg)) {
             sockDestroy(proto, msg);
