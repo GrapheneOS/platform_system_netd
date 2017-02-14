@@ -312,8 +312,12 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint8_t 
     for (size_t i = 0; i < ARRAY_SIZE(AF_FAMILIES); ++i) {
         rule.family = AF_FAMILIES[i];
         if (int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov))) {
-            ALOGE("Error %s %s rule: %s", actionName(action), familyName(rule.family),
-                  strerror(-ret));
+            if (!(action == RTM_DELRULE && ret == -ENOENT && priority == RULE_PRIORITY_TETHERING)) {
+                // Don't log when deleting a tethering rule that's not there. This matches the
+                // behaviour of clearTetheringRules, which ignores ENOENT in this case.
+                ALOGE("Error %s %s rule: %s", actionName(action), familyName(rule.family),
+                      strerror(-ret));
+            }
             return ret;
         }
     }
