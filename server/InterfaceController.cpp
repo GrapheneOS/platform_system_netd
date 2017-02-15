@@ -32,6 +32,7 @@
 using android::base::StringPrintf;
 using android::base::ReadFileToString;
 using android::base::WriteStringToFile;
+using android::net::RouteController;
 
 namespace {
 

@@ -20,6 +20,9 @@
 #include "Network.h"
 #include "Permission.h"
 
+namespace android {
+namespace net {
+
 class PhysicalNetwork : public Network {
 public:
     class Delegate {
@@ -52,5 +55,8 @@ private:
     Permission mPermission;
     bool mIsDefault;
 };
+
+}  // namespace net
+}  // namespace android
 
 #endif  // NETD_SERVER_PHYSICAL_NETWORK_H

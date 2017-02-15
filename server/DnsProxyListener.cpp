@@ -51,6 +51,9 @@
 using android::String16;
 using android::net::metrics::INetdEventListener;
 
+namespace android {
+namespace net {
+
 DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl, EventReporter* eventReporter) :
         FrameworkListener("dnsproxyd"), mNetCtrl(netCtrl), mEventReporter(eventReporter) {
     registerCmd(new GetAddrInfoCmd(this));
@@ -586,3 +589,6 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     }
     mClient->decRef();
 }
+
+}  // namespace net
+}  // namespace android

@@ -26,7 +26,9 @@
 #include <log/log.h>
 
 using android::base::StringAppendF;
-using android::net::UidRange;
+
+namespace android {
+namespace net {
 
 bool UidRanges::hasUid(uid_t uid) const {
     if (uid > (unsigned) INT32_MAX) {
@@ -115,3 +117,6 @@ std::string UidRanges::toString() const {
     StringAppendF(&s, "}");
     return s;
 }
+
+}  // namespace net
+}  // namespace android
