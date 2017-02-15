@@ -47,6 +47,9 @@
 #include "RouteController.h"
 #include "VirtualNetwork.h"
 
+namespace android {
+namespace net {
+
 namespace {
 
 // Keep these in sync with ConnectivityService.java.
@@ -666,3 +669,6 @@ int NetworkController::modifyFallthroughLocked(unsigned vpnNetId, bool add) {
     }
     return 0;
 }
+
+}  // namespace net
+}  // namespace android

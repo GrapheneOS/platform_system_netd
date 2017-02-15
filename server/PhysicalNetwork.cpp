@@ -22,6 +22,9 @@
 #define LOG_TAG "Netd"
 #include "log/log.h"
 
+namespace android {
+namespace net {
+
 namespace {
 
 WARN_UNUSED_RESULT int addToDefault(unsigned netId, const std::string& interface,
@@ -188,3 +191,6 @@ int PhysicalNetwork::removeInterface(const std::string& interface) {
     mInterfaces.erase(interface);
     return 0;
 }
+
+}  // namespace net
+}  // namespace android

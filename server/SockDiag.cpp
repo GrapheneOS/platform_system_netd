@@ -45,6 +45,9 @@
 
 #define INET_DIAG_BC_MARK_COND 10
 
+namespace android {
+namespace net {
+
 namespace {
 
 int checkError(int fd) {
@@ -200,39 +203,15 @@ int SockDiag::sendDumpRequest(uint8_t proto, uint8_t family, const char *addrstr
     return sendDumpRequest(proto, family, states, iov, ARRAY_SIZE(iov));
 }
 
-int SockDiag::readDiagMsg(uint8_t proto, const SockDiag::DumpCallback& callback) {
-    char buf[kBufferSize];
-
-    ssize_t bytesread;
-    do {
-        bytesread = read(mSock, buf, sizeof(buf));
-
-        if (bytesread < 0) {
-            return -errno;
+int SockDiag::readDiagMsg(uint8_t proto, const SockDiag::DestroyFilter& shouldDestroy) {
+    NetlinkDumpCallback callback = [this, proto, shouldDestroy] (nlmsghdr *nlh) {
+        const inet_diag_msg *msg = reinterpret_cast<inet_diag_msg *>(NLMSG_DATA(nlh));
+        if (shouldDestroy(proto, msg)) {
+            sockDestroy(proto, msg);
         }
+    };
 
-        uint32_t len = bytesread;
-        for (nlmsghdr *nlh = reinterpret_cast<nlmsghdr *>(buf);
-             NLMSG_OK(nlh, len);
-             nlh = NLMSG_NEXT(nlh, len)) {
-            switch (nlh->nlmsg_type) {
-              case NLMSG_DONE:
-                callback(proto, NULL);
-                return 0;
-              case NLMSG_ERROR: {
-                nlmsgerr *err = reinterpret_cast<nlmsgerr *>(NLMSG_DATA(nlh));
-                return err->error;
-              }
-              default:
-                inet_diag_msg *msg = reinterpret_cast<inet_diag_msg *>(NLMSG_DATA(nlh));
-                if (callback(proto, msg)) {
-                    sockDestroy(proto, msg);
-                }
-            }
-        }
-    } while (bytesread > 0);
-
-    return 0;
+    return processNetlinkDump(mSock, callback);
 }
 
 // Determines whether a socket is a loopback socket. Does not check socket state.
@@ -321,7 +300,7 @@ int SockDiag::destroySockets(const char *addrstr) {
     return mSocketsDestroyed;
 }
 
-int SockDiag::destroyLiveSockets(DumpCallback destroyFilter, const char *what,
+int SockDiag::destroyLiveSockets(DestroyFilter destroyFilter, const char *what,
                                  iovec *iov, int iovcnt) {
     int proto = IPPROTO_TCP;
 
@@ -497,3 +476,6 @@ int SockDiag::destroySocketsLackingPermission(unsigned netId, Permission permiss
 
     return 0;
 }
+
+}  // namespace net
+}  // namespace android
