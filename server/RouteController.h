@@ -22,6 +22,9 @@
 
 #include <sys/types.h>
 
+namespace android {
+namespace net {
+
 class UidRanges;
 
 class RouteController {
@@ -88,5 +91,8 @@ public:
     static int removeVirtualNetworkFallthrough(unsigned vpnNetId, const char* physicalInterface,
                                                Permission permission) WARN_UNUSED_RESULT;
 };
+
+}  // namespace net
+}  // namespace android
 
 #endif  // NETD_SERVER_ROUTE_CONTROLLER_H

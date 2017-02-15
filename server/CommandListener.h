@@ -34,6 +34,9 @@
 #include "ClatdController.h"
 #include "StrictController.h"
 
+namespace android {
+namespace net {
+
 class CommandListener : public FrameworkListener {
 public:
     CommandListener();
@@ -155,5 +158,8 @@ private:
         int success(SocketClient* cli);
     };
 };
+
+}  // namespace net
+}  // namespace android
 
 #endif
