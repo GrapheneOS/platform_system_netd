@@ -51,7 +51,8 @@
 #include <string>
 #include <vector>
 
-using android::net::gCtls;
+namespace android {
+namespace net {
 
 namespace {
 
@@ -1605,3 +1606,6 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
 
     return syntaxError(client, "Unknown argument");
 }
+
+}  // namespace net
+}  // namespace android

@@ -93,6 +93,7 @@ LOCAL_SRC_FILES := \
         NetdNativeService.cpp \
         NetlinkHandler.cpp \
         NetlinkManager.cpp \
+        NetlinkCommands.cpp \
         Network.cpp \
         NetworkController.cpp \
         PhysicalNetwork.cpp \
@@ -152,6 +153,7 @@ LOCAL_SRC_FILES := \
         FirewallControllerTest.cpp FirewallController.cpp \
         IdletimerController.cpp \
         NatControllerTest.cpp NatController.cpp \
+        NetlinkCommands.cpp \
         SockDiagTest.cpp SockDiag.cpp \
         StrictController.cpp StrictControllerTest.cpp \
         UidRanges.cpp \

@@ -25,6 +25,9 @@
 #include "EventReporter.h"
 #include "NetdCommand.h"
 
+namespace android {
+namespace net {
+
 class NetworkController;
 
 class DnsProxyListener : public FrameworkListener {
@@ -139,5 +142,8 @@ private:
         uint32_t mMark;
     };
 };
+
+}  // namespace net
+}  // namespace android
 
 #endif

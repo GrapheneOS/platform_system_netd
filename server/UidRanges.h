@@ -23,6 +23,9 @@
 #include <utility>
 #include <vector>
 
+namespace android {
+namespace net {
+
 class UidRanges {
 public:
     UidRanges() {}
@@ -40,5 +43,8 @@ public:
 private:
     std::vector<android::net::UidRange> mRanges;
 };
+
+}  // namespace net
+}  // namespace android
 
 #endif  // NETD_SERVER_UID_RANGES_H

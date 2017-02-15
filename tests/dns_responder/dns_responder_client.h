@@ -1,8 +1,6 @@
 #ifndef DNS_RESPONDER_CLIENT_H
 #define DNS_RESPONDER_CLIENT_H
 
-#include "SockDiag.h"
-
 #include <cutils/sockets.h>
 
 #include <private/android_filesystem_config.h>
