@@ -140,6 +140,7 @@ LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
 LOCAL_CFLAGS += -Wno-varargs
 
 LOCAL_C_INCLUDES := \
+        bionic/libc/dns/include \
         system/netd/include \
         system/netd/server \
         system/netd/server/binder \
@@ -154,6 +155,7 @@ LOCAL_SRC_FILES := \
         IdletimerController.cpp \
         NatControllerTest.cpp NatController.cpp \
         NetlinkCommands.cpp \
+        RouteController.cpp RouteControllerTest.cpp \
         SockDiagTest.cpp SockDiag.cpp \
         StrictController.cpp StrictControllerTest.cpp \
         UidRanges.cpp \
@@ -161,6 +163,15 @@ LOCAL_SRC_FILES := \
         binder/android/net/metrics/INetdEventListener.aidl \
 
 LOCAL_MODULE_TAGS := tests
-LOCAL_SHARED_LIBRARIES := libbinder liblog libbase libcutils liblogwrap libsysutils libutils
+LOCAL_SHARED_LIBRARIES := \
+        libbase \
+        libbinder \
+        libcutils \
+        liblog \
+        liblogwrap \
+        libnetutils \
+        libsysutils \
+        libutils \
+
 include $(BUILD_NATIVE_TEST)
 
