@@ -21,6 +21,7 @@
 #include "Permission.h"
 
 #include <sys/types.h>
+#include <linux/netlink.h>
 
 namespace android {
 namespace net {
@@ -91,6 +92,14 @@ public:
     static int removeVirtualNetworkFallthrough(unsigned vpnNetId, const char* physicalInterface,
                                                Permission permission) WARN_UNUSED_RESULT;
 };
+
+// Public because they are called by by RouteControllerTest.cpp.
+// TODO: come up with a scheme of unit testing this code that does not rely on making all its
+// functions public.
+int modifyIpRoute(uint16_t action, uint32_t table, const char* interface, const char* destination,
+                  const char* nexthop) WARN_UNUSED_RESULT;
+int flushRoutes(uint32_t table) WARN_UNUSED_RESULT;
+uint32_t getRulePriority(const nlmsghdr *nlh);
 
 }  // namespace net
 }  // namespace android

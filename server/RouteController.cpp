@@ -45,8 +45,6 @@ using android::net::UidRange;
 namespace android {
 namespace net {
 
-namespace {
-
 // BEGIN CONSTANTS --------------------------------------------------------------------------------
 
 const uint32_t RULE_PRIORITY_VPN_OVERRIDE_SYSTEM = 10000;
@@ -926,8 +924,6 @@ WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
 
     return ret;
 }
-
-}  // namespace
 
 int RouteController::Init(unsigned localNetId) {
     if (int ret = flushRules()) {
