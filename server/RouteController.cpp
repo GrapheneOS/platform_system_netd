@@ -92,13 +92,7 @@ struct fib_rule_uid_range {
         __u32           end;
 };
 
-const uint16_t NETLINK_REQUEST_FLAGS = NLM_F_REQUEST | NLM_F_ACK;
-const uint16_t NETLINK_CREATE_REQUEST_FLAGS = NETLINK_REQUEST_FLAGS | NLM_F_CREATE | NLM_F_EXCL;
-const uint16_t NETLINK_DUMP_FLAGS = NLM_F_REQUEST | NLM_F_DUMP;
-
 const uint8_t AF_FAMILIES[] = {AF_INET, AF_INET6};
-
-const char* const IP_VERSIONS[] = {"-4", "-6"};
 
 const uid_t UID_ROOT = 0;
 const char* const IIF_LOOPBACK = "lo";
@@ -110,8 +104,6 @@ const bool MODIFY_NON_UID_BASED_RULES = true;
 
 const char* const RT_TABLES_PATH = "/data/misc/net/rt_tables";
 const mode_t RT_TABLES_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 0644, rw-r--r--
-
-const unsigned ROUTE_FLUSH_ATTEMPTS = 2;
 
 // Avoids "non-constant-expression cannot be narrowed from type 'unsigned int' to 'unsigned short'"
 // warnings when using RTA_LENGTH(x) inside static initializers (even when x is already uint16_t).
@@ -311,7 +303,7 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint8_t 
     uint16_t flags = (action == RTM_NEWRULE) ? NETLINK_CREATE_REQUEST_FLAGS : NETLINK_REQUEST_FLAGS;
     for (size_t i = 0; i < ARRAY_SIZE(AF_FAMILIES); ++i) {
         rule.family = AF_FAMILIES[i];
-        if (int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov))) {
+        if (int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr)) {
             if (!(action == RTM_DELRULE && ret == -ENOENT && priority == RULE_PRIORITY_TETHERING)) {
                 // Don't log when deleting a tethering rule that's not there. This matches the
                 // behaviour of clearTetheringRules, which ignores ENOENT in this case.
@@ -423,7 +415,7 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
 
     uint16_t flags = (action == RTM_NEWROUTE) ? NETLINK_CREATE_REQUEST_FLAGS :
                                                 NETLINK_REQUEST_FLAGS;
-    int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov));
+    int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr);
     if (ret) {
         ALOGE("Error %s route %s -> %s %s to table %u: %s",
               actionName(action), destination, nexthop, interface, table, strerror(-ret));
@@ -842,72 +834,6 @@ WARN_UNUSED_RESULT int modifyTetheredNetwork(uint16_t action, const char* inputI
                         inputInterface, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
-uint32_t getRulePriority(const nlmsghdr *nlh) {
-    uint32_t rta_len = RTM_PAYLOAD(nlh);
-    rtmsg *msg = reinterpret_cast<rtmsg *>(NLMSG_DATA(nlh));
-    rtattr *rta = reinterpret_cast<rtattr *> RTM_RTA(msg);
-    for (; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
-        if (rta->rta_type == FRA_PRIORITY) {
-            return *(static_cast<uint32_t *>(RTA_DATA(rta)));
-        }
-    }
-    return 0;
-}
-
-// Returns 0 on success or negative errno on failure.
-WARN_UNUSED_RESULT int flushRules() {
-    int readSock = openRtNetlinkSocket();
-    if (readSock < 0) {
-        return readSock;
-    }
-
-    int writeSock = openRtNetlinkSocket();
-    if (writeSock < 0) {
-        close(readSock);
-        return writeSock;
-    }
-
-    NetlinkDumpCallback callback = [writeSock] (nlmsghdr *nlh) {
-        // Don't touch rules at priority 0 because by default they are used for local input.
-        if (getRulePriority(nlh) == 0) return;
-
-        nlh->nlmsg_type = RTM_DELRULE;
-        nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
-        if (write(writeSock, nlh, nlh->nlmsg_len) == -1) {
-            ALOGE("Error writing flush request: %s", strerror(errno));
-            return;
-        }
-
-        int ret = recvNetlinkAck(writeSock);
-        if (ret != 0 && ret != -ENOENT) {
-            ALOGW("Flushing rules: %s", strerror(-ret));
-        }
-    };
-
-    int ret = 0;
-    for (const int family : { AF_INET, AF_INET6 }) {
-        // struct fib_rule_hdr and struct rtmsg are functionally identical.
-        rtmsg rule = {
-            .rtm_family = static_cast<uint8_t>(family),
-        };
-        iovec iov[] = {
-            { NULL,  0 },
-            { &rule, sizeof(rule) },
-        };
-        uint16_t action = RTM_GETRULE;
-        uint16_t flags = NETLINK_DUMP_FLAGS;
-
-        if ((ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), callback)) != 0) {
-            break;
-        }
-    }
-
-    close(readSock);
-    close(writeSock);
-
-    return ret;
-}
-
 // Adds or removes an IPv4 or IPv6 route to the specified table and, if it's a directly-connected
 // route, to the main table as well.
 // Returns 0 on success or negative errno on failure.
@@ -945,56 +871,6 @@ WARN_UNUSED_RESULT int modifyRoute(uint16_t action, const char* interface, const
     return 0;
 }
 
-// Returns 0 on success or negative errno on failure.
-WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
-    uint32_t table = getRouteTableForInterface(interface);
-    if (table == RT_TABLE_UNSPEC) {
-        return -ESRCH;
-    }
-
-    char tableString[UINT32_STRLEN];
-    snprintf(tableString, sizeof(tableString), "%u", table);
-
-    int ret = 0;
-    for (size_t i = 0; i < ARRAY_SIZE(IP_VERSIONS); ++i) {
-        const char* argv[] = {
-            IP_PATH,
-            IP_VERSIONS[i],
-            "route",
-            "flush",
-            "table",
-            tableString,
-        };
-
-        // A flush works by dumping routes and deleting each route as it's returned, and it can
-        // fail if something else deletes the route between the dump and the delete. This can
-        // happen, for example, if an interface goes down while we're trying to flush its routes.
-        // So try multiple times and only return an error if the last attempt fails.
-        //
-        // TODO: replace this with our own netlink code.
-        unsigned attempts = 0;
-        int err;
-        do {
-            err = android_fork_execvp(ARRAY_SIZE(argv), const_cast<char**>(argv),
-                                      NULL, false, false);
-            ++attempts;
-        } while (err != 0 && attempts < ROUTE_FLUSH_ATTEMPTS);
-        if (err) {
-            ALOGE("failed to flush %s routes in table %s after %d attempts",
-                  IP_VERSIONS[i], tableString, attempts);
-            ret = -EREMOTEIO;
-        }
-    }
-
-    // If we failed to flush routes, the caller may elect to keep this interface around, so keep
-    // track of its name.
-    if (!ret) {
-        interfaceToTable.erase(interface);
-    }
-
-    return ret;
-}
-
 WARN_UNUSED_RESULT int clearTetheringRules(const char* inputInterface) {
     int ret = 0;
     while (ret == 0) {
@@ -1007,6 +883,48 @@ WARN_UNUSED_RESULT int clearTetheringRules(const char* inputInterface) {
     } else {
         return ret;
     }
+}
+
+uint32_t getRulePriority(const nlmsghdr *nlh) {
+    return getRtmU32Attribute(nlh, FRA_PRIORITY);
+}
+
+uint32_t getRouteTable(const nlmsghdr *nlh) {
+    return getRtmU32Attribute(nlh, RTA_TABLE);
+}
+
+WARN_UNUSED_RESULT int flushRules() {
+    NetlinkDumpFilter shouldDelete = [] (nlmsghdr *nlh) {
+        // Don't touch rules at priority 0 because by default they are used for local input.
+        return getRulePriority(nlh) != 0;
+    };
+    return rtNetlinkFlush(RTM_GETRULE, RTM_DELRULE, "rules", shouldDelete);
+}
+
+WARN_UNUSED_RESULT int flushRoutes(uint32_t table) {
+    NetlinkDumpFilter shouldDelete = [table] (nlmsghdr *nlh) {
+        return getRouteTable(nlh) == table;
+    };
+
+    return rtNetlinkFlush(RTM_GETROUTE, RTM_DELROUTE, "routes", shouldDelete);
+}
+
+// Returns 0 on success or negative errno on failure.
+WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
+    uint32_t table = getRouteTableForInterface(interface);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    int ret = flushRoutes(table);
+
+    // If we failed to flush routes, the caller may elect to keep this interface around, so keep
+    // track of its name.
+    if (ret == 0) {
+        interfaceToTable.erase(interface);
+    }
+
+    return ret;
 }
 
 }  // namespace

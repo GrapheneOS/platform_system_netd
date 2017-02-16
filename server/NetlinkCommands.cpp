@@ -74,7 +74,7 @@ __attribute__((optnone))
 #endif
 #endif
 WARN_UNUSED_RESULT int sendNetlinkRequest(uint16_t action, uint16_t flags, iovec* iov, int iovlen,
-                                          const NetlinkDumpCallback& callback) {
+                                          const NetlinkDumpCallback *callback) {
     nlmsghdr nlmsg = {
         .nlmsg_type = action,
         .nlmsg_flags = flags,
@@ -90,7 +90,6 @@ WARN_UNUSED_RESULT int sendNetlinkRequest(uint16_t action, uint16_t flags, iovec
         return sock;
     }
 
-
     int ret = 0;
 
     if (writev(sock, iov, iovlen) == -1) {
@@ -102,10 +101,8 @@ WARN_UNUSED_RESULT int sendNetlinkRequest(uint16_t action, uint16_t flags, iovec
 
     if (flags & NLM_F_ACK) {
         ret = recvNetlinkAck(sock);
-    }
-
-    if ((flags & NLM_F_DUMP) && callback != nullptr) {
-        ret = processNetlinkDump(sock, callback);
+    } else if ((flags & NLM_F_DUMP) && callback != nullptr) {
+        ret = processNetlinkDump(sock, *callback);
     }
 
     close(sock);
@@ -145,6 +142,73 @@ int processNetlinkDump(int sock, const NetlinkDumpCallback& callback) {
         }
     } while (bytesread > 0);
 
+    return 0;
+}
+
+WARN_UNUSED_RESULT int rtNetlinkFlush(uint16_t getAction, uint16_t deleteAction,
+                                     const char *what, const NetlinkDumpFilter& shouldDelete) {
+    // RTM_GETxxx is always RTM_DELxxx + 1, see <linux/rtnetlink.h>.
+    if (getAction != deleteAction + 1) {
+        ALOGE("Unknown flush type getAction=%d deleteAction=%d", getAction, deleteAction);
+        return -EINVAL;
+    }
+
+    int writeSock = openRtNetlinkSocket();
+    if (writeSock < 0) {
+        return writeSock;
+    }
+
+    NetlinkDumpCallback callback = [writeSock, deleteAction, shouldDelete, what] (nlmsghdr *nlh) {
+        if (!shouldDelete(nlh)) return;
+
+        nlh->nlmsg_type = deleteAction;
+        nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+        if (write(writeSock, nlh, nlh->nlmsg_len) == -1) {
+            ALOGE("Error writing flush request: %s", strerror(errno));
+            return;
+        }
+
+        int ret = recvNetlinkAck(writeSock);
+        // A flush works by dumping routes and deleting each route as it's returned, and it can
+        // fail if something else deletes the route between the dump and the delete. This can
+        // happen, for example, if an interface goes down while we're trying to flush its routes.
+        // So ignore ENOENT.
+        if (ret != 0 && ret != -ENOENT) {
+            ALOGW("Flushing %s: %s", what, strerror(-ret));
+        }
+    };
+
+    int ret = 0;
+    for (const int family : { AF_INET, AF_INET6 }) {
+        // struct fib_rule_hdr and struct rtmsg are functionally identical.
+        rtmsg rule = {
+            .rtm_family = static_cast<uint8_t>(family),
+        };
+        iovec iov[] = {
+            { NULL,  0 },
+            { &rule, sizeof(rule) },
+        };
+        uint16_t flags = NETLINK_DUMP_FLAGS;
+
+        if ((ret = sendNetlinkRequest(getAction, flags, iov, ARRAY_SIZE(iov), &callback)) != 0) {
+            break;
+        }
+    }
+
+    close(writeSock);
+
+    return ret;
+}
+
+uint32_t getRtmU32Attribute(const nlmsghdr *nlh, int attribute) {
+    uint32_t rta_len = RTM_PAYLOAD(nlh);
+    rtmsg *msg = reinterpret_cast<rtmsg *>(NLMSG_DATA(nlh));
+    rtattr *rta = reinterpret_cast<rtattr *> RTM_RTA(msg);
+    for (; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
+        if (rta->rta_type == attribute) {
+            return *(static_cast<uint32_t *>(RTA_DATA(rta)));
+        }
+    }
     return 0;
 }
 
