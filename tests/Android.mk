@@ -38,6 +38,7 @@ LOCAL_SRC_FILES := binder_test.cpp \
                    dns_responder/dns_responder.cpp \
                    netd_integration_test.cpp \
                    netd_test.cpp \
+                   tun_interface.cpp \
                    ../server/NetdConstants.cpp \
                    ../server/binder/android/net/metrics/INetdEventListener.aidl
 LOCAL_MODULE_TAGS := eng tests
