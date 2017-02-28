@@ -33,6 +33,7 @@
 IptablesBaseTest::IptablesBaseTest() {
     sCmds.clear();
     sRestoreCmds.clear();
+    sReturnValues.clear();
 }
 
 int IptablesBaseTest::fake_android_fork_exec(int argc, char* argv[], int *status, bool, bool) {
@@ -43,10 +44,19 @@ int IptablesBaseTest::fake_android_fork_exec(int argc, char* argv[], int *status
         cmd += argv[i];
     }
     sCmds.push_back(cmd);
-    if (status) {
-        *status = 0;
+
+    int ret;
+    if (sReturnValues.size()) {
+        ret = sReturnValues.front();
+        sReturnValues.pop_front();
+    } else {
+        ret = 0;
     }
-    return 0;
+
+    if (status) {
+        *status = ret;
+    }
+    return ret;
 }
 
 int IptablesBaseTest::fakeExecIptables(IptablesTarget target, ...) {
@@ -169,7 +179,12 @@ void IptablesBaseTest::expectIptablesRestoreCommands(const ExpectedIptablesComma
     sRestoreCmds.clear();
 }
 
+void IptablesBaseTest::setReturnValues(const std::deque<int>& returnValues) {
+    sReturnValues = returnValues;
+}
+
 std::vector<std::string> IptablesBaseTest::sCmds = {};
 IptablesBaseTest::ExpectedIptablesCommands IptablesBaseTest::sRestoreCmds = {};
 std::deque<std::string> IptablesBaseTest::sPopenContents = {};
 std::deque<std::string> IptablesBaseTest::sIptablesRestoreOutput = {};
+std::deque<int> IptablesBaseTest::sReturnValues = {};

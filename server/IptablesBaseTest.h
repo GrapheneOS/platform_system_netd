@@ -38,10 +38,12 @@ public:
     void expectIptablesCommands(const std::vector<ExpectedIptablesCommands>& snippets);
     void expectIptablesRestoreCommands(const std::vector<std::string>& expectedCmds);
     void expectIptablesRestoreCommands(const ExpectedIptablesCommands& expectedCmds);
+    void setReturnValues(const std::deque<int>& returnValues);
 
 protected:
     static std::vector<std::string> sCmds;
     static ExpectedIptablesCommands sRestoreCmds;
+    static std::deque<int> sReturnValues;
     static std::deque<std::string> sPopenContents;
     static std::deque<std::string> sIptablesRestoreOutput;
     int expectIptablesCommand(IptablesTarget target, int pos, const std::string& cmd);

@@ -144,6 +144,7 @@ LOCAL_C_INCLUDES := \
         system/netd/include \
         system/netd/server \
         system/netd/server/binder \
+        system/netd/tests \
         system/core/logwrapper/include \
 
 LOCAL_SRC_FILES := \
@@ -161,6 +162,7 @@ LOCAL_SRC_FILES := \
         UidRanges.cpp \
         binder/android/net/UidRange.cpp \
         binder/android/net/metrics/INetdEventListener.aidl \
+        ../tests/tun_interface.cpp \
 
 LOCAL_MODULE_TAGS := tests
 LOCAL_SHARED_LIBRARIES := \
