@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include <inttypes.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -31,6 +32,10 @@
 
 #include "BandwidthController.h"
 #include "IptablesBaseTest.h"
+#include "tun_interface.h"
+
+using android::base::StringPrintf;
+using android::net::TunInterface;
 
 class BandwidthControllerTest : public IptablesBaseTest {
 public:
@@ -40,6 +45,15 @@ public:
         BandwidthController::iptablesRestoreFunction = fakeExecIptablesRestoreWithOutput;
     }
     BandwidthController mBw;
+    TunInterface mTun;
+
+    void SetUp() {
+        ASSERT_EQ(0, mTun.init());
+    }
+
+    void TearDown() {
+        mTun.destroy();
+    }
 
     void addIptablesRestoreOutput(std::string contents) {
         sIptablesRestoreOutput.push_back(contents);
@@ -325,4 +339,52 @@ TEST_F(BandwidthControllerTest, TestGetTetherStats) {
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
     expectNoSocketClientResponse(socketPair[1]);
     clearIptablesRestoreOutput();
+}
+
+const std::vector<std::string> makeInterfaceQuotaCommands(const char *iface, int ruleIndex,
+                                                          int64_t quota) {
+    std::vector<std::string> cmds = {
+        StringPrintf("-F bw_costly_%s", iface),
+        StringPrintf("-N bw_costly_%s", iface),
+        StringPrintf("-A bw_costly_%s -j bw_penalty_box", iface),
+        StringPrintf("-D bw_INPUT -i %s --jump bw_costly_%s", iface, iface),
+        StringPrintf("-I bw_INPUT %d -i %s --jump bw_costly_%s", ruleIndex, iface, iface),
+        StringPrintf("-D bw_OUTPUT -o %s --jump bw_costly_%s", iface, iface),
+        StringPrintf("-I bw_OUTPUT %d -o %s --jump bw_costly_%s", ruleIndex, iface, iface),
+        StringPrintf("-D bw_FORWARD -o %s --jump bw_costly_%s", iface, iface),
+        StringPrintf("-A bw_FORWARD -o %s --jump bw_costly_%s", iface, iface),
+        StringPrintf("-A bw_costly_%s -m quota2 ! --quota %" PRIu64 " --name %s --jump REJECT",
+                     iface, quota, iface),
+    };
+    return cmds;
+}
+
+const std::vector<std::string> removeInterfaceQuotaCommands(const char *iface) {
+    std::vector<std::string> cmds = {
+        StringPrintf("-D bw_INPUT -i %s --jump bw_costly_%s", iface, iface),
+        StringPrintf("-D bw_OUTPUT -o %s --jump bw_costly_%s", iface, iface),
+        StringPrintf("-D bw_FORWARD -o %s --jump bw_costly_%s", iface, iface),
+        StringPrintf("-F bw_costly_%s", iface),
+        StringPrintf("-X bw_costly_%s", iface),
+    };
+    return cmds;
+}
+
+TEST_F(BandwidthControllerTest, TestSetInterfaceQuota) {
+    const char *iface = mTun.name().c_str();
+    std::vector<std::string> expected = makeInterfaceQuotaCommands(iface, 1, 123456);
+
+    // prepCostlyInterface assumes that exactly one of the "-F chain" and "-N chain" commands fails.
+    // So pretend that the first two commands (the IPv4 -F and the IPv6 -F) fail.
+    std::deque<int> returnValues(expected.size() * 2, 0);
+    returnValues[0] = 1;
+    returnValues[1] = 1;
+    setReturnValues(returnValues);
+
+    EXPECT_EQ(0, mBw.setInterfaceQuota(iface, 123456));
+    expectIptablesCommands(expected);
+
+    expected = removeInterfaceQuotaCommands(iface);
+    EXPECT_EQ(0, mBw.removeInterfaceQuota(iface));
+    expectIptablesCommands(expected);
 }
