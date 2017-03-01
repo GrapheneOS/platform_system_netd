@@ -16,7 +16,8 @@
 
 #include <string>
 #include <fcntl.h>
-#include <signal.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include <gtest/gtest.h>
 
@@ -28,12 +29,28 @@
 #include "IptablesRestoreController.h"
 #include "NetdConstants.h"
 
+#define XTABLES_LOCK "@xtables"
+
 using android::base::Join;
 using android::base::StringPrintf;
 
 class IptablesRestoreControllerTest : public ::testing::Test {
 public:
   IptablesRestoreController con;
+  int mDefaultMaxRetries = con.MAX_RETRIES;
+  int mDefaultPollTimeoutMs = con.POLL_TIMEOUT_MS;
+  int mIptablesLock = -1;
+  std::string mChainName;
+
+  void SetUp() {
+    ASSERT_EQ(0, createTestChain());
+  }
+
+  void TearDown() {
+    con.MAX_RETRIES = mDefaultMaxRetries;
+    con.POLL_TIMEOUT_MS = mDefaultPollTimeoutMs;
+    deleteTestChain();
+  }
 
   pid_t getIpRestorePid(const IptablesRestoreController::IptablesProcessType type) {
       return con.getIpRestorePid(type);
@@ -61,6 +78,62 @@ public:
     std::string statString(statBuf);
     EXPECT_FALSE(statString.find("iptables-restor") || statString.find("ip6tables-resto"))
       << "Previous iptables-restore pid " << pid << " still alive: " << statString;
+  }
+
+  int createTestChain() {
+    mChainName = StringPrintf("netd_unit_test_%u", arc4random_uniform(10000)).c_str();
+
+    // Create a chain to list.
+    std::vector<std::string> createCommands = {
+        "*filter",
+        StringPrintf(":%s -", mChainName.c_str()),
+        StringPrintf("-A %s -j RETURN", mChainName.c_str()),
+        "COMMIT",
+        ""
+    };
+
+    int ret = con.execute(V4V6, Join(createCommands, "\n"), nullptr);
+    if (ret) mChainName = "";
+    return ret;
+  }
+
+  void deleteTestChain() {
+    std::vector<std::string> deleteCommands = {
+        "*filter",
+        StringPrintf(":%s -", mChainName.c_str()),  // Flush chain (otherwise we can't delete it).
+        StringPrintf("-X %s", mChainName.c_str()),  // Delete it.
+        "COMMIT",
+        ""
+    };
+    con.execute(V4V6, Join(deleteCommands, "\n"), nullptr);
+    mChainName = "";
+  }
+
+  int acquireIptablesLock() {
+    mIptablesLock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (mIptablesLock == -1) {
+      return -errno;
+    }
+    sockaddr_un sun = { AF_UNIX, XTABLES_LOCK };
+    sun.sun_path[0] = '\0';
+    size_t len = offsetof(struct sockaddr_un, sun_path) + sizeof(XTABLES_LOCK) - 1;
+    if (int ret = bind(mIptablesLock, reinterpret_cast<sockaddr *>(&sun), len) == -1) {
+      ret = -errno;
+      close(mIptablesLock);
+      return ret;
+    }
+    return 0;
+  }
+
+  void releaseIptablesLock() {
+    if (mIptablesLock != -1) {
+      close(mIptablesLock);
+    }
+  }
+
+  void setRetryParameters(int maxRetries, int pollTimeoutMs) {
+    con.MAX_RETRIES = maxRetries;
+    con.POLL_TIMEOUT_MS = pollTimeoutMs;
   }
 };
 
@@ -123,42 +196,39 @@ TEST_F(IptablesRestoreControllerTest, TestRestartOnProcessDeath) {
   expectNoIptablesRestoreProcess(pid6);
 }
 
-TEST_F(IptablesRestoreControllerTest, TestOutput) {
-  const char *chainName = StringPrintf("netd_unit_test_%u", arc4random_uniform(10000)).c_str();
-
-  // Create a chain to list.
-  std::vector<std::string> createCommands = {
-      "*filter",
-      StringPrintf(":%s -", chainName),
-      StringPrintf("-A %s -j RETURN", chainName),
-      "COMMIT",
-      ""
-  };
-  EXPECT_EQ(0, con.execute(V4V6, Join(createCommands, "\n"), nullptr));
+TEST_F(IptablesRestoreControllerTest, TestCommandTimeout) {
+  // Don't wait 10 seconds for this test to fail.
+  setRetryParameters(3, 50);
 
   // Expected contents of the chain.
   std::vector<std::string> expectedLines = {
-      StringPrintf("Chain %s (0 references)", chainName),
+      StringPrintf("Chain %s (0 references)", mChainName.c_str()),
       "target     prot opt source               destination         ",
       "RETURN     all  --  0.0.0.0/0            0.0.0.0/0           ",
-      StringPrintf("Chain %s (0 references)", chainName),
+      StringPrintf("Chain %s (0 references)", mChainName.c_str()),
       "target     prot opt source               destination         ",
       "RETURN     all      ::/0                 ::/0                ",
       ""
   };
   std::string expected = Join(expectedLines, "\n");
 
-  // List and delete the chain.
   std::vector<std::string> listCommands = {
       "*filter",
-      StringPrintf("-n -L %s", chainName),  // List chain.
-      StringPrintf(":%s -", chainName),     // Flush chain (otherwise we can't delete it).
-      StringPrintf("-X %s", chainName),     // Delete chain.
+      StringPrintf("-n -L %s", mChainName.c_str()),  // List chain.
       "COMMIT",
       ""
   };
-
+  std::string commandString = Join(listCommands, "\n");
   std::string output;
-  EXPECT_EQ(0, con.execute(V4V6, Join(listCommands, "\n"), &output));
+
+  EXPECT_EQ(0, con.execute(IptablesTarget::V4V6, commandString, &output));
+  EXPECT_EQ(expected, output);
+
+  ASSERT_EQ(0, acquireIptablesLock());
+  EXPECT_EQ(-1, con.execute(IptablesTarget::V4V6, commandString, &output));
+  EXPECT_EQ(-1, con.execute(IptablesTarget::V4V6, commandString, &output));
+  releaseIptablesLock();
+
+  EXPECT_EQ(0, con.execute(IptablesTarget::V4V6, commandString, &output));
   EXPECT_EQ(expected, output);
 }

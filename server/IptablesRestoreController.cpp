@@ -34,10 +34,9 @@ constexpr char PING[] = "#PING\n";
 
 constexpr size_t PING_SIZE = sizeof(PING) - 1;
 
-// TODO: This mirrors &gCtls.iptablesRestoreCtrl in production and is duplicated
-// here to aid testing. It allows us to unit-test IptablesRestoreController without
-// needing to construct a fully fledged Controllers object.
-/* static */ IptablesRestoreController* sInstance = nullptr;
+// Not compile-time constants because they are changed by the unit tests.
+int IptablesRestoreController::MAX_RETRIES = 50;
+int IptablesRestoreController::POLL_TIMEOUT_MS = 100;
 
 class IptablesProcess {
 public:
@@ -266,14 +265,6 @@ void IptablesRestoreController::maybeLogStderr(const std::unique_ptr<IptablesPro
     process->errBuf.clear();
 }
 
-// The maximum number of times we poll(2) for a response on our set of polled
-// fds. Chosen so that the overall timeout is 1s.
-static constexpr int MAX_RETRIES = 10;
-
-// The timeout (in millis) for each call to poll. The maximum wait is
-// |POLL_TIMEOUT_MS * MAX_RETRIES|. Chosen so that the overall timeout is 1s.
-static constexpr int POLL_TIMEOUT_MS = 100;
-
 /* static */
 bool IptablesRestoreController::drainAndWaitForAck(const std::unique_ptr<IptablesProcess> &process,
                                                    const std::string& command,
@@ -341,6 +332,9 @@ bool IptablesRestoreController::drainAndWaitForAck(const std::unique_ptr<Iptable
 
     if (!receivedAck && !process->processTerminated) {
         ALOGE("Timed out waiting for response from iptables process %d", process->pid);
+        // Kill the process so that if it eventually recovers, we don't misinterpret the ping
+        // response (or any output) of the command we just sent as coming from future commands.
+        process->stop();
     }
 
     maybeLogStderr(process, command);
@@ -355,6 +349,8 @@ int IptablesRestoreController::execute(const IptablesTarget target, const std::s
     std::string buffer;
     if (output == nullptr) {
         output = &buffer;
+    } else {
+        output->clear();
     }
 
     int res = 0;
