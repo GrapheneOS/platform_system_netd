@@ -53,6 +53,15 @@ protected:
     friend class IptablesRestoreControllerTest;
     pid_t getIpRestorePid(const IptablesProcessType type);
 
+    // The maximum number of times we poll(2) for a response on our set of polled
+    // fds. Chosen so that the overall timeout is 5s. The timeout is so high because
+    // our version of iptables still polls every second in xtables_lock.
+    static int MAX_RETRIES;
+
+    // The timeout (in millis) for each call to poll. The maximum wait is
+    // |POLL_TIMEOUT_MS * MAX_RETRIES|. Chosen so that the overall timeout is 1s.
+    static int POLL_TIMEOUT_MS;
+
 private:
     static IptablesProcess* forkAndExec(const IptablesProcessType type);
 
