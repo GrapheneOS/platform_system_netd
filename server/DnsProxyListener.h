@@ -62,11 +62,9 @@ private:
                            const android::sp<android::net::metrics::INetdEventListener>& listener);
         ~GetAddrInfoHandler();
 
-        static void* threadStart(void* handler);
-        void start();
+        void run();
 
     private:
-        void run();
         SocketClient* mClient;  // ref counted
         char* mHost;    // owned
         char* mService; // owned
@@ -96,10 +94,10 @@ private:
                             int reportingLevel,
                             const android::sp<android::net::metrics::INetdEventListener>& listener);
         ~GetHostByNameHandler();
-        static void* threadStart(void* handler);
-        void start();
-    private:
+
         void run();
+
+    private:
         SocketClient* mClient; //ref counted
         char* mName; // owned
         int mAf;
@@ -129,11 +127,9 @@ private:
                             uint32_t mark);
         ~GetHostByAddrHandler();
 
-        static void* threadStart(void* handler);
-        void start();
+        void run();
 
     private:
-        void run();
         SocketClient* mClient;  // ref counted
         void* mAddress;    // address to lookup; owned
         int mAddressLen; // length of address to look up

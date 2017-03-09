@@ -54,6 +54,66 @@ using android::net::metrics::INetdEventListener;
 namespace android {
 namespace net {
 
+namespace {
+
+template<typename T>
+void* threadMain(void* obj) {
+    std::unique_ptr<T> handler(reinterpret_cast<T*>(obj));
+    handler->run();
+    return nullptr;
+}
+
+struct scoped_pthread_attr {
+    scoped_pthread_attr() { pthread_attr_init(&attr); }
+    ~scoped_pthread_attr() { pthread_attr_destroy(&attr); }
+
+    int detach() {
+        return pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    }
+
+    pthread_attr_t attr;
+};
+
+template<typename T>
+int threadLaunch(T* self) {
+    if (self == nullptr) { return -EINVAL;}
+
+    scoped_pthread_attr scoped_attr;
+
+    int rval = scoped_attr.detach();
+    if (rval != 0) { return -errno; }
+
+    pthread_t thread;
+    rval = pthread_create(&thread, &scoped_attr.attr, &threadMain<T>, self);
+    if (rval != 0) {
+        ALOGW("pthread_create failed: %d", errno);
+        return -errno;
+    }
+
+    return rval;
+}
+
+template<typename T>
+void tryThreadOrError(SocketClient* cli, T* handler) {
+    cli->incRef();
+
+    const int rval = threadLaunch(handler);
+    if (rval == 0) {
+        // SocketClient decRef() happens in the handler's run() method.
+        return;
+    }
+
+    char* msg = NULL;
+    asprintf(&msg, "%s (%d)", strerror(-rval), -rval);
+    cli->sendMsg(ResponseCode::OperationFailed, msg, false);
+    free(msg);
+
+    delete handler;
+    cli->decRef();
+}
+
+}  // namespace
+
 DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl, EventReporter* eventReporter) :
         FrameworkListener("dnsproxyd"), mNetCtrl(netCtrl), mEventReporter(eventReporter) {
     registerCmd(new GetAddrInfoCmd(this));
@@ -78,21 +138,6 @@ DnsProxyListener::GetAddrInfoHandler::~GetAddrInfoHandler() {
     free(mHost);
     free(mService);
     free(mHints);
-}
-
-void DnsProxyListener::GetAddrInfoHandler::start() {
-    pthread_t thread;
-    pthread_create(&thread, NULL,
-                   DnsProxyListener::GetAddrInfoHandler::threadStart, this);
-    pthread_detach(thread);
-}
-
-void* DnsProxyListener::GetAddrInfoHandler::threadStart(void* obj) {
-    GetAddrInfoHandler* handler = reinterpret_cast<GetAddrInfoHandler*>(obj);
-    handler->run();
-    delete handler;
-    pthread_exit(NULL);
-    return NULL;
 }
 
 static bool sendBE32(SocketClient* c, uint32_t data) {
@@ -317,12 +362,10 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
 
     const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
 
-    cli->incRef();
     DnsProxyListener::GetAddrInfoHandler* handler =
             new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, netcontext,
                     metricsLevel, mDnsProxyListener->mEventReporter->getNetdEventListener());
-    handler->start();
-
+    tryThreadOrError(cli, handler);
     return 0;
 }
 
@@ -364,12 +407,10 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
     uint32_t mark = mDnsProxyListener->mNetCtrl->getNetworkForDns(&netId, uid);
     const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
 
-    cli->incRef();
     DnsProxyListener::GetHostByNameHandler* handler =
             new DnsProxyListener::GetHostByNameHandler(cli, name, af, netId, mark, metricsLevel,
                     mDnsProxyListener->mEventReporter->getNetdEventListener());
-    handler->start();
-
+    tryThreadOrError(cli, handler);
     return 0;
 }
 
@@ -387,21 +428,6 @@ DnsProxyListener::GetHostByNameHandler::GetHostByNameHandler(
 
 DnsProxyListener::GetHostByNameHandler::~GetHostByNameHandler() {
     free(mName);
-}
-
-void DnsProxyListener::GetHostByNameHandler::start() {
-    pthread_t thread;
-    pthread_create(&thread, NULL,
-            DnsProxyListener::GetHostByNameHandler::threadStart, this);
-    pthread_detach(thread);
-}
-
-void* DnsProxyListener::GetHostByNameHandler::threadStart(void* obj) {
-    GetHostByNameHandler* handler = reinterpret_cast<GetHostByNameHandler*>(obj);
-    handler->run();
-    delete handler;
-    pthread_exit(NULL);
-    return NULL;
 }
 
 void DnsProxyListener::GetHostByNameHandler::run() {
@@ -519,11 +545,9 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
 
     uint32_t mark = mDnsProxyListener->mNetCtrl->getNetworkForDns(&netId, uid);
 
-    cli->incRef();
     DnsProxyListener::GetHostByAddrHandler* handler =
             new DnsProxyListener::GetHostByAddrHandler(cli, addr, addrLen, addrFamily, netId, mark);
-    handler->start();
-
+    tryThreadOrError(cli, handler);
     return 0;
 }
 
@@ -543,21 +567,6 @@ DnsProxyListener::GetHostByAddrHandler::GetHostByAddrHandler(SocketClient* c,
 
 DnsProxyListener::GetHostByAddrHandler::~GetHostByAddrHandler() {
     free(mAddress);
-}
-
-void DnsProxyListener::GetHostByAddrHandler::start() {
-    pthread_t thread;
-    pthread_create(&thread, NULL,
-                   DnsProxyListener::GetHostByAddrHandler::threadStart, this);
-    pthread_detach(thread);
-}
-
-void* DnsProxyListener::GetHostByAddrHandler::threadStart(void* obj) {
-    GetHostByAddrHandler* handler = reinterpret_cast<GetHostByAddrHandler*>(obj);
-    handler->run();
-    delete handler;
-    pthread_exit(NULL);
-    return NULL;
 }
 
 void DnsProxyListener::GetHostByAddrHandler::run() {
