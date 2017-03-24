@@ -16,6 +16,7 @@
 
 #include <string>
 #include <fcntl.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
@@ -29,7 +30,9 @@
 #include "IptablesRestoreController.h"
 #include "NetdConstants.h"
 
-#define XTABLES_LOCK "@xtables"
+#define XT_LOCK_NAME "/system/etc/xtables.lock"
+#define XT_LOCK_ATTEMPTS 10
+#define XT_LOCK_POLL_INTERVAL_MS 100
 
 using android::base::Join;
 using android::base::StringPrintf;
@@ -110,19 +113,19 @@ public:
   }
 
   int acquireIptablesLock() {
-    mIptablesLock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (mIptablesLock == -1) {
-      return -errno;
+    mIptablesLock = open(XT_LOCK_NAME, O_CREAT, 0600);
+    if (mIptablesLock == -1) return mIptablesLock;
+    int attempts;
+    for (attempts = 0; attempts < XT_LOCK_ATTEMPTS; attempts++) {
+      if (flock(mIptablesLock, LOCK_EX | LOCK_NB) == 0) {
+        return 0;
+      }
+      usleep(XT_LOCK_POLL_INTERVAL_MS * 1000);
     }
-    sockaddr_un sun = { AF_UNIX, XTABLES_LOCK };
-    sun.sun_path[0] = '\0';
-    size_t len = offsetof(struct sockaddr_un, sun_path) + sizeof(XTABLES_LOCK) - 1;
-    if (int ret = bind(mIptablesLock, reinterpret_cast<sockaddr *>(&sun), len) == -1) {
-      ret = -errno;
-      close(mIptablesLock);
-      return ret;
-    }
-    return 0;
+    EXPECT_LT(attempts, XT_LOCK_ATTEMPTS) <<
+        "Could not acquire iptables lock after " << XT_LOCK_ATTEMPTS << " attempts " <<
+        XT_LOCK_POLL_INTERVAL_MS << "ms apart";
+    return -1;
   }
 
   void releaseIptablesLock() {
