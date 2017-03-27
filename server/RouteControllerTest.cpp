@@ -18,13 +18,21 @@
 
 #include <gtest/gtest.h>
 
+#include "IptablesBaseTest.h"
 #include "NetlinkCommands.h"
 #include "RouteController.h"
 
 namespace android {
 namespace net {
 
-TEST(RouteControllerTest, TestGetRulePriority) {
+class RouteControllerTest : public IptablesBaseTest {
+public:
+    RouteControllerTest() {
+        RouteController::iptablesRestoreCommandFunction = fakeExecIptablesRestoreCommand;
+    }
+};
+
+TEST_F(RouteControllerTest, TestGetRulePriority) {
     // Expect a rule dump for these two families to contain at least the following priorities.
     for (int family : {AF_INET, AF_INET6 }) {
         std::set<uint32_t> expectedPriorities = {
@@ -53,7 +61,7 @@ TEST(RouteControllerTest, TestGetRulePriority) {
     }
 }
 
-TEST(RouteControllerTest, TestRouteFlush) {
+TEST_F(RouteControllerTest, TestRouteFlush) {
     // Pick a table number that's not used by the system.
     const uint32_t table1 = 500;
     const uint32_t table2 = 600;
@@ -74,6 +82,15 @@ TEST(RouteControllerTest, TestRouteFlush) {
               modifyIpRoute(RTM_DELROUTE, table1, "lo", "192.0.2.3/32", NULL));
     EXPECT_EQ(0,
               modifyIpRoute(RTM_DELROUTE, table2, "lo", "192.0.2.4/32", NULL));
+}
+
+TEST_F(RouteControllerTest, TestModifyIncomingPacketMark) {
+    static constexpr int TEST_NETID = 30;
+    EXPECT_EQ(0, modifyIncomingPacketMark(TEST_NETID, "netdtest0", PERMISSION_NONE, true));
+    expectIptablesRestoreCommands({ "-t mangle -A INPUT -i netdtest0 -j MARK --set-mark 0x3001e" });
+
+    EXPECT_EQ(0, modifyIncomingPacketMark(TEST_NETID, "netdtest0", PERMISSION_NONE, false));
+    expectIptablesRestoreCommands({ "-t mangle -D INPUT -i netdtest0 -j MARK --set-mark 0x3001e" });
 }
 
 }  // namespace net

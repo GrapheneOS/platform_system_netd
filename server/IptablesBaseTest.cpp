@@ -30,6 +30,8 @@
 #define LOG_TAG "IptablesBaseTest"
 #include <cutils/log.h>
 
+using android::base::StringPrintf;
+
 IptablesBaseTest::IptablesBaseTest() {
     sCmds.clear();
     sRestoreCmds.clear();
@@ -87,7 +89,7 @@ FILE *IptablesBaseTest::fake_popen(const char * /* cmd */, const char *type) {
         return NULL;
     }
 
-    std::string realCmd = android::base::StringPrintf("echo '%s'", sPopenContents.front().c_str());
+    std::string realCmd = StringPrintf("echo '%s'", sPopenContents.front().c_str());
     sPopenContents.pop_front();
     return popen(realCmd.c_str(), "r");
 }
@@ -107,6 +109,14 @@ int IptablesBaseTest::fakeExecIptablesRestoreWithOutput(IptablesTarget target,
 
 int IptablesBaseTest::fakeExecIptablesRestore(IptablesTarget target, const std::string& commands) {
     return fakeExecIptablesRestoreWithOutput(target, commands, nullptr);
+}
+
+int IptablesBaseTest::fakeExecIptablesRestoreCommand(IptablesTarget target,
+                                                     const std::string& table,
+                                                     const std::string& command,
+                                                     std::string *output) {
+    std::string fullCmd = StringPrintf("-t %s %s", table.c_str(), command.c_str());
+    return fakeExecIptablesRestoreWithOutput(target, fullCmd, output);
 }
 
 int IptablesBaseTest::expectIptablesCommand(IptablesTarget target, int pos,
