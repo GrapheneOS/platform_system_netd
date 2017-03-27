@@ -113,11 +113,13 @@ int main() {
         exit(1);
     }
 
+    Stopwatch subTime;
     status_t ret;
     if ((ret = NetdNativeService::start()) != android::OK) {
         ALOGE("Unable to start NetdNativeService: %d", ret);
         exit(1);
     }
+    ALOGI("Registering NetdNativeService: %.1fms", subTime.getTimeAndReset());
 
     /*
      * Now that we're up, we can respond to commands. Starting the listener also tells
@@ -127,6 +129,7 @@ int main() {
         ALOGE("Unable to start CommandListener (%s)", strerror(errno));
         exit(1);
     }
+    ALOGI("Starting CommandListener: %.1fms", subTime.getTimeAndReset());
 
     write_pid_file();
 
