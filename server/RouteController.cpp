@@ -29,21 +29,26 @@
 
 #include "DummyNetwork.h"
 #include "Fwmark.h"
+#include "NetdConstants.h"
 #include "NetlinkCommands.h"
 #include "UidRanges.h"
 
 #include "android-base/file.h"
+#include <android-base/stringprintf.h>
 #define LOG_TAG "Netd"
 #include "log/log.h"
 #include "logwrap/logwrap.h"
 #include "netutils/ifc.h"
 #include "resolv_netid.h"
 
+using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 using android::net::UidRange;
 
 namespace android {
 namespace net {
+
+auto RouteController::iptablesRestoreCommandFunction = execIptablesRestoreCommand;
 
 // BEGIN CONSTANTS --------------------------------------------------------------------------------
 
@@ -417,11 +422,9 @@ WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* inte
     fwmark.protectedFromVpn = true;
     fwmark.permission = permission;
 
-    char markString[UINT32_HEX_STRLEN];
-    snprintf(markString, sizeof(markString), "0x%x", fwmark.intValue);
-
-    if (execIptables(V4V6, "-t", "mangle", add ? "-A" : "-D", "INPUT", "-i", interface, "-j",
-                     "MARK", "--set-mark", markString, NULL)) {
+    std::string cmd = StringPrintf("%s INPUT -i %s -j MARK --set-mark 0x%x",
+                                   add ? "-A" : "-D", interface, fwmark.intValue);
+    if (RouteController::iptablesRestoreCommandFunction(V4V6, "mangle", cmd, nullptr) != 0) {
         ALOGE("failed to change iptables rule that sets incoming packet mark");
         return -EREMOTEIO;
     }

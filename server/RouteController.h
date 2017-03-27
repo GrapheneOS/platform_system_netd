@@ -91,6 +91,10 @@ public:
                                             Permission permission) WARN_UNUSED_RESULT;
     static int removeVirtualNetworkFallthrough(unsigned vpnNetId, const char* physicalInterface,
                                                Permission permission) WARN_UNUSED_RESULT;
+
+    // For testing.
+    static int (*iptablesRestoreCommandFunction)(IptablesTarget, const std::string&,
+                                                 const std::string&, std::string *);
 };
 
 // Public because they are called by by RouteControllerTest.cpp.
@@ -100,6 +104,8 @@ int modifyIpRoute(uint16_t action, uint32_t table, const char* interface, const 
                   const char* nexthop) WARN_UNUSED_RESULT;
 int flushRoutes(uint32_t table) WARN_UNUSED_RESULT;
 uint32_t getRulePriority(const nlmsghdr *nlh);
+WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* interface,
+                                                Permission permission, bool add);
 
 }  // namespace net
 }  // namespace android
