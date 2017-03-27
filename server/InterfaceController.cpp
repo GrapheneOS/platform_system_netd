@@ -19,6 +19,8 @@
 #include <malloc.h>
 #include <sys/socket.h>
 
+#include <functional>
+
 #define LOG_TAG "InterfaceController"
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
@@ -47,6 +49,11 @@ const char sys_net_path[] = "/sys/class/net";
 
 const char wl_util_path[] = "/vendor/xbin/wlutil";
 
+constexpr int kRouteInfoMinPrefixLen = 48;
+
+// RFC 7421 prefix length.
+constexpr int kRouteInfoMaxPrefixLen = 64;
+
 inline bool isNormalPathComponent(const char *component) {
     return (strcmp(component, ".") != 0) &&
            (strcmp(component, "..") != 0) &&
@@ -70,24 +77,34 @@ int writeValueToPath(
     return WriteStringToFile(value, path) ? 0 : -1;
 }
 
-void setOnAllInterfaces(const char* dirname, const char* basename, const char* value) {
-    // Set the default value, which is used by any interfaces that are created in the future.
-    writeValueToPath(dirname, "default", basename, value);
-
-    // Set the value on all the interfaces that currently exist.
-    DIR* dir = opendir(dirname);
+// Run @fn on each interface as well as 'default' in the path @dirname.
+void forEachInterface(const std::string& dirname,
+                      std::function<void(const std::string& path, const std::string& iface)> fn) {
+    // Run on default, which controls the behavior of any interfaces that are created in the future.
+    fn(dirname, "default");
+    DIR* dir = opendir(dirname.c_str());
     if (!dir) {
-        ALOGE("Can't list %s: %s", dirname, strerror(errno));
+        ALOGE("Can't list %s: %s", dirname.c_str(), strerror(errno));
         return;
     }
-    dirent* d;
-    while ((d = readdir(dir))) {
-        if ((d->d_type != DT_DIR) || !isInterfaceName(d->d_name)) {
+    while (true) {
+        const dirent *ent = readdir(dir);
+        if (!ent) {
+            break;
+        }
+        if ((ent->d_type != DT_DIR) || !isInterfaceName(ent->d_name)) {
             continue;
         }
-        writeValueToPath(dirname, d->d_name, basename, value);
+        fn(dirname, ent->d_name);
     }
     closedir(dir);
+}
+
+void setOnAllInterfaces(const char* dirname, const char* basename, const char* value) {
+    auto fn = [basename, value](const std::string& path, const std::string& iface) {
+        writeValueToPath(path.c_str(), iface.c_str(), basename, value);
+    };
+    forEachInterface(dirname, fn);
 }
 
 void setIPv6UseOutgoingInterfaceAddrsOnly(const char *value) {
@@ -109,6 +126,21 @@ std::string getParameterPathname(
     return StringPrintf("%s/%s/%s/%s/%s", proc_net_path, family, which, interface, parameter);
 }
 
+void setAcceptIPv6RIO(int min, int max) {
+    auto fn = [min, max](const std::string& prefix, const std::string& iface) {
+        int rv = writeValueToPath(prefix.c_str(), iface.c_str(), "accept_ra_rt_info_min_plen",
+                                  std::to_string(min).c_str());
+        if (rv != 0) {
+            // Only update max_plen if the write to min_plen succeeded. This ordering will prevent
+            // RIOs from being accepted unless both min and max are written successfully.
+            return;
+        }
+        writeValueToPath(prefix.c_str(), iface.c_str(), "accept_ra_rt_info_max_plen",
+                         std::to_string(max).c_str());
+    };
+    forEachInterface(ipv6_proc_path, fn);
+}
+
 }  // namespace
 
 void InterfaceController::initializeAll() {
@@ -118,6 +150,9 @@ void InterfaceController::initializeAll() {
     // learned from RAs to go away when forwarding is turned on. Make this behaviour predictable
     // by always setting accept_ra to 2.
     setAcceptRA("2");
+
+    // Accept RIOs with prefix length in the closed interval [48, 64].
+    setAcceptIPv6RIO(kRouteInfoMinPrefixLen, kRouteInfoMaxPrefixLen);
 
     setAcceptRARouteTable(-RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX);
 
