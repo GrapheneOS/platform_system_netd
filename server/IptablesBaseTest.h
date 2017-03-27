@@ -32,6 +32,8 @@ public:
     static int fakeExecIptablesRestore(IptablesTarget target, const std::string& commands);
     static int fakeExecIptablesRestoreWithOutput(IptablesTarget target, const std::string& commands,
                                                  std::string *output);
+    static int fakeExecIptablesRestoreCommand(IptablesTarget target, const std::string& table,
+                                              const std::string& commands, std::string *output);
     static FILE *fake_popen(const char *cmd, const char *type);
     void expectIptablesCommands(const std::vector<std::string>& expectedCmds);
     void expectIptablesCommands(const ExpectedIptablesCommands& expectedCmds);

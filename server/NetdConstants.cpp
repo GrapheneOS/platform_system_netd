@@ -26,6 +26,7 @@
 
 #define LOG_TAG "Netd"
 
+#include <android-base/stringprintf.h>
 #include <cutils/log.h>
 #include <logwrap/logwrap.h>
 
@@ -126,6 +127,13 @@ int execIptablesRestoreWithOutput(IptablesTarget target, const std::string& comm
 
 int execIptablesRestore(IptablesTarget target, const std::string& commands) {
     return execIptablesRestoreWithOutput(target, commands, nullptr);
+}
+
+int execIptablesRestoreCommand(IptablesTarget target, const std::string& table,
+                               const std::string& command, std::string *output) {
+    std::string fullCmd = android::base::StringPrintf("*%s\n%s\nCOMMIT\n", table.c_str(),
+                                                      command.c_str());
+    return execIptablesRestoreWithOutput(target, fullCmd, output);
 }
 
 /*
