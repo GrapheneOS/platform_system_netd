@@ -81,6 +81,8 @@ const char* const ROUTE_TABLE_NAME_LEGACY_SYSTEM  = "legacy_system";
 const char* const ROUTE_TABLE_NAME_LOCAL = "local";
 const char* const ROUTE_TABLE_NAME_MAIN  = "main";
 
+const char* const RouteController::LOCAL_MANGLE_INPUT = "routectrl_mangle_INPUT";
+
 // These values are upstream, but not yet in our headers.
 // TODO: delete these definitions when updating the headers.
 const uint16_t FRA_UID_RANGE = 20;
@@ -422,8 +424,9 @@ WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* inte
     fwmark.protectedFromVpn = true;
     fwmark.permission = permission;
 
-    std::string cmd = StringPrintf("%s INPUT -i %s -j MARK --set-mark 0x%x",
-                                   add ? "-A" : "-D", interface, fwmark.intValue);
+    std::string cmd = StringPrintf("%s %s -i %s -j MARK --set-mark 0x%x",
+                                   add ? "-A" : "-D", RouteController::LOCAL_MANGLE_INPUT,
+                                   interface, fwmark.intValue);
     if (RouteController::iptablesRestoreCommandFunction(V4V6, "mangle", cmd, nullptr) != 0) {
         ALOGE("failed to change iptables rule that sets incoming packet mark");
         return -EREMOTEIO;
