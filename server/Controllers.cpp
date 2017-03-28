@@ -72,6 +72,11 @@ static const char* MANGLE_POSTROUTING[] = {
         NULL,
 };
 
+static const char* MANGLE_INPUT[] = {
+        RouteController::LOCAL_MANGLE_INPUT,
+        NULL,
+};
+
 static const char* MANGLE_FORWARD[] = {
         NatController::LOCAL_MANGLE_FORWARD,
         NULL,
@@ -141,6 +146,7 @@ void Controllers::initIptablesRules() {
     createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING, true);
     createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
     createChildChains(V4V6, "mangle", "FORWARD", MANGLE_FORWARD, true);
+    createChildChains(V4V6, "mangle", "INPUT", MANGLE_INPUT, true);
     createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING, true);
     createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING, true);
     ALOGI("Creating child chains: %.1fms", s.getTimeAndReset());
