@@ -52,7 +52,8 @@ TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
     std::vector<std::string> expectedRestore4 = {
         "*filter",
         ":fw_whitelist -",
-        "-A fw_whitelist -i lo -o lo -j RETURN",
+        "-A fw_whitelist -i lo -j RETURN",
+        "-A fw_whitelist -o lo -j RETURN",
         "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN",
         "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
         "-A fw_whitelist -j DROP",
@@ -61,7 +62,8 @@ TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
     std::vector<std::string> expectedRestore6 = {
         "*filter",
         ":fw_whitelist -",
-        "-A fw_whitelist -i lo -o lo -j RETURN",
+        "-A fw_whitelist -i lo -j RETURN",
+        "-A fw_whitelist -o lo -j RETURN",
         "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN",
         "-A fw_whitelist -p icmpv6 --icmpv6-type packet-too-big -j RETURN",
         "-A fw_whitelist -p icmpv6 --icmpv6-type router-solicitation -j RETURN",
@@ -86,7 +88,8 @@ TEST_F(FirewallControllerTest, TestCreateBlacklistChain) {
     std::vector<std::string> expectedRestore = {
         "*filter",
         ":fw_blacklist -",
-        "-A fw_blacklist -i lo -o lo -j RETURN",
+        "-A fw_blacklist -i lo -j RETURN",
+        "-A fw_blacklist -o lo -j RETURN",
         "-A fw_blacklist -p tcp --tcp-flags RST RST -j RETURN",
         "COMMIT\n"
     };
@@ -131,7 +134,8 @@ TEST_F(FirewallControllerTest, TestReplaceWhitelistUidRule) {
     std::string expected =
             "*filter\n"
             ":FW_whitechain -\n"
-            "-A FW_whitechain -i lo -o lo -j RETURN\n"
+            "-A FW_whitechain -i lo -j RETURN\n"
+            "-A FW_whitechain -o lo -j RETURN\n"
             "-A FW_whitechain -p tcp --tcp-flags RST RST -j RETURN\n"
             "-A FW_whitechain -p icmpv6 --icmpv6-type packet-too-big -j RETURN\n"
             "-A FW_whitechain -p icmpv6 --icmpv6-type router-solicitation -j RETURN\n"
@@ -158,7 +162,8 @@ TEST_F(FirewallControllerTest, TestReplaceBlacklistUidRule) {
     std::string expected =
             "*filter\n"
             ":FW_blackchain -\n"
-            "-A FW_blackchain -i lo -o lo -j RETURN\n"
+            "-A FW_blackchain -i lo -j RETURN\n"
+            "-A FW_blackchain -o lo -j RETURN\n"
             "-A FW_blackchain -p tcp --tcp-flags RST RST -j RETURN\n"
             "-A FW_blackchain -m owner --uid-owner 10023 -j DROP\n"
             "-A FW_blackchain -m owner --uid-owner 10059 -j DROP\n"
