@@ -60,6 +60,16 @@ binder::Status checkPermission(const char *permission) {
     }
 }
 
+binder::Status getXfrmStatus(int xfrmCode) {
+    switch(xfrmCode) {
+        case 0:
+            return binder::Status::ok();
+        case -ENOENT:
+            return binder::Status::fromServiceSpecificError(xfrmCode);
+    }
+    return binder::Status::fromExceptionCode(xfrmCode);
+}
+
 #define ENFORCE_DEBUGGABLE() {                              \
     char value[PROPERTY_VALUE_MAX + 1];                     \
     if (property_get("ro.debuggable", value, NULL) != 1     \
@@ -307,6 +317,97 @@ binder::Status NetdNativeService::setMetricsReportingLevel(const int reportingLe
     return (gCtls->eventReporter.setMetricsReportingLevel(reportingLevel) == 0)
             ? binder::Status::ok()
             : binder::Status::fromExceptionCode(binder::Status::EX_ILLEGAL_ARGUMENT);
+}
+
+binder::Status NetdNativeService::ipSecAllocateSpi(
+        int32_t transformId,
+        int32_t direction,
+        const std::string& localAddress,
+        const std::string& remoteAddress,
+        int32_t inSpi,
+        int32_t* outSpi) {
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    ALOGD("ipSecAllocateSpi()");
+    return getXfrmStatus(gCtls->xfrmCtrl.ipSecAllocateSpi(
+                    transformId,
+                    direction,
+                    localAddress,
+                    remoteAddress,
+                    inSpi,
+                    outSpi));
+}
+
+binder::Status NetdNativeService::ipSecAddSecurityAssociation(
+        int32_t transformId,
+        int32_t mode,
+        int32_t direction,
+        const std::string& localAddress,
+        const std::string& remoteAddress,
+        int64_t underlyingNetworkHandle,
+        int32_t spi,
+        const std::string& authAlgo, const std::vector<uint8_t>& authKey, int32_t authTruncBits,
+        const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits,
+        int32_t encapType,
+        int32_t encapLocalPort,
+        int32_t encapRemotePort,
+        int32_t* allocatedSpi) {
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    ALOGD("ipSecAddSecurityAssociation()");
+    return getXfrmStatus(gCtls->xfrmCtrl.ipSecAddSecurityAssociation(
+              transformId, mode, direction, localAddress, remoteAddress,
+              underlyingNetworkHandle,
+              spi,
+              authAlgo, authKey, authTruncBits,
+              cryptAlgo, cryptKey, cryptTruncBits,
+              encapType, encapLocalPort, encapRemotePort,
+              allocatedSpi));
+}
+
+binder::Status NetdNativeService::ipSecDeleteSecurityAssociation(
+        int32_t transformId,
+        int32_t direction,
+        const std::string& localAddress,
+        const std::string& remoteAddress,
+        int32_t spi) {
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    ALOGD("ipSecDeleteSecurityAssociation()");
+    return getXfrmStatus(gCtls->xfrmCtrl.ipSecDeleteSecurityAssociation(
+                    transformId,
+                    direction,
+                    localAddress,
+                    remoteAddress,
+                    spi));
+}
+
+binder::Status NetdNativeService::ipSecApplyTransportModeTransform(
+        const android::base::unique_fd& socket,
+        int32_t transformId,
+        int32_t direction,
+        const std::string& localAddress,
+        const std::string& remoteAddress,
+        int32_t spi) {
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    ALOGD("ipSecApplyTransportModeTransform()");
+    return getXfrmStatus(gCtls->xfrmCtrl.ipSecApplyTransportModeTransform(
+                    socket,
+                    transformId,
+                    direction,
+                    localAddress,
+                    remoteAddress,
+                    spi));
+}
+
+binder::Status NetdNativeService::ipSecRemoveTransportModeTransform(
+            const android::base::unique_fd& socket) {
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    ALOGD("ipSecRemoveTransportModeTransform()");
+    return getXfrmStatus(gCtls->xfrmCtrl.ipSecRemoveTransportModeTransform(
+                    socket));
 }
 
 }  // namespace net
