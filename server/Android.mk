@@ -105,6 +105,7 @@ LOCAL_SRC_FILES := \
         TetherController.cpp \
         UidRanges.cpp \
         VirtualNetwork.cpp \
+        XfrmController.cpp \
         main.cpp \
         oem_iptables_hook.cpp \
         binder/android/net/UidRange.cpp \
