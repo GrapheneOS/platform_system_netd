@@ -30,8 +30,8 @@
 namespace android {
 namespace net {
 
-int openRtNetlinkSocket() {
-    int sock = socket(AF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, NETLINK_ROUTE);
+int openNetlinkSocket(int protocol) {
+    int sock = socket(AF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, protocol);
     if (sock == -1) {
         return -errno;
     }
@@ -85,7 +85,7 @@ WARN_UNUSED_RESULT int sendNetlinkRequest(uint16_t action, uint16_t flags, iovec
         nlmsg.nlmsg_len += iov[i].iov_len;
     }
 
-    int sock = openRtNetlinkSocket();
+    int sock = openNetlinkSocket(NETLINK_ROUTE);
     if (sock < 0) {
         return sock;
     }
@@ -153,7 +153,7 @@ WARN_UNUSED_RESULT int rtNetlinkFlush(uint16_t getAction, uint16_t deleteAction,
         return -EINVAL;
     }
 
-    int writeSock = openRtNetlinkSocket();
+    int writeSock = openNetlinkSocket(NETLINK_ROUTE);
     if (writeSock < 0) {
         return writeSock;
     }
