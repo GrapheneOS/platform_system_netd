@@ -46,6 +46,10 @@ public:
   int mIptablesLock = -1;
   std::string mChainName;
 
+  static void SetUpTestCase() {
+      blockSigpipe();
+  }
+
   void SetUp() {
     ASSERT_EQ(0, createTestChain());
   }
