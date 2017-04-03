@@ -56,7 +56,6 @@ using android::net::FwmarkServer;
 using android::net::NetdNativeService;
 using android::net::NetlinkManager;
 
-static void blockSigpipe();
 static void remove_pid_file();
 static bool write_pid_file();
 
@@ -174,14 +173,4 @@ static bool write_pid_file() {
 
 static void remove_pid_file() {
     unlink(PID_FILE_PATH);
-}
-
-static void blockSigpipe()
-{
-    sigset_t mask;
-
-    sigemptyset(&mask);
-    sigaddset(&mask, SIGPIPE);
-    if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0)
-        ALOGW("WARNING: SIGPIPE not blocked\n");
 }

@@ -235,3 +235,12 @@ int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, ui
 
     return rawLength;
 }
+
+void blockSigpipe() {
+    sigset_t mask;
+
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGPIPE);
+    if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0)
+        ALOGW("WARNING: SIGPIPE not blocked\n");
+}
