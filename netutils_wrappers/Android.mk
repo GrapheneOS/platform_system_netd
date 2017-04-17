@@ -14,6 +14,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
+###
 ### Wrapper binary.
 ###
 include $(CLEAR_VARS)
@@ -21,8 +22,8 @@ include $(CLEAR_VARS)
 LOCAL_CFLAGS := -Wall -Werror
 LOCAL_CLANG := true
 LOCAL_MODULE := netutils-wrapper-1.0
-LOCAL_SHARED_LIBRARIES := libc
-LOCAL_SRC_FILES := NetUtilsWrapper-1.0.cpp
+LOCAL_SHARED_LIBRARIES := libc libbase liblog
+LOCAL_SRC_FILES := NetUtilsWrapper-1.0.cpp main.cpp
 LOCAL_MODULE_CLASS := EXECUTABLES
 
 LOCAL_POST_INSTALL_CMD := $(hide) mkdir -p $(TARGET_OUT)/bin; \
@@ -34,3 +35,16 @@ LOCAL_POST_INSTALL_CMD := $(hide) mkdir -p $(TARGET_OUT)/bin; \
 
 include $(BUILD_EXECUTABLE)
 
+###
+### Wrapper unit tests.
+###
+include $(CLEAR_VARS)
+
+LOCAL_CFLAGS := -Wall -Werror
+LOCAL_CLANG := true
+LOCAL_MODULE := netutils_wrapper_test
+LOCAL_SHARED_LIBRARIES := libc libbase liblog
+LOCAL_SRC_FILES := NetUtilsWrapper-1.0.cpp NetUtilsWrapperTest-1.0.cpp
+LOCAL_MODULE_CLASS := NATIVE_TESTS
+
+include $(BUILD_NATIVE_TEST)
