@@ -14,13 +14,28 @@
  * limitations under the License.
  */
 
+#include <regex>
+#include <string>
+
 #include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include <android-base/strings.h>
+
+#define LOG_TAG "NetUtilsWrapper"
+#include <cutils/log.h>
+
+#include "NetUtilsWrapper.h"
+
 #define SYSTEM_DIRNAME  "/system/bin/"
+
+#define OEM_IFACE "[^ ]*oem[0-9]+"
+#define RMNET_IFACE "(r_)?rmnet_(data)?[0-9]+"
+#define VENDOR_IFACE "(" OEM_IFACE "|" RMNET_IFACE ")"
+#define VENDOR_CHAIN "(oem_.*|nm_.*|qcom_.*)"
 
 // List of net utils wrapped by this program
 // The list MUST be in descending order of string length
@@ -33,8 +48,57 @@ const char *netcmds[] = {
     NULL,
 };
 
+// List of regular expressions of expected commands.
+const char *EXPECTED_REGEXPS[] = {
+#define CMD "^" SYSTEM_DIRNAME
+    // Create, delete, and manage OEM networks.
+    CMD "ndc network (create|destroy) oem[0-9]+( |$)",
+    CMD "ndc network interface (add|remove) oem[0-9]+ " VENDOR_IFACE,
+    CMD "ndc network route (add|remove) oem[0-9]+ ",
+    CMD "ndc ipfwd (enable|disable) ",
+    CMD "ndc ipfwd (add|remove) .*" VENDOR_IFACE,
+
+    // Manage vendor iptables rules.
+    CMD "ip(6)?tables -w.* (-A|-D|-F|-I|-N|-X) " VENDOR_CHAIN,
+    CMD "ip(6)?tables -w.* (-i|-o) " VENDOR_IFACE,
+
+    // Manage IPsec state.
+    CMD "ip xfrm .*",
+
+    // Manage vendor interfaces.
+    CMD "tc .* dev " VENDOR_IFACE,
+    CMD "ip( -4| -6)? (addr|address) (add|del|delete|flush).* dev " VENDOR_IFACE,
+
+    // Other activities observed on current devices. In future releases, these should be supported
+    // in a way that is less likely to interfere with general Android networking behaviour.
+    CMD "tc qdisc del dev root",
+    CMD "ip( -4| -6)? rule .* goto 13000 prio 11999",
+    CMD "ip( -4| -6)? rule .* prio 25000",
+    CMD "ip(6)?tables -w .* -j " VENDOR_CHAIN,
+    CMD "iptables -w -t mangle -[AD] PREROUTING -m socket --nowildcard --restore-skmark -j ACCEPT",
+    CMD "ndc network interface (add|remove) oem[0-9]+$",  // Invalid command: no interface removed.
+#undef CMD
+};
+
+bool checkExpectedCommand(int argc, char **argv) {
+    std::vector<const char*> allArgs(argc);
+    for (int i = 0; i < argc; i++) {
+        allArgs[i] = argv[i];
+    }
+    std::string fullCmd = android::base::Join(allArgs, ' ');
+    for (size_t i = 0; i < ARRAY_SIZE(EXPECTED_REGEXPS); i++) {
+        const std::regex expectedRegexp(EXPECTED_REGEXPS[i], std::regex_constants::extended);
+        if (std::regex_search(fullCmd, expectedRegexp)) {
+            return true;
+        }
+    }
+    ALOGI("Unexpected command: %s", fullCmd.c_str());
+    return false;
+}
+
+
 // This is the only gateway for vendor programs to reach net utils.
-int main(int /* argc */, char **argv) {
+int doMain(int argc, char **argv) {
     char *progname = argv[0];
     char *basename = NULL;
 
@@ -54,6 +118,7 @@ int main(int /* argc */, char **argv) {
                 exit(EXIT_FAILURE);
             }
             argv[0] = cmd;
+            checkExpectedCommand(argc, argv);
             execv(cmd, argv);
         }
     }
