@@ -121,6 +121,46 @@ private:
 
     static constexpr size_t MAX_ALGO_LENGTH = 128;
 
+/*
+ * Below is a redefinition of the xfrm_usersa_info struct that is part
+ * of the Linux uapi <linux/xfrm.h> to align the structures to a 64-bit
+ * boundary.
+ */
+#ifdef NETLINK_COMPAT32
+    // Shadow the kernel definition of xfrm_usersa_info with a 64-bit aligned version
+    struct xfrm_usersa_info : ::xfrm_usersa_info {
+    } __attribute__((aligned(8)));
+    // Shadow the kernel's version, using the aligned version of xfrm_usersa_info
+    struct xfrm_userspi_info {
+        struct xfrm_usersa_info info;
+        __u32 min;
+        __u32 max;
+    };
+
+    /*
+     * Anyone who encounters a failure when sending netlink messages should look here
+     * first. Hitting the static_assert() below should be a strong hint that Android
+     * IPsec will probably not work with your current settings.
+     *
+     * Again, experimentally determined, the "flags" field should be the first byte in
+     * the final word of the xfrm_usersa_info struct. The check validates the size of
+     * the padding to be 7.
+     *
+     * This padding is verified to be correct on gcc/x86_64 kernel, and clang/x86 userspace.
+     */
+    static_assert(sizeof(::xfrm_usersa_info) % 8 != 0, "struct xfrm_usersa_info has changed "
+                                                       "alignment. Please consider whether this "
+                                                       "patch is needed.");
+    static_assert(sizeof(xfrm_usersa_info) - offsetof(xfrm_usersa_info, flags) == 8,
+                  "struct xfrm_usersa_info probably misaligned with kernel struct.");
+    static_assert(sizeof(xfrm_usersa_info) % 8 == 0, "struct xfrm_usersa_info_t is not 64-bit  "
+                                                     "aligned. Please consider whether this patch "
+                                                     "is needed.");
+    static_assert(sizeof(::xfrm_userspi_info) - sizeof(::xfrm_usersa_info) ==
+                      sizeof(xfrm_userspi_info) - sizeof(xfrm_usersa_info),
+                  "struct xfrm_userspi_info has changed and does not match the kernel struct.");
+#endif
+
     struct nlattr_algo_crypt {
         nlattr hdr;
         xfrm_algo crypt;
