@@ -52,7 +52,13 @@ LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := netd
 
 # Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
-LOCAL_CPPFLAGS +=  -Wno-varargs
+LOCAL_CPPFLAGS +=  -Wno-varargs \
+
+ifeq ($(TARGET_ARCH), x86)
+ifneq ($(TARGET_PRODUCT), gce_x86_phone)
+        LOCAL_CPPFLAGS += -D NETLINK_COMPAT32
+endif
+endif
 
 LOCAL_INIT_RC := netd.rc
 
