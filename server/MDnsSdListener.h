@@ -65,6 +65,7 @@ public:
         }
     };
 
+private:
     class Monitor {
     public:
         Monitor();
@@ -73,11 +74,11 @@ public:
         void startMonitoring(int id);
         DNSServiceRef *lookupServiceRef(int id);
         void freeServiceRef(int id);
-        static void *threadStart(void *handler);
         int startService();
         int stopService();
-    private:
         void run();
+
+    private:
         int rescan(); // returns the number of elements in the poll
         class Element {
         public:
@@ -95,7 +96,6 @@ public:
         struct pollfd *mPollFds;
         DNSServiceRef **mPollRefs;
         int mPollSize;
-        pthread_t mThread;
         int mCtrlSocketPair[2];
         pthread_mutex_t mHeadMutex;
     };
