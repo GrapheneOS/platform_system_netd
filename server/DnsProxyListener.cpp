@@ -46,6 +46,7 @@
 #include "NetworkController.h"
 #include "ResponseCode.h"
 #include "Stopwatch.h"
+#include "thread_util.h"
 #include "android/net/metrics/INetdEventListener.h"
 
 using android::String16;
@@ -55,43 +56,6 @@ namespace android {
 namespace net {
 
 namespace {
-
-template<typename T>
-void* threadMain(void* obj) {
-    std::unique_ptr<T> handler(reinterpret_cast<T*>(obj));
-    handler->run();
-    return nullptr;
-}
-
-struct scoped_pthread_attr {
-    scoped_pthread_attr() { pthread_attr_init(&attr); }
-    ~scoped_pthread_attr() { pthread_attr_destroy(&attr); }
-
-    int detach() {
-        return pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    }
-
-    pthread_attr_t attr;
-};
-
-template<typename T>
-int threadLaunch(T* self) {
-    if (self == nullptr) { return -EINVAL;}
-
-    scoped_pthread_attr scoped_attr;
-
-    int rval = scoped_attr.detach();
-    if (rval != 0) { return -errno; }
-
-    pthread_t thread;
-    rval = pthread_create(&thread, &scoped_attr.attr, &threadMain<T>, self);
-    if (rval != 0) {
-        ALOGW("pthread_create failed: %d", errno);
-        return -errno;
-    }
-
-    return rval;
-}
 
 template<typename T>
 void tryThreadOrError(SocketClient* cli, T* handler) {

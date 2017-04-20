@@ -38,6 +38,7 @@
 
 #include "MDnsSdListener.h"
 #include "ResponseCode.h"
+#include "thread_util.h"
 
 #define MDNS_SERVICE_NAME "mdnsd"
 #define MDNS_SERVICE_STATUS "init.svc.mdnsd"
@@ -524,17 +525,10 @@ MDnsSdListener::Monitor::Monitor() {
     socketpair(AF_LOCAL, SOCK_STREAM, 0, mCtrlSocketPair);
     pthread_mutex_init(&mHeadMutex, NULL);
 
-    pthread_create(&mThread, NULL, MDnsSdListener::Monitor::threadStart, this);
-    pthread_detach(mThread);
-}
-
-void *MDnsSdListener::Monitor::threadStart(void *obj) {
-    Monitor *monitor = reinterpret_cast<Monitor *>(obj);
-
-    monitor->run();
-    delete monitor;
-    pthread_exit(NULL);
-    return NULL;
+    const int rval = ::android::net::threadLaunch(this);
+    if (rval != 0) {
+        ALOGW("Error spawning monitor thread: %s (%d)", strerror(-rval), -rval);
+    }
 }
 
 #define NAP_TIME 200  // 200 ms between polls
