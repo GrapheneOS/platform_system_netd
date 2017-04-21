@@ -209,7 +209,7 @@ public:
         };
 
         iov[0].iov_base = &nlMsg;
-        iov[0].iov_len = sizeof(nlMsg);
+        iov[0].iov_len = NLMSG_HDRLEN;
         for (int i = 0; i < iovLen; ++i) {
             nlMsg.nlmsg_len += iov[i].iov_len;
         }
