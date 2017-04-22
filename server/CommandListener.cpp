@@ -1147,39 +1147,6 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
         return sendGenericOkFail(cli, res);
     }
 
-    if (!strcmp(argv[1], "set_egress_source_rule")) {
-        if (argc != 4) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                         "Usage: firewall set_egress_source_rule <192.168.0.1> <allow|deny>",
-                         false);
-            return 0;
-        }
-
-        const char* addr = argv[2];
-        FirewallRule rule = parseRule(argv[3]);
-
-        int res = gCtls->firewallCtrl.setEgressSourceRule(addr, rule);
-        return sendGenericOkFail(cli, res);
-    }
-
-    if (!strcmp(argv[1], "set_egress_dest_rule")) {
-        if (argc != 5) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                         "Usage: firewall set_egress_dest_rule <192.168.0.1> <80> <allow|deny>",
-                         false);
-            return 0;
-        }
-
-        const char* addr = argv[2];
-        int port = atoi(argv[3]);
-        FirewallRule rule = parseRule(argv[4]);
-
-        int res = 0;
-        res |= gCtls->firewallCtrl.setEgressDestRule(addr, PROTOCOL_TCP, port, rule);
-        res |= gCtls->firewallCtrl.setEgressDestRule(addr, PROTOCOL_UDP, port, rule);
-        return sendGenericOkFail(cli, res);
-    }
-
     if (!strcmp(argv[1], "set_uid_rule")) {
         if (argc != 5) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
