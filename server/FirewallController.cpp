@@ -233,6 +233,17 @@ std::string FirewallController::makeUidRules(IptablesTarget target, const char *
     std::string commands;
     StringAppendF(&commands, "*filter\n:%s -\n", name);
 
+    // Whitelist chains have UIDs at the beginning, and new UIDs are added with '-I'.
+    if (isWhitelist) {
+        for (auto uid : uids) {
+            StringAppendF(&commands, "-A %s -m owner --uid-owner %d -j RETURN\n", name, uid);
+        }
+
+        // Always whitelist system UIDs.
+        StringAppendF(&commands,
+                "-A %s -m owner --uid-owner %d-%d -j RETURN\n", name, 0, MAX_SYSTEM_UID);
+    }
+
     // Always allow networking on loopback.
     StringAppendF(&commands, "-A %s -i lo -j RETURN\n", name);
     StringAppendF(&commands, "-A %s -o lo -j RETURN\n", name);
@@ -249,16 +260,13 @@ std::string FirewallController::makeUidRules(IptablesTarget target, const char *
                        name, ICMPV6_TYPES[i]);
             }
         }
-
-        // Always whitelist system UIDs.
-        StringAppendF(&commands,
-                "-A %s -m owner --uid-owner %d-%d -j RETURN\n", name, 0, MAX_SYSTEM_UID);
     }
 
-    // Whitelist or blacklist the specified UIDs.
-    const char *action = isWhitelist ? "RETURN" : "DROP";
-    for (auto uid : uids) {
-        StringAppendF(&commands, "-A %s -m owner --uid-owner %d -j %s\n", name, uid, action);
+    // Blacklist chains have UIDs at the end, and new UIDs are added with '-A'.
+    if (!isWhitelist) {
+        for (auto uid : uids) {
+            StringAppendF(&commands, "-A %s -m owner --uid-owner %d -j DROP\n", name, uid);
+        }
     }
 
     // If it's a whitelist chain, add a default DROP at the end. This is not necessary for a
