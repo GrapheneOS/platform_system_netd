@@ -56,10 +56,6 @@ public:
 
     /* Match traffic going in/out over the given iface. */
     int setInterfaceRule(const char*, FirewallRule);
-    /* Match traffic coming-in-to or going-out-from given address. */
-    int setEgressSourceRule(const char*, FirewallRule);
-    /* Match traffic coming-in-from or going-out-to given address, port, and protocol. */
-    int setEgressDestRule(const char*, int, int, FirewallRule);
     /* Match traffic owned by given UID. This is specific to a particular chain. */
     int setUidRule(ChildChain, int, FirewallRule);
 
