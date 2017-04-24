@@ -173,9 +173,6 @@ FirewallType FirewallController::getFirewallType(ChildChain chain) {
 }
 
 int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule) {
-    char uidStr[16];
-    sprintf(uidStr, "%d", uid);
-
     const char* op;
     const char* target;
     FirewallType firewallType = getFirewallType(chain);
@@ -189,31 +186,33 @@ int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule)
         op = (rule == DENY)? "-A" : "-D";
     }
 
-    int res = 0;
+    std::vector<std::string> chainNames;
     switch(chain) {
         case DOZABLE:
-            res |= execIptables(V4V6, op, LOCAL_DOZABLE, "-m", "owner", "--uid-owner",
-                    uidStr, "-j", target, NULL);
+            chainNames = { LOCAL_DOZABLE };
             break;
         case STANDBY:
-            res |= execIptables(V4V6, op, LOCAL_STANDBY, "-m", "owner", "--uid-owner",
-                    uidStr, "-j", target, NULL);
+            chainNames = { LOCAL_STANDBY };
             break;
         case POWERSAVE:
-            res |= execIptables(V4V6, op, LOCAL_POWERSAVE, "-m", "owner", "--uid-owner",
-                    uidStr, "-j", target, NULL);
+            chainNames = { LOCAL_POWERSAVE };
             break;
         case NONE:
-            res |= execIptables(V4V6, op, LOCAL_INPUT, "-m", "owner", "--uid-owner", uidStr,
-                    "-j", target, NULL);
-            res |= execIptables(V4V6, op, LOCAL_OUTPUT, "-m", "owner", "--uid-owner", uidStr,
-                    "-j", target, NULL);
+            chainNames = { LOCAL_INPUT, LOCAL_OUTPUT };
             break;
         default:
             ALOGW("Unknown child chain: %d", chain);
-            break;
+            return -1;
     }
-    return res;
+
+    std::string command = "*filter\n";
+    for (std::string chainName : chainNames) {
+        StringAppendF(&command, "%s %s -m owner --uid-owner %d -j %s\n",
+                      op, chainName.c_str(), uid, target);
+    }
+    StringAppendF(&command, "COMMIT\n");
+
+    return execIptablesRestore(V4V6, command);
 }
 
 int FirewallController::attachChain(const char* childChain, const char* parentChain) {
