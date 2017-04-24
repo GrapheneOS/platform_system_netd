@@ -157,63 +157,6 @@ int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
     return res;
 }
 
-int FirewallController::setEgressSourceRule(const char* addr, FirewallRule rule) {
-    if (mFirewallType == BLACKLIST) {
-        // Unsupported in BLACKLIST mode
-        return -1;
-    }
-
-    IptablesTarget target = V4;
-    if (strchr(addr, ':')) {
-        target = V6;
-    }
-
-    const char* op;
-    if (rule == ALLOW) {
-        op = "-I";
-    } else {
-        op = "-D";
-    }
-
-    int res = 0;
-    res |= execIptables(target, op, LOCAL_INPUT, "-d", addr, "-j", "RETURN", NULL);
-    res |= execIptables(target, op, LOCAL_OUTPUT, "-s", addr, "-j", "RETURN", NULL);
-    return res;
-}
-
-int FirewallController::setEgressDestRule(const char* addr, int protocol, int port,
-        FirewallRule rule) {
-    if (mFirewallType == BLACKLIST) {
-        // Unsupported in BLACKLIST mode
-        return -1;
-    }
-
-    IptablesTarget target = V4;
-    if (strchr(addr, ':')) {
-        target = V6;
-    }
-
-    char protocolStr[16];
-    sprintf(protocolStr, "%d", protocol);
-
-    char portStr[16];
-    sprintf(portStr, "%d", port);
-
-    const char* op;
-    if (rule == ALLOW) {
-        op = "-I";
-    } else {
-        op = "-D";
-    }
-
-    int res = 0;
-    res |= execIptables(target, op, LOCAL_INPUT, "-s", addr, "-p", protocolStr,
-            "--sport", portStr, "-j", "RETURN", NULL);
-    res |= execIptables(target, op, LOCAL_OUTPUT, "-d", addr, "-p", protocolStr,
-            "--dport", portStr, "-j", "RETURN", NULL);
-    return res;
-}
-
 FirewallType FirewallController::getFirewallType(ChildChain chain) {
     switch(chain) {
         case DOZABLE:
