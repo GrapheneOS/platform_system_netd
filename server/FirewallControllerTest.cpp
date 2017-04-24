@@ -104,30 +104,50 @@ TEST_F(FirewallControllerTest, TestCreateBlacklistChain) {
 
 TEST_F(FirewallControllerTest, TestSetStandbyRule) {
     ExpectedIptablesCommands expected = {
-        { V4V6, "-D fw_standby -m owner --uid-owner 12345 -j DROP" }
+        { V4V6, "*filter\n-D fw_standby -m owner --uid-owner 12345 -j DROP\nCOMMIT\n" }
     };
     mFw.setUidRule(STANDBY, 12345, ALLOW);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     expected = {
-        { V4V6, "-A fw_standby -m owner --uid-owner 12345 -j DROP" }
+        { V4V6, "*filter\n-A fw_standby -m owner --uid-owner 12345 -j DROP\nCOMMIT\n" }
     };
     mFw.setUidRule(STANDBY, 12345, DENY);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 }
 
 TEST_F(FirewallControllerTest, TestSetDozeRule) {
     ExpectedIptablesCommands expected = {
-        { V4V6, "-I fw_dozable -m owner --uid-owner 54321 -j RETURN" }
+        { V4V6, "*filter\n-I fw_dozable -m owner --uid-owner 54321 -j RETURN\nCOMMIT\n" }
     };
     mFw.setUidRule(DOZABLE, 54321, ALLOW);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     expected = {
-        { V4V6, "-D fw_dozable -m owner --uid-owner 54321 -j RETURN" }
+        { V4V6, "*filter\n-D fw_dozable -m owner --uid-owner 54321 -j RETURN\nCOMMIT\n" }
     };
     mFw.setUidRule(DOZABLE, 54321, DENY);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
+}
+
+TEST_F(FirewallControllerTest, TestSetFirewallRule) {
+    ExpectedIptablesCommands expected = {
+        { V4V6, "*filter\n"
+                "-A fw_INPUT -m owner --uid-owner 54321 -j DROP\n"
+                "-A fw_OUTPUT -m owner --uid-owner 54321 -j DROP\n"
+                "COMMIT\n" }
+    };
+    mFw.setUidRule(NONE, 54321, DENY);
+    expectIptablesRestoreCommands(expected);
+
+    expected = {
+        { V4V6, "*filter\n"
+                "-D fw_INPUT -m owner --uid-owner 54321 -j DROP\n"
+                "-D fw_OUTPUT -m owner --uid-owner 54321 -j DROP\n"
+                "COMMIT\n" }
+    };
+    mFw.setUidRule(NONE, 54321, ALLOW);
+    expectIptablesRestoreCommands(expected);
 }
 
 TEST_F(FirewallControllerTest, TestReplaceWhitelistUidRule) {
