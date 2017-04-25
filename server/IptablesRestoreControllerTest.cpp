@@ -29,6 +29,7 @@
 
 #include "IptablesRestoreController.h"
 #include "NetdConstants.h"
+#include "Stopwatch.h"
 
 #define XT_LOCK_NAME "/system/etc/xtables.lock"
 #define XT_LOCK_ATTEMPTS 10
@@ -238,4 +239,34 @@ TEST_F(IptablesRestoreControllerTest, TestCommandTimeout) {
 
   EXPECT_EQ(0, con.execute(IptablesTarget::V4V6, commandString, &output));
   EXPECT_EQ(expected, output);
+}
+
+TEST_F(IptablesRestoreControllerTest, TestUidRuleBenchmark) {
+    const std::vector<int> ITERATIONS = { 1, 5, 10 };
+
+    const std::string IPTABLES_RESTORE_ADD =
+            "*filter\n-I fw_powersave -m owner --uid-owner 2000000000 -j RETURN\nCOMMIT\n";
+    const std::string IPTABLES_RESTORE_DEL =
+            "*filter\n-D fw_powersave -m owner --uid-owner 2000000000 -j RETURN\nCOMMIT\n";
+
+    for (const int iterations : ITERATIONS) {
+        Stopwatch s;
+        for (int i = 0; i < iterations; i++) {
+            EXPECT_EQ(0, con.execute(V4V6, IPTABLES_RESTORE_ADD, nullptr));
+            EXPECT_EQ(0, con.execute(V4V6, IPTABLES_RESTORE_DEL, nullptr));
+        }
+        float timeTaken = s.getTimeAndReset();
+        fprintf(stderr, "    Add/del %d UID rules via restore: %.1fms (%.2fms per operation)\n",
+                iterations, timeTaken, timeTaken / 2 / iterations);
+
+        for (int i = 0; i < iterations; i++) {
+            EXPECT_EQ(0, execIptables(V4V6, "-I", "fw_powersave", "-m", "owner",
+                                      "--uid-owner", "2000000000", "-j", "RETURN", nullptr));
+            EXPECT_EQ(0, execIptables(V4V6, "-D", "fw_powersave", "-m", "owner",
+                                      "--uid-owner", "2000000000", "-j", "RETURN", nullptr));
+        }
+        timeTaken = s.getTimeAndReset();
+        fprintf(stderr, "    Add/del %d UID rules via iptables: %.1fms (%.2fms per operation)\n",
+                iterations, timeTaken, timeTaken / 2 / iterations);
+    }
 }
