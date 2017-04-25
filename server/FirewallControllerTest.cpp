@@ -52,16 +52,17 @@ TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
     std::vector<std::string> expectedRestore4 = {
         "*filter",
         ":fw_whitelist -",
+        "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
         "-A fw_whitelist -i lo -j RETURN",
         "-A fw_whitelist -o lo -j RETURN",
         "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN",
-        "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
         "-A fw_whitelist -j DROP",
         "COMMIT\n"
     };
     std::vector<std::string> expectedRestore6 = {
         "*filter",
         ":fw_whitelist -",
+        "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
         "-A fw_whitelist -i lo -j RETURN",
         "-A fw_whitelist -o lo -j RETURN",
         "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN",
@@ -71,7 +72,6 @@ TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
         "-A fw_whitelist -p icmpv6 --icmpv6-type neighbour-solicitation -j RETURN",
         "-A fw_whitelist -p icmpv6 --icmpv6-type neighbour-advertisement -j RETURN",
         "-A fw_whitelist -p icmpv6 --icmpv6-type redirect -j RETURN",
-        "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
         "-A fw_whitelist -j DROP",
         "COMMIT\n"
     };
@@ -104,36 +104,64 @@ TEST_F(FirewallControllerTest, TestCreateBlacklistChain) {
 
 TEST_F(FirewallControllerTest, TestSetStandbyRule) {
     ExpectedIptablesCommands expected = {
-        { V4V6, "-D fw_standby -m owner --uid-owner 12345 -j DROP" }
+        { V4V6, "*filter\n-D fw_standby -m owner --uid-owner 12345 -j DROP\nCOMMIT\n" }
     };
     mFw.setUidRule(STANDBY, 12345, ALLOW);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     expected = {
-        { V4V6, "-A fw_standby -m owner --uid-owner 12345 -j DROP" }
+        { V4V6, "*filter\n-A fw_standby -m owner --uid-owner 12345 -j DROP\nCOMMIT\n" }
     };
     mFw.setUidRule(STANDBY, 12345, DENY);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 }
 
 TEST_F(FirewallControllerTest, TestSetDozeRule) {
     ExpectedIptablesCommands expected = {
-        { V4V6, "-I fw_dozable -m owner --uid-owner 54321 -j RETURN" }
+        { V4V6, "*filter\n-I fw_dozable -m owner --uid-owner 54321 -j RETURN\nCOMMIT\n" }
     };
     mFw.setUidRule(DOZABLE, 54321, ALLOW);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     expected = {
-        { V4V6, "-D fw_dozable -m owner --uid-owner 54321 -j RETURN" }
+        { V4V6, "*filter\n-D fw_dozable -m owner --uid-owner 54321 -j RETURN\nCOMMIT\n" }
     };
     mFw.setUidRule(DOZABLE, 54321, DENY);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
+}
+
+TEST_F(FirewallControllerTest, TestSetFirewallRule) {
+    ExpectedIptablesCommands expected = {
+        { V4V6, "*filter\n"
+                "-A fw_INPUT -m owner --uid-owner 54321 -j DROP\n"
+                "-A fw_OUTPUT -m owner --uid-owner 54321 -j DROP\n"
+                "COMMIT\n" }
+    };
+    mFw.setUidRule(NONE, 54321, DENY);
+    expectIptablesRestoreCommands(expected);
+
+    expected = {
+        { V4V6, "*filter\n"
+                "-D fw_INPUT -m owner --uid-owner 54321 -j DROP\n"
+                "-D fw_OUTPUT -m owner --uid-owner 54321 -j DROP\n"
+                "COMMIT\n" }
+    };
+    mFw.setUidRule(NONE, 54321, ALLOW);
+    expectIptablesRestoreCommands(expected);
 }
 
 TEST_F(FirewallControllerTest, TestReplaceWhitelistUidRule) {
     std::string expected =
             "*filter\n"
             ":FW_whitechain -\n"
+            "-A FW_whitechain -m owner --uid-owner 10023 -j RETURN\n"
+            "-A FW_whitechain -m owner --uid-owner 10059 -j RETURN\n"
+            "-A FW_whitechain -m owner --uid-owner 10124 -j RETURN\n"
+            "-A FW_whitechain -m owner --uid-owner 10111 -j RETURN\n"
+            "-A FW_whitechain -m owner --uid-owner 110122 -j RETURN\n"
+            "-A FW_whitechain -m owner --uid-owner 210153 -j RETURN\n"
+            "-A FW_whitechain -m owner --uid-owner 210024 -j RETURN\n"
+            "-A FW_whitechain -m owner --uid-owner 0-9999 -j RETURN\n"
             "-A FW_whitechain -i lo -j RETURN\n"
             "-A FW_whitechain -o lo -j RETURN\n"
             "-A FW_whitechain -p tcp --tcp-flags RST RST -j RETURN\n"
@@ -143,14 +171,6 @@ TEST_F(FirewallControllerTest, TestReplaceWhitelistUidRule) {
             "-A FW_whitechain -p icmpv6 --icmpv6-type neighbour-solicitation -j RETURN\n"
             "-A FW_whitechain -p icmpv6 --icmpv6-type neighbour-advertisement -j RETURN\n"
             "-A FW_whitechain -p icmpv6 --icmpv6-type redirect -j RETURN\n"
-            "-A FW_whitechain -m owner --uid-owner 0-9999 -j RETURN\n"
-            "-A FW_whitechain -m owner --uid-owner 10023 -j RETURN\n"
-            "-A FW_whitechain -m owner --uid-owner 10059 -j RETURN\n"
-            "-A FW_whitechain -m owner --uid-owner 10124 -j RETURN\n"
-            "-A FW_whitechain -m owner --uid-owner 10111 -j RETURN\n"
-            "-A FW_whitechain -m owner --uid-owner 110122 -j RETURN\n"
-            "-A FW_whitechain -m owner --uid-owner 210153 -j RETURN\n"
-            "-A FW_whitechain -m owner --uid-owner 210024 -j RETURN\n"
             "-A FW_whitechain -j DROP\n"
             "COMMIT\n";
 
