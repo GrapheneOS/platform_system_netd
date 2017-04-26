@@ -401,30 +401,38 @@ TEST_F(BandwidthControllerTest, TestSetInterfaceQuota) {
 
 TEST_F(BandwidthControllerTest, IptablesAlertCmd) {
     std::vector<std::string> expected = {
-        "-I bw_INPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert",
-        "-I bw_OUTPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert",
+        "*filter\n"
+        "-I bw_INPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "-I bw_OUTPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "COMMIT\n"
     };
     EXPECT_EQ(0, runIptablesAlertCmd(IptOp::IptOpInsert, "MyWonderfulAlert", 123456));
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     expected = {
-        "-D bw_INPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert",
-        "-D bw_OUTPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert",
+        "*filter\n"
+        "-D bw_INPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "-D bw_OUTPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "COMMIT\n"
     };
     EXPECT_EQ(0, runIptablesAlertCmd(IptOp::IptOpDelete, "MyWonderfulAlert", 123456));
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 }
 
 TEST_F(BandwidthControllerTest, IptablesAlertFwdCmd) {
     std::vector<std::string> expected = {
-        "-I bw_FORWARD -m quota2 ! --quota 123456 --name MyWonderfulAlert",
+        "*filter\n"
+        "-I bw_FORWARD -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "COMMIT\n"
     };
     EXPECT_EQ(0, runIptablesAlertFwdCmd(IptOp::IptOpInsert, "MyWonderfulAlert", 123456));
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     expected = {
-        "-D bw_FORWARD -m quota2 ! --quota 123456 --name MyWonderfulAlert",
+        "*filter\n"
+        "-D bw_FORWARD -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "COMMIT\n"
     };
     EXPECT_EQ(0, runIptablesAlertFwdCmd(IptOp::IptOpDelete, "MyWonderfulAlert", 123456));
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 }
