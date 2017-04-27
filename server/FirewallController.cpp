@@ -118,14 +118,13 @@ int FirewallController::enableChildChains(ChildChain chain, bool enable) {
             return res;
     }
 
-    if (enable) {
-        res |= attachChain(name, LOCAL_INPUT);
-        res |= attachChain(name, LOCAL_OUTPUT);
-    } else {
-        res |= detachChain(name, LOCAL_INPUT);
-        res |= detachChain(name, LOCAL_OUTPUT);
+    std::string command = "*filter\n";
+    for (const char *parent : { LOCAL_INPUT, LOCAL_OUTPUT }) {
+        StringAppendF(&command, "%s %s -j %s\n", (enable ? "-A" : "-D"), parent, name);
     }
-    return res;
+    StringAppendF(&command, "COMMIT\n");
+
+    return execIptablesRestore(V4V6, command);
 }
 
 int FirewallController::isFirewallEnabled(void) {
@@ -213,14 +212,6 @@ int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule)
     StringAppendF(&command, "COMMIT\n");
 
     return execIptablesRestore(V4V6, command);
-}
-
-int FirewallController::attachChain(const char* childChain, const char* parentChain) {
-    return execIptables(V4V6, "-t", TABLE, "-A", parentChain, "-j", childChain, NULL);
-}
-
-int FirewallController::detachChain(const char* childChain, const char* parentChain) {
-    return execIptables(V4V6, "-t", TABLE, "-D", parentChain, "-j", childChain, NULL);
 }
 
 int FirewallController::createChain(const char* chain, FirewallType type) {
