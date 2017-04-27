@@ -834,12 +834,6 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
     case IptOpInsert:
         opFlag = "-I";
         break;
-    case IptOpAppend:
-        opFlag = "-A";
-        break;
-    case IptOpReplace:
-        opFlag = "-R";
-        break;
     default:
     case IptOpDelete:
         opFlag = "-D";
@@ -865,12 +859,6 @@ int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName,
     switch (op) {
     case IptOpInsert:
         opFlag = "-I";
-        break;
-    case IptOpAppend:
-        opFlag = "-A";
-        break;
-    case IptOpReplace:
-        opFlag = "-R";
         break;
     default:
     case IptOpDelete:
