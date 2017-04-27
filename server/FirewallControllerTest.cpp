@@ -193,3 +193,19 @@ TEST_F(FirewallControllerTest, TestReplaceBlacklistUidRule) {
     std::vector<int32_t> uids = { 10023, 10059, 10124 };
     EXPECT_EQ(expected, makeUidRules(V4 ,"FW_blackchain", false, uids));
 }
+
+TEST_F(FirewallControllerTest, TestEnableChildChains) {
+    std::vector<std::string> expected = {
+        "-t filter -A fw_INPUT -j fw_dozable",
+        "-t filter -A fw_OUTPUT -j fw_dozable",
+    };
+    EXPECT_EQ(0, mFw.enableChildChains(DOZABLE, true));
+    expectIptablesCommands(expected);
+
+    expected = {
+        "-t filter -D fw_INPUT -j fw_powersave",
+        "-t filter -D fw_OUTPUT -j fw_powersave",
+    };
+    EXPECT_EQ(0, mFw.enableChildChains(POWERSAVE, false));
+    expectIptablesCommands(expected);
+}
