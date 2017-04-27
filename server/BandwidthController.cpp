@@ -829,7 +829,6 @@ int BandwidthController::updateQuota(const char *quotaName, int64_t bytes) {
 }
 
 int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes) {
-    int res = 0;
     const char *opFlag;
     std::string alertQuotaCmd = "*filter\n";
 
@@ -849,8 +848,7 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
     StringAppendF(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_OUTPUT", bytes, alertName);
     StringAppendF(&alertQuotaCmd, "COMMIT\n");
 
-    iptablesRestoreFunction(V4V6, alertQuotaCmd, nullptr);
-    return res;
+    return iptablesRestoreFunction(V4V6, alertQuotaCmd, nullptr);
 }
 
 int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName, int64_t bytes) {
