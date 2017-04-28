@@ -124,9 +124,9 @@ protected:
     };
 
     enum IptIpVer { IptIpV4, IptIpV6 };
-    enum IptOp { IptOpInsert, IptOpReplace, IptOpDelete, IptOpAppend };
+    enum IptFullOp { IptFullOpInsert, IptFullOpDelete, IptFullOpAppend };
     enum IptJumpOp { IptJumpReject, IptJumpReturn, IptJumpNoAdd };
-    enum SpecialAppOp { SpecialAppOpAdd, SpecialAppOpRemove };
+    enum IptOp { IptOpInsert, IptOpDelete };
     enum QuotaType { QuotaUnique, QuotaShared };
     enum RunCmdErrHandling { RunCmdFailureBad, RunCmdFailureOk };
 #if LOG_NDEBUG
@@ -137,15 +137,15 @@ protected:
 
     int manipulateSpecialApps(int numUids, char *appStrUids[],
                                const char *chain,
-                               IptJumpOp jumpHandling, SpecialAppOp appOp);
-    int manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
-    int manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
+                               IptJumpOp jumpHandling, IptOp appOp);
+    int manipulateNaughtyApps(int numUids, char *appStrUids[], IptOp appOp);
+    int manipulateNiceApps(int numUids, char *appStrUids[], IptOp appOp);
 
     int prepCostlyIface(const char *ifn, QuotaType quotaType);
     int cleanupCostlyIface(const char *ifn, QuotaType quotaType);
 
     std::string makeIptablesSpecialAppCmd(IptOp op, int uid, const char *chain);
-    std::string makeIptablesQuotaCmd(IptOp op, const char *costName, int64_t quota);
+    std::string makeIptablesQuotaCmd(IptFullOp op, const char *costName, int64_t quota);
 
     int runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes);
     int runIptablesAlertFwdCmd(IptOp op, const char *alertName, int64_t bytes);
@@ -223,6 +223,10 @@ protected:
     static int (*execFunction)(int, char **, int *, bool, bool);
     static FILE *(*popenFunction)(const char *, const char *);
     static int (*iptablesRestoreFunction)(IptablesTarget, const std::string&, std::string *);
+
+private:
+    static const char *opToString(IptOp op);
+    static const char *jumpToString(IptJumpOp jumpHandling);
 };
 
 #endif

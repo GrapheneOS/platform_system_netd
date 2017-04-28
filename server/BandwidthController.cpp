@@ -148,7 +148,6 @@ const std::string GET_TETHER_STATS_COMMAND = StringPrintf(
  */
 
 const std::string COMMIT_AND_CLOSE = "COMMIT\n";
-const std::string DATA_SAVER_ENABLE_COMMAND = "-R bw_data_saver 1";
 const std::string HAPPY_BOX_WHITELIST_COMMAND = StringPrintf(
     "-I bw_happy_box -m owner --uid-owner %d-%d --jump RETURN", 0, MAX_SYSTEM_UID);
 
@@ -229,22 +228,7 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptJumpOp jumpHandling,
     int status = 0;
 
     std::string fullCmd = cmd;
-
-    switch (jumpHandling) {
-    case IptJumpReject:
-        /*
-         * Must be carefull what one rejects with, as uper layer protocols will just
-         * keep on hammering the device until the number of retries are done.
-         * For port-unreachable (default), TCP should consider as an abort (RFC1122).
-         */
-        fullCmd += " --jump REJECT";
-        break;
-    case IptJumpReturn:
-        fullCmd += " --jump RETURN";
-        break;
-    case IptJumpNoAdd:
-        break;
-    }
+    fullCmd += jumpToString(jumpHandling);
 
     fullCmd.insert(0, " -w ");
     fullCmd.insert(0, iptVer == IptIpV4 ? IPTABLES_PATH : IP6TABLES_PATH);
@@ -316,8 +300,11 @@ int BandwidthController::disableBandwidthControl(void) {
 }
 
 int BandwidthController::enableDataSaver(bool enable) {
-    return runIpxtablesCmd(DATA_SAVER_ENABLE_COMMAND.c_str(),
-                           enable ? IptJumpReject : IptJumpReturn, IptFailShow);
+    std::string cmd = StringPrintf(
+        "*filter\n"
+        "-R bw_data_saver 1%s\n"
+        "COMMIT\n", jumpToString(enable ? IptJumpReject : IptJumpReturn));
+    return iptablesRestoreFunction(V4V6, cmd, nullptr);
 }
 
 int BandwidthController::runCommands(int numCommands, const char *commands[],
@@ -336,112 +323,43 @@ int BandwidthController::runCommands(int numCommands, const char *commands[],
     return 0;
 }
 
-std::string BandwidthController::makeIptablesSpecialAppCmd(IptOp op, int uid, const char *chain) {
-    std::string res;
-    char *buff;
-    const char *opFlag;
-
-    switch (op) {
-    case IptOpInsert:
-        opFlag = "-I";
-        break;
-    case IptOpAppend:
-        ALOGE("Append op not supported for %s uids", chain);
-        res = "";
-        return res;
-        break;
-    case IptOpReplace:
-        opFlag = "-R";
-        break;
-    default:
-    case IptOpDelete:
-        opFlag = "-D";
-        break;
-    }
-    asprintf(&buff, "%s %s -m owner --uid-owner %d", opFlag, chain, uid);
-    res = buff;
-    free(buff);
-    return res;
-}
-
 int BandwidthController::addNaughtyApps(int numUids, char *appUids[]) {
-    return manipulateNaughtyApps(numUids, appUids, SpecialAppOpAdd);
+    return manipulateNaughtyApps(numUids, appUids, IptOpInsert);
 }
 
 int BandwidthController::removeNaughtyApps(int numUids, char *appUids[]) {
-    return manipulateNaughtyApps(numUids, appUids, SpecialAppOpRemove);
+    return manipulateNaughtyApps(numUids, appUids, IptOpDelete);
 }
 
 int BandwidthController::addNiceApps(int numUids, char *appUids[]) {
-    return manipulateNiceApps(numUids, appUids, SpecialAppOpAdd);
+    return manipulateNiceApps(numUids, appUids, IptOpInsert);
 }
 
 int BandwidthController::removeNiceApps(int numUids, char *appUids[]) {
-    return manipulateNiceApps(numUids, appUids, SpecialAppOpRemove);
+    return manipulateNiceApps(numUids, appUids, IptOpDelete);
 }
 
-int BandwidthController::manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
-    return manipulateSpecialApps(numUids, appStrUids, "bw_penalty_box", IptJumpReject, appOp);
+int BandwidthController::manipulateNaughtyApps(int numUids, char *appStrUids[], IptOp op) {
+    return manipulateSpecialApps(numUids, appStrUids, "bw_penalty_box", IptJumpReject, op);
 }
 
-int BandwidthController::manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
-    return manipulateSpecialApps(numUids, appStrUids, "bw_happy_box", IptJumpReturn, appOp);
+int BandwidthController::manipulateNiceApps(int numUids, char *appStrUids[], IptOp op) {
+    return manipulateSpecialApps(numUids, appStrUids, "bw_happy_box", IptJumpReturn, op);
 }
-
 
 int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
                                                const char *chain,
-                                               IptJumpOp jumpHandling, SpecialAppOp appOp) {
-
-    int uidNum;
-    const char *failLogTemplate;
-    IptOp op;
-    int appUids[numUids];
-    std::string iptCmd;
-
-    switch (appOp) {
-    case SpecialAppOpAdd:
-        op = IptOpInsert;
-        failLogTemplate = "Failed to add app uid %s(%d) to %s.";
-        break;
-    case SpecialAppOpRemove:
-        op = IptOpDelete;
-        failLogTemplate = "Failed to delete app uid %s(%d) from %s box.";
-        break;
-    default:
-        ALOGE("Unexpected app Op %d", appOp);
-        return -1;
+                                               IptJumpOp jumpHandling, IptOp op) {
+    std::string cmd = "*filter\n";
+    for (int uidNum = 0; uidNum < numUids; uidNum++) {
+        StringAppendF(&cmd, "%s %s -m owner --uid-owner %s%s\n", opToString(op), chain,
+                      appStrUids[uidNum], jumpToString(jumpHandling));
     }
-
-    for (uidNum = 0; uidNum < numUids; uidNum++) {
-        char *end;
-        appUids[uidNum] = strtoul(appStrUids[uidNum], &end, 0);
-        if (*end || !*appStrUids[uidNum]) {
-            ALOGE(failLogTemplate, appStrUids[uidNum], appUids[uidNum], chain);
-            goto fail_parse;
-        }
-    }
-
-    for (uidNum = 0; uidNum < numUids; uidNum++) {
-        int uid = appUids[uidNum];
-
-        iptCmd = makeIptablesSpecialAppCmd(op, uid, chain);
-        if (runIpxtablesCmd(iptCmd.c_str(), jumpHandling)) {
-            ALOGE(failLogTemplate, appStrUids[uidNum], uid, chain);
-            goto fail_with_uidNum;
-        }
-    }
-    return 0;
-
-fail_with_uidNum:
-    /* Try to remove the uid that failed in any case*/
-    iptCmd = makeIptablesSpecialAppCmd(IptOpDelete, appUids[uidNum], chain);
-    runIpxtablesCmd(iptCmd.c_str(), jumpHandling);
-fail_parse:
-    return -1;
+    StringAppendF(&cmd, "COMMIT\n");
+    return iptablesRestoreFunction(V4V6, cmd, nullptr);
 }
 
-std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *costName, int64_t quota) {
+std::string BandwidthController::makeIptablesQuotaCmd(IptFullOp op, const char *costName, int64_t quota) {
     std::string res;
     char *buff;
     const char *opFlag;
@@ -449,17 +367,13 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *cost
     ALOGV("makeIptablesQuotaCmd(%d, %" PRId64")", op, quota);
 
     switch (op) {
-    case IptOpInsert:
+    case IptFullOpInsert:
         opFlag = "-I";
         break;
-    case IptOpAppend:
+    case IptFullOpAppend:
         opFlag = "-A";
         break;
-    case IptOpReplace:
-        opFlag = "-R";
-        break;
-    default:
-    case IptOpDelete:
+    case IptFullOpDelete:
         opFlag = "-D";
         break;
     }
@@ -502,9 +416,6 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
     case QuotaShared:
         costCString = "bw_costly_shared";
         break;
-    default:
-        ALOGE("Unexpected quotatype %d", quotaType);
-        return -1;
     }
 
     if (globalAlertBytes) {
@@ -547,9 +458,6 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
     case QuotaShared:
         costCString = "bw_costly_shared";
         break;
-    default:
-        ALOGE("Unexpected quotatype %d", quotaType);
-        return -1;
     }
 
     snprintf(cmd, sizeof(cmd), "-D bw_INPUT -i %s --jump %s", ifn, costCString);
@@ -604,7 +512,7 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
     if (it == sharedQuotaIfaces.end()) {
         res |= prepCostlyIface(ifn, QuotaShared);
         if (sharedQuotaIfaces.empty()) {
-            quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
+            quotaCmd = makeIptablesQuotaCmd(IptFullOpInsert, costName, maxBytes);
             res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
             if (res) {
                 ALOGE("Failed set quota rule");
@@ -667,7 +575,7 @@ int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
 
     if (sharedQuotaIfaces.empty()) {
         std::string quotaCmd;
-        quotaCmd = makeIptablesQuotaCmd(IptOpDelete, costName, sharedQuotaBytes);
+        quotaCmd = makeIptablesQuotaCmd(IptFullOpDelete, costName, sharedQuotaBytes);
         res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
         sharedQuotaBytes = 0;
         if (sharedAlertBytes) {
@@ -719,7 +627,7 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
          * or else a naughty app could just eat up the quota.
          * So we append here.
          */
-        quotaCmd = makeIptablesQuotaCmd(IptOpAppend, costName, maxBytes);
+        quotaCmd = makeIptablesQuotaCmd(IptFullOpAppend, costName, maxBytes);
         res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
         if (res) {
             ALOGE("Failed set quota rule");
@@ -829,18 +737,8 @@ int BandwidthController::updateQuota(const char *quotaName, int64_t bytes) {
 }
 
 int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes) {
-    const char *opFlag;
+    const char *opFlag = opToString(op);
     std::string alertQuotaCmd = "*filter\n";
-
-    switch (op) {
-    case IptOpInsert:
-        opFlag = "-I";
-        break;
-    default:
-    case IptOpDelete:
-        opFlag = "-D";
-        break;
-    }
 
     // TODO: consider using an alternate template for the delete that does not include the --quota
     // value. This code works because the --quota value is ignored by deletes
@@ -852,19 +750,8 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
 }
 
 int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName, int64_t bytes) {
-    const char *opFlag;
+    const char *opFlag = opToString(op);
     std::string alertQuotaCmd = "*filter\n";
-
-    switch (op) {
-    case IptOpInsert:
-        opFlag = "-I";
-        break;
-    default:
-    case IptOpDelete:
-        opFlag = "-D";
-        break;
-    }
-
     StringAppendF(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_FORWARD", bytes, alertName);
     StringAppendF(&alertQuotaCmd, "COMMIT\n");
 
@@ -1295,4 +1182,29 @@ void BandwidthController::parseAndFlushCostlyTables(const std::string& ruleList,
 
     clearCommands.push_back("COMMIT\n");
     iptablesRestoreFunction(V4V6, android::base::Join(clearCommands, '\n'), nullptr);
+}
+
+inline const char *BandwidthController::opToString(IptOp op) {
+    switch (op) {
+    case IptOpInsert:
+        return "-I";
+    case IptOpDelete:
+        return "-D";
+    }
+}
+
+inline const char *BandwidthController::jumpToString(IptJumpOp jumpHandling) {
+    /*
+     * Must be careful what one rejects with, as upper layer protocols will just
+     * keep on hammering the device until the number of retries are done.
+     * For port-unreachable (default), TCP should consider as an abort (RFC1122).
+     */
+    switch (jumpHandling) {
+    case IptJumpNoAdd:
+        return "";
+    case IptJumpReject:
+        return " --jump REJECT";
+    case IptJumpReturn:
+        return " --jump RETURN";
+    }
 }
