@@ -436,3 +436,23 @@ TEST_F(BandwidthControllerTest, IptablesAlertFwdCmd) {
     EXPECT_EQ(0, runIptablesAlertFwdCmd(IptOp::IptOpDelete, "MyWonderfulAlert", 123456));
     expectIptablesRestoreCommands(expected);
 }
+
+TEST_F(BandwidthControllerTest, ManipulateSpecialApps) {
+    std::vector<const char *> appUids = { "1000", "1001", "10012" };
+
+    std::vector<std::string> expected = {
+        "-I bw_happy_box -m owner --uid-owner 1000 --jump RETURN",
+        "-I bw_happy_box -m owner --uid-owner 1001 --jump RETURN",
+        "-I bw_happy_box -m owner --uid-owner 10012 --jump RETURN",
+    };
+    EXPECT_EQ(0, mBw.addNiceApps(appUids.size(), const_cast<char**>(&appUids[0])));
+    expectIptablesCommands(expected);
+
+    expected = {
+        "-D bw_penalty_box -m owner --uid-owner 1000 --jump REJECT",
+        "-D bw_penalty_box -m owner --uid-owner 1001 --jump REJECT",
+        "-D bw_penalty_box -m owner --uid-owner 10012 --jump REJECT",
+    };
+    EXPECT_EQ(0, mBw.removeNaughtyApps(appUids.size(), const_cast<char**>(&appUids[0])));
+    expectIptablesCommands(expected);
+}
