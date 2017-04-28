@@ -102,6 +102,16 @@ public:
 
         expectIptablesRestoreCommands(expected);
     }
+
+    using IptOp = BandwidthController::IptOp;
+
+    int runIptablesAlertCmd(IptOp a, const char *b, int64_t c) {
+        return mBw.runIptablesAlertCmd(a, b, c);
+    }
+
+    int runIptablesAlertFwdCmd(IptOp a, const char *b, int64_t c) {
+        return mBw.runIptablesAlertFwdCmd(a, b, c);
+    }
 };
 
 TEST_F(BandwidthControllerTest, TestSetupIptablesHooks) {
@@ -387,4 +397,42 @@ TEST_F(BandwidthControllerTest, TestSetInterfaceQuota) {
     expected = removeInterfaceQuotaCommands(iface);
     EXPECT_EQ(0, mBw.removeInterfaceQuota(iface));
     expectIptablesCommands(expected);
+}
+
+TEST_F(BandwidthControllerTest, IptablesAlertCmd) {
+    std::vector<std::string> expected = {
+        "*filter\n"
+        "-I bw_INPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "-I bw_OUTPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "COMMIT\n"
+    };
+    EXPECT_EQ(0, runIptablesAlertCmd(IptOp::IptOpInsert, "MyWonderfulAlert", 123456));
+    expectIptablesRestoreCommands(expected);
+
+    expected = {
+        "*filter\n"
+        "-D bw_INPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "-D bw_OUTPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "COMMIT\n"
+    };
+    EXPECT_EQ(0, runIptablesAlertCmd(IptOp::IptOpDelete, "MyWonderfulAlert", 123456));
+    expectIptablesRestoreCommands(expected);
+}
+
+TEST_F(BandwidthControllerTest, IptablesAlertFwdCmd) {
+    std::vector<std::string> expected = {
+        "*filter\n"
+        "-I bw_FORWARD -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "COMMIT\n"
+    };
+    EXPECT_EQ(0, runIptablesAlertFwdCmd(IptOp::IptOpInsert, "MyWonderfulAlert", 123456));
+    expectIptablesRestoreCommands(expected);
+
+    expected = {
+        "*filter\n"
+        "-D bw_FORWARD -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+        "COMMIT\n"
+    };
+    EXPECT_EQ(0, runIptablesAlertFwdCmd(IptOp::IptOpDelete, "MyWonderfulAlert", 123456));
+    expectIptablesRestoreCommands(expected);
 }

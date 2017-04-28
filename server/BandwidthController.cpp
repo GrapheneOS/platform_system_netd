@@ -57,7 +57,7 @@
 #include "ResponseCode.h"
 
 /* Alphabetical */
-#define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %" PRId64" --name %s"
+#define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %" PRId64" --name %s\n"
 const char* BandwidthController::LOCAL_INPUT = "bw_INPUT";
 const char* BandwidthController::LOCAL_FORWARD = "bw_FORWARD";
 const char* BandwidthController::LOCAL_OUTPUT = "bw_OUTPUT";
@@ -68,6 +68,9 @@ auto BandwidthController::execFunction = android_fork_execvp;
 auto BandwidthController::popenFunction = popen;
 auto BandwidthController::iptablesRestoreFunction = execIptablesRestoreWithOutput;
 
+using android::base::StringAppendF;
+using android::base::StringPrintf;
+
 namespace {
 
 const char ALERT_GLOBAL_NAME[] = "globalAlert";
@@ -76,7 +79,7 @@ const int  MAX_CMD_LEN = 1024;
 const int  MAX_IFACENAME_LEN = 64;
 const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
 const std::string NEW_CHAIN_COMMAND = "-N ";
-const std::string GET_TETHER_STATS_COMMAND = android::base::StringPrintf(
+const std::string GET_TETHER_STATS_COMMAND = StringPrintf(
     "*filter\n"
     "-nvx -L %s\n"
     "COMMIT\n", NatController::LOCAL_TETHER_COUNTERS_CHAIN);
@@ -146,7 +149,7 @@ const std::string GET_TETHER_STATS_COMMAND = android::base::StringPrintf(
 
 const std::string COMMIT_AND_CLOSE = "COMMIT\n";
 const std::string DATA_SAVER_ENABLE_COMMAND = "-R bw_data_saver 1";
-const std::string HAPPY_BOX_WHITELIST_COMMAND = android::base::StringPrintf(
+const std::string HAPPY_BOX_WHITELIST_COMMAND = StringPrintf(
     "-I bw_happy_box -m owner --uid-owner %d-%d --jump RETURN", 0, MAX_SYSTEM_UID);
 
 static const std::vector<std::string> IPT_FLUSH_COMMANDS = {
@@ -826,19 +829,12 @@ int BandwidthController::updateQuota(const char *quotaName, int64_t bytes) {
 }
 
 int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes) {
-    int res = 0;
     const char *opFlag;
-    char *alertQuotaCmd;
+    std::string alertQuotaCmd = "*filter\n";
 
     switch (op) {
     case IptOpInsert:
         opFlag = "-I";
-        break;
-    case IptOpAppend:
-        opFlag = "-A";
-        break;
-    case IptOpReplace:
-        opFlag = "-R";
         break;
     default:
     case IptOpDelete:
@@ -846,31 +842,22 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
         break;
     }
 
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_INPUT",
-        bytes, alertName);
-    res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
-    free(alertQuotaCmd);
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_OUTPUT",
-        bytes, alertName);
-    res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
-    free(alertQuotaCmd);
-    return res;
+    // TODO: consider using an alternate template for the delete that does not include the --quota
+    // value. This code works because the --quota value is ignored by deletes
+    StringAppendF(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_INPUT", bytes, alertName);
+    StringAppendF(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_OUTPUT", bytes, alertName);
+    StringAppendF(&alertQuotaCmd, "COMMIT\n");
+
+    return iptablesRestoreFunction(V4V6, alertQuotaCmd, nullptr);
 }
 
 int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName, int64_t bytes) {
-    int res = 0;
     const char *opFlag;
-    char *alertQuotaCmd;
+    std::string alertQuotaCmd = "*filter\n";
 
     switch (op) {
     case IptOpInsert:
         opFlag = "-I";
-        break;
-    case IptOpAppend:
-        opFlag = "-A";
-        break;
-    case IptOpReplace:
-        opFlag = "-R";
         break;
     default:
     case IptOpDelete:
@@ -878,11 +865,10 @@ int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName,
         break;
     }
 
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_FORWARD",
-        bytes, alertName);
-    res = runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
-    free(alertQuotaCmd);
-    return res;
+    StringAppendF(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_FORWARD", bytes, alertName);
+    StringAppendF(&alertQuotaCmd, "COMMIT\n");
+
+    return iptablesRestoreFunction(V4V6, alertQuotaCmd, nullptr);
 }
 
 int BandwidthController::setGlobalAlert(int64_t bytes) {
@@ -1296,9 +1282,9 @@ void BandwidthController::parseAndFlushCostlyTables(const std::string& ruleList,
             continue;
         }
 
-        clearCommands.push_back(android::base::StringPrintf(":%s -", chainName.c_str()));
+        clearCommands.push_back(StringPrintf(":%s -", chainName.c_str()));
         if (doRemove) {
-            clearCommands.push_back(android::base::StringPrintf("-X %s", chainName.c_str()));
+            clearCommands.push_back(StringPrintf("-X %s", chainName.c_str()));
         }
     }
 
