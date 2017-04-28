@@ -190,15 +190,19 @@ TEST_F(BandwidthControllerTest, TestDisableBandwidthControl) {
 TEST_F(BandwidthControllerTest, TestEnableDataSaver) {
     mBw.enableDataSaver(true);
     std::vector<std::string> expected = {
-        "-R bw_data_saver 1 --jump REJECT",
+        "*filter\n"
+        "-R bw_data_saver 1 --jump REJECT\n"
+        "COMMIT\n"
     };
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     mBw.enableDataSaver(false);
     expected = {
-        "-R bw_data_saver 1 --jump RETURN",
+        "*filter\n"
+        "-R bw_data_saver 1 --jump RETURN\n"
+        "COMMIT\n"
     };
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 }
 
 std::string kIPv4TetherCounters = android::base::Join(std::vector<std::string> {
@@ -434,5 +438,29 @@ TEST_F(BandwidthControllerTest, IptablesAlertFwdCmd) {
         "COMMIT\n"
     };
     EXPECT_EQ(0, runIptablesAlertFwdCmd(IptOp::IptOpDelete, "MyWonderfulAlert", 123456));
+    expectIptablesRestoreCommands(expected);
+}
+
+TEST_F(BandwidthControllerTest, ManipulateSpecialApps) {
+    std::vector<const char *> appUids = { "1000", "1001", "10012" };
+
+    std::vector<std::string> expected = {
+        "*filter\n"
+        "-I bw_happy_box -m owner --uid-owner 1000 --jump RETURN\n"
+        "-I bw_happy_box -m owner --uid-owner 1001 --jump RETURN\n"
+        "-I bw_happy_box -m owner --uid-owner 10012 --jump RETURN\n"
+        "COMMIT\n"
+    };
+    EXPECT_EQ(0, mBw.addNiceApps(appUids.size(), const_cast<char**>(&appUids[0])));
+    expectIptablesRestoreCommands(expected);
+
+    expected = {
+        "*filter\n"
+        "-D bw_penalty_box -m owner --uid-owner 1000 --jump REJECT\n"
+        "-D bw_penalty_box -m owner --uid-owner 1001 --jump REJECT\n"
+        "-D bw_penalty_box -m owner --uid-owner 10012 --jump REJECT\n"
+        "COMMIT\n"
+    };
+    EXPECT_EQ(0, mBw.removeNaughtyApps(appUids.size(), const_cast<char**>(&appUids[0])));
     expectIptablesRestoreCommands(expected);
 }
