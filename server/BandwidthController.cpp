@@ -148,7 +148,6 @@ const std::string GET_TETHER_STATS_COMMAND = StringPrintf(
  */
 
 const std::string COMMIT_AND_CLOSE = "COMMIT\n";
-const std::string DATA_SAVER_ENABLE_COMMAND = "-R bw_data_saver 1";
 const std::string HAPPY_BOX_WHITELIST_COMMAND = StringPrintf(
     "-I bw_happy_box -m owner --uid-owner %d-%d --jump RETURN", 0, MAX_SYSTEM_UID);
 
@@ -301,8 +300,11 @@ int BandwidthController::disableBandwidthControl(void) {
 }
 
 int BandwidthController::enableDataSaver(bool enable) {
-    return runIpxtablesCmd(DATA_SAVER_ENABLE_COMMAND.c_str(),
-                           enable ? IptJumpReject : IptJumpReturn, IptFailShow);
+    std::string cmd = StringPrintf(
+        "*filter\n"
+        "-R bw_data_saver 1%s\n"
+        "COMMIT\n", jumpToString(enable ? IptJumpReject : IptJumpReturn));
+    return iptablesRestoreFunction(V4V6, cmd, nullptr);
 }
 
 int BandwidthController::runCommands(int numCommands, const char *commands[],
@@ -319,25 +321,6 @@ int BandwidthController::runCommands(int numCommands, const char *commands[],
             return res;
     }
     return 0;
-}
-
-std::string BandwidthController::makeIptablesSpecialAppCmd(IptOp op, int uid, const char *chain) {
-    std::string res;
-    char *buff;
-    const char *opFlag;
-
-    switch (op) {
-    case IptOpInsert:
-        opFlag = "-I";
-        break;
-    case IptOpDelete:
-        opFlag = "-D";
-        break;
-    }
-    asprintf(&buff, "%s %s -m owner --uid-owner %d", opFlag, chain, uid);
-    res = buff;
-    free(buff);
-    return res;
 }
 
 int BandwidthController::addNaughtyApps(int numUids, char *appUids[]) {
@@ -364,51 +347,16 @@ int BandwidthController::manipulateNiceApps(int numUids, char *appStrUids[], Ipt
     return manipulateSpecialApps(numUids, appStrUids, "bw_happy_box", IptJumpReturn, op);
 }
 
-
 int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
                                                const char *chain,
                                                IptJumpOp jumpHandling, IptOp op) {
-
-    int uidNum;
-    const char *failLogTemplate;
-    int appUids[numUids];
-    std::string iptCmd;
-
-    switch (op) {
-    case IptOpInsert:
-        failLogTemplate = "Failed to add app uid %s(%d) to %s.";
-        break;
-    case IptOpDelete:
-        failLogTemplate = "Failed to delete app uid %s(%d) from %s box.";
-        break;
+    std::string cmd = "*filter\n";
+    for (int uidNum = 0; uidNum < numUids; uidNum++) {
+        StringAppendF(&cmd, "%s %s -m owner --uid-owner %s%s\n", opToString(op), chain,
+                      appStrUids[uidNum], jumpToString(jumpHandling));
     }
-
-    for (uidNum = 0; uidNum < numUids; uidNum++) {
-        char *end;
-        appUids[uidNum] = strtoul(appStrUids[uidNum], &end, 0);
-        if (*end || !*appStrUids[uidNum]) {
-            ALOGE(failLogTemplate, appStrUids[uidNum], appUids[uidNum], chain);
-            goto fail_parse;
-        }
-    }
-
-    for (uidNum = 0; uidNum < numUids; uidNum++) {
-        int uid = appUids[uidNum];
-
-        iptCmd = makeIptablesSpecialAppCmd(op, uid, chain);
-        if (runIpxtablesCmd(iptCmd.c_str(), jumpHandling)) {
-            ALOGE(failLogTemplate, appStrUids[uidNum], uid, chain);
-            goto fail_with_uidNum;
-        }
-    }
-    return 0;
-
-fail_with_uidNum:
-    /* Try to remove the uid that failed in any case*/
-    iptCmd = makeIptablesSpecialAppCmd(IptOpDelete, appUids[uidNum], chain);
-    runIpxtablesCmd(iptCmd.c_str(), jumpHandling);
-fail_parse:
-    return -1;
+    StringAppendF(&cmd, "COMMIT\n");
+    return iptablesRestoreFunction(V4V6, cmd, nullptr);
 }
 
 std::string BandwidthController::makeIptablesQuotaCmd(IptFullOp op, const char *costName, int64_t quota) {
