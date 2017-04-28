@@ -32,6 +32,8 @@
 const int PROTECT_MARK = 0x1;
 const int MAX_SYSTEM_UID = AID_APP - 1;
 
+extern const size_t SHA256_SIZE;
+
 extern const char * const IPTABLES_PATH;
 extern const char * const IP6TABLES_PATH;
 extern const char * const IP_PATH;

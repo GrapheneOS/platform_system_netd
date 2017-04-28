@@ -20,6 +20,7 @@
 #include <netdb.h>
 #include <net/if.h>
 #include <netinet/in.h>
+#include <openssl/ssl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -33,6 +34,8 @@
 #include "Controllers.h"
 #include "NetdConstants.h"
 #include "IptablesRestoreController.h"
+
+const size_t SHA256_SIZE = EVP_MD_size(EVP_sha256());
 
 const char * const OEM_SCRIPT_PATH = "/system/bin/oem-iptables-init.sh";
 const char * const IPTABLES_PATH = "/system/bin/iptables";

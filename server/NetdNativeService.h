@@ -47,6 +47,10 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status getResolverInfo(int32_t netId, std::vector<std::string>* servers,
             std::vector<std::string>* domains, std::vector<int32_t>* params,
             std::vector<int32_t>* stats) override;
+    binder::Status addPrivateDnsServer(const std::string& server, int32_t port,
+            const std::string& fingerprintAlgorithm,
+            const std::vector<std::string>& fingerprints) override;
+    binder::Status removePrivateDnsServer(const std::string& server) override;
 
     binder::Status setIPv6AddrGenMode(const std::string& ifName, int32_t mode) override;
 
