@@ -233,7 +233,7 @@ protected:
         auto t0 = std::chrono::steady_clock::now();
         std::vector<std::thread> threads(num_threads);
         for (std::thread& thread : threads) {
-           thread = std::thread([this, &servers, &dns, &mappings, num_queries]() {
+           thread = std::thread([this, &mappings, num_queries]() {
                 for (unsigned i = 0 ; i < num_queries ; ++i) {
                     uint32_t ofs = arc4random_uniform(mappings.size());
                     auto& mapping = mappings[ofs];
@@ -563,7 +563,7 @@ TEST_F(ResolverTest, GetAddrInfoV6_concurrent) {
     const std::vector<std::string> servers = { listen_addr0, listen_addr1, listen_addr2 };
     std::vector<std::thread> threads(10);
     for (std::thread& thread : threads) {
-       thread = std::thread([this, &servers, &dns0, &dns1, &dns2]() {
+       thread = std::thread([this, &servers]() {
             unsigned delay = arc4random_uniform(1*1000*1000); // <= 1s
             usleep(delay);
             std::vector<std::string> serverSubset;
