@@ -350,8 +350,7 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
         const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits,
         int32_t encapType,
         int32_t encapLocalPort,
-        int32_t encapRemotePort,
-        int32_t* allocatedSpi) {
+        int32_t encapRemotePort) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ALOGD("ipSecAddSecurityAssociation()");
@@ -361,8 +360,7 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
               spi,
               authAlgo, authKey, authTruncBits,
               cryptAlgo, cryptKey, cryptTruncBits,
-              encapType, encapLocalPort, encapRemotePort,
-              allocatedSpi));
+              encapType, encapLocalPort, encapRemotePort));
 }
 
 binder::Status NetdNativeService::ipSecDeleteSecurityAssociation(

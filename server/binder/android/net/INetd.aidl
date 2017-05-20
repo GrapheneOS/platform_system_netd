@@ -237,9 +237,8 @@ interface INetd {
     * @param encapType encapsulation type used (if any) for the udp encap socket
     * @param encapLocalPort the port number on the host to be used in encap packets
     * @param encapRemotePort the port number of the remote to be used for encap packets
-    * @return the spi that was used to create this SA (should match the SPI paramter)
     */
-    int ipSecAddSecurityAssociation(
+    void ipSecAddSecurityAssociation(
             int transformId,
             int mode,
             int direction,
