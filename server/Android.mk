@@ -71,6 +71,7 @@ LOCAL_SHARED_LIBRARIES := \
         libmdnssd \
         libnetdaidl \
         libnetutils \
+        libnetdutils \
         libnl \
         libsysutils \
         libbase \
@@ -100,8 +101,10 @@ LOCAL_SRC_FILES := \
         NetlinkHandler.cpp \
         NetlinkManager.cpp \
         NetlinkCommands.cpp \
+        NetlinkListener.cpp \
         Network.cpp \
         NetworkController.cpp \
+        NFLogListener.cpp \
         PhysicalNetwork.cpp \
         PppController.cpp \
         ResolverController.cpp \
@@ -111,6 +114,7 @@ LOCAL_SRC_FILES := \
         TetherController.cpp \
         UidRanges.cpp \
         VirtualNetwork.cpp \
+        WakeupController.cpp \
         XfrmController.cpp \
         main.cpp \
         oem_iptables_hook.cpp \
@@ -163,16 +167,20 @@ LOCAL_SRC_FILES := \
         FirewallControllerTest.cpp FirewallController.cpp \
         IdletimerController.cpp \
         NatControllerTest.cpp NatController.cpp \
-        NetlinkCommands.cpp \
+        NetlinkCommands.cpp NetlinkManager.cpp \
         RouteController.cpp RouteControllerTest.cpp \
         SockDiagTest.cpp SockDiag.cpp \
         StrictController.cpp StrictControllerTest.cpp \
         UidRanges.cpp \
+        NetlinkListener.cpp \
+        WakeupController.cpp WakeupControllerTest.cpp \
+        NFLogListener.cpp NFLogListenerTest.cpp \
         binder/android/net/UidRange.cpp \
         binder/android/net/metrics/INetdEventListener.aidl \
         ../tests/tun_interface.cpp \
 
 LOCAL_MODULE_TAGS := tests
+LOCAL_STATIC_LIBRARIES := libgmock
 LOCAL_SHARED_LIBRARIES := \
         libbase \
         libbinder \
@@ -180,6 +188,9 @@ LOCAL_SHARED_LIBRARIES := \
         liblog \
         liblogwrap \
         libnetutils \
+        libnetdutils \
+        libnl \
+        libpcap \
         libsysutils \
         libutils \
 

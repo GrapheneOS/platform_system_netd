@@ -48,6 +48,13 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             std::vector<std::string>* domains, std::vector<int32_t>* params,
             std::vector<int32_t>* stats) override;
 
+    // NFLOG-related commands
+    binder::Status wakeupAddInterface(const std::string& ifName, const std::string& prefix,
+                                      int32_t mark, int32_t mask) override;
+
+    binder::Status wakeupDelInterface(const std::string& ifName, const std::string& prefix,
+                                      int32_t mark, int32_t mask) override;
+
     // Tethering-related commands.
     binder::Status tetherApplyDnsInterfaces(bool *ret) override;
 
@@ -108,7 +115,6 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     binder::Status ipSecRemoveTransportModeTransform(
             const android::base::unique_fd& socket);
-
 };
 
 }  // namespace net

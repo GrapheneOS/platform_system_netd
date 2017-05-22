@@ -51,6 +51,7 @@ namespace net {
 
 const int NetlinkManager::NFLOG_QUOTA_GROUP = 1;
 const int NetlinkManager::NETFILTER_STRICT_GROUP = 2;
+const int NetlinkManager::NFLOG_WAKEUP_GROUP = 3;
 
 NetlinkManager *NetlinkManager::sInstance = NULL;
 

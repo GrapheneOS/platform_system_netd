@@ -295,4 +295,21 @@ interface INetd {
     */
     void ipSecRemoveTransportModeTransform(
             in FileDescriptor socket);
+
+   /**
+    * Request notification of wakeup packets arriving on an interface. Notifications will be
+    * delivered to INetdEventListener.onWakeupEvent().
+    *
+    * @param ifName the interface
+    * @param prefix arbitrary string used to identify wakeup sources in onWakeupEvent
+    */
+    void wakeupAddInterface(in @utf8InCpp String ifName, in @utf8InCpp String prefix, int mark, int mask);
+
+   /**
+    * Stop notification of wakeup packets arriving on an interface.
+    *
+    * @param ifName the interface
+    * @param prefix arbitrary string used to identify wakeup sources in onWakeupEvent
+    */
+    void wakeupDelInterface(in @utf8InCpp String ifName, in @utf8InCpp String prefix, int mark, int mask);
 }

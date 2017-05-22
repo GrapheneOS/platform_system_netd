@@ -35,15 +35,16 @@
 #include <binder/IServiceManager.h>
 #include <binder/ProcessState.h>
 
-#include "Controllers.h"
 #include "CommandListener.h"
+#include "Controllers.h"
+#include "DnsProxyListener.h"
+#include "FwmarkServer.h"
+#include "MDnsSdListener.h"
+#include "NFLogListener.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
 #include "NetlinkManager.h"
 #include "Stopwatch.h"
-#include "DnsProxyListener.h"
-#include "MDnsSdListener.h"
-#include "FwmarkServer.h"
 
 using android::status_t;
 using android::sp;
@@ -55,6 +56,8 @@ using android::net::DnsProxyListener;
 using android::net::FwmarkServer;
 using android::net::NetdNativeService;
 using android::net::NetlinkManager;
+using android::net::NFLogListener;
+using android::net::makeNFLogListener;
 
 static void remove_pid_file();
 static bool write_pid_file();
@@ -80,8 +83,19 @@ int main() {
         exit(1);
     };
 
+    std::unique_ptr<NFLogListener> logListener;
+    {
+        auto result = makeNFLogListener();
+        if (!isOk(result)) {
+            ALOGE("Unable to create NFLogListener: %s", result.status().msg().c_str());
+            exit(1);
+        }
+        logListener = std::move(result.value());
+    }
+
     gCtls = new android::net::Controllers();
     gCtls->init();
+    gCtls->wakeupCtrl.init(logListener.get());
 
     CommandListener cl;
     nm->setBroadcaster((SocketListener *) &cl);
