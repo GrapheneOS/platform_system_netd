@@ -81,6 +81,7 @@ const char *EXPECTED_REGEXPS[] = {
 };
 
 bool checkExpectedCommand(int argc, char **argv) {
+    static bool loggedError = false;
     std::vector<const char*> allArgs(argc);
     for (int i = 0; i < argc; i++) {
         allArgs[i] = argv[i];
@@ -92,7 +93,11 @@ bool checkExpectedCommand(int argc, char **argv) {
             return true;
         }
     }
-    ALOGI("Unexpected command: %s", fullCmd.c_str());
+    if (!loggedError) {
+        ALOGI("Unexpected command: %s", fullCmd.c_str());
+        fprintf(stderr, LOG_TAG ": Unexpected command: %s", fullCmd.c_str());
+        loggedError = true;
+    }
     return false;
 }
 
@@ -118,12 +123,12 @@ int doMain(int argc, char **argv) {
                 exit(EXIT_FAILURE);
             }
             argv[0] = cmd;
-            checkExpectedCommand(argc, argv);
-            execv(cmd, argv);
+            if (checkExpectedCommand(argc, argv)) {
+                execv(cmd, argv);
+            }
         }
     }
 
-    // must never reach here
-    fprintf(stderr, "(%s:%d) is not a supported net util\n", progname, errno);
+    // Invalid command. Reject and fail.
     exit(EXIT_FAILURE);
 }
