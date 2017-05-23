@@ -368,24 +368,25 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
         name = strdup(name);
     }
 
-    uint32_t mark = mDnsProxyListener->mNetCtrl->getNetworkForDns(&netId, uid);
+    android_net_context netcontext;
+    mDnsProxyListener->mNetCtrl->getNetworkContext(netId, uid, &netcontext);
+
     const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
 
     DnsProxyListener::GetHostByNameHandler* handler =
-            new DnsProxyListener::GetHostByNameHandler(cli, name, af, netId, mark, metricsLevel,
+            new DnsProxyListener::GetHostByNameHandler(cli, name, af, netcontext, metricsLevel,
                     mDnsProxyListener->mEventReporter->getNetdEventListener());
     tryThreadOrError(cli, handler);
     return 0;
 }
 
-DnsProxyListener::GetHostByNameHandler::GetHostByNameHandler(
-        SocketClient* c, char* name, int af, unsigned netId, uint32_t mark, const int metricsLevel,
+DnsProxyListener::GetHostByNameHandler::GetHostByNameHandler(SocketClient* c, char* name, int af,
+        const android_net_context& netcontext, const int metricsLevel,
         const android::sp<android::net::metrics::INetdEventListener>& netdEventListener)
         : mClient(c),
           mName(name),
           mAf(af),
-          mNetId(netId),
-          mMark(mark),
+          mNetContext(netcontext),
           mReportingLevel(metricsLevel),
           mNetdEventListener(netdEventListener) {
 }
@@ -400,7 +401,7 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     }
 
     Stopwatch s;
-    struct hostent* hp = android_gethostbynamefornet(mName, mAf, mNetId, mMark);
+    struct hostent* hp = android_gethostbynamefornetcontext(mName, mAf, &mNetContext);
     const int latencyMs = lround(s.timeTaken());
 
     if (DBG) {
@@ -448,12 +449,14 @@ void DnsProxyListener::GetHostByNameHandler::run() {
                 break;
             case INetdEventListener::REPORTING_LEVEL_METRICS:
                 // Metrics reporting is on. Send metrics.
-                mNetdEventListener->onDnsEvent(mNetId, INetdEventListener::EVENT_GETHOSTBYNAME,
+                mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
+                                               INetdEventListener::EVENT_GETHOSTBYNAME,
                                                h_errno, latencyMs, String16(""), {}, -1, -1);
                 break;
             case INetdEventListener::REPORTING_LEVEL_FULL:
                 // Full event info reporting is on. Send full info.
-                mNetdEventListener->onDnsEvent(mNetId, INetdEventListener::EVENT_GETHOSTBYNAME,
+                mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
+                                               INetdEventListener::EVENT_GETHOSTBYNAME,
                                                h_errno, latencyMs, String16(mName), ip_addrs,
                                                total_ip_addr_count, mClient->getUid());
                 break;
