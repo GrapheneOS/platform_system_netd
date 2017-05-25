@@ -47,6 +47,8 @@
 #include "RouteController.h"
 #include "VirtualNetwork.h"
 
+#define DBG 0
+
 namespace android {
 namespace net {
 
@@ -287,11 +289,16 @@ void NetworkController::getNetworkContext(
     Fwmark fwmark;
     fwmark.netId = nc.app_netid;
     fwmark.explicitlySelected = explicitlySelected;
-    fwmark.protectedFromVpn = canProtect(uid);
+    fwmark.protectedFromVpn = explicitlySelected && canProtect(uid);
     fwmark.permission = getPermissionForUser(uid);
     nc.app_mark = fwmark.intValue;
 
     nc.dns_mark = getNetworkForDns(&(nc.dns_netid), uid);
+
+    if (DBG) {
+        ALOGD("app_netid:0x%x app_mark:0x%x dns_netid:0x%x dns_mark:0x%x uid:%d",
+              nc.app_netid, nc.app_mark, nc.dns_netid, nc.dns_mark, uid);
+    }
 
     if (netcontext) {
         *netcontext = nc;
