@@ -118,7 +118,6 @@ private:
     std::map<unsigned, Network*> mNetworks;  // Map keys are NetIds.
     std::map<uid_t, Permission> mUsers;
     std::set<uid_t> mProtectableUsers;
-
 };
 
 }  // namespace net
