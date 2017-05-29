@@ -73,6 +73,7 @@ static const char* MANGLE_POSTROUTING[] = {
 };
 
 static const char* MANGLE_INPUT[] = {
+        WakeupController::LOCAL_MANGLE_INPUT,
         RouteController::LOCAL_MANGLE_INPUT,
         NULL,
 };
@@ -121,7 +122,18 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
 
 }  // namespace
 
-Controllers::Controllers() : clatdCtrl(&netCtrl) {
+Controllers::Controllers()
+    : clatdCtrl(&netCtrl),
+      wakeupCtrl(
+          [this](const std::string& prefix, uid_t uid, gid_t gid, uint64_t timestampNs) {
+              const auto listener = eventReporter.getNetdEventListener();
+              if (listener == nullptr) {
+                  ALOGE("getNetdEventListener() returned nullptr. dropping wakeup event");
+                  return;
+              }
+              listener->onWakeupEvent(String16(prefix.c_str()), uid, gid, timestampNs);
+          },
+          &iptablesRestoreCtrl) {
     InterfaceController::initializeAll();
 }
 
