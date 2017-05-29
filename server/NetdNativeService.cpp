@@ -46,7 +46,15 @@ namespace net {
 namespace {
 
 const char CONNECTIVITY_INTERNAL[] = "android.permission.CONNECTIVITY_INTERNAL";
+const char NETWORK_STACK[] = "android.permission.NETWORK_STACK";
 const char DUMP[] = "android.permission.DUMP";
+
+binder::Status toBinderStatus(const netdutils::Status s) {
+    if (isOk(s)) {
+        return binder::Status::ok();
+    }
+    return binder::Status::fromExceptionCode(s.code(), s.msg().c_str());
+}
 
 binder::Status checkPermission(const char *permission) {
     pid_t pid;
@@ -408,6 +416,20 @@ binder::Status NetdNativeService::ipSecRemoveTransportModeTransform(
     ALOGD("ipSecRemoveTransportModeTransform()");
     return getXfrmStatus(gCtls->xfrmCtrl.ipSecRemoveTransportModeTransform(
                     socket));
+}
+
+binder::Status NetdNativeService::wakeupAddInterface(const std::string& ifName,
+                                                     const std::string& prefix, int32_t mark,
+                                                     int32_t mask) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    return toBinderStatus(gCtls->wakeupCtrl.addInterface(ifName, prefix, mark, mask));
+}
+
+binder::Status NetdNativeService::wakeupDelInterface(const std::string& ifName,
+                                                     const std::string& prefix, int32_t mark,
+                                                     int32_t mask) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    return toBinderStatus(gCtls->wakeupCtrl.delInterface(ifName, prefix, mark, mask));
 }
 
 }  // namespace net

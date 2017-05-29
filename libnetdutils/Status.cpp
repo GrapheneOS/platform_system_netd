@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <sstream>
 #include "netdutils/Status.h"
 #include "android-base/stringprintf.h"
 
@@ -26,6 +27,12 @@ void expectOk(const Status) {
 
 Status statusFromErrno(int err, const std::string& msg) {
     return Status(err, base::StringPrintf("%d : [%s] : %s", err, strerror(err), msg.c_str()));
+}
+
+std::string toString(const Status status) {
+    std::stringstream ss;
+    ss << status;
+    return ss.str();
 }
 
 std::ostream& operator<<(std::ostream& os, const Status& s) {
