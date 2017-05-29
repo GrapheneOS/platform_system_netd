@@ -78,6 +78,8 @@ void expectOk(const Status status);
 // TODO: msg is only a placeholder for now
 Status statusFromErrno(int err, const std::string& msg);
 
+std::string toString(const Status status);
+
 std::ostream& operator<<(std::ostream& os, const Status& s);
 
 #define RETURN_IF_NOT_OK_IMPL(tmp, stmt)           \
