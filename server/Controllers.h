@@ -32,6 +32,7 @@
 #include "ResolverController.h"
 #include "StrictController.h"
 #include "TetherController.h"
+#include "WakeupController.h"
 #include "XfrmController.h"
 
 namespace android {
@@ -53,6 +54,7 @@ public:
     StrictController strictCtrl;
     EventReporter eventReporter;
     IptablesRestoreController iptablesRestoreCtrl;
+    WakeupController wakeupCtrl;
     XfrmController xfrmCtrl;
 
     void init();
