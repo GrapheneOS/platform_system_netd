@@ -95,7 +95,7 @@ bool checkExpectedCommand(int argc, char **argv) {
     }
     if (!loggedError) {
         ALOGI("Unexpected command: %s", fullCmd.c_str());
-        fprintf(stderr, LOG_TAG ": Unexpected command: %s", fullCmd.c_str());
+        fprintf(stderr, LOG_TAG ": Unexpected command: %s\n", fullCmd.c_str());
         loggedError = true;
     }
     return false;
