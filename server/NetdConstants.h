@@ -49,7 +49,7 @@ int execIptablesRestoreWithOutput(IptablesTarget target, const std::string& comm
                                   std::string *output);
 int execIptablesRestoreCommand(IptablesTarget target, const std::string& table,
                                const std::string& command, std::string *output);
-bool isIfaceName(const char *name);
+bool isIfaceName(const std::string& name);
 int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, uint8_t *prefixlen);
 void blockSigpipe();
 
