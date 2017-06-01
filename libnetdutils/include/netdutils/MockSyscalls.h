@@ -33,6 +33,8 @@ class MockSyscalls : public Syscalls {
   public:
     virtual ~MockSyscalls() = default;
     // Use Return(ByMove(...)) to deal with movable return types.
+    MOCK_CONST_METHOD3(open,
+                       StatusOr<UniqueFd>(const std::string& pathname, int flags, mode_t mode));
     MOCK_CONST_METHOD3(socket, StatusOr<UniqueFd>(int domain, int type, int protocol));
     MOCK_CONST_METHOD3(getsockname, Status(Fd sock, sockaddr* addr, socklen_t* addrlen));
     MOCK_CONST_METHOD5(setsockopt, Status(Fd sock, int level, int optname, const void* optval,

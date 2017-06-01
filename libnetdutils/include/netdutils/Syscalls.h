@@ -35,6 +35,9 @@ class Syscalls {
   public:
     virtual ~Syscalls() = default;
 
+    virtual StatusOr<UniqueFd> open(const std::string& pathname, int flags,
+                                    mode_t mode = 0) const = 0;
+
     virtual StatusOr<UniqueFd> socket(int domain, int type, int protocol) const = 0;
 
     virtual Status getsockname(Fd sock, sockaddr* addr, socklen_t* addrlen) const = 0;

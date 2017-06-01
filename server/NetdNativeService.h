@@ -48,6 +48,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             std::vector<std::string>* domains, std::vector<int32_t>* params,
             std::vector<int32_t>* stats) override;
 
+    binder::Status setIPv6AddrGenMode(const std::string& ifName, int32_t mode) override;
+
     // NFLOG-related commands
     binder::Status wakeupAddInterface(const std::string& ifName, const std::string& prefix,
                                       int32_t mark, int32_t mask) override;
