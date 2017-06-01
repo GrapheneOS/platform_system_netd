@@ -312,4 +312,17 @@ interface INetd {
     * @param prefix arbitrary string used to identify wakeup sources in onWakeupEvent
     */
     void wakeupDelInterface(in @utf8InCpp String ifName, in @utf8InCpp String prefix, int mark, int mask);
+
+    const int IPV6_ADDR_GEN_MODE_EUI64 = 0;
+    const int IPV6_ADDR_GEN_MODE_NONE = 1;
+    const int IPV6_ADDR_GEN_MODE_STABLE_PRIVACY = 2;
+    const int IPV6_ADDR_GEN_MODE_RANDOM = 3;
+
+    const int IPV6_ADDR_GEN_MODE_DEFAULT = 0;
+   /**
+    * Set IPv6 address generation mode. IPv6 should be disabled before changing mode.
+    *
+    * @param mode SLAAC address generation mechanism to use
+    */
+    void setIPv6AddrGenMode(in @utf8InCpp String ifName, int mode);
 }

@@ -41,6 +41,14 @@ class RealSyscalls final : public Syscalls {
   public:
     ~RealSyscalls() override = default;
 
+    StatusOr<UniqueFd> open(const std::string& pathname, int flags, mode_t mode) const override {
+        UniqueFd fd(::open(pathname.c_str(), flags, mode));
+        if (!isWellFormed(fd)) {
+            return statusFromErrno(errno, "open(\"" + pathname + "\"...) failed");
+        }
+        return fd;
+    }
+
     StatusOr<UniqueFd> socket(int domain, int type, int protocol) const override {
         UniqueFd sock(::socket(domain, type, protocol));
         if (!isWellFormed(sock)) {
