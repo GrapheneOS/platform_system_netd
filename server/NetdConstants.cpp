@@ -140,10 +140,9 @@ int execIptablesRestoreCommand(IptablesTarget target, const std::string& table,
  * Check an interface name for plausibility. This should e.g. help against
  * directory traversal.
  */
-bool isIfaceName(const char *name) {
+bool isIfaceName(const std::string& name) {
     size_t i;
-    size_t name_len = strlen(name);
-    if ((name_len == 0) || (name_len > IFNAMSIZ)) {
+    if ((name.empty()) || (name.size() > IFNAMSIZ)) {
         return false;
     }
 
@@ -152,7 +151,7 @@ bool isIfaceName(const char *name) {
         return false;
     }
 
-    for (i = 1; i < name_len; i++) {
+    for (i = 1; i < name.size(); i++) {
         if (!isalnum(name[i]) && (name[i] != '_') && (name[i] != '-') && (name[i] != ':')) {
             return false;
         }
