@@ -171,7 +171,7 @@ static void ipv4_loopback(benchmark::State& state, const bool waitBetweenRuns) {
     if (iterations > 0) {
         latencies.resize(iterations);
         sort(latencies.begin(), latencies.end());
-        state.SetLabel(StringPrintf("%lld", (long long) latencies[iterations * 9 / 10]));
+        state.SetLabel(StringPrintf("%lld", (long long) latencies[iterations * 9 / 10]).c_str());
     }
 }
 
@@ -228,7 +228,7 @@ static void ipv6_loopback(benchmark::State& state, const bool waitBetweenRuns) {
     if (iterations > 0) {
         latencies.resize(iterations);
         sort(latencies.begin(), latencies.end());
-        state.SetLabel(StringPrintf("%lld", (long long) latencies[iterations * 9 / 10]));
+        state.SetLabel(StringPrintf("%lld", (long long) latencies[iterations * 9 / 10]).c_str());
     }
 }
 
