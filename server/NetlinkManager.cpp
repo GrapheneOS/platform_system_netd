@@ -77,7 +77,8 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
 
     memset(&nladdr, 0, sizeof(nladdr));
     nladdr.nl_family = AF_NETLINK;
-    nladdr.nl_pid = getpid();
+    // Kernel will assign a unique nl_pid if set to zero.
+    nladdr.nl_pid = 0;
     nladdr.nl_groups = groups;
 
     if ((*sock = socket(PF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, netlinkFamily)) < 0) {
