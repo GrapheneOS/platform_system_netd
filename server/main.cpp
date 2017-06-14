@@ -83,19 +83,8 @@ int main() {
         exit(1);
     };
 
-    std::unique_ptr<NFLogListener> logListener;
-    {
-        auto result = makeNFLogListener();
-        if (!isOk(result)) {
-            ALOGE("Unable to create NFLogListener: %s", result.status().msg().c_str());
-            exit(1);
-        }
-        logListener = std::move(result.value());
-    }
-
     gCtls = new android::net::Controllers();
     gCtls->init();
-    gCtls->wakeupCtrl.init(logListener.get());
 
     CommandListener cl;
     nm->setBroadcaster((SocketListener *) &cl);
@@ -103,6 +92,21 @@ int main() {
     if (nm->start()) {
         ALOGE("Unable to start NetlinkManager (%s)", strerror(errno));
         exit(1);
+    }
+
+    std::unique_ptr<NFLogListener> logListener;
+    {
+        auto result = makeNFLogListener();
+        if (!isOk(result)) {
+            ALOGE("Unable to create NFLogListener: %s", toString(result).c_str());
+            exit(1);
+        }
+        logListener = std::move(result.value());
+        auto status = gCtls->wakeupCtrl.init(logListener.get());
+        if (!isOk(result)) {
+            ALOGE("Unable to init WakeupController: %s", toString(result).c_str());
+            // We can still continue without wakeup packet logging.
+        }
     }
 
     // Set local DNS mode, to prevent bionic from proxying
