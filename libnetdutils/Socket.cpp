@@ -14,33 +14,21 @@
  * limitations under the License.
  */
 
-#include <sstream>
-#include "netdutils/Status.h"
-#include "android-base/stringprintf.h"
+#include <arpa/inet.h>
+
+#include "netdutils/Slice.h"
+#include "netdutils/Socket.h"
 
 namespace android {
 namespace netdutils {
 
-void expectOk(const Status&) {
-    // TODO: put something here, for now this function serves solely as documentation.
-}
-
-Status statusFromErrno(int err, const std::string& msg) {
-    return Status(err, base::StringPrintf("[%s] : %s", strerror(err), msg.c_str()));
-}
-
-bool equalToErrno(const Status& status, int err) {
-    return status.code() == err;
-}
-
-std::string toString(const Status& status) {
-    std::stringstream ss;
-    ss << status;
-    return ss.str();
-}
-
-std::ostream& operator<<(std::ostream& os, const Status& s) {
-    return os << "Status[code: " << s.code() << ", msg: \"" << s.msg() << "\"]";
+StatusOr<std::string> toString(const in6_addr& addr) {
+    std::array<char, INET6_ADDRSTRLEN> out = {};
+    auto* rv = inet_ntop(AF_INET6, &addr, out.data(), out.size());
+    if (rv == nullptr) {
+        return statusFromErrno(errno, "inet_ntop() failed");
+    }
+    return std::string(out.data());
 }
 
 }  // namespace netdutils

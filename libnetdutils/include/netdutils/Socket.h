@@ -14,7 +14,14 @@
  * limitations under the License.
  */
 
+#ifndef NETDUTILS_SOCKET_H
+#define NETDUTILS_SOCKET_H
+
+#include <netinet/in.h>
 #include <sys/socket.h>
+#include <string>
+
+#include "netdutils/StatusOr.h"
 
 namespace android {
 namespace netdutils {
@@ -27,5 +34,11 @@ inline const sockaddr* asSockaddrPtr(const void* addr) {
     return reinterpret_cast<const sockaddr*>(addr);
 }
 
+// Return a string representation of addr or Status if there was a
+// failure during conversion.
+StatusOr<std::string> toString(const in6_addr& addr);
+
 }  // namespace netdutils
 }  // namespace android
+
+#endif /* NETDUTILS_SOCKET_H */
