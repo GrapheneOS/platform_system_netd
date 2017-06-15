@@ -30,9 +30,10 @@
 #include "netdutils/StatusOr.h"
 #include "netdutils/Syscalls.h"
 
+using testing::ByMove;
 using testing::DoAll;
-using testing::Mock;
 using testing::Invoke;
+using testing::Mock;
 using testing::Return;
 using testing::StrictMock;
 using testing::_;
@@ -52,6 +53,18 @@ TEST(syscalls, scopedMock) {
         EXPECT_EQ(&s, &sSyscalls.get());
     }
     EXPECT_EQ(&old, &sSyscalls.get());
+}
+
+TEST_F(SyscallsTest, open) {
+    const char kPath[] = "/test/path/please/ignore";
+    constexpr Fd kFd(40);
+    constexpr int kFlags = 883;
+    constexpr mode_t kMode = 37373;
+    const auto& sys = sSyscalls.get();
+    EXPECT_CALL(mSyscalls, open(kPath, kFlags, kMode)).WillOnce(Return(ByMove(UniqueFd(kFd))));
+    auto result = sys.open(kPath, kFlags, kMode);
+    EXPECT_EQ(status::ok, result.status());
+    EXPECT_EQ(kFd, result.value());
 }
 
 TEST_F(SyscallsTest, getsockname) {

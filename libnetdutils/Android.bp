@@ -1,13 +1,14 @@
 cc_library_shared {
     name: "libnetdutils",
     srcs: [
-        "Status.cpp",
         "Fd.cpp",
-        "UniqueFd.cpp",
-        "Syscalls.cpp",
         "Netfilter.cpp",
         "Netlink.cpp",
         "Slice.cpp",
+        "Socket.cpp",
+        "Status.cpp",
+        "Syscalls.cpp",
+        "UniqueFd.cpp",
     ],
     shared_libs: [
         "libbase",

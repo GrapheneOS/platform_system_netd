@@ -41,9 +41,7 @@ class Status {
 
     const std::string& msg() const { return mMsg; }
 
-    bool operator==(const Status& other) const {
-        return (code() == other.code()) && (msg() == other.msg());
-    }
+    bool operator==(const Status& other) const { return code() == other.code(); }
     bool operator!=(const Status& other) const { return !(*this == other); }
 
   private:
@@ -54,7 +52,9 @@ class Status {
 namespace status {
 
 const Status ok{0};
-const Status eof{256, "end of file"};
+// EOF is not part of errno space, we'll place it far above the
+// highest existing value.
+const Status eof{0x10001, "end of file"};
 const Status undefined{std::numeric_limits<int>::max(), "undefined"};
 
 }  // namespace status
@@ -62,23 +62,27 @@ const Status undefined{std::numeric_limits<int>::max(), "undefined"};
 // Return true if status is "OK". This is sometimes preferable to
 // status.ok() when we want to check the state of Status-like objects
 // that implicitly cast to Status.
-inline bool isOk(const Status status) {
+inline bool isOk(const Status& status) {
     return status.ok();
 }
 
 // Document that status is expected to be ok. This function may log
 // (or assert when running in debug mode) if status has an unexpected
 // value.
-void expectOk(const Status status);
+void expectOk(const Status& status);
 
 // Convert POSIX errno to a Status object.
 // If Status is extended to have more features, this mapping may
 // become more complex.
-//
-// TODO: msg is only a placeholder for now
 Status statusFromErrno(int err, const std::string& msg);
 
-std::string toString(const Status status);
+// Helper that checks Status-like object (notably StatusOr) against a
+// value in the errno space.
+bool equalToErrno(const Status& status, int err);
+
+// Helper that converts Status-like object (notably StatusOr) to a
+// message.
+std::string toString(const Status& status);
 
 std::ostream& operator<<(std::ostream& os, const Status& s);
 
