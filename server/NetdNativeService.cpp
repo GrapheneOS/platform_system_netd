@@ -53,7 +53,7 @@ binder::Status toBinderStatus(const netdutils::Status s) {
     if (isOk(s)) {
         return binder::Status::ok();
     }
-    return binder::Status::fromExceptionCode(s.code(), s.msg().c_str());
+    return binder::Status::fromServiceSpecificError(s.code(), s.msg().c_str());
 }
 
 binder::Status checkPermission(const char *permission) {
@@ -416,6 +416,12 @@ binder::Status NetdNativeService::ipSecRemoveTransportModeTransform(
     ALOGD("ipSecRemoveTransportModeTransform()");
     return getXfrmStatus(gCtls->xfrmCtrl.ipSecRemoveTransportModeTransform(
                     socket));
+}
+
+binder::Status NetdNativeService::setIPv6AddrGenMode(const std::string& ifName,
+                                                     int32_t mode) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    return toBinderStatus(InterfaceController::setIPv6AddrGenMode(ifName, mode));
 }
 
 binder::Status NetdNativeService::wakeupAddInterface(const std::string& ifName,

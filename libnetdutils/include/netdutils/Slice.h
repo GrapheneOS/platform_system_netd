@@ -74,6 +74,12 @@ inline const Slice makeSlice(const T& ref) {
     return {const_cast<T*>(&ref), sizeof(ref)};
 }
 
+// Return slice representation of string data()
+inline const Slice makeSlice(const std::string& s) {
+    using ValueT = std::string::value_type;
+    return {const_cast<ValueT*>(s.data()), s.size() * sizeof(ValueT)};
+}
+
 // Return slice representation of vector data()
 template <typename T>
 inline const Slice makeSlice(const std::vector<T>& v) {
