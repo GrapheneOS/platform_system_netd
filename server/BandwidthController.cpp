@@ -22,15 +22,14 @@
  * If they ever were to allow it, then netd/ would need some tweaking.
  */
 
-#include <string>
-#include <vector>
-
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
+#include <string>
+#include <vector>
 
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
@@ -51,9 +50,10 @@
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
 
-#include "NetdConstants.h"
+#include <netdutils/Syscalls.h>
 #include "BandwidthController.h"
-#include "NatController.h"  /* For LOCAL_TETHER_COUNTERS_CHAIN */
+#include "NatController.h" /* For LOCAL_TETHER_COUNTERS_CHAIN */
+#include "NetdConstants.h"
 #include "ResponseCode.h"
 
 /* Alphabetical */
@@ -70,6 +70,8 @@ auto BandwidthController::iptablesRestoreFunction = execIptablesRestoreWithOutpu
 
 using android::base::StringAppendF;
 using android::base::StringPrintf;
+using android::netdutils::StatusOr;
+using android::netdutils::UniqueFile;
 
 namespace {
 
@@ -625,21 +627,23 @@ int BandwidthController::getInterfaceSharedQuota(int64_t *bytes) {
 }
 
 int BandwidthController::getInterfaceQuota(const std::string& iface, int64_t* bytes) {
-    FILE *fp;
+    const auto& sys = android::netdutils::sSyscalls.get();
     const std::string fname = "/proc/net/xt_quota/" + iface;
-    int scanRes;
 
     if (!isIfaceName(iface)) return -1;
 
-    fp = fopen(fname.c_str(), "re");
-    if (!fp) {
-        ALOGE("Reading quota %s failed (%s)", iface.c_str(), strerror(errno));
+    StatusOr<UniqueFile> file = sys.fopen(fname, "re");
+    if (!isOk(file)) {
+        ALOGE("Reading quota %s failed (%s)", iface.c_str(), toString(file).c_str());
         return -1;
     }
-    scanRes = fscanf(fp, "%" SCNd64, bytes);
-    ALOGV("Read quota res=%d bytes=%" PRId64, scanRes, *bytes);
-    fclose(fp);
-    return scanRes == 1 ? 0 : -1;
+    auto rv = sys.fscanf(file.value().get(), "%" SCNd64, bytes);
+    if (!isOk(rv)) {
+        ALOGE("Reading quota %s failed (%s)", iface.c_str(), toString(rv).c_str());
+        return -1;
+    }
+    ALOGV("Read quota res=%d bytes=%" PRId64, rv.value(), *bytes);
+    return rv.value() == 1 ? 0 : -1;
 }
 
 int BandwidthController::removeInterfaceQuota(const std::string& iface) {
@@ -668,23 +672,20 @@ int BandwidthController::removeInterfaceQuota(const std::string& iface) {
 }
 
 int BandwidthController::updateQuota(const std::string& quotaName, int64_t bytes) {
-    FILE *fp;
-    char *fname;
+    const auto& sys = android::netdutils::sSyscalls.get();
+    const std::string fname = "/proc/net/xt_quota/" + quotaName;
 
     if (!isIfaceName(quotaName)) {
         ALOGE("updateQuota: Invalid quotaName \"%s\"", quotaName.c_str());
         return -1;
     }
 
-    asprintf(&fname, "/proc/net/xt_quota/%s", quotaName.c_str());
-    fp = fopen(fname, "we");
-    free(fname);
-    if (!fp) {
-        ALOGE("Updating quota %s failed (%s)", quotaName.c_str(), strerror(errno));
+    StatusOr<UniqueFile> file = sys.fopen(fname, "we");
+    if (!isOk(file)) {
+        ALOGE("Updating quota %s failed (%s)", quotaName.c_str(), toString(file).c_str());
         return -1;
     }
-    fprintf(fp, "%" PRId64"\n", bytes);
-    fclose(fp);
+    sys.fprintf(file.value().get(), "%" PRId64 "\n", bytes);
     return 0;
 }
 
