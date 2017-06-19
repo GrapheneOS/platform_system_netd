@@ -73,6 +73,7 @@ int IptablesBaseTest::fakeExecIptables(IptablesTarget target, ...) {
             cmd += arg;
         }
     } while (arg);
+    va_end(args);
 
     if (target == V4 || target == V4V6) {
         sCmds.push_back(IPTABLES_PATH + cmd);
