@@ -65,11 +65,7 @@ class StatusOr {
 
 template <typename T>
 inline std::ostream& operator<<(std::ostream& os, const StatusOr<T>& s) {
-    os << "StatusOr[status: " << s.status();
-    if (isOk(s)) {
-        os << ", value: " << s.value();
-    }
-    return os << "]";
+    return os << "StatusOr[status: " << s.status() << "]";
 }
 
 #define ASSIGN_OR_RETURN_IMPL(tmp, lhs, stmt) \
