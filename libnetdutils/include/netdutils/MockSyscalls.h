@@ -54,6 +54,12 @@ class MockSyscalls : public Syscalls {
                                                  socklen_t* srclen));
     MOCK_CONST_METHOD2(shutdown, Status(Fd fd, int how));
     MOCK_CONST_METHOD1(close, Status(Fd fd));
+
+    MOCK_CONST_METHOD2(fopen,
+                       StatusOr<UniqueFile>(const std::string& path, const std::string& mode));
+    MOCK_CONST_METHOD3(vfprintf, StatusOr<int>(FILE* file, const char* format, va_list ap));
+    MOCK_CONST_METHOD3(vfscanf, StatusOr<int>(FILE* file, const char* format, va_list ap));
+    MOCK_CONST_METHOD1(fclose, Status(FILE* file));
 };
 
 // For the lifetime of this mock, replace the contents of sSyscalls
