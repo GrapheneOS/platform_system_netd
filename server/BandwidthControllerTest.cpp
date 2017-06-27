@@ -30,15 +30,25 @@
 #include <android-base/strings.h>
 #include <android-base/stringprintf.h>
 
+#include <netdutils/MockSyscalls.h>
 #include "BandwidthController.h"
 #include "IptablesBaseTest.h"
 #include "tun_interface.h"
 
+using ::testing::ByMove;
+using ::testing::Invoke;
+using ::testing::Return;
+using ::testing::StrictMock;
+using ::testing::Test;
+using ::testing::_;
+
 using android::base::StringPrintf;
 using android::net::TunInterface;
+using android::netdutils::status::ok;
+using android::netdutils::UniqueFile;
 
 class BandwidthControllerTest : public IptablesBaseTest {
-public:
+protected:
     BandwidthControllerTest() {
         BandwidthController::execFunction = fake_android_fork_exec;
         BandwidthController::popenFunction = fake_popen;
@@ -112,6 +122,21 @@ public:
     int runIptablesAlertFwdCmd(IptOp a, const char *b, int64_t c) {
         return mBw.runIptablesAlertFwdCmd(a, b, c);
     }
+
+    void expectUpdateQuota(uint64_t quota) {
+        uintptr_t dummy;
+        FILE* dummyFile = reinterpret_cast<FILE*>(&dummy);
+
+        EXPECT_CALL(mSyscalls, fopen(_, _)).WillOnce(Return(ByMove(UniqueFile(dummyFile))));
+        EXPECT_CALL(mSyscalls, vfprintf(dummyFile, _, _))
+            .WillOnce(Invoke([quota](FILE*, const std::string&, va_list ap) {
+                EXPECT_EQ(quota, va_arg(ap, uint64_t));
+                return 0;
+            }));
+        EXPECT_CALL(mSyscalls, fclose(dummyFile)).WillOnce(Return(ok));
+    }
+
+    StrictMock<android::netdutils::ScopedMockSyscalls> mSyscalls;
 };
 
 TEST_F(BandwidthControllerTest, TestSetupIptablesHooks) {
@@ -355,38 +380,46 @@ TEST_F(BandwidthControllerTest, TestGetTetherStats) {
     clearIptablesRestoreOutput();
 }
 
-const std::vector<std::string> makeInterfaceQuotaCommands(const char *iface, int ruleIndex,
+const std::vector<std::string> makeInterfaceQuotaCommands(const std::string& iface, int ruleIndex,
                                                           int64_t quota) {
+    const std::string chain = "bw_costly_" + iface;
+    const char* c_chain = chain.c_str();
+    const char* c_iface = iface.c_str();
     std::vector<std::string> cmds = {
-        StringPrintf("-F bw_costly_%s", iface),
-        StringPrintf("-N bw_costly_%s", iface),
-        StringPrintf("-A bw_costly_%s -j bw_penalty_box", iface),
-        StringPrintf("-D bw_INPUT -i %s --jump bw_costly_%s", iface, iface),
-        StringPrintf("-I bw_INPUT %d -i %s --jump bw_costly_%s", ruleIndex, iface, iface),
-        StringPrintf("-D bw_OUTPUT -o %s --jump bw_costly_%s", iface, iface),
-        StringPrintf("-I bw_OUTPUT %d -o %s --jump bw_costly_%s", ruleIndex, iface, iface),
-        StringPrintf("-D bw_FORWARD -o %s --jump bw_costly_%s", iface, iface),
-        StringPrintf("-A bw_FORWARD -o %s --jump bw_costly_%s", iface, iface),
-        StringPrintf("-A bw_costly_%s -m quota2 ! --quota %" PRIu64 " --name %s --jump REJECT",
-                     iface, quota, iface),
+        //      StringPrintf(":%s -", c_chain),
+        StringPrintf("-F %s", c_chain),
+        StringPrintf("-N %s", c_chain),
+        StringPrintf("-A %s -j bw_penalty_box", c_chain),
+        StringPrintf("-D bw_INPUT -i %s --jump %s", c_iface, c_chain),
+        StringPrintf("-I bw_INPUT %d -i %s --jump %s", ruleIndex, c_iface, c_chain),
+        StringPrintf("-D bw_OUTPUT -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-I bw_OUTPUT %d -o %s --jump %s", ruleIndex, c_iface, c_chain),
+        StringPrintf("-D bw_FORWARD -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-A bw_FORWARD -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-A %s -m quota2 ! --quota %" PRIu64 " --name %s --jump REJECT", c_chain,
+                     quota, c_iface),
     };
     return cmds;
 }
 
-const std::vector<std::string> removeInterfaceQuotaCommands(const char *iface) {
+const std::vector<std::string> removeInterfaceQuotaCommands(const std::string& iface) {
+    const std::string chain = "bw_costly_" + iface;
+    const char* c_chain = chain.c_str();
+    const char* c_iface = iface.c_str();
     std::vector<std::string> cmds = {
-        StringPrintf("-D bw_INPUT -i %s --jump bw_costly_%s", iface, iface),
-        StringPrintf("-D bw_OUTPUT -o %s --jump bw_costly_%s", iface, iface),
-        StringPrintf("-D bw_FORWARD -o %s --jump bw_costly_%s", iface, iface),
-        StringPrintf("-F bw_costly_%s", iface),
-        StringPrintf("-X bw_costly_%s", iface),
+        StringPrintf("-D bw_INPUT -i %s --jump %s", c_iface, c_chain),
+        StringPrintf("-D bw_OUTPUT -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-D bw_FORWARD -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-F %s", c_chain),
+        StringPrintf("-X %s", c_chain),
     };
     return cmds;
 }
 
 TEST_F(BandwidthControllerTest, TestSetInterfaceQuota) {
-    const char *iface = mTun.name().c_str();
-    std::vector<std::string> expected = makeInterfaceQuotaCommands(iface, 1, 123456);
+    constexpr uint64_t kOldQuota = 123456;
+    const std::string iface = mTun.name();
+    std::vector<std::string> expected = makeInterfaceQuotaCommands(iface, 1, kOldQuota);
 
     // prepCostlyInterface assumes that exactly one of the "-F chain" and "-N chain" commands fails.
     // So pretend that the first two commands (the IPv4 -F and the IPv6 -F) fail.
@@ -395,12 +428,117 @@ TEST_F(BandwidthControllerTest, TestSetInterfaceQuota) {
     returnValues[1] = 1;
     setReturnValues(returnValues);
 
-    EXPECT_EQ(0, mBw.setInterfaceQuota(iface, 123456));
+    EXPECT_EQ(0, mBw.setInterfaceQuota(iface, kOldQuota));
+    expectIptablesCommands(expected);
+
+    constexpr uint64_t kNewQuota = kOldQuota + 1;
+    expected = {};
+    expectUpdateQuota(kNewQuota);
+    EXPECT_EQ(0, mBw.setInterfaceQuota(iface, kNewQuota));
     expectIptablesCommands(expected);
 
     expected = removeInterfaceQuotaCommands(iface);
     EXPECT_EQ(0, mBw.removeInterfaceQuota(iface));
     expectIptablesCommands(expected);
+}
+
+const std::vector<std::string> makeInterfaceSharedQuotaCommands(const std::string& iface,
+                                                                int ruleIndex, int64_t quota) {
+    const std::string chain = "bw_costly_shared";
+    const char* c_chain = chain.c_str();
+    const char* c_iface = iface.c_str();
+    std::vector<std::string> cmds = {
+        StringPrintf("-D bw_INPUT -i %s --jump %s", c_iface, c_chain),
+        StringPrintf("-I bw_INPUT %d -i %s --jump %s", ruleIndex, c_iface, c_chain),
+        StringPrintf("-D bw_OUTPUT -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-I bw_OUTPUT %d -o %s --jump %s", ruleIndex, c_iface, c_chain),
+        StringPrintf("-D bw_FORWARD -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-A bw_FORWARD -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-I %s -m quota2 ! --quota %" PRIu64 " --name shared --jump REJECT", c_chain,
+                     quota),
+    };
+    return cmds;
+}
+
+const std::vector<std::string> removeInterfaceSharedQuotaCommands(const std::string& iface,
+                                                                  int64_t quota) {
+    const std::string chain = "bw_costly_shared";
+    const char* c_chain = chain.c_str();
+    const char* c_iface = iface.c_str();
+    std::vector<std::string> cmds = {
+        StringPrintf("-D bw_INPUT -i %s --jump %s", c_iface, c_chain),
+        StringPrintf("-D bw_OUTPUT -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-D bw_FORWARD -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-D %s -m quota2 ! --quota %" PRIu64
+                     " --name shared --jump REJECT", c_chain, quota),
+    };
+    return cmds;
+}
+
+TEST_F(BandwidthControllerTest, TestSetInterfaceSharedQuotaDuplicate) {
+    constexpr uint64_t kQuota = 123456;
+    const std::string iface = mTun.name();
+    std::vector<std::string> expected = makeInterfaceSharedQuotaCommands(iface, 1, 123456);
+    EXPECT_EQ(0, mBw.setInterfaceSharedQuota(iface, kQuota));
+    expectIptablesCommands(expected);
+
+    expected = {};
+    EXPECT_EQ(0, mBw.setInterfaceSharedQuota(iface, kQuota));
+    expectIptablesCommands(expected);
+
+    expected = removeInterfaceSharedQuotaCommands(iface, kQuota);
+    EXPECT_EQ(0, mBw.removeInterfaceSharedQuota(iface));
+    expectIptablesCommands(expected);
+}
+
+TEST_F(BandwidthControllerTest, TestSetInterfaceSharedQuotaUpdate) {
+    constexpr uint64_t kOldQuota = 123456;
+    const std::string iface = mTun.name();
+    std::vector<std::string> expected = makeInterfaceSharedQuotaCommands(iface, 1, kOldQuota);
+    EXPECT_EQ(0, mBw.setInterfaceSharedQuota(iface, kOldQuota));
+    expectIptablesCommands(expected);
+
+    constexpr uint64_t kNewQuota = kOldQuota + 1;
+    expected = {};
+    expectUpdateQuota(kNewQuota);
+    EXPECT_EQ(0, mBw.setInterfaceSharedQuota(iface, kNewQuota));
+    expectIptablesCommands(expected);
+
+    expected = removeInterfaceSharedQuotaCommands(iface, kNewQuota);
+    EXPECT_EQ(0, mBw.removeInterfaceSharedQuota(iface));
+    expectIptablesCommands(expected);
+}
+
+TEST_F(BandwidthControllerTest, TestSetInterfaceSharedQuotaTwoInterfaces) {
+    constexpr uint64_t kQuota = 123456;
+    const std::vector<std::string> ifaces{
+        {"a" + mTun.name()},
+        {"b" + mTun.name()},
+    };
+
+    for (const auto& iface : ifaces) {
+        bool first = (iface == ifaces[0]);
+        auto expected = makeInterfaceSharedQuotaCommands(iface, 1, kQuota);
+        if (!first) {
+            // Quota rule is only added when the total number of
+            // interfaces transitions from 0 -> 1.
+            expected.pop_back();
+        }
+        EXPECT_EQ(0, mBw.setInterfaceSharedQuota(iface, kQuota));
+        expectIptablesCommands(expected);
+    }
+
+    for (const auto& iface : ifaces) {
+        bool last = (iface == ifaces[1]);
+        auto expected = removeInterfaceSharedQuotaCommands(iface, kQuota);
+        if (!last) {
+            // Quota rule is only removed when the total number of
+            // interfaces transitions from 1 -> 0.
+            expected.pop_back();
+        }
+        EXPECT_EQ(0, mBw.removeInterfaceSharedQuota(iface));
+        expectIptablesCommands(expected);
+    }
 }
 
 TEST_F(BandwidthControllerTest, IptablesAlertCmd) {
