@@ -157,7 +157,39 @@ class RealSyscalls final : public Syscalls {
     Status close(Fd fd) const override {
         auto rv = ::close(fd.get());
         if (rv == -1) {
-            return statusFromErrno(errno, "close)( failed");
+            return statusFromErrno(errno, "close() failed");
+        }
+        return status::ok;
+    }
+
+    StatusOr<UniqueFile> fopen(const std::string& path, const std::string& mode) const override {
+        UniqueFile file(::fopen(path.c_str(), mode.c_str()));
+        if (file == NULL) {
+            return statusFromErrno(errno, "fopen(\"" + path + "\", \"" + mode + "\") failed");
+        }
+        return file;
+    }
+
+    StatusOr<int> vfprintf(FILE* file, const char* format, va_list ap) const override {
+        auto rv = ::vfprintf(file, format, ap);
+        if (rv == -1) {
+            return statusFromErrno(errno, "vfprintf() failed");
+        }
+        return rv;
+    }
+
+    StatusOr<int> vfscanf(FILE* file, const char* format, va_list ap) const override {
+        auto rv = ::vfscanf(file, format, ap);
+        if (rv == -1) {
+            return statusFromErrno(errno, "vfscanf() failed");
+        }
+        return rv;
+    }
+
+    Status fclose(FILE* file) const override {
+        auto rv = ::fclose(file);
+        if (rv == -1) {
+            return statusFromErrno(errno, "fclose() failed");
         }
         return status::ok;
     }
