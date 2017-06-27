@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
-#ifndef NETUTILS_SYSCALLS_H
-#define NETUTILS_SYSCALLS_H
+#ifndef NETDUTILS_SYSCALLS_H
+#define NETDUTILS_SYSCALLS_H
+
+#include <memory>
 
 #include <poll.h>
 #include <sys/eventfd.h>
@@ -27,6 +29,7 @@
 #include "netdutils/Status.h"
 #include "netdutils/StatusOr.h"
 #include "netdutils/UniqueFd.h"
+#include "netdutils/UniqueFile.h"
 
 namespace android {
 namespace netdutils {
@@ -66,6 +69,35 @@ class Syscalls {
     virtual Status shutdown(Fd fd, int how) const = 0;
 
     virtual Status close(Fd fd) const = 0;
+
+    virtual StatusOr<UniqueFile> fopen(const std::string& path, const std::string& mode) const = 0;
+
+    virtual StatusOr<int> vfprintf(FILE* file, const char* format, va_list ap) const = 0;
+
+    virtual StatusOr<int> vfscanf(FILE* file, const char* format, va_list ap) const = 0;
+
+    virtual Status fclose(FILE* file) const = 0;
+
+    // va_args helpers
+    // va_start doesn't work when the preceding argument is a reference
+    // type so we're forced to use const char*.
+    StatusOr<int> fprintf(FILE* file, const char* format, ...) const {
+        va_list ap;
+        va_start(ap, format);
+        auto result = vfprintf(file, format, ap);
+        va_end(ap);
+        return result;
+    }
+
+    // va_start doesn't work when the preceding argument is a reference
+    // type so we're forced to use const char*.
+    StatusOr<int> fscanf(FILE* file, const char* format, ...) const {
+        va_list ap;
+        va_start(ap, format);
+        auto result = vfscanf(file, format, ap);
+        va_end(ap);
+        return result;
+    }
 
     // Templated helpers that forward directly to methods declared above
     template <typename SockaddrT>
@@ -151,4 +183,4 @@ extern SyscallsHolder sSyscalls;
 }  // namespace netdutils
 }  // namespace android
 
-#endif /* NETUTILS_SYSCALLS_H */
+#endif /* NETDUTILS_SYSCALLS_H */
