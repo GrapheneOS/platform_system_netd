@@ -136,11 +136,6 @@ public:
     int manipulateSpecialApps(const std::vector<std::string>& appStrUids, const std::string& chain,
                               IptJumpOp jumpHandling, IptOp appOp);
 
-    int prepCostlyIface(const std::string& ifn, QuotaType quotaType);
-    int cleanupCostlyIface(const std::string& ifn, QuotaType quotaType);
-
-    std::string makeIptablesQuotaCmd(IptFullOp op, const std::string& costName, int64_t quota);
-
     int runIptablesAlertCmd(IptOp op, const std::string& alertName, int64_t bytes);
     int runIptablesAlertFwdCmd(IptOp op, const std::string& alertName, int64_t bytes);
 
