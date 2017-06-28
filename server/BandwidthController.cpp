@@ -291,11 +291,11 @@ int BandwidthController::enableBandwidthControl(bool force) {
     }
 
     /* Let's pretend we started from scratch ... */
-    sharedQuotaIfaces.clear();
-    quotaIfaces.clear();
-    globalAlertBytes = 0;
-    globalAlertTetherCount = 0;
-    sharedQuotaBytes = sharedAlertBytes = 0;
+    mSharedQuotaIfaces.clear();
+    mQuotaIfaces.clear();
+    mGlobalAlertBytes = 0;
+    mGlobalAlertTetherCount = 0;
+    mSharedQuotaBytes = mSharedAlertBytes = 0;
 
     flushCleanTables(false);
     std::string commands = android::base::Join(IPT_BASIC_ACCOUNTING_COMMANDS, '\n');
@@ -405,7 +405,7 @@ int BandwidthController::prepCostlyIface(const std::string& ifn, QuotaType quota
         break;
     }
 
-    if (globalAlertBytes) {
+    if (mGlobalAlertBytes) {
         /* The alert rule comes 1st */
         ruleInsertPos = 2;
     }
@@ -470,7 +470,6 @@ int BandwidthController::setInterfaceSharedQuota(const std::string& iface, int64
     int res = 0;
     std::string quotaCmd;
     const char costName[] = "shared";
-    std::list<std::string>::iterator it;
 
     if (!maxBytes) {
         /* Don't talk about -1, deprecate it. */
@@ -484,34 +483,30 @@ int BandwidthController::setInterfaceSharedQuota(const std::string& iface, int64
         return removeInterfaceSharedQuota(iface);
     }
 
-    /* Insert ingress quota. */
-    for (it = sharedQuotaIfaces.begin(); it != sharedQuotaIfaces.end(); it++) {
-        if (*it == iface)
-            break;
-    }
+    auto it = mSharedQuotaIfaces.find(iface);
 
-    if (it == sharedQuotaIfaces.end()) {
+    if (it == mSharedQuotaIfaces.end()) {
         res |= prepCostlyIface(iface, QuotaShared);
-        if (sharedQuotaIfaces.empty()) {
+        if (mSharedQuotaIfaces.empty()) {
             quotaCmd = makeIptablesQuotaCmd(IptFullOpInsert, costName, maxBytes);
             res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
             if (res) {
                 ALOGE("Failed set quota rule");
                 goto fail;
             }
-            sharedQuotaBytes = maxBytes;
+            mSharedQuotaBytes = maxBytes;
         }
-        sharedQuotaIfaces.push_front(iface);
+        mSharedQuotaIfaces.insert(iface);
 
     }
 
-    if (maxBytes != sharedQuotaBytes) {
+    if (maxBytes != mSharedQuotaBytes) {
         res |= updateQuota(costName, maxBytes);
         if (res) {
             ALOGE("Failed update quota for %s", costName);
             goto fail;
         }
-        sharedQuotaBytes = maxBytes;
+        mSharedQuotaBytes = maxBytes;
     }
     return 0;
 
@@ -529,32 +524,29 @@ int BandwidthController::setInterfaceSharedQuota(const std::string& iface, int64
 /* It will also cleanup any shared alerts */
 int BandwidthController::removeInterfaceSharedQuota(const std::string& iface) {
     int res = 0;
-    std::list<std::string>::iterator it;
     const char costName[] = "shared";
 
     if (!isIfaceName(iface))
         return -1;
 
-    for (it = sharedQuotaIfaces.begin(); it != sharedQuotaIfaces.end(); it++) {
-        if (*it == iface)
-            break;
-    }
-    if (it == sharedQuotaIfaces.end()) {
+    auto it = mSharedQuotaIfaces.find(iface);
+
+    if (it == mSharedQuotaIfaces.end()) {
         ALOGE("No such iface %s to delete", iface.c_str());
         return -1;
     }
 
     res |= cleanupCostlyIface(iface, QuotaShared);
-    sharedQuotaIfaces.erase(it);
+    mSharedQuotaIfaces.erase(it);
 
-    if (sharedQuotaIfaces.empty()) {
+    if (mSharedQuotaIfaces.empty()) {
         std::string quotaCmd;
-        quotaCmd = makeIptablesQuotaCmd(IptFullOpDelete, costName, sharedQuotaBytes);
+        quotaCmd = makeIptablesQuotaCmd(IptFullOpDelete, costName, mSharedQuotaBytes);
         res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
-        sharedQuotaBytes = 0;
-        if (sharedAlertBytes) {
+        mSharedQuotaBytes = 0;
+        if (mSharedAlertBytes) {
             removeSharedAlert();
-            sharedAlertBytes = 0;
+            mSharedAlertBytes = 0;
         }
     }
     return res;
@@ -563,7 +555,6 @@ int BandwidthController::removeInterfaceSharedQuota(const std::string& iface) {
 int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t maxBytes) {
     int res = 0;
     const auto& costName = iface;
-    std::list<QuotaInfo>::iterator it;
     std::string quotaCmd;
 
     if (!isIfaceName(iface))
@@ -579,12 +570,9 @@ int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t max
     }
 
     /* Insert ingress quota. */
-    for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
-        if (it->ifaceName == iface)
-            break;
-    }
+    auto it = mQuotaIfaces.find(iface);
 
-    if (it == quotaIfaces.end()) {
+    if (it == mQuotaIfaces.end()) {
         /* Preparing the iface adds a penalty/happy box check */
         res |= prepCostlyIface(iface, QuotaUnique);
         /*
@@ -599,7 +587,7 @@ int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t max
             goto fail;
         }
 
-        quotaIfaces.push_front(QuotaInfo(iface, maxBytes, 0));
+        mQuotaIfaces[iface] = QuotaInfo{maxBytes, 0};
 
     } else {
         res |= updateQuota(costName, maxBytes);
@@ -607,7 +595,7 @@ int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t max
             ALOGE("Failed update quota for %s", iface.c_str());
             goto fail;
         }
-        it->quota = maxBytes;
+        it->second.quota = maxBytes;
     }
     return 0;
 
@@ -648,17 +636,13 @@ int BandwidthController::getInterfaceQuota(const std::string& iface, int64_t* by
 
 int BandwidthController::removeInterfaceQuota(const std::string& iface) {
     int res = 0;
-    std::list<QuotaInfo>::iterator it;
 
     if (!isIfaceName(iface))
         return -1;
 
-    for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
-        if (it->ifaceName == iface)
-            break;
-    }
+    auto it = mQuotaIfaces.find(iface);
 
-    if (it == quotaIfaces.end()) {
+    if (it == mQuotaIfaces.end()) {
         ALOGE("No such iface %s to delete", iface.c_str());
         return -1;
     }
@@ -666,7 +650,7 @@ int BandwidthController::removeInterfaceQuota(const std::string& iface) {
     /* This also removes the quota command of CostlyIface chain. */
     res |= cleanupCostlyIface(iface, QuotaUnique);
 
-    quotaIfaces.erase(it);
+    mQuotaIfaces.erase(it);
 
     return res;
 }
@@ -724,16 +708,16 @@ int BandwidthController::setGlobalAlert(int64_t bytes) {
         ALOGE("Invalid bytes value. 1..max_int64.");
         return -1;
     }
-    if (globalAlertBytes) {
+    if (mGlobalAlertBytes) {
         res = updateQuota(alertName, bytes);
     } else {
         res = runIptablesAlertCmd(IptOpInsert, alertName, bytes);
-        if (globalAlertTetherCount) {
-            ALOGV("setGlobalAlert for %d tether", globalAlertTetherCount);
+        if (mGlobalAlertTetherCount) {
+            ALOGV("setGlobalAlert for %d tether", mGlobalAlertTetherCount);
             res |= runIptablesAlertFwdCmd(IptOpInsert, alertName, bytes);
         }
     }
-    globalAlertBytes = bytes;
+    mGlobalAlertBytes = bytes;
     return res;
 }
 
@@ -741,20 +725,20 @@ int BandwidthController::setGlobalAlertInForwardChain() {
     const char *alertName = ALERT_GLOBAL_NAME;
     int res = 0;
 
-    globalAlertTetherCount++;
-    ALOGV("setGlobalAlertInForwardChain(): %d tether", globalAlertTetherCount);
+    mGlobalAlertTetherCount++;
+    ALOGV("setGlobalAlertInForwardChain(): %d tether", mGlobalAlertTetherCount);
 
     /*
      * If there is no globalAlert active we are done.
      * If there is an active globalAlert but this is not the 1st
      * tether, we are also done.
      */
-    if (!globalAlertBytes || globalAlertTetherCount != 1) {
+    if (!mGlobalAlertBytes || mGlobalAlertTetherCount != 1) {
         return 0;
     }
 
     /* We only add the rule if this was the 1st tether added. */
-    res = runIptablesAlertFwdCmd(IptOpInsert, alertName, globalAlertBytes);
+    res = runIptablesAlertFwdCmd(IptOpInsert, alertName, mGlobalAlertBytes);
     return res;
 }
 
@@ -763,15 +747,15 @@ int BandwidthController::removeGlobalAlert() {
     const char *alertName = ALERT_GLOBAL_NAME;
     int res = 0;
 
-    if (!globalAlertBytes) {
+    if (!mGlobalAlertBytes) {
         ALOGE("No prior alert set");
         return -1;
     }
-    res = runIptablesAlertCmd(IptOpDelete, alertName, globalAlertBytes);
-    if (globalAlertTetherCount) {
-        res |= runIptablesAlertFwdCmd(IptOpDelete, alertName, globalAlertBytes);
+    res = runIptablesAlertCmd(IptOpDelete, alertName, mGlobalAlertBytes);
+    if (mGlobalAlertTetherCount) {
+        res |= runIptablesAlertFwdCmd(IptOpDelete, alertName, mGlobalAlertBytes);
     }
-    globalAlertBytes = 0;
+    mGlobalAlertBytes = 0;
     return res;
 }
 
@@ -779,28 +763,28 @@ int BandwidthController::removeGlobalAlertInForwardChain() {
     int res = 0;
     const char *alertName = ALERT_GLOBAL_NAME;
 
-    if (!globalAlertTetherCount) {
+    if (!mGlobalAlertTetherCount) {
         ALOGE("No prior alert set");
         return -1;
     }
 
-    globalAlertTetherCount--;
+    mGlobalAlertTetherCount--;
     /*
      * If there is no globalAlert active we are done.
      * If there is an active globalAlert but there are more
      * tethers, we are also done.
      */
-    if (!globalAlertBytes || globalAlertTetherCount >= 1) {
+    if (!mGlobalAlertBytes || mGlobalAlertTetherCount >= 1) {
         return 0;
     }
 
     /* We only detete the rule if this was the last tether removed. */
-    res = runIptablesAlertFwdCmd(IptOpDelete, alertName, globalAlertBytes);
+    res = runIptablesAlertFwdCmd(IptOpDelete, alertName, mGlobalAlertBytes);
     return res;
 }
 
 int BandwidthController::setSharedAlert(int64_t bytes) {
-    if (!sharedQuotaBytes) {
+    if (!mSharedQuotaBytes) {
         ALOGE("Need to have a prior shared quota set to set an alert");
         return -1;
     }
@@ -808,16 +792,14 @@ int BandwidthController::setSharedAlert(int64_t bytes) {
         ALOGE("Invalid bytes value. 1..max_int64.");
         return -1;
     }
-    return setCostlyAlert("shared", bytes, &sharedAlertBytes);
+    return setCostlyAlert("shared", bytes, &mSharedAlertBytes);
 }
 
 int BandwidthController::removeSharedAlert() {
-    return removeCostlyAlert("shared", &sharedAlertBytes);
+    return removeCostlyAlert("shared", &mSharedAlertBytes);
 }
 
 int BandwidthController::setInterfaceAlert(const std::string& iface, int64_t bytes) {
-    std::list<QuotaInfo>::iterator it;
-
     if (!isIfaceName(iface)) {
         ALOGE("setInterfaceAlert: Invalid iface \"%s\"", iface.c_str());
         return -1;
@@ -827,38 +809,30 @@ int BandwidthController::setInterfaceAlert(const std::string& iface, int64_t byt
         ALOGE("Invalid bytes value. 1..max_int64.");
         return -1;
     }
-    for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
-        if (it->ifaceName == iface)
-            break;
-    }
+    auto it = mQuotaIfaces.find(iface);
 
-    if (it == quotaIfaces.end()) {
+    if (it == mQuotaIfaces.end()) {
         ALOGE("Need to have a prior interface quota set to set an alert");
         return -1;
     }
 
-    return setCostlyAlert(iface, bytes, &it->alert);
+    return setCostlyAlert(iface, bytes, &it->second.alert);
 }
 
 int BandwidthController::removeInterfaceAlert(const std::string& iface) {
-    std::list<QuotaInfo>::iterator it;
-
     if (!isIfaceName(iface)) {
         ALOGE("removeInterfaceAlert: Invalid iface \"%s\"", iface.c_str());
         return -1;
     }
 
-    for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
-        if (it->ifaceName == iface)
-            break;
-    }
+    auto it = mQuotaIfaces.find(iface);
 
-    if (it == quotaIfaces.end()) {
+    if (it == mQuotaIfaces.end()) {
         ALOGE("No prior alert set for interface %s", iface.c_str());
         return -1;
     }
 
-    return removeCostlyAlert(iface, &it->alert);
+    return removeCostlyAlert(iface, &it->second.alert);
 }
 
 int BandwidthController::setCostlyAlert(const std::string& costName, int64_t bytes,
