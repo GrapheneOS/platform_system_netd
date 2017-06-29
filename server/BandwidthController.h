@@ -16,7 +16,8 @@
 #ifndef _BANDWIDTH_CONTROLLER_H
 #define _BANDWIDTH_CONTROLLER_H
 
-#include <list>
+#include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -115,11 +116,7 @@ public:
     static const char LOCAL_MANGLE_POSTROUTING[];
 
   private:
-    class QuotaInfo {
-    public:
-      QuotaInfo(std::string ifn, int64_t q, int64_t a)
-              : ifaceName(ifn), quota(q), alert(a) {};
-        std::string ifaceName;
+    struct QuotaInfo {
         int64_t quota;
         int64_t alert;
     };
@@ -194,12 +191,18 @@ public:
      */
     void flushCleanTables(bool doClean);
 
-    /*------------------*/
+    // For testing.
+    friend class BandwidthControllerTest;
+    static int (*execFunction)(int, char **, int *, bool, bool);
+    static FILE *(*popenFunction)(const char *, const char *);
+    static int (*iptablesRestoreFunction)(IptablesTarget, const std::string&, std::string *);
 
-    std::list<std::string> sharedQuotaIfaces;
-    int64_t sharedQuotaBytes;
-    int64_t sharedAlertBytes;
-    int64_t globalAlertBytes;
+    static const char *opToString(IptOp op);
+    static const char *jumpToString(IptJumpOp jumpHandling);
+
+    int64_t mSharedQuotaBytes = 0;
+    int64_t mSharedAlertBytes = 0;
+    int64_t mGlobalAlertBytes = 0;
     /*
      * This tracks the number of tethers setup.
      * The FORWARD chain is updated in the following cases:
@@ -208,19 +211,10 @@ public:
      *  - The 1st tether is setup and there is a globalAlert active.
      *  - The last tether is removed and there is a globalAlert active.
      */
-    int globalAlertTetherCount;
+    int mGlobalAlertTetherCount = 0;
 
-    std::list<QuotaInfo> quotaIfaces;
-
-    // For testing.
-    friend class BandwidthControllerTest;
-    static int (*execFunction)(int, char **, int *, bool, bool);
-    static FILE *(*popenFunction)(const char *, const char *);
-    static int (*iptablesRestoreFunction)(IptablesTarget, const std::string&, std::string *);
-
-private:
-    static const char *opToString(IptOp op);
-    static const char *jumpToString(IptJumpOp jumpHandling);
+    std::map<std::string, QuotaInfo> mQuotaIfaces;
+    std::set<std::string> mSharedQuotaIfaces;
 };
 
 #endif
