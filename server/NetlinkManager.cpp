@@ -86,8 +86,12 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
         return NULL;
     }
 
-    if (setsockopt(*sock, SOL_SOCKET, SO_RCVBUFFORCE, &sz, sizeof(sz)) < 0) {
-        ALOGE("Unable to set uevent socket SO_RCVBUFFORCE option: %s", strerror(errno));
+    // When running in a net/user namespace, SO_RCVBUFFORCE will fail because
+    // it will check for the CAP_NET_ADMIN capability in the root namespace.
+    // Try using SO_RCVBUF if that fails.
+    if (setsockopt(*sock, SOL_SOCKET, SO_RCVBUFFORCE, &sz, sizeof(sz)) < 0 &&
+        setsockopt(*sock, SOL_SOCKET, SO_RCVBUF, &sz, sizeof(sz)) < 0) {
+        ALOGE("Unable to set uevent socket SO_RCVBUF option: %s", strerror(errno));
         close(*sock);
         return NULL;
     }
