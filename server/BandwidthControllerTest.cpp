@@ -585,24 +585,28 @@ TEST_F(BandwidthControllerTest, CostlyAlert) {
     int64_t alertBytes = 0;
 
     std::vector<std::string> expected = {
-        "-A bw_costly_shared -m quota2 ! --quota 123456 --name sharedAlert\n",
+        "*filter\n"
+        "-A bw_costly_shared -m quota2 ! --quota 123456 --name sharedAlert\n"
+        "COMMIT\n"
     };
     EXPECT_EQ(0, setCostlyAlert("shared", kQuota, &alertBytes));
     EXPECT_EQ(kQuota, alertBytes);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     expected = {};
     expectUpdateQuota(kQuota);
     EXPECT_EQ(0, setCostlyAlert("shared", kQuota + 1, &alertBytes));
     EXPECT_EQ(kQuota + 1, alertBytes);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     expected = {
+        "*filter\n"
         "-D bw_costly_shared -m quota2 ! --quota 123457 --name sharedAlert\n"
+        "COMMIT\n"
     };
     EXPECT_EQ(0, removeCostlyAlert("shared", &alertBytes));
     EXPECT_EQ(0, alertBytes);
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 }
 
 TEST_F(BandwidthControllerTest, ManipulateSpecialApps) {

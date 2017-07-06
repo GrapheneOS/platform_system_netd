@@ -746,10 +746,7 @@ int BandwidthController::removeInterfaceAlert(const std::string& iface) {
 
 int BandwidthController::setCostlyAlert(const std::string& costName, int64_t bytes,
                                         int64_t* alertBytes) {
-    char *alertQuotaCmd;
-    char *chainName;
     int res = 0;
-    char *alertName;
 
     if (!isIfaceName(costName)) {
         ALOGE("setCostlyAlert: Invalid costName \"%s\"", costName.c_str());
@@ -760,27 +757,29 @@ int BandwidthController::setCostlyAlert(const std::string& costName, int64_t byt
         ALOGE("Invalid bytes value. 1..max_int64.");
         return -1;
     }
-    asprintf(&alertName, "%sAlert", costName.c_str());
+
+    std::string alertName = costName + "Alert";
+    std::string chainName = "bw_costly_" + costName;
     if (*alertBytes) {
         res = updateQuota(alertName, *alertBytes);
     } else {
-        asprintf(&chainName, "bw_costly_%s", costName.c_str());
-        asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-A", chainName, bytes, alertName);
-        res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
-        free(alertQuotaCmd);
-        free(chainName);
+        std::vector<std::string> commands = {
+            "*filter\n",
+            StringPrintf(ALERT_IPT_TEMPLATE, "-A", chainName.c_str(), bytes, alertName.c_str()),
+            "COMMIT\n"
+        };
+        res = iptablesRestoreFunction(V4V6, Join(commands, ""), nullptr);
+        if (res) {
+            ALOGE("Failed to set costly alert for %s", costName.c_str());
+        }
     }
-    *alertBytes = bytes;
-    free(alertName);
+    if (res == 0) {
+        *alertBytes = bytes;
+    }
     return res;
 }
 
 int BandwidthController::removeCostlyAlert(const std::string& costName, int64_t* alertBytes) {
-    char *alertQuotaCmd;
-    char *chainName;
-    char *alertName;
-    int res = 0;
-
     if (!isIfaceName(costName)) {
         ALOGE("removeCostlyAlert: Invalid costName \"%s\"", costName.c_str());
         return -1;
@@ -791,16 +790,20 @@ int BandwidthController::removeCostlyAlert(const std::string& costName, int64_t*
         return -1;
     }
 
-    asprintf(&alertName, "%sAlert", costName.c_str());
-    asprintf(&chainName, "bw_costly_%s", costName.c_str());
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-D", chainName, *alertBytes, alertName);
-    res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
-    free(alertQuotaCmd);
-    free(chainName);
+    std::string alertName = costName + "Alert";
+    std::string chainName = "bw_costly_" + costName;
+    std::vector<std::string> commands = {
+        "*filter\n",
+        StringPrintf(ALERT_IPT_TEMPLATE, "-D", chainName.c_str(), *alertBytes, alertName.c_str()),
+        "COMMIT\n"
+    };
+    if (iptablesRestoreFunction(V4V6, Join(commands, ""), nullptr) != 0) {
+        ALOGE("Failed to remove costly alert %s", costName.c_str());
+        return -1;
+    }
 
     *alertBytes = 0;
-    free(alertName);
-    return res;
+    return 0;
 }
 
 void BandwidthController::addStats(TetherStatsList& statsList, const TetherStats& stats) {
