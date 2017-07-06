@@ -372,20 +372,19 @@ int BandwidthController::setInterfaceSharedQuota(const std::string& iface, int64
     if (it == mSharedQuotaIfaces.end()) {
         const int ruleInsertPos = (mGlobalAlertBytes) ? 2 : 1;
         std::vector<std::string> cmds = {
+            "*filter",
             StringPrintf("-I bw_INPUT %d -i %s --jump %s", ruleInsertPos, iface.c_str(), chain),
             StringPrintf("-I bw_OUTPUT %d -o %s --jump %s", ruleInsertPos, iface.c_str(), chain),
             StringPrintf("-A bw_FORWARD -o %s --jump %s", iface.c_str(), chain),
         };
-        for (const auto& cmd : cmds) {
-            res |= runIpxtablesCmd(cmd.c_str(), IptJumpNoAdd);
-        }
-
         if (mSharedQuotaIfaces.empty()) {
-            res |= runIpxtablesCmd(StringPrintf("-I %s -m quota2 ! --quota %" PRId64
-                                                " --name %s --jump REJECT",
-                                                chain, maxBytes, cost).c_str(), IptJumpNoAdd);
+            cmds.push_back(StringPrintf("-I %s -m quota2 ! --quota %" PRId64
+                                        " --name %s --jump REJECT",
+                                        chain, maxBytes, cost));
         }
+        cmds.push_back("COMMIT\n");
 
+        res |= iptablesRestoreFunction(V4V6, Join(cmds, "\n"), nullptr);
         if (res) {
             ALOGE("Failed set quota rule");
             removeInterfaceSharedQuota(iface);
@@ -409,7 +408,6 @@ int BandwidthController::setInterfaceSharedQuota(const std::string& iface, int64
 
 /* It will also cleanup any shared alerts */
 int BandwidthController::removeInterfaceSharedQuota(const std::string& iface) {
-    int res = 0;
     constexpr char cost[] = "shared";
     constexpr char chain[] = "bw_costly_shared";
 
@@ -426,18 +424,15 @@ int BandwidthController::removeInterfaceSharedQuota(const std::string& iface) {
     mSharedQuotaIfaces.erase(it);
 
     std::vector<std::string> cmds = {
+        "*filter",
         StringPrintf("-D bw_INPUT -i %s --jump %s", iface.c_str(), chain),
         StringPrintf("-D bw_OUTPUT -o %s --jump %s", iface.c_str(), chain),
         StringPrintf("-D bw_FORWARD -o %s --jump %s", iface.c_str(), chain),
     };
-    for (const auto& cmd : cmds) {
-        res |= runIpxtablesCmd(cmd.c_str(), IptJumpNoAdd);
-    }
     if (mSharedQuotaIfaces.empty()) {
-        res |= runIpxtablesCmd(StringPrintf("-D %s -m quota2 ! --quota %" PRIu64
-                                            " --name %s --jump REJECT",
-                                            chain, mSharedQuotaBytes, cost).c_str(), IptJumpNoAdd);
-
+        cmds.push_back(StringPrintf("-D %s -m quota2 ! --quota %" PRIu64
+                                    " --name %s --jump REJECT",
+                                    chain, mSharedQuotaBytes, cost));
 
         mSharedQuotaBytes = 0;
         if (mSharedAlertBytes) {
@@ -445,12 +440,12 @@ int BandwidthController::removeInterfaceSharedQuota(const std::string& iface) {
             mSharedAlertBytes = 0;
         }
     }
+    cmds.push_back("COMMIT\n");
 
-    return res;
+    return iptablesRestoreFunction(V4V6, Join(cmds, "\n"), nullptr);
 }
 
 int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t maxBytes) {
-    int res = 0;
     const std::string& cost = iface;
 
     if (!isIfaceName(iface))
@@ -469,8 +464,7 @@ int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t max
     auto it = mQuotaIfaces.find(iface);
 
     if (it != mQuotaIfaces.end()) {
-        res |= updateQuota(cost, maxBytes);
-        if (res) {
+        if (updateQuota(cost, maxBytes) != 0) {
             ALOGE("Failed update quota for %s", iface.c_str());
             removeInterfaceQuota(iface);
             return -1;
@@ -482,8 +476,8 @@ int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t max
     const std::string chain = "bw_costly_" + iface;
     const int ruleInsertPos = (mGlobalAlertBytes) ? 2 : 1;
     std::vector<std::string> cmds = {
-        StringPrintf("-N %s", chain.c_str()),
-        StringPrintf("-F %s", chain.c_str()),
+        "*filter",
+        StringPrintf(":%s -", chain.c_str()),
         StringPrintf("-A %s -j bw_penalty_box", chain.c_str()),
         StringPrintf("-I bw_INPUT %d -i %s --jump %s", ruleInsertPos, iface.c_str(),
                      chain.c_str()),
@@ -492,12 +486,10 @@ int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t max
         StringPrintf("-A bw_FORWARD -o %s --jump %s", iface.c_str(), chain.c_str()),
         StringPrintf("-A %s -m quota2 ! --quota %" PRId64 " --name %s --jump REJECT",
                      chain.c_str(), maxBytes, cost.c_str()),
+        "COMMIT\n",
     };
 
-    for (const auto& cmd : cmds) {
-        res |= runIpxtablesCmd(cmd.c_str(), IptJumpNoAdd);
-    }
-    if (res) {
+    if (iptablesRestoreFunction(V4V6, Join(cmds, "\n"), nullptr) != 0) {
         ALOGE("Failed set quota rule");
         removeInterfaceQuota(iface);
         return -1;
@@ -532,8 +524,6 @@ int BandwidthController::getInterfaceQuota(const std::string& iface, int64_t* by
 }
 
 int BandwidthController::removeInterfaceQuota(const std::string& iface) {
-    int res = 0;
-
     if (!isIfaceName(iface))
         return -1;
 
@@ -546,15 +536,16 @@ int BandwidthController::removeInterfaceQuota(const std::string& iface) {
 
     const std::string chain = "bw_costly_" + iface;
     std::vector<std::string> cmds = {
+        "*filter",
         StringPrintf("-D bw_INPUT -i %s --jump %s", iface.c_str(), chain.c_str()),
         StringPrintf("-D bw_OUTPUT -o %s --jump %s", iface.c_str(), chain.c_str()),
         StringPrintf("-D bw_FORWARD -o %s --jump %s", iface.c_str(), chain.c_str()),
         StringPrintf("-F %s", chain.c_str()),
         StringPrintf("-X %s", chain.c_str()),
+        "COMMIT\n",
     };
-    for (const auto& cmd : cmds) {
-        res |= runIpxtablesCmd(cmd.c_str(), IptJumpNoAdd);
-    }
+
+    const int res = iptablesRestoreFunction(V4V6, Join(cmds, "\n"), nullptr);
 
     mQuotaIfaces.erase(it);
 
