@@ -136,19 +136,8 @@ public:
     int manipulateSpecialApps(const std::vector<std::string>& appStrUids, const std::string& chain,
                               IptJumpOp jumpHandling, IptOp appOp);
 
-    int prepCostlyIface(const std::string& ifn, QuotaType quotaType);
-    int cleanupCostlyIface(const std::string& ifn, QuotaType quotaType);
-
-    std::string makeIptablesQuotaCmd(IptFullOp op, const std::string& costName, int64_t quota);
-
     int runIptablesAlertCmd(IptOp op, const std::string& alertName, int64_t bytes);
     int runIptablesAlertFwdCmd(IptOp op, const std::string& alertName, int64_t bytes);
-
-    /* Runs for both ipv4 and ipv6 iptables, appends -j REJECT --reject-with ...  */
-    static int runIpxtablesCmd(const std::string& cmd, IptJumpOp jumpHandling,
-                               IptFailureLog failureHandling = IptFailShow);
-    static int runIptablesCmd(const std::string& cmd, IptJumpOp jumpHandling, IptIpVer iptIpVer,
-                              IptFailureLog failureHandling = IptFailShow);
 
     // Provides strncpy() + check overflow.
     static int StrncpyAndCheck(char* buffer, const std::string& src, size_t buffSize);
