@@ -124,6 +124,14 @@ protected:
         return mBw.runIptablesAlertFwdCmd(a, b, c);
     }
 
+    int setCostlyAlert(const std::string a, int64_t b, int64_t *c) {
+        return mBw.setCostlyAlert(a, b, c);
+    }
+
+    int removeCostlyAlert(const std::string a, int64_t *b) {
+        return mBw.removeCostlyAlert(a, b);
+    }
+
     void expectUpdateQuota(uint64_t quota) {
         uintptr_t dummy;
         FILE* dummyFile = reinterpret_cast<FILE*>(&dummy);
@@ -570,6 +578,31 @@ TEST_F(BandwidthControllerTest, IptablesAlertFwdCmd) {
     };
     EXPECT_EQ(0, runIptablesAlertFwdCmd(IptOp::IptOpDelete, "MyWonderfulAlert", 123456));
     expectIptablesRestoreCommands(expected);
+}
+
+TEST_F(BandwidthControllerTest, CostlyAlert) {
+    const int64_t kQuota = 123456;
+    int64_t alertBytes = 0;
+
+    std::vector<std::string> expected = {
+        "-A bw_costly_shared -m quota2 ! --quota 123456 --name sharedAlert\n",
+    };
+    EXPECT_EQ(0, setCostlyAlert("shared", kQuota, &alertBytes));
+    EXPECT_EQ(kQuota, alertBytes);
+    expectIptablesCommands(expected);
+
+    expected = {};
+    expectUpdateQuota(kQuota);
+    EXPECT_EQ(0, setCostlyAlert("shared", kQuota + 1, &alertBytes));
+    EXPECT_EQ(kQuota + 1, alertBytes);
+    expectIptablesCommands(expected);
+
+    expected = {
+        "-D bw_costly_shared -m quota2 ! --quota 123457 --name sharedAlert\n"
+    };
+    EXPECT_EQ(0, removeCostlyAlert("shared", &alertBytes));
+    EXPECT_EQ(0, alertBytes);
+    expectIptablesCommands(expected);
 }
 
 TEST_F(BandwidthControllerTest, ManipulateSpecialApps) {
