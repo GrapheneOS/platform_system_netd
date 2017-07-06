@@ -375,7 +375,7 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptFullOp op, const std::s
 
 int BandwidthController::prepCostlyIface(const std::string& ifn, QuotaType quotaType) {
     char cmd[MAX_CMD_LEN];
-    int res = 0, res1, res2;
+    int res = 0;
     int ruleInsertPos = 1;
     std::string costString;
     const char *costCString;
@@ -387,15 +387,14 @@ int BandwidthController::prepCostlyIface(const std::string& ifn, QuotaType quota
         costString += ifn;
         costCString = costString.c_str();
         /*
-         * Flush the bw_costly_<iface> is allowed to fail in case it didn't exist.
-         * Creating a new one is allowed to fail in case it existed.
+         * Creating a new bw_costly_<iface> is allowed to fail in case it existed.
+         * Regardless of whether it previously existed or not, flushing it should never fail.
          * This helps with netd restarts.
          */
-        snprintf(cmd, sizeof(cmd), "-F %s", costCString);
-        res1 = runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
         snprintf(cmd, sizeof(cmd), "-N %s", costCString);
-        res2 = runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
-        res = (res1 && res2) || (!res1 && !res2);
+        runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
+        snprintf(cmd, sizeof(cmd), "-F %s", costCString);
+        res |= runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailShow);
 
         snprintf(cmd, sizeof(cmd), "-A %s -j bw_penalty_box", costCString);
         res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
@@ -410,22 +409,14 @@ int BandwidthController::prepCostlyIface(const std::string& ifn, QuotaType quota
         ruleInsertPos = 2;
     }
 
-    snprintf(cmd, sizeof(cmd), "-D bw_INPUT -i %s --jump %s", ifn.c_str(), costCString);
-    runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
-
     snprintf(cmd, sizeof(cmd), "-I bw_INPUT %d -i %s --jump %s", ruleInsertPos, ifn.c_str(),
              costCString);
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
-
-    snprintf(cmd, sizeof(cmd), "-D bw_OUTPUT -o %s --jump %s", ifn.c_str(), costCString);
-    runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
 
     snprintf(cmd, sizeof(cmd), "-I bw_OUTPUT %d -o %s --jump %s", ruleInsertPos, ifn.c_str(),
              costCString);
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 
-    snprintf(cmd, sizeof(cmd), "-D bw_FORWARD -o %s --jump %s", ifn.c_str(), costCString);
-    runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
     snprintf(cmd, sizeof(cmd), "-A bw_FORWARD -o %s --jump %s", ifn.c_str(), costCString);
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 

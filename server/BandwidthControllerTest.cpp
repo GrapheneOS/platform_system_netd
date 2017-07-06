@@ -386,15 +386,11 @@ const std::vector<std::string> makeInterfaceQuotaCommands(const std::string& ifa
     const char* c_chain = chain.c_str();
     const char* c_iface = iface.c_str();
     std::vector<std::string> cmds = {
-        //      StringPrintf(":%s -", c_chain),
-        StringPrintf("-F %s", c_chain),
         StringPrintf("-N %s", c_chain),
+        StringPrintf("-F %s", c_chain),
         StringPrintf("-A %s -j bw_penalty_box", c_chain),
-        StringPrintf("-D bw_INPUT -i %s --jump %s", c_iface, c_chain),
         StringPrintf("-I bw_INPUT %d -i %s --jump %s", ruleIndex, c_iface, c_chain),
-        StringPrintf("-D bw_OUTPUT -o %s --jump %s", c_iface, c_chain),
         StringPrintf("-I bw_OUTPUT %d -o %s --jump %s", ruleIndex, c_iface, c_chain),
-        StringPrintf("-D bw_FORWARD -o %s --jump %s", c_iface, c_chain),
         StringPrintf("-A bw_FORWARD -o %s --jump %s", c_iface, c_chain),
         StringPrintf("-A %s -m quota2 ! --quota %" PRIu64 " --name %s --jump REJECT", c_chain,
                      quota, c_iface),
@@ -421,13 +417,6 @@ TEST_F(BandwidthControllerTest, TestSetInterfaceQuota) {
     const std::string iface = mTun.name();
     std::vector<std::string> expected = makeInterfaceQuotaCommands(iface, 1, kOldQuota);
 
-    // prepCostlyInterface assumes that exactly one of the "-F chain" and "-N chain" commands fails.
-    // So pretend that the first two commands (the IPv4 -F and the IPv6 -F) fail.
-    std::deque<int> returnValues(expected.size() * 2, 0);
-    returnValues[0] = 1;
-    returnValues[1] = 1;
-    setReturnValues(returnValues);
-
     EXPECT_EQ(0, mBw.setInterfaceQuota(iface, kOldQuota));
     expectIptablesCommands(expected);
 
@@ -448,11 +437,8 @@ const std::vector<std::string> makeInterfaceSharedQuotaCommands(const std::strin
     const char* c_chain = chain.c_str();
     const char* c_iface = iface.c_str();
     std::vector<std::string> cmds = {
-        StringPrintf("-D bw_INPUT -i %s --jump %s", c_iface, c_chain),
         StringPrintf("-I bw_INPUT %d -i %s --jump %s", ruleIndex, c_iface, c_chain),
-        StringPrintf("-D bw_OUTPUT -o %s --jump %s", c_iface, c_chain),
         StringPrintf("-I bw_OUTPUT %d -o %s --jump %s", ruleIndex, c_iface, c_chain),
-        StringPrintf("-D bw_FORWARD -o %s --jump %s", c_iface, c_chain),
         StringPrintf("-A bw_FORWARD -o %s --jump %s", c_iface, c_chain),
         StringPrintf("-I %s -m quota2 ! --quota %" PRIu64 " --name shared --jump REJECT", c_chain,
                      quota),
