@@ -421,28 +421,38 @@ int BandwidthController::removeInterfaceSharedQuota(const std::string& iface) {
         return -1;
     }
 
-    mSharedQuotaIfaces.erase(it);
-
     std::vector<std::string> cmds = {
         "*filter",
         StringPrintf("-D bw_INPUT -i %s --jump %s", iface.c_str(), chain),
         StringPrintf("-D bw_OUTPUT -o %s --jump %s", iface.c_str(), chain),
         StringPrintf("-D bw_FORWARD -o %s --jump %s", iface.c_str(), chain),
     };
-    if (mSharedQuotaIfaces.empty()) {
+    if (mSharedQuotaIfaces.size() == 1) {
         cmds.push_back(StringPrintf("-D %s -m quota2 ! --quota %" PRIu64
                                     " --name %s --jump REJECT",
                                     chain, mSharedQuotaBytes, cost));
-
-        mSharedQuotaBytes = 0;
-        if (mSharedAlertBytes) {
-            removeSharedAlert();
-            mSharedAlertBytes = 0;
-        }
     }
     cmds.push_back("COMMIT\n");
 
-    return iptablesRestoreFunction(V4V6, Join(cmds, "\n"), nullptr);
+    if (iptablesRestoreFunction(V4V6, Join(cmds, "\n"), nullptr) != 0) {
+        ALOGE("Failed to remove shared quota on %s", iface.c_str());
+        return -1;
+    }
+
+    int res = 0;
+    mSharedQuotaIfaces.erase(it);
+    if (mSharedQuotaIfaces.empty()) {
+        mSharedQuotaBytes = 0;
+        if (mSharedAlertBytes) {
+            res = removeSharedAlert();
+            if (res == 0) {
+                mSharedAlertBytes = 0;
+            }
+        }
+    }
+
+    return res;
+
 }
 
 int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t maxBytes) {
@@ -547,7 +557,9 @@ int BandwidthController::removeInterfaceQuota(const std::string& iface) {
 
     const int res = iptablesRestoreFunction(V4V6, Join(cmds, "\n"), nullptr);
 
-    mQuotaIfaces.erase(it);
+    if (res == 0) {
+        mQuotaIfaces.erase(it);
+    }
 
     return res;
 }
