@@ -139,12 +139,6 @@ public:
     int runIptablesAlertCmd(IptOp op, const std::string& alertName, int64_t bytes);
     int runIptablesAlertFwdCmd(IptOp op, const std::string& alertName, int64_t bytes);
 
-    /* Runs for both ipv4 and ipv6 iptables, appends -j REJECT --reject-with ...  */
-    static int runIpxtablesCmd(const std::string& cmd, IptJumpOp jumpHandling,
-                               IptFailureLog failureHandling = IptFailShow);
-    static int runIptablesCmd(const std::string& cmd, IptJumpOp jumpHandling, IptIpVer iptIpVer,
-                              IptFailureLog failureHandling = IptFailShow);
-
     // Provides strncpy() + check overflow.
     static int StrncpyAndCheck(char* buffer, const std::string& src, size_t buffSize);
 
