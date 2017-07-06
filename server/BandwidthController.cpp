@@ -77,8 +77,6 @@ using android::netdutils::UniqueFile;
 namespace {
 
 const char ALERT_GLOBAL_NAME[] = "globalAlert";
-const int  MAX_CMD_ARGS = 32;
-const int  MAX_CMD_LEN = 1024;
 const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
 const std::string NEW_CHAIN_COMMAND = "-N ";
 const std::string GET_TETHER_STATS_COMMAND = StringPrintf(
@@ -211,61 +209,10 @@ std::vector<std::string> toStrVec(int num, char* strs[]) {
 BandwidthController::BandwidthController() {
 }
 
-int BandwidthController::runIpxtablesCmd(const std::string& cmd, IptJumpOp jumpHandling,
-                                         IptFailureLog failureHandling) {
-    int res = 0;
-
-    ALOGV("runIpxtablesCmd(cmd=%s)", cmd.c_str());
-    res |= runIptablesCmd(cmd, jumpHandling, IptIpV4, failureHandling);
-    res |= runIptablesCmd(cmd, jumpHandling, IptIpV6, failureHandling);
-    return res;
-}
-
 int BandwidthController::StrncpyAndCheck(char* buffer, const std::string& src, size_t buffSize) {
     memset(buffer, '\0', buffSize);  // strncpy() is not filling leftover with '\0'
     strncpy(buffer, src.c_str(), buffSize);
     return buffer[buffSize - 1];
-}
-
-int BandwidthController::runIptablesCmd(const std::string& cmd, IptJumpOp jumpHandling,
-                                        IptIpVer iptVer, IptFailureLog failureHandling) {
-    char buffer[MAX_CMD_LEN];
-    const char *argv[MAX_CMD_ARGS];
-    int argc = 0;
-    char *next = buffer;
-    char *tmp;
-    int res;
-    int status = 0;
-
-    std::string fullCmd = cmd;
-    fullCmd += jumpToString(jumpHandling);
-
-    fullCmd.insert(0, " -w ");
-    fullCmd.insert(0, iptVer == IptIpV4 ? IPTABLES_PATH : IP6TABLES_PATH);
-
-    if (StrncpyAndCheck(buffer, fullCmd, sizeof(buffer))) {
-        ALOGE("iptables command too long");
-        return -1;
-    }
-
-    argc = 0;
-    while ((tmp = strsep(&next, " "))) {
-        argv[argc++] = tmp;
-        if (argc >= MAX_CMD_ARGS) {
-            ALOGE("iptables argument overflow");
-            return -1;
-        }
-    }
-
-    argv[argc] = NULL;
-    res = execFunction(argc, (char **)argv, &status, false,
-            failureHandling == IptFailShow);
-    res = res || !WIFEXITED(status) || WEXITSTATUS(status);
-    if (res && failureHandling == IptFailShow) {
-      ALOGE("runIptablesCmd(): res=%d status=%d failed %s", res, status,
-            fullCmd.c_str());
-    }
-    return res;
 }
 
 void BandwidthController::flushCleanTables(bool doClean) {
