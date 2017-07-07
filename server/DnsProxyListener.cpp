@@ -40,8 +40,10 @@
 #include <utils/String16.h>
 #include <sysutils/SocketClient.h>
 
+#include "Controllers.h"
 #include "Fwmark.h"
 #include "DnsProxyListener.h"
+#include "dns/DnsTlsTransport.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
 #include "ResponseCode.h"
@@ -74,6 +76,61 @@ void tryThreadOrError(SocketClient* cli, T* handler) {
 
     delete handler;
     cli->decRef();
+}
+
+thread_local android_net_context thread_netcontext = {};
+
+res_sendhookact qhook(sockaddr* const * nsap, const u_char** buf, int* buflen,
+                      u_char* ans, int anssiz, int* resplen) {
+    if (!thread_netcontext.qhook) {
+        ALOGE("qhook abort: thread qhook is null");
+        return res_goahead;
+    }
+    if (!net::gCtls) {
+        ALOGE("qhook abort: gCtls is null");
+        return res_goahead;
+    }
+    // Safely read the data from nsap without violating strict-aliasing.
+    sockaddr_storage insecureResolver;
+    if ((*nsap)->sa_family == AF_INET) {
+        std::memcpy(&insecureResolver, *nsap, sizeof(sockaddr_in));
+    } else if ((*nsap)->sa_family == AF_INET6) {
+        std::memcpy(&insecureResolver, *nsap, sizeof(sockaddr_in6));
+    } else {
+        ALOGE("qhook abort: unknown address family");
+        return res_goahead;
+    }
+    sockaddr_storage secureResolver;
+    std::set<std::vector<uint8_t>> fingerprints;
+    if (net::gCtls->resolverCtrl.shouldUseTls(thread_netcontext.dns_netid,
+            insecureResolver, &secureResolver, &fingerprints)) {
+        if (DBG) {
+            ALOGD("qhook using TLS");
+        }
+        DnsTlsTransport xport(thread_netcontext.dns_mark, IPPROTO_TCP,
+                              secureResolver, fingerprints);
+        auto response = xport.doQuery(*buf, *buflen, ans, anssiz, resplen);
+        if (response == DnsTlsTransport::Response::success) {
+            if (DBG) {
+                ALOGD("qhook success");
+            }
+            return res_done;
+        }
+        if (DBG) {
+            ALOGW("qhook abort: doQuery failed: %d", (int)response);
+        }
+        // If there was a network error, try a different name server.
+        // Otherwise, fail hard.
+        if (response == DnsTlsTransport::Response::network_error) {
+            return res_nextns;
+        }
+        return res_error;
+    }
+
+    if (DBG) {
+        ALOGD("qhook not using TLS");
+    }
+    return res_goahead;
 }
 
 }  // namespace
@@ -189,6 +246,7 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
 
     struct addrinfo* result = NULL;
     Stopwatch s;
+    thread_netcontext = mNetContext;
     uint32_t rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, &result);
     const int latencyMs = lround(s.timeTaken());
 
@@ -305,6 +363,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
 
     android_net_context netcontext;
     mDnsProxyListener->mNetCtrl->getNetworkContext(netId, uid, &netcontext);
+    netcontext.qhook = &qhook;
 
     if (ai_flags != -1 || ai_family != -1 ||
         ai_socktype != -1 || ai_protocol != -1) {
@@ -370,6 +429,7 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
 
     android_net_context netcontext;
     mDnsProxyListener->mNetCtrl->getNetworkContext(netId, uid, &netcontext);
+    netcontext.qhook = &qhook;
 
     const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
 
@@ -401,6 +461,7 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     }
 
     Stopwatch s;
+    thread_netcontext = mNetContext;
     struct hostent* hp = android_gethostbynamefornetcontext(mName, mAf, &mNetContext);
     const int latencyMs = lround(s.timeTaken());
 
@@ -512,6 +573,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
 
     android_net_context netcontext;
     mDnsProxyListener->mNetCtrl->getNetworkContext(netId, uid, &netcontext);
+    netcontext.qhook = &qhook;
 
     DnsProxyListener::GetHostByAddrHandler* handler =
             new DnsProxyListener::GetHostByAddrHandler(cli, addr, addrLen, addrFamily, netcontext);
@@ -543,6 +605,7 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     struct hostent* hp;
 
     // NOTE gethostbyaddr should take a void* but bionic thinks it should be char*
+    thread_netcontext = mNetContext;
     hp = android_gethostbyaddrfornetcontext(
             (char*)mAddress, mAddressLen, mAddressFamily, &mNetContext);
 

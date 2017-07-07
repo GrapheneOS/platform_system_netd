@@ -64,6 +64,7 @@ LOCAL_INIT_RC := netd.rc
 
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
+        libcrypto \
         libcutils \
         libdl \
         liblog \
@@ -73,6 +74,7 @@ LOCAL_SHARED_LIBRARIES := \
         libnetutils \
         libnetdutils \
         libnl \
+        libssl \
         libsysutils \
         libbase \
         libutils \
@@ -120,6 +122,7 @@ LOCAL_SRC_FILES := \
         oem_iptables_hook.cpp \
         binder/android/net/UidRange.cpp \
         binder/android/net/metrics/INetdEventListener.aidl \
+        dns/DnsTlsTransport.cpp \
 
 LOCAL_AIDL_INCLUDES := $(LOCAL_PATH)/binder
 
@@ -186,6 +189,7 @@ LOCAL_SHARED_LIBRARIES := \
         libnetdaidl \
         libbase \
         libbinder \
+        libcrypto \
         libcutils \
         liblog \
         liblogwrap \
@@ -194,6 +198,7 @@ LOCAL_SHARED_LIBRARIES := \
         libnl \
         libsysutils \
         libutils \
+        libssl \
 
 include $(BUILD_NATIVE_TEST)
 
