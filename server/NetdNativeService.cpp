@@ -28,6 +28,8 @@
 #include <binder/IServiceManager.h>
 #include "android/net/BnNetd.h"
 
+#include <openssl/base64.h>
+
 #include "Controllers.h"
 #include "DumpWriter.h"
 #include "EventReporter.h"
@@ -230,6 +232,47 @@ binder::Status NetdNativeService::getResolverInfo(int32_t netId,
     if (err != 0) {
         return binder::Status::fromServiceSpecificError(-err,
                 String8::format("ResolverController error: %s", strerror(-err)));
+    }
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::addPrivateDnsServer(const std::string& server, int32_t port,
+        const std::string& fingerprintAlgorithm, const std::vector<std::string>& fingerprints) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    std::set<std::vector<uint8_t>> decoded_fingerprints;
+    for (const std::string& input : fingerprints) {
+        size_t out_len;
+        if (EVP_DecodedLength(&out_len, input.size()) != 1) {
+            return binder::Status::fromServiceSpecificError(INetd::PRIVATE_DNS_BAD_FINGERPRINT,
+                    "ResolverController error: bad fingerprint length");
+        }
+        // out_len is now an upper bound on the output length.
+        std::vector<uint8_t> decoded(out_len);
+        if (EVP_DecodeBase64(decoded.data(), &out_len, decoded.size(),
+                reinterpret_cast<const uint8_t*>(input.data()), input.size()) == 1) {
+            // Possibly shrink the vector if the actual output was smaller than the bound.
+            decoded.resize(out_len);
+        } else {
+            return binder::Status::fromServiceSpecificError(INetd::PRIVATE_DNS_BAD_FINGERPRINT,
+                    "ResolverController error: Base64 parsing failed");
+        }
+        decoded_fingerprints.insert(decoded);
+    }
+    const int err = gCtls->resolverCtrl.addPrivateDnsServer(server, port,
+            fingerprintAlgorithm, decoded_fingerprints);
+    if (err != INetd::PRIVATE_DNS_SUCCESS) {
+        return binder::Status::fromServiceSpecificError(err,
+                String8::format("ResolverController error: %d", err));
+    }
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::removePrivateDnsServer(const std::string& server) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    const int err = gCtls->resolverCtrl.removePrivateDnsServer(server);
+    if (err != INetd::PRIVATE_DNS_SUCCESS) {
+        return binder::Status::fromServiceSpecificError(err,
+                String8::format("ResolverController error: %d", err));
     }
     return binder::Status::ok();
 }

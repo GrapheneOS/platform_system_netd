@@ -146,6 +146,44 @@ interface INetd {
     void getResolverInfo(int netId, out @utf8InCpp String[] servers,
             out @utf8InCpp String[] domains, out int[] params, out int[] stats);
 
+    // Private DNS function error codes.
+    const int PRIVATE_DNS_SUCCESS = 0;
+    const int PRIVATE_DNS_BAD_ADDRESS = 1;
+    const int PRIVATE_DNS_BAD_PORT = 2;
+    const int PRIVATE_DNS_UNKNOWN_ALGORITHM = 3;
+    const int PRIVATE_DNS_BAD_FINGERPRINT = 4;
+
+    /**
+     * Adds a server to the list of DNS resolvers that support DNS over TLS.  After this action
+     * succeeds, any subsequent call to setResolverConfiguration will opportunistically use DNS
+     * over TLS if the specified server is on this list and is reachable on that network.
+     *
+     * @param server the DNS server's IP address.  If a private DNS server is already configured
+     *        with this IP address, it will be overwritten.
+     * @param port the port on which the server is listening, typically 853.
+     * @param fingerprintAlgorithm the hash algorithm used to compute the fingerprints.  This should
+     *        be a name in MessageDigest's format.  Currently "SHA-256" is the only supported
+     *        algorithm. Set this to the empty string to disable fingerprint validation.
+     * @param fingerprints the server's public key fingerprints as Base64 strings.
+     *        These can be generated using MessageDigest and android.util.Base64.encodeToString.
+     *        Currently "SHA-256" is the only supported algorithm. Set this to empty to disable
+     *        fingerprint validation.
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *         cause of the the failure.
+     * @return true if the arguments were successfully parsed and recognized.
+     */
+    void addPrivateDnsServer(in @utf8InCpp String server, int port,
+             in @utf8InCpp String fingerprintAlgorithm, in @utf8InCpp String[] fingerprints);
+
+    /**
+     * Remove a server from the list of DNS resolvers that support DNS over TLS.
+     *
+     * @param server the DNS server's IP address.
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *         cause of the the failure.
+     */
+    void removePrivateDnsServer(in @utf8InCpp String server);
+
     /**
      * Instruct the tethering DNS server to reevaluated serving interfaces.
      * This is needed to for the DNS server to observe changes in the set
