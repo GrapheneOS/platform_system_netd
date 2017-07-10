@@ -179,12 +179,11 @@ std::string getProperty(const std::string& key, const std::string& dflt) {
 };
 
 Status setProperty(const std::string& key, const std::string& val) {
-    // SetProperty tries to encode something useful in errno, however
-    // the value may get clobbered by async_safe_format_log() in
-    // __system_property_set(). Use with care.
+    // SetProperty does not dependably set errno to a meaningful value. Use our own error code so
+    // callers don't get confused.
     return android::base::SetProperty(key, val)
         ? ok
-        : statusFromErrno(errno, "SetProperty failed");
+        : statusFromErrno(EREMOTEIO, "SetProperty failed, see libc logs");
 };
 
 
