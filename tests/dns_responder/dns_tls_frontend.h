@@ -28,11 +28,7 @@
 #include <vector>
 
 #include <android-base/thread_annotations.h>
-
-struct ssl_st;
-typedef struct ssl_st SSL;
-struct ssl_ctx_st;
-typedef struct ssl_ctx_st SSL_CTX;
+#include <openssl/ssl.h>
 
 namespace test {
 
@@ -73,7 +69,7 @@ private:
     std::string listen_service_;
     std::string backend_address_;
     std::string backend_service_;
-    SSL_CTX* ctx_;
+    bssl::UniquePtr<SSL_CTX> ctx_;
     int socket_ = -1;
     int backend_socket_ = -1;
     std::atomic<int> queries_;
