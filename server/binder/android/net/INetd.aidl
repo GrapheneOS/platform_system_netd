@@ -170,7 +170,6 @@ interface INetd {
      *        fingerprint validation.
      * @throws ServiceSpecificException in case of failure, with an error code indicating the
      *         cause of the the failure.
-     * @return true if the arguments were successfully parsed and recognized.
      */
     void addPrivateDnsServer(in @utf8InCpp String server, int port,
              in @utf8InCpp String fingerprintAlgorithm, in @utf8InCpp String[] fingerprints);
