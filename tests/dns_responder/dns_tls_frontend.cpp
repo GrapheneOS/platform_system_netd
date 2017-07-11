@@ -76,67 +76,59 @@ std::string addr2str(const sockaddr* sa, socklen_t sa_len) {
     return std::string();
 }
 
-EVP_PKEY* make_private_key() {
-    BIGNUM* e = BN_new();
+bssl::UniquePtr<EVP_PKEY> make_private_key() {
+    bssl::UniquePtr<BIGNUM> e(BN_new());
     if (!e) {
         ALOGE("BN_new failed");
         return nullptr;
     }
-    if (!BN_set_word(e, RSA_F4)) {
+    if (!BN_set_word(e.get(), RSA_F4)) {
         ALOGE("BN_set_word failed");
-        BN_free(e);
         return nullptr;
     }
 
-    RSA* rsa = RSA_new();
+    bssl::UniquePtr<RSA> rsa(RSA_new());
     if (!rsa) {
         ALOGE("RSA_new failed");
-        BN_free(e);
         return nullptr;
     }
-    if (!RSA_generate_key_ex(rsa, 2048, e, NULL)) {
+    if (!RSA_generate_key_ex(rsa.get(), 2048, e.get(), NULL)) {
         ALOGE("RSA_generate_key_ex failed");
-        BN_free(e);
-        RSA_free(rsa);
         return nullptr;
     }
-    BN_free(e);
 
-    EVP_PKEY* privkey = EVP_PKEY_new();
+    bssl::UniquePtr<EVP_PKEY> privkey(EVP_PKEY_new());
     if (!privkey) {
         ALOGE("EVP_PKEY_new failed");
-        RSA_free(rsa);
         return nullptr;
     }
-    if(!EVP_PKEY_assign_RSA(privkey, rsa)) {
+    if(!EVP_PKEY_assign_RSA(privkey.get(), rsa.get())) {
         ALOGE("EVP_PKEY_assign_RSA failed");
-        EVP_PKEY_free(privkey);
-        RSA_free(rsa);
         return nullptr;
     }
 
     // |rsa| is now owned by |privkey|, so no need to free it.
+    rsa.release();
     return privkey;
 }
 
-X509* make_cert(EVP_PKEY* privkey) {
-    X509* cert = X509_new();
+bssl::UniquePtr<X509> make_cert(EVP_PKEY* privkey) {
+    bssl::UniquePtr<X509> cert(X509_new());
     if (!cert) {
         ALOGE("X509_new failed");
         return nullptr;
     }
 
-    ASN1_INTEGER_set(X509_get_serialNumber(cert), 1);
+    ASN1_INTEGER_set(X509_get_serialNumber(cert.get()), 1);
 
     // Set one hour expiration.
-    X509_gmtime_adj(X509_get_notBefore(cert), 0);
-    X509_gmtime_adj(X509_get_notAfter(cert), 60 * 60);
+    X509_gmtime_adj(X509_get_notBefore(cert.get()), 0);
+    X509_gmtime_adj(X509_get_notAfter(cert.get()), 60 * 60);
 
-    X509_set_pubkey(cert, privkey);
+    X509_set_pubkey(cert.get(), privkey);
 
-    if (!X509_sign(cert, privkey, EVP_sha256())) {
+    if (!X509_sign(cert.get(), privkey, EVP_sha256())) {
         ALOGE("X509_sign failed");
-        X509_free(cert);
         return nullptr;
     }
 
@@ -151,27 +143,27 @@ bool DnsTlsFrontend::startServer() {
     SSL_load_error_strings();
     OpenSSL_add_ssl_algorithms();
 
-    ctx_ = SSL_CTX_new(TLS_server_method());
+    ctx_.reset(SSL_CTX_new(TLS_server_method()));
     if (!ctx_) {
         ALOGE("SSL context creation failed");
         return false;
     }
 
-    SSL_CTX_set_ecdh_auto(ctx_, 1);
+    SSL_CTX_set_ecdh_auto(ctx_.get(), 1);
 
-    EVP_PKEY *key = make_private_key();
-    X509 *cert = make_cert(key);
-    if (SSL_CTX_use_certificate(ctx_, cert) <= 0) {
+    bssl::UniquePtr<EVP_PKEY> key(make_private_key());
+    bssl::UniquePtr<X509> cert(make_cert(key.get()));
+    if (SSL_CTX_use_certificate(ctx_.get(), cert.get()) <= 0) {
         ALOGE("SSL_CTX_use_certificate failed");
         return false;
     }
 
-    if (!getSPKIDigest(cert, &fingerprint_)) {
+    if (!getSPKIDigest(cert.get(), &fingerprint_)) {
         ALOGE("getSPKIDigest failed");
         return false;
     }
 
-    if (SSL_CTX_use_PrivateKey(ctx_, key) <= 0 ) {
+    if (SSL_CTX_use_PrivateKey(ctx_.get(), key.get()) <= 0 ) {
         ALOGE("SSL_CTX_use_PrivateKey failed");
         return false;
     }
@@ -275,19 +267,18 @@ void DnsTlsFrontend::requestHandler() {
             break;
         }
 
-        SSL* ssl = SSL_new(ctx_);
-        SSL_set_fd(ssl, client);
+        bssl::UniquePtr<SSL> ssl(SSL_new(ctx_.get()));
+        SSL_set_fd(ssl.get(), client);
 
         ALOGD("Doing SSL handshake");
         bool success = false;
-        if (SSL_accept(ssl) <= 0) {
+        if (SSL_accept(ssl.get()) <= 0) {
             ALOGI("SSL negotiation failure");
         } else {
             ALOGD("SSL handshake complete");
-            success = handleOneRequest(ssl);
+            success = handleOneRequest(ssl.get());
         }
 
-        SSL_free(ssl);
         close(client);
 
         if (success) {
@@ -356,10 +347,7 @@ bool DnsTlsFrontend::stopServer() {
     terminate_ = false;
     socket_ = -1;
     backend_socket_ = -1;
-    if (ctx_) {
-        SSL_CTX_free(ctx_);
-        ctx_ = nullptr;
-    }
+    ctx_.reset();
     fingerprint_.clear();
     ALOGI("frontend stopped successfully");
     return true;
