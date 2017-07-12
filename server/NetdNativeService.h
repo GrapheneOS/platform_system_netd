@@ -101,8 +101,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             int32_t cryptTruncBits,
             int32_t encapType,
             int32_t encapLocalPort,
-            int32_t encapRemotePort,
-            int32_t* allocatedSpi);
+            int32_t encapRemotePort);
 
     binder::Status ipSecDeleteSecurityAssociation(
             int32_t transformId,
