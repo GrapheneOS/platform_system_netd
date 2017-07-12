@@ -359,7 +359,7 @@ int XfrmController::ipSecAddSecurityAssociation(
     const std::string& remoteAddress, int64_t underlyingNetworkHandle, int32_t spi,
     const std::string& authAlgo, const std::vector<uint8_t>& authKey, int32_t authTruncBits,
     const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits,
-    int32_t encapType, int32_t encapLocalPort, int32_t encapRemotePort, int32_t* allocatedSpi) {
+    int32_t encapType, int32_t encapLocalPort, int32_t encapRemotePort) {
     android::RWLock::AutoWLock lock(mLock);
 
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
@@ -444,7 +444,6 @@ int XfrmController::ipSecAddSecurityAssociation(
         return ret; // something went wrong creating the SA
     }
 
-    *allocatedSpi = spi;
     return 0;
 }
 
