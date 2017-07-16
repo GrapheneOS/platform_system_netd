@@ -209,12 +209,6 @@ std::vector<std::string> toStrVec(int num, char* strs[]) {
 BandwidthController::BandwidthController() {
 }
 
-int BandwidthController::StrncpyAndCheck(char* buffer, const std::string& src, size_t buffSize) {
-    memset(buffer, '\0', buffSize);  // strncpy() is not filling leftover with '\0'
-    strncpy(buffer, src.c_str(), buffSize);
-    return buffer[buffSize - 1];
-}
-
 void BandwidthController::flushCleanTables(bool doClean) {
     /* Flush and remove the bw_costly_<iface> tables */
     flushExistingCostlyTables(doClean);
