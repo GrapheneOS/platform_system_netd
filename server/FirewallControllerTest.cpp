@@ -27,6 +27,7 @@
 #include "FirewallController.h"
 #include "IptablesBaseTest.h"
 
+using android::base::Join;
 
 class FirewallControllerTest : public IptablesBaseTest {
 protected:
@@ -216,28 +217,32 @@ TEST_F(FirewallControllerTest, TestEnableChildChains) {
 
 TEST_F(FirewallControllerTest, TestEnableDisableFirewall) {
     std::vector<std::string> enableCommands = {
-        "-A fw_INPUT -j DROP",
-        "-A fw_OUTPUT -j REJECT",
-        "-A fw_FORWARD -j REJECT",
+        "*filter\n"
+        "-A fw_INPUT -j DROP\n"
+        "-A fw_OUTPUT -j REJECT\n"
+        "-A fw_FORWARD -j REJECT\n"
+        "COMMIT\n"
     };
     std::vector<std::string> disableCommands = {
-        "-F fw_INPUT",
-        "-F fw_OUTPUT",
-        "-F fw_FORWARD",
+        "*filter\n"
+        ":fw_INPUT -\n"
+        ":fw_OUTPUT -\n"
+        ":fw_FORWARD -\n"
+        "COMMIT\n"
     };
     std::vector<std::string> noCommands = {};
 
     EXPECT_EQ(0, mFw.disableFirewall());
-    expectIptablesCommands(disableCommands);
+    expectIptablesRestoreCommands(disableCommands);
 
     EXPECT_EQ(0, mFw.disableFirewall());
-    expectIptablesCommands(disableCommands);
+    expectIptablesRestoreCommands(disableCommands);
 
     EXPECT_EQ(0, mFw.enableFirewall(BLACKLIST));
-    expectIptablesCommands(disableCommands);
+    expectIptablesRestoreCommands(disableCommands);
 
     EXPECT_EQ(0, mFw.enableFirewall(BLACKLIST));
-    expectIptablesCommands(noCommands);
+    expectIptablesRestoreCommands(noCommands);
 
     std::vector<std::string> disableEnableCommands;
     disableEnableCommands.insert(
@@ -246,16 +251,16 @@ TEST_F(FirewallControllerTest, TestEnableDisableFirewall) {
             disableEnableCommands.end(), enableCommands.begin(), enableCommands.end());
 
     EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
-    expectIptablesCommands(disableEnableCommands);
+    expectIptablesRestoreCommands(disableEnableCommands);
 
     EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
-    expectIptablesCommands(noCommands);
+    expectIptablesRestoreCommands(noCommands);
 
     EXPECT_EQ(0, mFw.disableFirewall());
-    expectIptablesCommands(disableCommands);
+    expectIptablesRestoreCommands(disableCommands);
 
     // TODO: calling disableFirewall and then enableFirewall(WHITELIST) does
     // nothing. This seems like a clear bug.
     EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
-    expectIptablesCommands(noCommands);
+    expectIptablesRestoreCommands(noCommands);
 }
