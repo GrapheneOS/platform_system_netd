@@ -74,7 +74,7 @@ bool operator<(const PrivateDnsServer& x, const PrivateDnsServer& y) {
     } else if (x.ss.ss_family == AF_INET6) {
         const sockaddr_in6& x_sin6 = reinterpret_cast<const sockaddr_in6&>(x.ss);
         const sockaddr_in6& y_sin6 = reinterpret_cast<const sockaddr_in6&>(y.ss);
-        return std::memcmp(x_sin6.sin6_addr.s6_addr, y_sin6.sin6_addr.s6_addr, 16);
+        return std::memcmp(x_sin6.sin6_addr.s6_addr, y_sin6.sin6_addr.s6_addr, 16) < 0;
     }
     return false;  // Unknown address type.  This is an error.
 }
