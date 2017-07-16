@@ -213,3 +213,49 @@ TEST_F(FirewallControllerTest, TestEnableChildChains) {
     EXPECT_EQ(0, mFw.enableChildChains(POWERSAVE, false));
     expectIptablesRestoreCommands(expected);
 }
+
+TEST_F(FirewallControllerTest, TestEnableDisableFirewall) {
+    std::vector<std::string> enableCommands = {
+        "-A fw_INPUT -j DROP",
+        "-A fw_OUTPUT -j REJECT",
+        "-A fw_FORWARD -j REJECT",
+    };
+    std::vector<std::string> disableCommands = {
+        "-F fw_INPUT",
+        "-F fw_OUTPUT",
+        "-F fw_FORWARD",
+    };
+    std::vector<std::string> noCommands = {};
+
+    EXPECT_EQ(0, mFw.disableFirewall());
+    expectIptablesCommands(disableCommands);
+
+    EXPECT_EQ(0, mFw.disableFirewall());
+    expectIptablesCommands(disableCommands);
+
+    EXPECT_EQ(0, mFw.enableFirewall(BLACKLIST));
+    expectIptablesCommands(disableCommands);
+
+    EXPECT_EQ(0, mFw.enableFirewall(BLACKLIST));
+    expectIptablesCommands(noCommands);
+
+    std::vector<std::string> disableEnableCommands;
+    disableEnableCommands.insert(
+            disableEnableCommands.end(), disableCommands.begin(), disableCommands.end());
+    disableEnableCommands.insert(
+            disableEnableCommands.end(), enableCommands.begin(), enableCommands.end());
+
+    EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
+    expectIptablesCommands(disableEnableCommands);
+
+    EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
+    expectIptablesCommands(noCommands);
+
+    EXPECT_EQ(0, mFw.disableFirewall());
+    expectIptablesCommands(disableCommands);
+
+    // TODO: calling disableFirewall and then enableFirewall(WHITELIST) does
+    // nothing. This seems like a clear bug.
+    EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
+    expectIptablesCommands(noCommands);
+}
