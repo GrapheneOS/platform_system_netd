@@ -139,9 +139,6 @@ public:
     int runIptablesAlertCmd(IptOp op, const std::string& alertName, int64_t bytes);
     int runIptablesAlertFwdCmd(IptOp op, const std::string& alertName, int64_t bytes);
 
-    // Provides strncpy() + check overflow.
-    static int StrncpyAndCheck(char* buffer, const std::string& src, size_t buffSize);
-
     int updateQuota(const std::string& alertName, int64_t bytes);
 
     int setCostlyAlert(const std::string& costName, int64_t bytes, int64_t* alertBytes);
