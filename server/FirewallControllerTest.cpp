@@ -23,11 +23,13 @@
 #include <gtest/gtest.h>
 
 #include <android-base/strings.h>
+#include <android-base/stringprintf.h>
 
 #include "FirewallController.h"
 #include "IptablesBaseTest.h"
 
 using android::base::Join;
+using android::base::StringPrintf;
 
 class FirewallControllerTest : public IptablesBaseTest {
 protected:
@@ -215,7 +217,7 @@ TEST_F(FirewallControllerTest, TestEnableChildChains) {
     expectIptablesRestoreCommands(expected);
 }
 
-TEST_F(FirewallControllerTest, TestEnableDisableFirewall) {
+TEST_F(FirewallControllerTest, TestFirewall) {
     std::vector<std::string> enableCommands = {
         "*filter\n"
         "-A fw_INPUT -j DROP\n"
@@ -252,6 +254,20 @@ TEST_F(FirewallControllerTest, TestEnableDisableFirewall) {
 
     EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
     expectIptablesRestoreCommands(disableEnableCommands);
+
+    std::vector<std::string> ifaceCommands = {
+        "-I fw_INPUT -i rmnet_data0 -j RETURN",
+        "-I fw_OUTPUT -o rmnet_data0 -j RETURN",
+    };
+    EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", ALLOW));
+    expectIptablesCommands(ifaceCommands);
+
+    ifaceCommands = {
+        "-D fw_INPUT -i rmnet_data0 -j RETURN",
+        "-D fw_OUTPUT -o rmnet_data0 -j RETURN",
+    };
+    EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", DENY));
+    expectIptablesCommands(ifaceCommands);
 
     EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
     expectIptablesRestoreCommands(noCommands);
