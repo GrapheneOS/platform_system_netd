@@ -77,9 +77,13 @@ int FirewallController::enableFirewall(FirewallType ftype) {
 
         if (ftype == WHITELIST) {
             // create default rule to drop all traffic
-            res |= execIptables(V4V6, "-A", LOCAL_INPUT, "-j", "DROP", NULL);
-            res |= execIptables(V4V6, "-A", LOCAL_OUTPUT, "-j", "REJECT", NULL);
-            res |= execIptables(V4V6, "-A", LOCAL_FORWARD, "-j", "REJECT", NULL);
+            std::string command =
+                "*filter\n"
+                "-A fw_INPUT -j DROP\n"
+                "-A fw_OUTPUT -j REJECT\n"
+                "-A fw_FORWARD -j REJECT\n"
+                "COMMIT\n";
+            res = execIptablesRestore(V4V6, command.c_str());
         }
 
         // Set this after calling disableFirewall(), since it defaults to WHITELIST there
@@ -89,16 +93,17 @@ int FirewallController::enableFirewall(FirewallType ftype) {
 }
 
 int FirewallController::disableFirewall(void) {
-    int res = 0;
-
     mFirewallType = WHITELIST;
 
     // flush any existing rules
-    res |= execIptables(V4V6, "-F", LOCAL_INPUT, NULL);
-    res |= execIptables(V4V6, "-F", LOCAL_OUTPUT, NULL);
-    res |= execIptables(V4V6, "-F", LOCAL_FORWARD, NULL);
+    std::string command =
+        "*filter\n"
+        ":fw_INPUT -\n"
+        ":fw_OUTPUT -\n"
+        ":fw_FORWARD -\n"
+        "COMMIT\n";
 
-    return res;
+    return execIptablesRestore(V4V6, command.c_str());
 }
 
 int FirewallController::enableChildChains(ChildChain chain, bool enable) {
