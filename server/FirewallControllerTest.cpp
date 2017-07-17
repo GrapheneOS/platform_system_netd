@@ -34,8 +34,6 @@ using android::base::StringPrintf;
 class FirewallControllerTest : public IptablesBaseTest {
 protected:
     FirewallControllerTest() {
-        FirewallController::execIptables = fakeExecIptables;
-        FirewallController::execIptablesSilently = fakeExecIptables;
         FirewallController::execIptablesRestore = fakeExecIptablesRestore;
     }
     FirewallController mFw;
@@ -256,18 +254,28 @@ TEST_F(FirewallControllerTest, TestFirewall) {
     expectIptablesRestoreCommands(disableEnableCommands);
 
     std::vector<std::string> ifaceCommands = {
-        "-I fw_INPUT -i rmnet_data0 -j RETURN",
-        "-I fw_OUTPUT -o rmnet_data0 -j RETURN",
+        "*filter\n"
+        "-I fw_INPUT -i rmnet_data0 -j RETURN\n"
+        "-I fw_OUTPUT -o rmnet_data0 -j RETURN\n"
+        "COMMIT\n"
     };
     EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", ALLOW));
-    expectIptablesCommands(ifaceCommands);
+    expectIptablesRestoreCommands(ifaceCommands);
+
+    EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", ALLOW));
+    expectIptablesRestoreCommands(noCommands);
 
     ifaceCommands = {
-        "-D fw_INPUT -i rmnet_data0 -j RETURN",
-        "-D fw_OUTPUT -o rmnet_data0 -j RETURN",
+        "*filter\n"
+        "-D fw_INPUT -i rmnet_data0 -j RETURN\n"
+        "-D fw_OUTPUT -o rmnet_data0 -j RETURN\n"
+        "COMMIT\n"
     };
     EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", DENY));
-    expectIptablesCommands(ifaceCommands);
+    expectIptablesRestoreCommands(ifaceCommands);
+
+    EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", DENY));
+    expectIptablesRestoreCommands(noCommands);
 
     EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
     expectIptablesRestoreCommands(noCommands);
