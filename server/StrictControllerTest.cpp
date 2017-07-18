@@ -122,3 +122,31 @@ TEST_F(StrictControllerTest, TestDisableStrict) {
         "COMMIT\n";
     expectIptablesRestoreCommands({ expected });
 }
+
+TEST_F(StrictControllerTest, TestSetUidCleartextPenalty) {
+    std::vector<std::string> acceptCommands = {
+        "-D st_OUTPUT -m owner --uid-owner 12345 -j st_clear_detect",
+        "-D st_clear_caught -m owner --uid-owner 12345 -j st_penalty_log",
+        "-D st_clear_caught -m owner --uid-owner 12345 -j st_penalty_reject",
+    };
+    std::vector<std::string> logCommands = {
+        "-I st_OUTPUT -m owner --uid-owner 12345 -j st_clear_detect",
+        "-I st_clear_caught -m owner --uid-owner 12345 -j st_penalty_log",
+    };
+    std::vector<std::string> rejectCommands = {
+        "-I st_OUTPUT -m owner --uid-owner 12345 -j st_clear_detect",
+        "-I st_clear_caught -m owner --uid-owner 12345 -j st_penalty_reject",
+    };
+
+    mStrictCtrl.setUidCleartextPenalty(12345, LOG);
+    expectIptablesCommands(logCommands);
+
+    mStrictCtrl.setUidCleartextPenalty(12345, ACCEPT);
+    expectIptablesCommands(acceptCommands);
+
+    mStrictCtrl.setUidCleartextPenalty(12345, REJECT);
+    expectIptablesCommands(rejectCommands);
+
+    mStrictCtrl.setUidCleartextPenalty(12345, ACCEPT);
+    expectIptablesCommands(acceptCommands);
+}
