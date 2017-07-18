@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <set>
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,16 +24,17 @@
 #define LOG_TAG "FirewallController"
 #define LOG_NDEBUG 0
 
+#include <android-base/strings.h>
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
 
 #include "NetdConstants.h"
 #include "FirewallController.h"
 
+using android::base::Join;
 using android::base::StringAppendF;
+using android::base::StringPrintf;
 
-auto FirewallController::execIptables = ::execIptables;
-auto FirewallController::execIptablesSilently = ::execIptablesSilently;
 auto FirewallController::execIptablesRestore = ::execIptablesRestore;
 
 const char* FirewallController::TABLE = "filter";
@@ -59,6 +62,7 @@ const char* FirewallController::ICMPV6_TYPES[] = {
 FirewallController::FirewallController(void) {
     // If no rules are set, it's in BLACKLIST mode
     mFirewallType = BLACKLIST;
+    mIfaceRules = {};
 }
 
 int FirewallController::setupIptablesHooks(void) {
@@ -94,6 +98,7 @@ int FirewallController::enableFirewall(FirewallType ftype) {
 
 int FirewallController::disableFirewall(void) {
     mFirewallType = WHITELIST;
+    mIfaceRules.clear();
 
     // flush any existing rules
     std::string command =
@@ -148,17 +153,27 @@ int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
         return -1;
     }
 
+    // Only delete rules if we actually added them, because otherwise our iptables-restore
+    // processes will terminate with "no such rule" errors and cause latency penalties while we
+    // spin up new ones.
     const char* op;
-    if (rule == ALLOW) {
+    if (rule == ALLOW && mIfaceRules.find(iface) == mIfaceRules.end()) {
         op = "-I";
-    } else {
+        mIfaceRules.insert(iface);
+    } else if (rule == DENY && mIfaceRules.find(iface) != mIfaceRules.end()) {
         op = "-D";
+        mIfaceRules.erase(iface);
+    } else {
+        return 0;
     }
 
-    int res = 0;
-    res |= execIptables(V4V6, op, LOCAL_INPUT, "-i", iface, "-j", "RETURN", NULL);
-    res |= execIptables(V4V6, op, LOCAL_OUTPUT, "-o", iface, "-j", "RETURN", NULL);
-    return res;
+    std::string command = Join(std::vector<std::string> {
+        "*filter",
+        StringPrintf("%s fw_INPUT -i %s -j RETURN", op, iface),
+        StringPrintf("%s fw_OUTPUT -o %s -j RETURN", op, iface),
+        "COMMIT\n"
+    }, "\n");
+    return execIptablesRestore(V4V6, command);
 }
 
 FirewallType FirewallController::getFirewallType(ChildChain chain) {
