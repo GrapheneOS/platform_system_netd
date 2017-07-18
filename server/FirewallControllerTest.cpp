@@ -23,17 +23,17 @@
 #include <gtest/gtest.h>
 
 #include <android-base/strings.h>
+#include <android-base/stringprintf.h>
 
 #include "FirewallController.h"
 #include "IptablesBaseTest.h"
 
 using android::base::Join;
+using android::base::StringPrintf;
 
 class FirewallControllerTest : public IptablesBaseTest {
 protected:
     FirewallControllerTest() {
-        FirewallController::execIptables = fakeExecIptables;
-        FirewallController::execIptablesSilently = fakeExecIptables;
         FirewallController::execIptablesRestore = fakeExecIptablesRestore;
     }
     FirewallController mFw;
@@ -215,7 +215,7 @@ TEST_F(FirewallControllerTest, TestEnableChildChains) {
     expectIptablesRestoreCommands(expected);
 }
 
-TEST_F(FirewallControllerTest, TestEnableDisableFirewall) {
+TEST_F(FirewallControllerTest, TestFirewall) {
     std::vector<std::string> enableCommands = {
         "*filter\n"
         "-A fw_INPUT -j DROP\n"
@@ -252,6 +252,30 @@ TEST_F(FirewallControllerTest, TestEnableDisableFirewall) {
 
     EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
     expectIptablesRestoreCommands(disableEnableCommands);
+
+    std::vector<std::string> ifaceCommands = {
+        "*filter\n"
+        "-I fw_INPUT -i rmnet_data0 -j RETURN\n"
+        "-I fw_OUTPUT -o rmnet_data0 -j RETURN\n"
+        "COMMIT\n"
+    };
+    EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", ALLOW));
+    expectIptablesRestoreCommands(ifaceCommands);
+
+    EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", ALLOW));
+    expectIptablesRestoreCommands(noCommands);
+
+    ifaceCommands = {
+        "*filter\n"
+        "-D fw_INPUT -i rmnet_data0 -j RETURN\n"
+        "-D fw_OUTPUT -o rmnet_data0 -j RETURN\n"
+        "COMMIT\n"
+    };
+    EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", DENY));
+    expectIptablesRestoreCommands(ifaceCommands);
+
+    EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", DENY));
+    expectIptablesRestoreCommands(noCommands);
 
     EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
     expectIptablesRestoreCommands(noCommands);
