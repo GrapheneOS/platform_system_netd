@@ -20,7 +20,6 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_CFLAGS := -Wall -Werror
-LOCAL_CLANG := true
 LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := libnetdaidl
 LOCAL_SHARED_LIBRARIES := \
@@ -46,7 +45,6 @@ LOCAL_C_INCLUDES := \
         external/mdnsresponder/mDNSShared \
         system/netd/include \
 
-LOCAL_CLANG := true
 LOCAL_CPPFLAGS := -Wall -Werror
 LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := netd
