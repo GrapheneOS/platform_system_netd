@@ -69,6 +69,12 @@ unsigned stringToNetId(const char* arg) {
             return NetworkController::MIN_OEM_ID + n;
         }
         return NETID_UNSET;
+    } else if (!strncmp(arg, "handle", 6)) {
+        unsigned n = netHandleToNetId((net_handle_t)strtoull(arg + 6, NULL, 10));
+        if (NetworkController::MIN_OEM_ID <= n && n <= NetworkController::MAX_OEM_ID) {
+            return n;
+        }
+        return NETID_UNSET;
     }
     // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
     return strtoul(arg, NULL, 0);
