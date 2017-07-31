@@ -42,6 +42,7 @@
 #include "MDnsSdListener.h"
 #include "NFLogListener.h"
 #include "NetdConstants.h"
+#include "NetdHwService.h"
 #include "NetdNativeService.h"
 #include "NetlinkManager.h"
 #include "Stopwatch.h"
@@ -54,6 +55,7 @@ using android::defaultServiceManager;
 using android::net::CommandListener;
 using android::net::DnsProxyListener;
 using android::net::FwmarkServer;
+using android::net::NetdHwService;
 using android::net::NetdNativeService;
 using android::net::NetlinkManager;
 using android::net::NFLogListener;
@@ -149,6 +151,15 @@ int main() {
     ALOGI("Starting CommandListener: %.1fms", subTime.getTimeAndReset());
 
     write_pid_file();
+
+    // Now that netd is ready to process commands, advertise service
+    // availability for HAL clients.
+    NetdHwService mHwSvc;
+    if ((ret = mHwSvc.start()) != android::OK) {
+        ALOGE("Unable to start NetdHwService: %d", ret);
+        exit(1);
+    }
+    ALOGI("Registering NetdHwService: %.1fms", subTime.getTimeAndReset());
 
     ALOGI("Netd started in %dms", static_cast<int>(s.timeTaken()));
 
