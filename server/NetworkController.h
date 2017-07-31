@@ -98,6 +98,7 @@ public:
     bool isVirtualNetwork(unsigned netId) const;
 
     int createPhysicalNetwork(unsigned netId, Permission permission) WARN_UNUSED_RESULT;
+    int createPhysicalOemNetwork(Permission permission, unsigned *netId) WARN_UNUSED_RESULT;
     int createVirtualNetwork(unsigned netId, bool hasDns, bool secure) WARN_UNUSED_RESULT;
     int destroyNetwork(unsigned netId) WARN_UNUSED_RESULT;
 
@@ -131,10 +132,12 @@ public:
 
 private:
     bool isValidNetwork(unsigned netId) const;
+    bool isValidNetworkLocked(unsigned netId) const;
     Network* getNetworkLocked(unsigned netId) const;
     VirtualNetwork* getVirtualNetworkForUserLocked(uid_t uid) const;
     Permission getPermissionForUserLocked(uid_t uid) const;
     int checkUserNetworkAccessLocked(uid_t uid, unsigned netId) const;
+    int createPhysicalNetworkLocked(unsigned netId, Permission permission) WARN_UNUSED_RESULT;
 
     int modifyRoute(unsigned netId, const char* interface, const char* destination,
                     const char* nexthop, bool add, bool legacy, uid_t uid) WARN_UNUSED_RESULT;
