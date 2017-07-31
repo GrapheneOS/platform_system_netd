@@ -61,10 +61,13 @@ endif
 LOCAL_INIT_RC := netd.rc
 
 LOCAL_SHARED_LIBRARIES := \
+        android.system.net.netd@1.0 \
         libbinder \
         libcrypto \
         libcutils \
         libdl \
+        libhidlbase \
+        libhidltransport \
         liblog \
         liblogwrap \
         libmdnssd \
@@ -97,6 +100,7 @@ LOCAL_SRC_FILES := \
         NatController.cpp \
         NetdCommand.cpp \
         NetdConstants.cpp \
+        NetdHwService.cpp \
         NetdNativeService.cpp \
         NetlinkHandler.cpp \
         NetlinkManager.cpp \
