@@ -58,12 +58,14 @@
 namespace android {
 namespace net {
 
-namespace {
-
+// Exposed for testing
 constexpr uint32_t ALGO_MASK_AUTH_ALL = ~0;
+// Exposed for testing
 constexpr uint32_t ALGO_MASK_CRYPT_ALL = ~0;
-
+// Exposed for testing
 constexpr uint8_t REPLAY_WINDOW_SIZE = 4;
+
+namespace {
 
 constexpr uint32_t RAND_SPI_MIN = 1;
 constexpr uint32_t RAND_SPI_MAX = 0xFFFFFFFE;
