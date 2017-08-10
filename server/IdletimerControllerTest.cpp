@@ -24,63 +24,72 @@
 #include "IdletimerController.h"
 #include "IptablesBaseTest.h"
 
+using android::base::Join;
 using android::base::StringPrintf;
 
 class IdletimerControllerTest : public IptablesBaseTest {
 protected:
     IdletimerControllerTest() {
-        IdletimerController::execFunction = fake_android_fork_exec;
+        IdletimerController::execIptablesRestore = fakeExecIptablesRestore;
     }
     IdletimerController mIt;
 };
 
 TEST_F(IdletimerControllerTest, TestSetupIptablesHooks) {
     mIt.setupIptablesHooks();
-    expectIptablesCommands(ExpectedIptablesCommands{});
     expectIptablesRestoreCommands(ExpectedIptablesCommands{});
 }
 
 TEST_F(IdletimerControllerTest, TestEnableDisable) {
     std::vector<std::string> expected = {
-        "-t raw -F idletimer_raw_PREROUTING",
-        "-t mangle -F idletimer_mangle_POSTROUTING",
+        "*raw\n"
+        ":idletimer_raw_PREROUTING -\n"
+        "COMMIT\n"
+        "*mangle\n"
+        ":idletimer_mangle_POSTROUTING -\n"
+        "COMMIT\n",
     };
 
     mIt.enableIdletimerControl();
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     mIt.enableIdletimerControl();
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     mIt.disableIdletimerControl();
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     mIt.disableIdletimerControl();
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 }
 
 const std::vector<std::string> makeAddRemoveCommands(bool add) {
     const char *op = add ? "-A" : "-D";
-    return {
-        StringPrintf("-t raw %s idletimer_raw_PREROUTING -i wlan0 -j IDLETIMER"
+    std::vector<std::string> cmds = {
+        "*raw",
+        StringPrintf("%s idletimer_raw_PREROUTING -i wlan0 -j IDLETIMER"
                      " --timeout 12345 --label hello --send_nl_msg 1", op),
-        StringPrintf("-t mangle %s idletimer_mangle_POSTROUTING -o wlan0 -j IDLETIMER"
+        "COMMIT",
+        "*mangle",
+        StringPrintf("%s idletimer_mangle_POSTROUTING -o wlan0 -j IDLETIMER"
                      " --timeout 12345 --label hello --send_nl_msg 1", op),
+        "COMMIT\n",
     };
+    return { Join(cmds, '\n') };
 }
 
 TEST_F(IdletimerControllerTest, TestAddRemove) {
     auto expected = makeAddRemoveCommands(true);
     mIt.addInterfaceIdletimer("wlan0", 12345, "hello");
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     mIt.addInterfaceIdletimer("wlan0", 12345, "hello");
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     expected = makeAddRemoveCommands(false);
     mIt.removeInterfaceIdletimer("wlan0", 12345, "hello");
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 
     mIt.removeInterfaceIdletimer("wlan0", 12345, "hello");
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 }
