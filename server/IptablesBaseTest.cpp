@@ -141,7 +141,7 @@ int IptablesBaseTest::expectIptablesCommand(IptablesTarget target, int pos,
 
 void IptablesBaseTest::expectIptablesCommands(const std::vector<std::string>& expectedCmds) {
     ExpectedIptablesCommands expected;
-    for (auto cmd : expectedCmds) {
+    for (const auto& cmd : expectedCmds) {
         expected.push_back({ V4V6, cmd });
     }
     expectIptablesCommands(expected);
@@ -150,8 +150,8 @@ void IptablesBaseTest::expectIptablesCommands(const std::vector<std::string>& ex
 void IptablesBaseTest::expectIptablesCommands(const ExpectedIptablesCommands& expectedCmds) {
     size_t pos = 0;
     for (size_t i = 0; i < expectedCmds.size(); i ++) {
-        auto target = expectedCmds[i].first;
-        auto cmd = expectedCmds[i].second;
+        const auto& target = expectedCmds[i].first;
+        const auto& cmd = expectedCmds[i].second;
         int numConsumed = expectIptablesCommand(target, pos, cmd);
         if (numConsumed < 0) {
             // Read past the end of the array.
@@ -175,7 +175,7 @@ void IptablesBaseTest::expectIptablesCommands(
 
 void IptablesBaseTest::expectIptablesRestoreCommands(const std::vector<std::string>& expectedCmds) {
     ExpectedIptablesCommands expected;
-    for (auto cmd : expectedCmds) {
+    for (const auto& cmd : expectedCmds) {
         expected.push_back({ V4V6, cmd });
     }
     expectIptablesRestoreCommands(expected);
