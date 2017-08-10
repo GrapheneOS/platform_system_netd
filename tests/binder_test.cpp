@@ -49,6 +49,9 @@
 #include "android/net/UidRange.h"
 #include "binder/IServiceManager.h"
 
+#define IP_PATH "/system/bin/ip"
+#define IP6TABLES_PATH "/system/bin/ip6tables"
+#define IPTABLES_PATH "/system/bin/iptables"
 #define TUN_DEV "/dev/tun"
 
 using namespace android;
