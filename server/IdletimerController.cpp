@@ -95,6 +95,7 @@
 
 #define LOG_NDEBUG 0
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/socket.h>
@@ -116,6 +117,8 @@
 const char* IdletimerController::LOCAL_RAW_PREROUTING = "idletimer_raw_PREROUTING";
 const char* IdletimerController::LOCAL_MANGLE_POSTROUTING = "idletimer_mangle_POSTROUTING";
 
+auto IdletimerController::execFunction = android_fork_execvp;
+
 IdletimerController::IdletimerController() {
 }
 
@@ -127,11 +130,11 @@ int IdletimerController::runIpxtablesCmd(int argc, const char **argv) {
 
     // Running for IPv4
     argv[0] = IPTABLES_PATH;
-    resIpv4 = android_fork_execvp(argc, (char **)argv, NULL, false, false);
+    resIpv4 = execFunction(argc, (char **)argv, NULL, false, false);
 
     // Running for IPv6
     argv[0] = IP6TABLES_PATH;
-    resIpv6 = android_fork_execvp(argc, (char **)argv, NULL, false, false);
+    resIpv6 = execFunction(argc, (char **)argv, NULL, false, false);
 
 #if !LOG_NDEBUG
     std::string full_cmd = argv[0];
