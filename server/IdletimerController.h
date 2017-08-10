@@ -18,6 +18,8 @@
 
 #include <stdint.h>
 
+#include "NetdConstants.h"
+
 class IdletimerController {
 public:
 
@@ -43,7 +45,7 @@ public:
                                  const char *classLabel);
 
     friend class IdletimerControllerTest;
-    static int (*execFunction)(int, char **, int *, bool, bool);
+    static int (*execIptablesRestore)(IptablesTarget, const std::string&);
 };
 
 #endif
