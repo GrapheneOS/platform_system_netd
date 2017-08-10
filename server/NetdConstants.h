@@ -34,18 +34,12 @@ const int MAX_SYSTEM_UID = AID_APP - 1;
 
 extern const size_t SHA256_SIZE;
 
-extern const char * const IPTABLES_PATH;
-extern const char * const IP6TABLES_PATH;
-extern const char * const IP_PATH;
-extern const char * const TC_PATH;
 extern const char * const OEM_SCRIPT_PATH;
 extern const char * const ADD;
 extern const char * const DEL;
 
 enum IptablesTarget { V4, V6, V4V6 };
 
-int execIptables(IptablesTarget target, ...);
-int execIptablesSilently(IptablesTarget target, ...);
 int execIptablesRestore(IptablesTarget target, const std::string& commands);
 int execIptablesRestoreWithOutput(IptablesTarget target, const std::string& commands,
                                   std::string *output);
