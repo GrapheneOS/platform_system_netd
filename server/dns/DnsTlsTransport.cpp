@@ -77,7 +77,7 @@ int waitForWriting(int fd) {
 android::base::unique_fd DnsTlsTransport::makeConnectedSocket() const {
     android::base::unique_fd fd;
     int type = SOCK_NONBLOCK | SOCK_CLOEXEC;
-    switch (mProtocol) {
+    switch (mServer.protocol) {
         case IPPROTO_TCP:
             type |= SOCK_STREAM;
             break;
@@ -86,7 +86,7 @@ android::base::unique_fd DnsTlsTransport::makeConnectedSocket() const {
             return fd;
     }
 
-    fd.reset(socket(mAddr.ss_family, type, mProtocol));
+    fd.reset(socket(mServer.ss.ss_family, type, mServer.protocol));
     if (fd.get() == -1) {
         return fd;
     }
@@ -95,7 +95,7 @@ android::base::unique_fd DnsTlsTransport::makeConnectedSocket() const {
     if (setsockopt(fd.get(), SOL_SOCKET, SO_MARK, &mMark, len) == -1) {
         fd.reset();
     } else if (connect(fd.get(),
-            reinterpret_cast<const struct sockaddr *>(&mAddr), sizeof(mAddr)) != 0
+            reinterpret_cast<const struct sockaddr *>(&mServer.ss), sizeof(mServer.ss)) != 0
         && errno != EINPROGRESS) {
         fd.reset();
     }
@@ -179,7 +179,7 @@ SSL* DnsTlsTransport::sslConnect(int fd) {
         }
     }
 
-    if (!mFingerprints.empty()) {
+    if (!mServer.fingerprints.empty()) {
         if (DBG) {
             ALOGD("Checking DNS over TLS fingerprint");
         }
@@ -195,7 +195,7 @@ SSL* DnsTlsTransport::sslConnect(int fd) {
             return nullptr;
         }
 
-        if (mFingerprints.count(digest) == 0) {
+        if (mServer.fingerprints.count(digest) == 0) {
             ALOGW("No matching fingerprint");
             return nullptr;
         }
@@ -278,6 +278,15 @@ bool DnsTlsTransport::sslRead(int fd, SSL *ssl, uint8_t *buffer, int len) {
     return true;
 }
 
+// static
+DnsTlsTransport::Response DnsTlsTransport::query(const Server& server, unsigned mark,
+        const uint8_t *query, size_t qlen, uint8_t *response, size_t limit, int *resplen) {
+    // TODO: Keep a static container of transports instead of constructing a new one
+    // for every query.
+    DnsTlsTransport xport(server, mark);
+    return xport.doQuery(query, qlen, response, limit, resplen);
+}
+
 DnsTlsTransport::Response DnsTlsTransport::doQuery(const uint8_t *query, size_t qlen,
         uint8_t *response, size_t limit, int *resplen) {
     *resplen = 0;  // Zero indicates an error.
@@ -346,8 +355,8 @@ DnsTlsTransport::Response DnsTlsTransport::doQuery(const uint8_t *query, size_t 
     return Response::success;
 }
 
-bool validateDnsTlsServer(unsigned netid, const struct sockaddr_storage& ss,
-        const std::set<std::vector<uint8_t>>& fingerprints) {
+// static
+bool DnsTlsTransport::validate(const Server& server, unsigned netid) {
     if (DBG) {
         ALOGD("Beginning validation on %u", netid);
     }
@@ -392,12 +401,11 @@ bool validateDnsTlsServer(unsigned netid, const struct sockaddr_storage& ss,
     fwmark.protectedFromVpn = true;
     fwmark.netId = netid;
     unsigned mark = fwmark.intValue;
-    DnsTlsTransport xport(mark, IPPROTO_TCP, ss, fingerprints);
     int replylen = 0;
-    xport.doQuery(query, qlen, recvbuf, kRecvBufSize, &replylen);
+    DnsTlsTransport::query(server, mark, query, qlen, recvbuf, kRecvBufSize, &replylen);
     if (replylen == 0) {
         if (DBG) {
-            ALOGD("doQuery failed");
+            ALOGD("query failed");
         }
         return false;
     }
