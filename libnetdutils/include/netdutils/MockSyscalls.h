@@ -46,6 +46,8 @@ class MockSyscalls : public Syscalls {
     // Use Return(ByMove(...)) to deal with movable return types.
     MOCK_CONST_METHOD2(eventfd, StatusOr<UniqueFd>(unsigned int initval, int flags));
     MOCK_CONST_METHOD3(ppoll, StatusOr<int>(pollfd* fds, nfds_t nfds, double timeout));
+
+    MOCK_CONST_METHOD2(writev, StatusOr<size_t>(Fd fd, const std::vector<iovec>& iov));
     MOCK_CONST_METHOD2(write, StatusOr<size_t>(Fd fd, const Slice buf));
     MOCK_CONST_METHOD2(read, StatusOr<Slice>(Fd fd, const Slice buf));
     MOCK_CONST_METHOD5(sendto, StatusOr<size_t>(Fd sock, const Slice buf, int flags,
