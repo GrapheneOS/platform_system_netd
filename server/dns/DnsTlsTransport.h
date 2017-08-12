@@ -33,21 +33,38 @@ namespace net {
 
 class DnsTlsTransport {
 public:
-    DnsTlsTransport(unsigned mark, int protocol, const sockaddr_storage &ss,
-            const std::set<std::vector<uint8_t>>& fingerprints)
-            : mMark(mark), mProtocol(protocol), mAddr(ss), mFingerprints(fingerprints)
-            {}
-    ~DnsTlsTransport() {}
+    struct Server {
+        // Default constructor
+        Server() {}
+        // Allow sockaddr_storage to be promoted to Server automatically.
+        Server(const sockaddr_storage& ss) : ss(ss) {}
+        sockaddr_storage ss;
+        std::set<std::vector<uint8_t>> fingerprints;
+        int protocol = IPPROTO_TCP;
+    };
 
     enum class Response : uint8_t { success, network_error, limit_error, internal_error };
 
-    // Given a |query| of length |qlen|, sends it to the server and writes the
-    // response into |ans|, which can accept up to |anssiz| bytes.  Indicates
+    // Given a |query| of length |qlen|, sends it to the server on the network indicated by |mark|,
+    // and writes the response into |ans|, which can accept up to |anssiz| bytes.  Indicates
     // the number of bytes written in |resplen|.  If |resplen| is zero, an
     // error has occurred.
-    Response doQuery(const uint8_t *query, size_t qlen, uint8_t *ans, size_t anssiz, int *resplen);
+    static Response query(const Server& server, unsigned mark, const uint8_t *query, size_t qlen,
+            uint8_t *ans, size_t anssiz, int *resplen);
+
+    // Check that a given TLS server is fully working on the specified netid, and has the
+    // provided SHA-256 fingerprint (if nonempty).  This function is used in ResolverController
+    // to ensure that we don't enable DNS over TLS on networks where it doesn't actually work.
+    static bool validate(const Server& server, unsigned netid);
 
 private:
+    DnsTlsTransport(const Server& server, unsigned mark)
+            : mMark(mark), mServer(server)
+            {}
+    ~DnsTlsTransport() {}
+
+    Response doQuery(const uint8_t *query, size_t qlen, uint8_t *ans, size_t anssiz, int *resplen);
+
     // On success, returns a non-blocking socket connected to mAddr (the
     // connection will likely be in progress if mProtocol is IPPROTO_TCP).
     // On error, returns -1 with errno set appropriately.
@@ -63,16 +80,8 @@ private:
     bool sslRead(int fd, SSL *ssl, uint8_t *buffer, int len);
 
     const unsigned mMark;  // Socket mark
-    const int mProtocol;
-    const sockaddr_storage mAddr;
-    const std::set<std::vector<uint8_t>> mFingerprints;
+    const Server mServer;
 };
-
-// Check that a given TLS server (ss) is fully working on the specified netid, and has a
-// provided SHA-256 fingerprint (if nonempty).  This function is used in ResolverController
-// to ensure that we don't enable DNS over TLS on networks where it doesn't actually work.
-bool validateDnsTlsServer(unsigned netid, const sockaddr_storage& ss,
-        const std::set<std::vector<uint8_t>>& fingerprints);
 
 }  // namespace net
 }  // namespace android
