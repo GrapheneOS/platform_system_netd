@@ -109,6 +109,14 @@ class RealSyscalls final : public Syscalls {
         return rv;
     }
 
+    StatusOr<size_t> writev(Fd fd, const std::vector<iovec>& iov) const override {
+        auto rv = syscallRetry(::writev, fd.get(), iov.data(), iov.size());
+        if (rv == -1) {
+            return statusFromErrno(errno, "writev() failed");
+        }
+        return rv;
+    }
+
     StatusOr<size_t> write(Fd fd, const Slice buf) const override {
         auto rv = syscallRetry(::write, fd.get(), buf.base(), buf.size());
         if (rv == -1) {
