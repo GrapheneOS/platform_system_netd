@@ -100,16 +100,14 @@ res_sendhookact qhook(sockaddr* const * nsap, const u_char** buf, int* buflen,
         ALOGE("qhook abort: unknown address family");
         return res_goahead;
     }
-    sockaddr_storage secureResolver;
-    std::set<std::vector<uint8_t>> fingerprints;
+    DnsTlsTransport::Server tlsServer;
     if (net::gCtls->resolverCtrl.shouldUseTls(thread_netcontext.dns_netid,
-            insecureResolver, &secureResolver, &fingerprints)) {
+            insecureResolver, &tlsServer)) {
         if (DBG) {
             ALOGD("qhook using TLS");
         }
-        DnsTlsTransport xport(thread_netcontext.dns_mark, IPPROTO_TCP,
-                              secureResolver, fingerprints);
-        auto response = xport.doQuery(*buf, *buflen, ans, anssiz, resplen);
+        auto response = DnsTlsTransport::query(tlsServer, thread_netcontext.dns_mark,
+                *buf, *buflen, ans, anssiz, resplen);
         if (response == DnsTlsTransport::Response::success) {
             if (DBG) {
                 ALOGD("qhook success");

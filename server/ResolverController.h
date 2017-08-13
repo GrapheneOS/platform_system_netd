@@ -18,10 +18,10 @@
 #define _RESOLVER_CONTROLLER_H_
 
 #include <vector>
-#include <netinet/in.h>
-#include <linux/in.h>
+#include "dns/DnsTlsTransport.h"
 
 struct __res_params;
+struct sockaddr_storage;
 
 namespace android {
 namespace net {
@@ -42,11 +42,11 @@ public:
     // Given a netId and the address of an insecure (i.e. normal) DNS server, this method checks
     // if there is a known secure DNS server with the same IP address that has been validated as
     // accessible on this netId.  If so, it returns true, providing the server's address
-    // (including port) and pin fingerprints (possibly empty) in the output parameters.
+    // (including port) and pin fingerprints (possibly empty) in the output parameter.
     // TODO: Add support for optional stronger security, by returning true even if the secure
     // server is not accessible.
     bool shouldUseTls(unsigned netId, const sockaddr_storage& insecureServer,
-            sockaddr_storage* secureServer, std::set<std::vector<uint8_t>>* fingerprints);
+            DnsTlsTransport::Server* secureServer);
 
     int clearDnsServers(unsigned netid);
 

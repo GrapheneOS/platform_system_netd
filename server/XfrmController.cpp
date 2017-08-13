@@ -49,11 +49,20 @@
 #include "NetlinkCommands.h"
 #include "ResponseCode.h"
 #include "XfrmController.h"
+#include "netdutils/Fd.h"
+#include "netdutils/Slice.h"
+#include "netdutils/Syscalls.h"
 #include <cutils/log.h>
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
 
 #define VDBG 1 // STOPSHIP if true
+
+using android::netdutils::Fd;
+using android::netdutils::Slice;
+using android::netdutils::Status;
+using android::netdutils::StatusOr;
+using android::netdutils::Syscalls;
 
 namespace android {
 namespace net {
@@ -142,6 +151,8 @@ void logIov(const iovec* iov, size_t iovLen) {
     }
 }
 
+inline Syscalls& getSyscallInstance() { return netdutils::sSyscalls.get(); }
+
 #else
 #define LOG_HEX(__desc16__, __buf__, __len__)
 #define LOG_IOV(__iov__, __iov_len__)
@@ -220,32 +231,44 @@ public:
             nlMsg.nlmsg_len += iov[i].iov_len;
         }
 
+        // TODO: Should use std::vector<iovec> from the beginning, should
+        // replace the iovec array declaration with an iovec vector declaration
+        // in other places of the program.
+        // This line should be removed when the parameter of sendMessage is
+        // changed to use iovev vector.
+        const std::vector<iovec> iovs(iov, iov + iovLen);
+
         ALOGD("Sending Netlink XFRM Message: %s", xfrmMsgTypeToString(nlMsgType));
         if (VDBG)
             LOG_IOV(iov, iovLen);
 
-        int ret;
-
-        if (writev(mSock, iov, iovLen) < 0) {
-            ALOGE("netlink socket writev failed (%s)", strerror(errno));
-            return -errno;
+        StatusOr<size_t> writeResult = getSyscallInstance().writev(mSock, iovs);
+        if (!isOk(writeResult)) {
+            ALOGE("netlink socket writev failed (%s)", toString(writeResult).c_str());
+            return -writeResult.status().code();
         }
 
-        NetlinkResponse* response = new NetlinkResponse{};
-
-        if ((ret = recv(mSock, response, sizeof(*response), 0)) < 0) {
-            ALOGE("netlink response contains error (%s)", strerror(errno));
-            delete response;
-            return -errno;
+        if (nlMsg.nlmsg_len != writeResult.value()) {
+            ALOGE("Invalid netlink message length sent %d", static_cast<int>(writeResult.value()));
+            return -EBADMSG;
         }
 
-        LOG_HEX("netlink msg resp", reinterpret_cast<char*>(response), ret);
+        NetlinkResponse response = {};
 
-        ret = validateResponse(*response, ret);
-        delete response;
-        if (ret < 0)
-            ALOGE("netlink response contains error (%s)", strerror(-ret));
-        return ret;
+        StatusOr<Slice> readResult =
+            getSyscallInstance().read(Fd(mSock), netdutils::makeSlice(response));
+        if (!isOk(readResult)) {
+            ALOGE("netlink response error (%s)", toString(readResult).c_str());
+            return -readResult.status().code();
+        }
+
+        LOG_HEX("netlink msg resp", reinterpret_cast<char*>(readResult.value().base()),
+                readResult.value().size());
+
+        int retNum = validateResponse(response, readResult.value().size());
+        if (retNum < 0)
+            ALOGE("netlink response contains error (%s)", strerror(-retNum));
+        return retNum;
     }
 };
 
@@ -535,14 +558,15 @@ int XfrmController::ipSecApplyTransportModeTransform(const android::base::unique
 
     struct sockaddr_storage saddr;
 
-    socklen_t len = sizeof(saddr);
     int err;
-    int userSocket = socket.get();
 
-    if ((err = getsockname(userSocket, reinterpret_cast<struct sockaddr*>(&saddr), &len)) < 0) {
+    StatusOr<sockaddr_storage> ret = getSyscallInstance().getsockname<sockaddr_storage>(Fd(socket));
+    if (!isOk(ret)) {
         ALOGE("Failed to get socket info in %s", __FUNCTION__);
-        return -err;
+        return -ret.status().code();
     }
+
+    saddr = ret.value();
 
     XfrmSaInfo saInfo{};
     saInfo.transformId = transformId;
@@ -585,13 +609,11 @@ int XfrmController::ipSecApplyTransportModeTransform(const android::base::unique
             return -EAFNOSUPPORT;
     }
 
-    err = setsockopt(userSocket, sockLayer, sockOpt, &policy, sizeof(policy));
-    if (err < 0) {
-        err = errno;
-        ALOGE("Error setting socket option for XFRM! (%s)", strerror(err));
+    Status status = getSyscallInstance().setsockopt(Fd(socket), sockLayer, sockOpt, policy);
+    if (!isOk(status)) {
+        ALOGE("Error setting socket option for XFRM! (%s)", toString(status).c_str());
     }
-
-    return -err;
+    return -status.code();
 }
 
 int XfrmController::ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket) {
