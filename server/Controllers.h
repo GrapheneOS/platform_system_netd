@@ -60,7 +60,13 @@ public:
     void init();
 
 private:
+    friend class ControllersTest;
     void initIptablesRules();
+    static void initChildChains();
+    static void createChildChains(IptablesTarget target, const char* table, const char* parentChain,
+                                  const char** childChains, bool exclusive);
+    static int (*execIptablesSilently)(IptablesTarget target, ...);
+    static int (*execIptablesRestore)(IptablesTarget, const std::string&);
 };
 
 extern Controllers* gCtls;
