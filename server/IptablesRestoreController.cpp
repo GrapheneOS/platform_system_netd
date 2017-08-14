@@ -112,9 +112,12 @@ public:
     static constexpr size_t STDERR_IDX = 1;
 };
 
-IptablesRestoreController::IptablesRestoreController() :
-    mIpRestore(nullptr),
-    mIp6Restore(nullptr) {
+IptablesRestoreController::IptablesRestoreController() {
+    // Start the IPv4 and IPv6 processes in parallel, since each one takes 20-30ms.
+    std::thread v4([this] () { mIpRestore.reset(forkAndExec(IPTABLES_PROCESS)); });
+    std::thread v6([this] () { mIp6Restore.reset(forkAndExec(IP6TABLES_PROCESS)); });
+    v4.join();
+    v6.join();
 }
 
 IptablesRestoreController::~IptablesRestoreController() {
