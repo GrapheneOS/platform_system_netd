@@ -166,7 +166,7 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_SRC_FILES := \
         InterfaceController.cpp InterfaceControllerTest.cpp \
-        Controllers.cpp \
+        Controllers.cpp ControllersTest.cpp \
         NetdConstants.cpp IptablesBaseTest.cpp \
         IptablesRestoreController.cpp IptablesRestoreControllerTest.cpp \
         BandwidthController.cpp BandwidthControllerTest.cpp \
