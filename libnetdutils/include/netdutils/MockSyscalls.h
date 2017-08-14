@@ -60,6 +60,7 @@ class MockSyscalls : public Syscalls {
     MOCK_CONST_METHOD3(vfprintf, StatusOr<int>(FILE* file, const char* format, va_list ap));
     MOCK_CONST_METHOD3(vfscanf, StatusOr<int>(FILE* file, const char* format, va_list ap));
     MOCK_CONST_METHOD1(fclose, Status(FILE* file));
+    MOCK_CONST_METHOD0(fork, StatusOr<pid_t>());
 };
 
 // For the lifetime of this mock, replace the contents of sSyscalls

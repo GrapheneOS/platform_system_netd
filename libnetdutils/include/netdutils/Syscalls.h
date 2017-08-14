@@ -20,6 +20,7 @@
 #include <memory>
 
 #include <poll.h>
+#include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -77,6 +78,8 @@ class Syscalls {
     virtual StatusOr<int> vfscanf(FILE* file, const char* format, va_list ap) const = 0;
 
     virtual Status fclose(FILE* file) const = 0;
+
+    virtual StatusOr<pid_t> fork() const = 0;
 
     // va_args helpers
     // va_start doesn't work when the preceding argument is a reference

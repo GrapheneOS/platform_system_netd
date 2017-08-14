@@ -170,6 +170,14 @@ class RealSyscalls final : public Syscalls {
         return file;
     }
 
+    StatusOr<pid_t> fork() const override {
+        pid_t rv = ::fork();
+        if (rv == -1) {
+            return statusFromErrno(errno, "fork() failed");
+        }
+        return rv;
+    }
+
     StatusOr<int> vfprintf(FILE* file, const char* format, va_list ap) const override {
         auto rv = ::vfprintf(file, format, ap);
         if (rv == -1) {
