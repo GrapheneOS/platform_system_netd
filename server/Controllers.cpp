@@ -29,6 +29,9 @@
 namespace android {
 namespace net {
 
+auto Controllers::execIptablesRestore  = ::execIptablesRestore;
+auto Controllers::execIptablesSilently = ::execIptablesSilently;
+
 namespace {
 /**
  * List of module chains to be created, along with explicit ordering. ORDERING
@@ -93,8 +96,13 @@ static const char* NAT_POSTROUTING[] = {
         NULL,
 };
 
-static void createChildChains(IptablesTarget target, const char* table, const char* parentChain,
-        const char** childChains, bool exclusive) {
+}  // namespace
+
+/* static */
+void Controllers::createChildChains(IptablesTarget target, const char* table,
+                                    const char* parentChain,
+                                    const char** childChains,
+                                    bool exclusive) {
     std::string command = android::base::StringPrintf("*%s\n", table);
 
     // If we're the exclusive owner of this chain, clear it entirely. This saves us from having to
@@ -116,11 +124,9 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
         command += android::base::StringPrintf(":%s -\n", *childChain);
         command += android::base::StringPrintf("-A %s -j %s\n", parentChain, *childChain);
     } while (*(++childChain) != NULL);
-    command += "COMMIT\n\n";
+    command += "COMMIT\n";
     execIptablesRestore(target, command);
 }
-
-}  // namespace
 
 Controllers::Controllers()
     : clatdCtrl(&netCtrl),
@@ -137,7 +143,7 @@ Controllers::Controllers()
     InterfaceController::initializeAll();
 }
 
-void Controllers::initIptablesRules() {
+void Controllers::initChildChains() {
     /*
      * This is the only time we touch top-level chains in iptables; controllers
      * should only mutate rules inside of their children chains, as created by
@@ -149,18 +155,23 @@ void Controllers::initIptablesRules() {
      */
 
     // Create chains for child modules.
-    // We cannot use createChildChainsFast for all chains because vendor code modifies filter OUTPUT
-    // and mangle POSTROUTING directly.
-    Stopwatch s;
     createChildChains(V4V6, "filter", "INPUT", FILTER_INPUT, true);
     createChildChains(V4V6, "filter", "FORWARD", FILTER_FORWARD, true);
-    createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT, false);
     createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING, true);
-    createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
     createChildChains(V4V6, "mangle", "FORWARD", MANGLE_FORWARD, true);
     createChildChains(V4V6, "mangle", "INPUT", MANGLE_INPUT, true);
     createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING, true);
     createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING, true);
+
+    // We cannot use createChildChainsFast for all chains because vendor code modifies filter OUTPUT
+    // and mangle POSTROUTING directly.
+    createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT, false);
+    createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
+}
+
+void Controllers::initIptablesRules() {
+    Stopwatch s;
+    initChildChains();
     ALOGI("Creating child chains: %.1fms", s.getTimeAndReset());
 
     // Let each module setup their child chains
