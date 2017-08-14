@@ -70,16 +70,6 @@ binder::Status checkPermission(const char *permission) {
     }
 }
 
-binder::Status getXfrmStatus(int xfrmCode) {
-    switch(xfrmCode) {
-        case 0:
-            return binder::Status::ok();
-        case -ENOENT:
-            return binder::Status::fromServiceSpecificError(xfrmCode);
-    }
-    return binder::Status::fromExceptionCode(xfrmCode);
-}
-
 #define ENFORCE_DEBUGGABLE() {                              \
     char value[PROPERTY_VALUE_MAX + 1];                     \
     if (property_get("ro.debuggable", value, NULL) != 1     \
@@ -380,7 +370,7 @@ binder::Status NetdNativeService::ipSecAllocateSpi(
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ALOGD("ipSecAllocateSpi()");
-    return getXfrmStatus(gCtls->xfrmCtrl.ipSecAllocateSpi(
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecAllocateSpi(
                     transformId,
                     direction,
                     localAddress,
@@ -405,7 +395,7 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ALOGD("ipSecAddSecurityAssociation()");
-    return getXfrmStatus(gCtls->xfrmCtrl.ipSecAddSecurityAssociation(
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecAddSecurityAssociation(
               transformId, mode, direction, localAddress, remoteAddress,
               underlyingNetworkHandle,
               spi,
@@ -423,7 +413,7 @@ binder::Status NetdNativeService::ipSecDeleteSecurityAssociation(
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ALOGD("ipSecDeleteSecurityAssociation()");
-    return getXfrmStatus(gCtls->xfrmCtrl.ipSecDeleteSecurityAssociation(
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecDeleteSecurityAssociation(
                     transformId,
                     direction,
                     localAddress,
@@ -441,7 +431,7 @@ binder::Status NetdNativeService::ipSecApplyTransportModeTransform(
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ALOGD("ipSecApplyTransportModeTransform()");
-    return getXfrmStatus(gCtls->xfrmCtrl.ipSecApplyTransportModeTransform(
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecApplyTransportModeTransform(
                     socket,
                     transformId,
                     direction,
@@ -455,7 +445,7 @@ binder::Status NetdNativeService::ipSecRemoveTransportModeTransform(
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ALOGD("ipSecRemoveTransportModeTransform()");
-    return getXfrmStatus(gCtls->xfrmCtrl.ipSecRemoveTransportModeTransform(
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecRemoveTransportModeTransform(
                     socket));
 }
 
