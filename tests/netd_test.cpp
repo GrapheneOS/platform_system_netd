@@ -833,33 +833,38 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
     const char* listen_addr = "127.0.0.3";
     const char* listen_udp = "53";
     const char* listen_tls = "853";
-    const char* host_name = "tlsfingerprint.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = { listen_addr };
+    for (int chain_length = 1; chain_length <= 3; ++chain_length) {
+        const char* host_name = StringPrintf("tlsfingerprint%d.example.com.", chain_length).c_str();
+        test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+        dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
+        ASSERT_TRUE(dns.startServer());
+        std::vector<std::string> servers = { listen_addr };
 
-    test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
-    ASSERT_TRUE(tls.startServer());
-    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "SHA-256",
-            { base64Encode(tls.fingerprint()) });
-    ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
+        test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
+        tls.set_chain_length(chain_length);
+        ASSERT_TRUE(tls.startServer());
+        auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "SHA-256",
+                { base64Encode(tls.fingerprint()) });
+        ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
-    const hostent* result;
+        const hostent* result;
 
-    // Wait for validation to complete.
-    EXPECT_TRUE(tls.waitForQueries(1, 5000));
+        // Wait for validation to complete.
+        EXPECT_TRUE(tls.waitForQueries(1, 5000));
 
-    result = gethostbyname("tlsfingerprint");
-    ASSERT_FALSE(result == nullptr);
-    EXPECT_EQ("1.2.3.1", ToString(result));
+        result = gethostbyname(StringPrintf("tlsfingerprint%d", chain_length).c_str());
+        EXPECT_FALSE(result == nullptr);
+        if (result) {
+            EXPECT_EQ("1.2.3.1", ToString(result));
 
-    // Wait for query to get counted.
-    EXPECT_TRUE(tls.waitForQueries(2, 5000));
+            // Wait for query to get counted.
+            EXPECT_TRUE(tls.waitForQueries(2, 5000));
+        }
 
-    rv = mNetdSrv->removePrivateDnsServer(listen_addr);
-    tls.stopServer();
-    dns.stopServer();
+        rv = mNetdSrv->removePrivateDnsServer(listen_addr);
+        tls.stopServer();
+        dns.stopServer();
+    }
 }
 
 TEST_F(ResolverTest, GetHostByName_BadTlsFingerprint) {
