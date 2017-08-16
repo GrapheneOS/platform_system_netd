@@ -183,22 +183,50 @@ SSL* DnsTlsTransport::sslConnect(int fd) {
         if (DBG) {
             ALOGD("Checking DNS over TLS fingerprint");
         }
-        // TODO: Follow the cert chain and check all the way up.
-        bssl::UniquePtr<X509> cert(SSL_get_peer_certificate(ssl.get()));
-        if (!cert) {
+
+        // We only care that the chain is internally self-consistent, not that
+        // it chains to a trusted root, so we can ignore some kinds of errors.
+        // TODO: Add a CA root verification mode that respects these errors.
+        int verify_result = SSL_get_verify_result(ssl.get());
+        switch (verify_result) {
+            case X509_V_OK:
+            case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
+            case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
+            case X509_V_ERR_CERT_UNTRUSTED:
+                break;
+            default:
+                ALOGW("Invalid certificate chain, error %d", verify_result);
+                return nullptr;
+        }
+
+        STACK_OF(X509) *chain = SSL_get_peer_cert_chain(ssl.get());
+        if (!chain) {
             ALOGW("Server has null certificate");
             return nullptr;
         }
-        std::vector<uint8_t> digest;
-        if (!getSPKIDigest(cert.get(), &digest)) {
-            ALOGE("Digest computation failed");
-            return nullptr;
+        // Chain and its contents are owned by ssl, so we don't need to free explicitly.
+        bool matched = false;
+        for (size_t i = 0; i < sk_X509_num(chain); ++i) {
+            // This appears to be O(N^2), but there doesn't seem to be a straightforward
+            // way to walk a STACK_OF nondestructively in linear time.
+            X509* cert = sk_X509_value(chain, i);
+            std::vector<uint8_t> digest;
+            if (!getSPKIDigest(cert, &digest)) {
+                ALOGE("Digest computation failed");
+                return nullptr;
+            }
+
+            if (mServer.fingerprints.count(digest) > 0) {
+                matched = true;
+                break;
+            }
         }
 
-        if (mServer.fingerprints.count(digest) == 0) {
+        if (!matched) {
             ALOGW("No matching fingerprint");
             return nullptr;
         }
+
         if (DBG) {
             ALOGD("DNS over TLS fingerprint is correct");
         }
