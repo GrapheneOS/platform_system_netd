@@ -710,7 +710,7 @@ TEST_F(ResolverTest, GetHostByName_TlsMissing) {
 
     // There's nothing listening on this address, so validation will either fail or
     /// hang.  Either way, queries will continue to flow to the DNSResponder.
-    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "", {});
+    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "", "", {});
     ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
     const hostent* result;
@@ -749,7 +749,7 @@ TEST_F(ResolverTest, GetHostByName_TlsBroken) {
     ASSERT_FALSE(bind(s, reinterpret_cast<struct sockaddr*>(&tlsServer), sizeof(tlsServer)));
     ASSERT_FALSE(listen(s, 1));
 
-    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "", {});
+    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "", "", {});
     ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
     // SetResolversForNetwork should have triggered a validation connection to this address.
@@ -798,7 +798,7 @@ TEST_F(ResolverTest, GetHostByName_Tls) {
 
     test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
     ASSERT_TRUE(tls.startServer());
-    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "", {});
+    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "", "", {});
     ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
     const hostent* result;
@@ -849,7 +849,7 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
         test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
         tls.set_chain_length(chain_length);
         ASSERT_TRUE(tls.startServer());
-        auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, tls_port, "SHA-256",
+        auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, tls_port, "", "SHA-256",
                 { base64Encode(tls.fingerprint()) });
         EXPECT_EQ(0, rv.exceptionCode());
         ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
@@ -889,7 +889,7 @@ TEST_F(ResolverTest, GetHostByName_BadTlsFingerprint) {
     ASSERT_TRUE(tls.startServer());
     std::vector<uint8_t> bad_fingerprint = tls.fingerprint();
     bad_fingerprint[5] += 1;  // Corrupt the fingerprint.
-    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "SHA-256",
+    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "", "SHA-256",
             { base64Encode(bad_fingerprint) });
     ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
@@ -928,7 +928,7 @@ TEST_F(ResolverTest, GetHostByName_TwoTlsFingerprints) {
     ASSERT_TRUE(tls.startServer());
     std::vector<uint8_t> bad_fingerprint = tls.fingerprint();
     bad_fingerprint[5] += 1;  // Corrupt the fingerprint.
-    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "SHA-256",
+    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "", "SHA-256",
             { base64Encode(bad_fingerprint), base64Encode(tls.fingerprint()) });
     ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
@@ -963,7 +963,7 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprintGoesBad) {
 
     test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
     ASSERT_TRUE(tls.startServer());
-    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "SHA-256",
+    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "", "SHA-256",
             { base64Encode(tls.fingerprint()) });
     ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
@@ -1014,9 +1014,9 @@ TEST_F(ResolverTest, GetHostByName_TlsFailover) {
     test::DnsTlsFrontend tls2(listen_addr2, listen_tls, listen_addr2, listen_udp);
     ASSERT_TRUE(tls1.startServer());
     ASSERT_TRUE(tls2.startServer());
-    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr1, 853, "SHA-256",
+    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr1, 853, "", "SHA-256",
             { base64Encode(tls1.fingerprint()) });
-    rv = mNetdSrv->addPrivateDnsServer(listen_addr2, 853, "SHA-256",
+    rv = mNetdSrv->addPrivateDnsServer(listen_addr2, 853, "", "SHA-256",
             { base64Encode(tls2.fingerprint()) });
     ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
@@ -1055,6 +1055,40 @@ TEST_F(ResolverTest, GetHostByName_TlsFailover) {
     dns2.stopServer();
 }
 
+TEST_F(ResolverTest, GetHostByName_BadTlsName) {
+    const char* listen_addr = "127.0.0.3";
+    const char* listen_udp = "53";
+    const char* listen_tls = "853";
+    const char* host_name = "badtlsname.example.com.";
+    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = { listen_addr };
+
+    test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
+    ASSERT_TRUE(tls.startServer());
+    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "www.example.com", "", {});
+    ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
+
+    const hostent* result;
+
+    // The TLS server's certificate doesn't chain to a known CA, and a nonempty name was specified,
+    // so the client should fail the TLS handshake before ever issuing a query.
+    EXPECT_FALSE(tls.waitForQueries(1, 500));
+
+    result = gethostbyname("badtlsname");
+    ASSERT_FALSE(result == nullptr);
+    EXPECT_EQ("1.2.3.1", ToString(result));
+
+    // The query should have bypassed the TLS frontend, because validation
+    // failed.
+    EXPECT_FALSE(tls.waitForQueries(1, 500));
+
+    rv = mNetdSrv->removePrivateDnsServer(listen_addr);
+    tls.stopServer();
+    dns.stopServer();
+}
+
 TEST_F(ResolverTest, GetAddrInfo_Tls) {
     const char* listen_addr = "127.0.0.3";
     const char* listen_udp = "53";
@@ -1068,7 +1102,7 @@ TEST_F(ResolverTest, GetAddrInfo_Tls) {
 
     test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
     ASSERT_TRUE(tls.startServer());
-    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "SHA-256",
+    auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "", "SHA-256",
             { base64Encode(tls.fingerprint()) });
     ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 

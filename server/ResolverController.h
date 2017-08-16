@@ -67,6 +67,7 @@ public:
     void dump(DumpWriter& dw, unsigned netId);
 
     int addPrivateDnsServer(const std::string& server, int32_t port,
+            const std::string& name,
             const std::string& fingerprintAlgorithm,
             const std::set<std::vector<uint8_t>>& fingerprints);
     int removePrivateDnsServer(const std::string& server);

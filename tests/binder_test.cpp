@@ -624,27 +624,28 @@ TEST_F(BinderTest, TestAddPrivateDnsServer) {
     static const struct TestData {
         const std::string address;
         const int port;
+        const std::string name;
         const std::string fingerprintAlgorithm;
         const std::set<std::vector<uint8_t>> fingerprints;
         const int expectedReturnCode;
     } kTestData[] = {
-        { "192.0.2.1", 853, "", {}, INetd::PRIVATE_DNS_SUCCESS },
-        { "2001:db8::2", 65535, "", {}, INetd::PRIVATE_DNS_SUCCESS },
-        { "192.0.2.3", 443, "SHA-256", { fp }, INetd::PRIVATE_DNS_SUCCESS },
-        { "2001:db8::4", 1, "SHA-256", { fp }, INetd::PRIVATE_DNS_SUCCESS },
-        { "192.0.*.5", 853, "", {}, INetd::PRIVATE_DNS_BAD_ADDRESS },
-        { "", 853, "", {}, INetd::PRIVATE_DNS_BAD_ADDRESS },
-        { "2001:dg8::6", 65535, "", {}, INetd::PRIVATE_DNS_BAD_ADDRESS },
-        { "192.0.2.7", 0, "SHA-256", { fp }, INetd::PRIVATE_DNS_BAD_PORT },
-        { "2001:db8::8", 65536, "", {}, INetd::PRIVATE_DNS_BAD_PORT },
-        { "192.0.2.9", 50053, "SHA-512", { fp }, INetd::PRIVATE_DNS_UNKNOWN_ALGORITHM },
-        { "2001:db8::a", 853, "", { fp }, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
-        { "192.0.2.11", 853, "SHA-256", {}, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
-        { "2001:db8::c", 853, "SHA-256", { { 1 } }, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
-        { "192.0.2.12", 853, "SHA-256", { std::vector<uint8_t>(SHA256_SIZE + 1) },
+        { "192.0.2.1", 853, "", "", {}, INetd::PRIVATE_DNS_SUCCESS },
+        { "2001:db8::2", 65535, "host.name", "", {}, INetd::PRIVATE_DNS_SUCCESS },
+        { "192.0.2.3", 443, "@@@@", "SHA-256", { fp }, INetd::PRIVATE_DNS_SUCCESS },
+        { "2001:db8::4", 1, "", "SHA-256", { fp }, INetd::PRIVATE_DNS_SUCCESS },
+        { "192.0.*.5", 853, "", "", {}, INetd::PRIVATE_DNS_BAD_ADDRESS },
+        { "", 853, "", "", {}, INetd::PRIVATE_DNS_BAD_ADDRESS },
+        { "2001:dg8::6", 65535, "", "", {}, INetd::PRIVATE_DNS_BAD_ADDRESS },
+        { "192.0.2.7", 0, "", "SHA-256", { fp }, INetd::PRIVATE_DNS_BAD_PORT },
+        { "2001:db8::8", 65536, "", "", {}, INetd::PRIVATE_DNS_BAD_PORT },
+        { "192.0.2.9", 50053, "", "SHA-512", { fp }, INetd::PRIVATE_DNS_UNKNOWN_ALGORITHM },
+        { "2001:db8::a", 853, "", "", { fp }, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
+        { "192.0.2.11", 853, "", "SHA-256", {}, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
+        { "2001:db8::c", 853, "", "SHA-256", { { 1 } }, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
+        { "192.0.2.12", 853, "", "SHA-256", { std::vector<uint8_t>(SHA256_SIZE + 1) },
                 INetd::PRIVATE_DNS_BAD_FINGERPRINT },
-        { "2001:db8::e", 1, "SHA-256", { fp, fp, fp }, INetd::PRIVATE_DNS_SUCCESS },
-        { "192.0.2.14", 853, "SHA-256", { fp, { 1 } }, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
+        { "2001:db8::e", 1, "", "SHA-256", { fp, fp, fp }, INetd::PRIVATE_DNS_SUCCESS },
+        { "192.0.2.14", 853, "", "SHA-256", { fp, { 1 } }, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
     };
 
     for (unsigned int i = 0; i < arraysize(kTestData); i++) {
@@ -655,7 +656,7 @@ TEST_F(BinderTest, TestAddPrivateDnsServer) {
             fingerprints.push_back(base64Encode(fingerprint));
         }
         const binder::Status status = mNetd->addPrivateDnsServer(
-                td.address, td.port, td.fingerprintAlgorithm, fingerprints);
+                td.address, td.port, td.name, td.fingerprintAlgorithm, fingerprints);
 
         if (td.expectedReturnCode == INetd::PRIVATE_DNS_SUCCESS) {
             SCOPED_TRACE(String8::format("test case %d should have passed", i));

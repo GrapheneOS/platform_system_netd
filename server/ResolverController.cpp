@@ -425,6 +425,7 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
 }
 
 int ResolverController::addPrivateDnsServer(const std::string& server, int32_t port,
+        const std::string& name,
         const std::string& fingerprintAlgorithm,
         const std::set<std::vector<uint8_t>>& fingerprints) {
     using android::net::INetd;
@@ -453,6 +454,7 @@ int ResolverController::addPrivateDnsServer(const std::string& server, int32_t p
     }
     DnsTlsTransport::Server privateServer(parsed);
     privateServer.fingerprints = fingerprints;
+    privateServer.name = name;
     std::lock_guard<std::mutex> guard(privateDnsLock);
     // Ensure we overwrite any previous matching server.  This is necessary because equality is
     // based only on the IP address, not the port or fingerprints.
