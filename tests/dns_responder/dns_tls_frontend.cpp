@@ -112,7 +112,7 @@ bssl::UniquePtr<EVP_PKEY> make_private_key() {
     return privkey;
 }
 
-bssl::UniquePtr<X509> make_cert(EVP_PKEY* privkey) {
+bssl::UniquePtr<X509> make_cert(EVP_PKEY* privkey, EVP_PKEY* parent_key) {
     bssl::UniquePtr<X509> cert(X509_new());
     if (!cert) {
         ALOGE("X509_new failed");
@@ -127,7 +127,7 @@ bssl::UniquePtr<X509> make_cert(EVP_PKEY* privkey) {
 
     X509_set_pubkey(cert.get(), privkey);
 
-    if (!X509_sign(cert.get(), privkey, EVP_sha256())) {
+    if (!X509_sign(cert.get(), parent_key, EVP_sha256())) {
         ALOGE("X509_sign failed");
         return nullptr;
     }
@@ -151,20 +151,37 @@ bool DnsTlsFrontend::startServer() {
 
     SSL_CTX_set_ecdh_auto(ctx_.get(), 1);
 
-    bssl::UniquePtr<EVP_PKEY> key(make_private_key());
-    bssl::UniquePtr<X509> cert(make_cert(key.get()));
-    if (SSL_CTX_use_certificate(ctx_.get(), cert.get()) <= 0) {
+    // Make certificate chain
+    std::vector<bssl::UniquePtr<EVP_PKEY>> keys(chain_length_);
+    for (int i = 0; i < chain_length_; ++i) {
+        keys[i] = make_private_key();
+    }
+    std::vector<bssl::UniquePtr<X509>> certs(chain_length_);
+    for (int i = 0; i < chain_length_; ++i) {
+        int next = std::min(i + 1, chain_length_ - 1);
+        certs[i] = make_cert(keys[i].get(), keys[next].get());
+    }
+
+    // Install certificate chain.
+    if (SSL_CTX_use_certificate(ctx_.get(), certs[0].get()) <= 0) {
         ALOGE("SSL_CTX_use_certificate failed");
         return false;
     }
-
-    if (!getSPKIDigest(cert.get(), &fingerprint_)) {
-        ALOGE("getSPKIDigest failed");
+    if (SSL_CTX_use_PrivateKey(ctx_.get(), keys[0].get()) <= 0 ) {
+        ALOGE("SSL_CTX_use_PrivateKey failed");
         return false;
     }
+    for (int i = 1; i < chain_length_; ++i) {
+        if (SSL_CTX_add1_chain_cert(ctx_.get(), certs[i].get()) != 1) {
+            ALOGE("SSL_CTX_add1_chain_cert failed");
+            return false;
+        }
+    }
 
-    if (SSL_CTX_use_PrivateKey(ctx_.get(), key.get()) <= 0 ) {
-        ALOGE("SSL_CTX_use_PrivateKey failed");
+    // Report the fingerprint of the "middle" cert.  For N = 2, this is the root.
+    int fp_index = chain_length_ / 2;
+    if (!getSPKIDigest(certs[fp_index].get(), &fingerprint_)) {
+        ALOGE("getSPKIDigest failed");
         return false;
     }
 
