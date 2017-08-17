@@ -33,6 +33,13 @@
 namespace android {
 namespace net {
 
+// Exposed for testing
+extern const uint32_t ALGO_MASK_AUTH_ALL;
+// Exposed for testing
+extern const uint32_t ALGO_MASK_CRYPT_ALL;
+// Exposed for testing
+extern const uint8_t REPLAY_WINDOW_SIZE;
+
 // Suggest we avoid the smallest and largest ints
 class XfrmMessage;
 class TransportModeSecurityAssociation;
@@ -129,11 +136,38 @@ public:
 
     int ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket);
 
+    // Exposed for testing
+    static constexpr size_t MAX_ALGO_LENGTH = 128;
+
+    // Exposed for testing
+    struct nlattr_algo_crypt {
+        nlattr hdr;
+        xfrm_algo crypt;
+        uint8_t key[MAX_ALGO_LENGTH];
+    };
+
+    // Exposed for testing
+    struct nlattr_algo_auth {
+        nlattr hdr;
+        xfrm_algo_auth auth;
+        uint8_t key[MAX_ALGO_LENGTH];
+    };
+
+    // Exposed for testing
+    struct nlattr_user_tmpl {
+        nlattr hdr;
+        xfrm_user_tmpl tmpl;
+    };
+
+    // Exposed for testing
+    struct nlattr_encap_tmpl {
+        nlattr hdr;
+        xfrm_encap_tmpl tmpl;
+    };
+
 private:
     // prevent concurrent modification of XFRM
     android::RWLock mLock;
-
-    static constexpr size_t MAX_ALGO_LENGTH = 128;
 
 /*
  * Below is a redefinition of the xfrm_usersa_info struct that is part
@@ -174,29 +208,6 @@ private:
                       sizeof(xfrm_userspi_info) - sizeof(xfrm_usersa_info),
                   "struct xfrm_userspi_info has changed and does not match the kernel struct.");
 #endif
-
-    struct nlattr_algo_crypt {
-        nlattr hdr;
-        xfrm_algo crypt;
-        uint8_t key[MAX_ALGO_LENGTH];
-    };
-
-    struct nlattr_algo_auth {
-        nlattr hdr;
-        xfrm_algo_auth auth;
-        uint8_t key[MAX_ALGO_LENGTH];
-    };
-
-    struct nlattr_user_tmpl {
-        nlattr hdr;
-        xfrm_user_tmpl tmpl;
-    };
-
-    struct nlattr_encap_tmpl {
-        nlattr hdr;
-        xfrm_encap_tmpl tmpl;
-    };
-
 
     // helper function for filling in the XfrmSaInfo structure
     static int fillXfrmSaId(int32_t direction, const std::string& localAddress,
