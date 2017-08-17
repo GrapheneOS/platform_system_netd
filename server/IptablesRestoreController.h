@@ -68,6 +68,8 @@ protected:
     // |POLL_TIMEOUT_MS * MAX_RETRIES|. Chosen so that the overall timeout is 1s.
     static int POLL_TIMEOUT_MS;
 
+    void Init();
+
 private:
     static IptablesProcess* forkAndExec(const IptablesProcessType type);
 
