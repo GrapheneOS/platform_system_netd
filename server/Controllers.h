@@ -63,10 +63,13 @@ private:
     friend class ControllersTest;
     void initIptablesRules();
     static void initChildChains();
+    static std::set<std::string> findExistingChildChains(const IptablesTarget target,
+                                                         const char* table,
+                                                         const char* parentChain);
     static void createChildChains(IptablesTarget target, const char* table, const char* parentChain,
-                                  const char** childChains, bool exclusive);
-    static int (*execIptablesSilently)(IptablesTarget target, ...);
+                                  const std::vector<const char*>& childChains, bool exclusive);
     static int (*execIptablesRestore)(IptablesTarget, const std::string&);
+    static int (*execIptablesRestoreWithOutput)(IptablesTarget, const std::string&, std::string *);
 };
 
 extern Controllers* gCtls;
