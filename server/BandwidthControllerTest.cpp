@@ -51,8 +51,6 @@ using android::netdutils::UniqueFile;
 class BandwidthControllerTest : public IptablesBaseTest {
 protected:
     BandwidthControllerTest() {
-        BandwidthController::execFunction = fake_android_fork_exec;
-        BandwidthController::popenFunction = fake_popen;
         BandwidthController::iptablesRestoreFunction = fakeExecIptablesRestoreWithOutput;
     }
     BandwidthController mBw;
@@ -378,7 +376,6 @@ TEST_F(BandwidthControllerTest, TestGetTetherStats) {
     std::string expectedError = counters;
     EXPECT_EQ(expectedError, err);
 
-    // popen() failing is always an error.
     addIptablesRestoreOutput(kIPv4TetherCounters);
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
     expectNoSocketClientResponse(socketPair[1]);

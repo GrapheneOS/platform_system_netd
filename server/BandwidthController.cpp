@@ -64,8 +64,6 @@ const char BandwidthController::LOCAL_OUTPUT[] = "bw_OUTPUT";
 const char BandwidthController::LOCAL_RAW_PREROUTING[] = "bw_raw_PREROUTING";
 const char BandwidthController::LOCAL_MANGLE_POSTROUTING[] = "bw_mangle_POSTROUTING";
 
-auto BandwidthController::execFunction = android_fork_execvp;
-auto BandwidthController::popenFunction = popen;
 auto BandwidthController::iptablesRestoreFunction = execIptablesRestoreWithOutput;
 
 using android::base::Join;
