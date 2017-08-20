@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+#include <regex>
+#include <set>
+#include <string>
+
+#include <android-base/strings.h>
 #include <android-base/stringprintf.h>
 
 #define LOG_TAG "Netd"
@@ -29,101 +34,153 @@
 namespace android {
 namespace net {
 
+using android::base::Join;
+using android::base::StringPrintf;
+using android::base::StringAppendF;
+
 auto Controllers::execIptablesRestore  = ::execIptablesRestore;
-auto Controllers::execIptablesSilently = ::execIptablesSilently;
+auto Controllers::execIptablesRestoreWithOutput = ::execIptablesRestoreWithOutput;
 
 namespace {
+
 /**
  * List of module chains to be created, along with explicit ordering. ORDERING
  * IS CRITICAL, AND SHOULD BE TRIPLE-CHECKED WITH EACH CHANGE.
  */
-static const char* FILTER_INPUT[] = {
+static const std::vector<const char*> FILTER_INPUT = {
         // Bandwidth should always be early in input chain, to make sure we
         // correctly count incoming traffic against data plan.
         BandwidthController::LOCAL_INPUT,
         FirewallController::LOCAL_INPUT,
-        NULL,
 };
 
-static const char* FILTER_FORWARD[] = {
+static const std::vector<const char*> FILTER_FORWARD = {
         OEM_IPTABLES_FILTER_FORWARD,
         FirewallController::LOCAL_FORWARD,
         BandwidthController::LOCAL_FORWARD,
         NatController::LOCAL_FORWARD,
-        NULL,
 };
 
-static const char* FILTER_OUTPUT[] = {
+static const std::vector<const char*> FILTER_OUTPUT = {
         OEM_IPTABLES_FILTER_OUTPUT,
         FirewallController::LOCAL_OUTPUT,
         StrictController::LOCAL_OUTPUT,
         BandwidthController::LOCAL_OUTPUT,
-        NULL,
 };
 
-static const char* RAW_PREROUTING[] = {
+static const std::vector<const char*> RAW_PREROUTING = {
         BandwidthController::LOCAL_RAW_PREROUTING,
         IdletimerController::LOCAL_RAW_PREROUTING,
         NatController::LOCAL_RAW_PREROUTING,
-        NULL,
 };
 
-static const char* MANGLE_POSTROUTING[] = {
+static const std::vector<const char*> MANGLE_POSTROUTING = {
         OEM_IPTABLES_MANGLE_POSTROUTING,
         BandwidthController::LOCAL_MANGLE_POSTROUTING,
         IdletimerController::LOCAL_MANGLE_POSTROUTING,
-        NULL,
 };
 
-static const char* MANGLE_INPUT[] = {
+static const std::vector<const char*> MANGLE_INPUT = {
         WakeupController::LOCAL_MANGLE_INPUT,
         RouteController::LOCAL_MANGLE_INPUT,
-        NULL,
 };
 
-static const char* MANGLE_FORWARD[] = {
+static const std::vector<const char*> MANGLE_FORWARD = {
         NatController::LOCAL_MANGLE_FORWARD,
-        NULL,
 };
 
-static const char* NAT_PREROUTING[] = {
+static const std::vector<const char*> NAT_PREROUTING = {
         OEM_IPTABLES_NAT_PREROUTING,
-        NULL,
 };
 
-static const char* NAT_POSTROUTING[] = {
+static const std::vector<const char*> NAT_POSTROUTING = {
         NatController::LOCAL_NAT_POSTROUTING,
-        NULL,
 };
+
+// Commands to create child chains and to match created chains in iptables -S output. Keep in sync.
+static const char* CHILD_CHAIN_TEMPLATE = "-A %s -j %s\n";
+static const std::regex CHILD_CHAIN_REGEX("^-A ([^ ]+) -j ([^ ]+)$",
+                                          std::regex_constants::extended);
 
 }  // namespace
 
 /* static */
+std::set<std::string> Controllers::findExistingChildChains(const IptablesTarget target,
+                                                           const char* table,
+                                                           const char* parentChain) {
+    if (target == V4V6) {
+        ALOGE("findExistingChildChains only supports one protocol at a time");
+        abort();
+    }
+
+    std::set<std::string> existing;
+
+    // List the current contents of parentChain.
+    //
+    // TODO: there is no guarantee that nothing else modifies the chain in the few milliseconds
+    // between when we list the existing rules and when we delete them. However:
+    // - Since this code is only run on startup, nothing else in netd will be running.
+    // - While vendor code is known to add its own rules to chains created by netd, it should never
+    //   be modifying the rules in childChains or the rules that hook said chains into their parent
+    //   chains.
+    std::string command = StringPrintf("*%s\n-S %s\nCOMMIT\n", table, parentChain);
+    std::string output;
+    if (Controllers::execIptablesRestoreWithOutput(target, command, &output) == -1) {
+        ALOGE("Error listing chain %s in table %s\n", parentChain, table);
+        return existing;
+    }
+
+    // The only rules added by createChildChains are of the simple form "-A <parent> -j <child>".
+    // Find those rules and add each one's child chain to existing.
+    std::smatch matches;
+    std::stringstream stream(output);
+    std::string rule;
+    while (std::getline(stream, rule, '\n')) {
+        if (std::regex_search(rule, matches, CHILD_CHAIN_REGEX) && matches[1] == parentChain) {
+            existing.insert(matches[2]);
+        }
+    }
+
+    return existing;
+}
+
+/* static */
 void Controllers::createChildChains(IptablesTarget target, const char* table,
                                     const char* parentChain,
-                                    const char** childChains,
+                                    const std::vector<const char*>& childChains,
                                     bool exclusive) {
-    std::string command = android::base::StringPrintf("*%s\n", table);
+    std::string command = StringPrintf("*%s\n", table);
 
-    // If we're the exclusive owner of this chain, clear it entirely. This saves us from having to
-    // run one execIptablesSilently command to delete each child chain. We can't use -D in
-    // iptables-restore because it's a fatal error if the rule doesn't exist.
+    // We cannot just clear all the chains we create because vendor code modifies filter OUTPUT and
+    // mangle POSTROUTING directly. So:
+    //
+    // - If we're the exclusive owner of this chain, simply clear it entirely.
+    // - If not, then list the chain's current contents to ensure that if we restart after a crash,
+    //   we leave the existing rules alone in the positions they currently occupy. This is faster
+    //   than blindly deleting our rules and recreating them, because deleting a rule that doesn't
+    //   exists causes iptables-restore to quit, which takes ~30ms per delete. It's also more
+    //   correct, because if we delete rules and re-add them, they'll be in the wrong position with
+    //   regards to the vendor rules.
+    //
     // TODO: Make all chains exclusive once vendor code uses the oem_* rules.
+    std::set<std::string> existingChildChains;
     if (exclusive) {
         // Just running ":chain -" flushes user-defined chains, but not built-in chains like INPUT.
         // Since at this point we don't know if parentChain is a built-in chain, do both.
-        command += android::base::StringPrintf(":%s -\n", parentChain);
-        command += android::base::StringPrintf("-F %s\n", parentChain);
+        StringAppendF(&command, ":%s -\n", parentChain);
+        StringAppendF(&command, "-F %s\n", parentChain);
+    } else {
+        existingChildChains = findExistingChildChains(target, table, parentChain);
     }
 
-    const char** childChain = childChains;
-    do {
-        if (!exclusive) {
-            execIptablesSilently(target, "-t", table, "-D", parentChain, "-j", *childChain, NULL);
+    for (const auto& childChain : childChains) {
+        // Always clear the child chain.
+        StringAppendF(&command, ":%s -\n", childChain);
+        // But only add it to the parent chain if it's not already there.
+        if (existingChildChains.find(childChain) == existingChildChains.end()) {
+            StringAppendF(&command, CHILD_CHAIN_TEMPLATE, parentChain, childChain);
         }
-        command += android::base::StringPrintf(":%s -\n", *childChain);
-        command += android::base::StringPrintf("-A %s -j %s\n", parentChain, *childChain);
-    } while (*(++childChain) != NULL);
+    }
     command += "COMMIT\n";
     execIptablesRestore(target, command);
 }
@@ -163,10 +220,10 @@ void Controllers::initChildChains() {
     createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING, true);
     createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING, true);
 
-    // We cannot use createChildChainsFast for all chains because vendor code modifies filter OUTPUT
-    // and mangle POSTROUTING directly.
-    createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT, false);
-    createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
+    createChildChains(V4, "filter", "OUTPUT", FILTER_OUTPUT, false);
+    createChildChains(V6, "filter", "OUTPUT", FILTER_OUTPUT, false);
+    createChildChains(V4, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
+    createChildChains(V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
 }
 
 void Controllers::initIptablesRules() {
