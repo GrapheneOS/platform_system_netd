@@ -24,9 +24,10 @@ LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
 LOCAL_CFLAGS += -Wno-varargs
 
 EXTRA_LDLIBS := -lpthread
-LOCAL_SHARED_LIBRARIES += libbase libbinder libcrypto libcutils liblog liblogwrap libnetdaidl \
-                          libnetd_client libnetutils libssl libutils libnetdutils
-LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder
+LOCAL_SHARED_LIBRARIES += libbase libbinder libcrypto libcutils liblog \
+                          libnetd_client libnetutils libssl libutils
+LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder liblogwrap libnetdaidl_static \
+                          libnetdutils
 LOCAL_AIDL_INCLUDES := system/netd/server/binder
 LOCAL_C_INCLUDES += system/netd/include system/netd/binder/include \
                     system/netd/server system/core/logwrapper/include \
