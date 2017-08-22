@@ -21,7 +21,7 @@ include $(CLEAR_VARS)
 
 LOCAL_CFLAGS := -Wall -Werror
 LOCAL_SANITIZE := unsigned-integer-overflow
-LOCAL_MODULE := libnetdaidl
+LOCAL_MODULE := libnetdaidl_static
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
         libutils
@@ -31,6 +31,19 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/binder
 LOCAL_SRC_FILES := \
         binder/android/net/INetd.aidl \
         binder/android/net/UidRange.cpp
+
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_CFLAGS := -Wall -Werror
+LOCAL_SANITIZE := unsigned-integer-overflow
+LOCAL_MODULE := libnetdaidl
+LOCAL_SHARED_LIBRARIES := \
+        libbinder \
+        libutils
+LOCAL_WHOLE_STATIC_LIBRARIES := libnetdaidl_static
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/binder
 
 include $(BUILD_SHARED_LIBRARY)
 
