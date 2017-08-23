@@ -98,6 +98,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             const std::string& cryptAlgo,
             const std::vector<uint8_t>& cryptKey,
             int32_t cryptTruncBits,
+            const std::string& aeadAlgo,
+            const std::vector<uint8_t>& aeadKey,
+            int32_t aeadIcvBits,
             int32_t encapType,
             int32_t encapLocalPort,
             int32_t encapRemotePort);
