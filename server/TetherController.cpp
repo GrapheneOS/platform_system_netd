@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <netdb.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <sys/socket.h>
@@ -29,6 +30,8 @@
 #include <arpa/inet.h>
 
 #define LOG_TAG "TetherController"
+#include <android-base/strings.h>
+#include <android-base/stringprintf.h>
 #include <cutils/log.h>
 #include <cutils/properties.h>
 
@@ -37,7 +40,12 @@
 #include "Permission.h"
 #include "InterfaceController.h"
 #include "NetworkController.h"
+#include "ResponseCode.h"
 #include "TetherController.h"
+
+using android::base::Join;
+using android::base::StringPrintf;
+using android::base::StringAppendF;
 
 namespace {
 
@@ -90,6 +98,15 @@ bool inBpToolsMode() {
 namespace android {
 namespace net {
 
+auto TetherController::iptablesRestoreFunction = execIptablesRestoreWithOutput;
+
+const int MAX_IPT_OUTPUT_LINE_LEN = 256;
+
+const std::string GET_TETHER_STATS_COMMAND = StringPrintf(
+    "*filter\n"
+    "-nvx -L %s\n"
+    "COMMIT\n", android::net::TetherController::LOCAL_TETHER_COUNTERS_CHAIN);
+
 TetherController::TetherController() {
     mDnsNetId = 0;
     mDaemonFd = -1;
@@ -105,6 +122,7 @@ TetherController::~TetherController() {
     mInterfaces.clear();
     mDnsForwarders.clear();
     mForwardingRequests.clear();
+    ifacePairList.clear();
 }
 
 bool TetherController::setIpFwdEnabled() {
@@ -369,6 +387,400 @@ int TetherController::untetherInterface(const char *interface) {
 
 const std::list<std::string> &TetherController::getTetheredInterfaceList() const {
     return mInterfaces;
+}
+
+int TetherController::setupIptablesHooks() {
+    int res;
+    res = setDefaults();
+    if (res < 0) {
+        return res;
+    }
+
+    // Used to limit downstream mss to the upstream pmtu so we don't end up fragmenting every large
+    // packet tethered devices send. This is IPv4-only, because in IPv6 we send the MTU in the RA.
+    // This is no longer optional and tethering will fail to start if it fails.
+    std::string mssRewriteCommand = StringPrintf(
+        "*mangle\n"
+        "-A %s -p tcp --tcp-flags SYN SYN -j TCPMSS --clamp-mss-to-pmtu\n"
+        "COMMIT\n", LOCAL_MANGLE_FORWARD);
+
+    // This is for tethering counters. This chain is reached via --goto, and then RETURNS.
+    std::string defaultCommands = StringPrintf(
+        "*filter\n"
+        ":%s -\n"
+        "COMMIT\n", LOCAL_TETHER_COUNTERS_CHAIN);
+
+    res = iptablesRestoreFunction(V4, mssRewriteCommand, nullptr);
+    if (res < 0) {
+        return res;
+    }
+
+    res = iptablesRestoreFunction(V4V6, defaultCommands, nullptr);
+    if (res < 0) {
+        return res;
+    }
+
+    ifacePairList.clear();
+
+    return 0;
+}
+
+int TetherController::setDefaults() {
+    std::string v4Cmd = StringPrintf(
+        "*filter\n"
+        ":%s -\n"
+        "-A %s -j DROP\n"
+        "COMMIT\n"
+        "*nat\n"
+        ":%s -\n"
+        "COMMIT\n", LOCAL_FORWARD, LOCAL_FORWARD, LOCAL_NAT_POSTROUTING);
+
+    std::string v6Cmd = StringPrintf(
+        "*filter\n"
+        ":%s -\n"
+        "COMMIT\n"
+        "*raw\n"
+        ":%s -\n"
+        "COMMIT\n", LOCAL_FORWARD, LOCAL_RAW_PREROUTING);
+
+    int res = iptablesRestoreFunction(V4, v4Cmd, nullptr);
+    if (res < 0) {
+        return res;
+    }
+
+    res = iptablesRestoreFunction(V6, v6Cmd, nullptr);
+    if (res < 0) {
+        return res;
+    }
+
+    natCount = 0;
+
+    return 0;
+}
+
+int TetherController::enableNat(const char* intIface, const char* extIface) {
+    ALOGV("enableNat(intIface=<%s>, extIface=<%s>)",intIface, extIface);
+
+    if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
+        errno = ENODEV;
+        return -1;
+    }
+
+    /* Bug: b/9565268. "enableNat wlan0 wlan0". For now we fail until java-land is fixed */
+    if (!strcmp(intIface, extIface)) {
+        ALOGE("Duplicate interface specified: %s %s", intIface, extIface);
+        errno = EINVAL;
+        return -1;
+    }
+
+    // add this if we are the first added nat
+    if (natCount == 0) {
+        std::vector<std::string> v4Cmds = {
+            "*nat",
+            StringPrintf("-A %s -o %s -j MASQUERADE", LOCAL_NAT_POSTROUTING, extIface),
+            "COMMIT\n"
+        };
+
+        /*
+         * IPv6 tethering doesn't need the state-based conntrack rules, so
+         * it unconditionally jumps to the tether counters chain all the time.
+         */
+        std::vector<std::string> v6Cmds = {
+            "*filter",
+            StringPrintf("-A %s -g %s", LOCAL_FORWARD, LOCAL_TETHER_COUNTERS_CHAIN),
+            "COMMIT\n"
+        };
+
+        if (iptablesRestoreFunction(V4, Join(v4Cmds, '\n'), nullptr) ||
+            iptablesRestoreFunction(V6, Join(v6Cmds, '\n'), nullptr)) {
+            ALOGE("Error setting postroute rule: iface=%s", extIface);
+            // unwind what's been done, but don't care about success - what more could we do?
+            setDefaults();
+            return -1;
+        }
+    }
+
+    if (setForwardRules(true, intIface, extIface) != 0) {
+        ALOGE("Error setting forward rules");
+        if (natCount == 0) {
+            setDefaults();
+        }
+        errno = ENODEV;
+        return -1;
+    }
+
+    natCount++;
+    return 0;
+}
+
+bool TetherController::checkTetherCountingRuleExist(const std::string& pair_name) {
+    return std::find(ifacePairList.begin(), ifacePairList.end(), pair_name) != ifacePairList.end();
+}
+
+/* static */
+std::string TetherController::makeTetherCountingRule(const char *if1, const char *if2) {
+    return StringPrintf("-A %s -i %s -o %s -j RETURN", LOCAL_TETHER_COUNTERS_CHAIN, if1, if2);
+}
+
+int TetherController::setForwardRules(bool add, const char *intIface, const char *extIface) {
+    const char *op = add ? "-A" : "-D";
+
+    std::string rpfilterCmd = StringPrintf(
+        "*raw\n"
+        "%s %s -i %s -m rpfilter --invert ! -s fe80::/64 -j DROP\n"
+        "COMMIT\n", op, LOCAL_RAW_PREROUTING, intIface);
+    if (iptablesRestoreFunction(V6, rpfilterCmd, nullptr) == -1 && add) {
+        return -1;
+    }
+
+    std::vector<std::string> v4 = {
+        "*filter",
+        StringPrintf("%s %s -i %s -o %s -m state --state ESTABLISHED,RELATED -g %s",
+                     op, LOCAL_FORWARD, extIface, intIface, LOCAL_TETHER_COUNTERS_CHAIN),
+        StringPrintf("%s %s -i %s -o %s -m state --state INVALID -j DROP",
+                     op, LOCAL_FORWARD, intIface, extIface),
+        StringPrintf("%s %s -i %s -o %s -g %s",
+                     op, LOCAL_FORWARD, intIface, extIface, LOCAL_TETHER_COUNTERS_CHAIN),
+    };
+
+    std::vector<std::string> v6 = {
+        "*filter",
+    };
+
+    /* We only ever add tethering quota rules so that they stick. */
+    std::string pair1 = StringPrintf("%s_%s", intIface, extIface);
+    if (add && !checkTetherCountingRuleExist(pair1)) {
+        v4.push_back(makeTetherCountingRule(intIface, extIface));
+        v6.push_back(makeTetherCountingRule(intIface, extIface));
+    }
+    std::string pair2 = StringPrintf("%s_%s", extIface, intIface);
+    if (add && !checkTetherCountingRuleExist(pair2)) {
+        v4.push_back(makeTetherCountingRule(extIface, intIface));
+        v6.push_back(makeTetherCountingRule(extIface, intIface));
+    }
+
+    // Always make sure the drop rule is at the end.
+    // TODO: instead of doing this, consider just rebuilding LOCAL_FORWARD completely from scratch
+    // every time, starting with ":natctrl_FORWARD -\n". This method would likely be a bit simpler.
+    if (add) {
+        v4.push_back(StringPrintf("-D %s -j DROP", LOCAL_FORWARD));
+        v4.push_back(StringPrintf("-A %s -j DROP", LOCAL_FORWARD));
+    }
+
+    v4.push_back("COMMIT\n");
+    v6.push_back("COMMIT\n");
+
+    // We only add IPv6 rules here, never remove them.
+    if (iptablesRestoreFunction(V4, Join(v4, '\n'), nullptr) == -1 ||
+        (add && iptablesRestoreFunction(V6, Join(v6, '\n'), nullptr) == -1)) {
+        // unwind what's been done, but don't care about success - what more could we do?
+        if (add) {
+            setForwardRules(false, intIface, extIface);
+        }
+        return -1;
+    }
+
+    if (add && !checkTetherCountingRuleExist(pair1)) {
+        ifacePairList.push_front(pair1);
+    }
+    if (add && !checkTetherCountingRuleExist(pair2)) {
+        ifacePairList.push_front(pair2);
+    }
+
+    return 0;
+}
+
+int TetherController::disableNat(const char* intIface, const char* extIface) {
+    if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
+        errno = ENODEV;
+        return -1;
+    }
+
+    setForwardRules(false, intIface, extIface);
+    if (--natCount <= 0) {
+        // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
+        setDefaults();
+    }
+    return 0;
+}
+
+void TetherController::addStats(TetherStatsList& statsList, const TetherStats& stats) {
+    for (TetherStats& existing : statsList) {
+        if (existing.addStatsIfMatch(stats)) {
+            return;
+        }
+    }
+    // No match. Insert a new interface pair.
+    statsList.push_back(stats);
+}
+
+/*
+ * Parse the ptks and bytes out of:
+ *   Chain natctrl_tether_counters (4 references)
+ *       pkts      bytes target     prot opt in     out     source               destination
+ *         26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
+ *         27     2002 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0
+ *       1040   107471 RETURN     all  --  bt-pan rmnet0  0.0.0.0/0            0.0.0.0/0
+ *       1450  1708806 RETURN     all  --  rmnet0 bt-pan  0.0.0.0/0            0.0.0.0/0
+ * or:
+ *   Chain natctrl_tether_counters (0 references)
+ *       pkts      bytes target     prot opt in     out     source               destination
+ *          0        0 RETURN     all      wlan0  rmnet_data0  ::/0                 ::/0
+ *          0        0 RETURN     all      rmnet_data0 wlan0   ::/0                 ::/0
+ *
+ * It results in an error if invoked and no tethering counter rules exist. The constraint
+ * helps detect complete parsing failure.
+ */
+int TetherController::addForwardChainStats(const TetherStats& filter,
+                                           TetherStatsList& statsList,
+                                           const std::string& statsOutput,
+                                           std::string &extraProcessingInfo) {
+    int res;
+    std::string statsLine;
+    char iface0[MAX_IPT_OUTPUT_LINE_LEN];
+    char iface1[MAX_IPT_OUTPUT_LINE_LEN];
+    char rest[MAX_IPT_OUTPUT_LINE_LEN];
+
+    TetherStats stats;
+    const char *buffPtr;
+    int64_t packets, bytes;
+    int statsFound = 0;
+
+    bool filterPair = filter.intIface[0] && filter.extIface[0];
+
+    ALOGV("filter: %s",  filter.getStatsLine().c_str());
+
+    stats = filter;
+
+    std::stringstream stream(statsOutput);
+    while (std::getline(stream, statsLine, '\n')) {
+        buffPtr = statsLine.c_str();
+
+        /* Clean up, so a failed parse can still print info */
+        iface0[0] = iface1[0] = rest[0] = packets = bytes = 0;
+        if (strstr(buffPtr, "0.0.0.0")) {
+            // IPv4 has -- indicating what to do with fragments...
+            //       26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
+            res = sscanf(buffPtr, "%" SCNd64" %" SCNd64" RETURN all -- %s %s 0.%s",
+                    &packets, &bytes, iface0, iface1, rest);
+        } else {
+            // ... but IPv6 does not.
+            //       26     2373 RETURN     all      wlan0  rmnet0  ::/0                 ::/0
+            res = sscanf(buffPtr, "%" SCNd64" %" SCNd64" RETURN all %s %s ::/%s",
+                    &packets, &bytes, iface0, iface1, rest);
+        }
+        ALOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%" PRId64" bytes=%" PRId64" rest=<%s> orig line=<%s>", res,
+             iface0, iface1, packets, bytes, rest, buffPtr);
+        extraProcessingInfo += buffPtr;
+        extraProcessingInfo += "\n";
+
+        if (res != 5) {
+            continue;
+        }
+        /*
+         * The following assumes that the 1st rule has in:extIface out:intIface,
+         * which is what TetherController sets up.
+         * If not filtering, the 1st match rx, and sets up the pair for the tx side.
+         */
+        if (filter.intIface[0] && filter.extIface[0]) {
+            if (filter.intIface == iface0 && filter.extIface == iface1) {
+                ALOGV("2Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+                stats.rxPackets = packets;
+                stats.rxBytes = bytes;
+            } else if (filter.intIface == iface1 && filter.extIface == iface0) {
+                ALOGV("2Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+                stats.txPackets = packets;
+                stats.txBytes = bytes;
+            }
+        } else if (filter.intIface[0] || filter.extIface[0]) {
+            if (filter.intIface == iface0 || filter.extIface == iface1) {
+                ALOGV("1Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+                stats.intIface = iface0;
+                stats.extIface = iface1;
+                stats.rxPackets = packets;
+                stats.rxBytes = bytes;
+            } else if (filter.intIface == iface1 || filter.extIface == iface0) {
+                ALOGV("1Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+                stats.intIface = iface1;
+                stats.extIface = iface0;
+                stats.txPackets = packets;
+                stats.txBytes = bytes;
+            }
+        } else /* if (!filter.intFace[0] && !filter.extIface[0]) */ {
+            if (!stats.intIface[0]) {
+                ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+                stats.intIface = iface0;
+                stats.extIface = iface1;
+                stats.rxPackets = packets;
+                stats.rxBytes = bytes;
+            } else if (stats.intIface == iface1 && stats.extIface == iface0) {
+                ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+                stats.txPackets = packets;
+                stats.txBytes = bytes;
+            }
+        }
+        if (stats.rxBytes != -1 && stats.txBytes != -1) {
+            ALOGV("rx_bytes=%" PRId64" tx_bytes=%" PRId64" filterPair=%d", stats.rxBytes, stats.txBytes, filterPair);
+            addStats(statsList, stats);
+            if (filterPair) {
+                return 0;
+            } else {
+                statsFound++;
+                stats = filter;
+            }
+        }
+    }
+
+    /* It is always an error to find only one side of the stats. */
+    /* It is an error to find nothing when not filtering. */
+    if (((stats.rxBytes == -1) != (stats.txBytes == -1)) ||
+        (!statsFound && !filterPair)) {
+        return -1;
+    }
+    return 0;
+}
+
+std::string TetherController::TetherStats::getStatsLine() const {
+    std::string msg;
+    StringAppendF(&msg, "%s %s %" PRId64" %" PRId64" %" PRId64" %" PRId64, intIface.c_str(),
+                  extIface.c_str(), rxBytes, rxPackets, txBytes, txPackets);
+    return msg;
+}
+
+int TetherController::getTetherStats(SocketClient *cli, TetherStats& filter,
+                                        std::string &extraProcessingInfo) {
+    int res = 0;
+
+    TetherStatsList statsList;
+
+    for (const IptablesTarget target : {V4, V6}) {
+        std::string statsString;
+        res = iptablesRestoreFunction(target, GET_TETHER_STATS_COMMAND, &statsString);
+        if (res != 0) {
+            ALOGE("Failed to run %s err=%d", GET_TETHER_STATS_COMMAND.c_str(), res);
+            return -1;
+        }
+
+        res = addForwardChainStats(filter, statsList, statsString, extraProcessingInfo);
+        if (res != 0) {
+            return res;
+        }
+    }
+
+    if (filter.intIface[0] && filter.extIface[0] && statsList.size() == 1) {
+        cli->sendMsg(ResponseCode::TetheringStatsResult,
+                     statsList[0].getStatsLine().c_str(), false);
+    } else {
+        for (const auto& stats: statsList) {
+            cli->sendMsg(ResponseCode::TetheringStatsListResult,
+                         stats.getStatsLine().c_str(), false);
+        }
+        if (res == 0) {
+            cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
+        }
+    }
+
+    return res;
 }
 
 }  // namespace net
