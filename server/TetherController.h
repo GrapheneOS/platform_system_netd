@@ -138,11 +138,11 @@ public:
                                     TetherStatsList& statsList, const std::string& iptOutput,
                                     std::string &extraProcessingInfo);
 
-    static constexpr const char* LOCAL_FORWARD               = "natctrl_FORWARD";
-    static constexpr const char* LOCAL_MANGLE_FORWARD        = "natctrl_mangle_FORWARD";
-    static constexpr const char* LOCAL_NAT_POSTROUTING       = "natctrl_nat_POSTROUTING";
-    static constexpr const char* LOCAL_RAW_PREROUTING        = "natctrl_raw_PREROUTING";
-    static constexpr const char* LOCAL_TETHER_COUNTERS_CHAIN = "natctrl_tether_counters";
+    static constexpr const char* LOCAL_FORWARD               = "tetherctrl_FORWARD";
+    static constexpr const char* LOCAL_MANGLE_FORWARD        = "tetherctrl_mangle_FORWARD";
+    static constexpr const char* LOCAL_NAT_POSTROUTING       = "tetherctrl_nat_POSTROUTING";
+    static constexpr const char* LOCAL_RAW_PREROUTING        = "tetherctrl_raw_PREROUTING";
+    static constexpr const char* LOCAL_TETHER_COUNTERS_CHAIN = "tetherctrl_counters";
 
 private:
     bool setIpFwdEnabled();

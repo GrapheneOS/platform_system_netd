@@ -53,51 +53,51 @@ protected:
 
     const ExpectedIptablesCommands FLUSH_COMMANDS = {
         { V4,   "*filter\n"
-                ":natctrl_FORWARD -\n"
-                "-A natctrl_FORWARD -j DROP\n"
+                ":tetherctrl_FORWARD -\n"
+                "-A tetherctrl_FORWARD -j DROP\n"
                 "COMMIT\n"
                 "*nat\n"
-                ":natctrl_nat_POSTROUTING -\n"
+                ":tetherctrl_nat_POSTROUTING -\n"
                 "COMMIT\n" },
         { V6,   "*filter\n"
-                ":natctrl_FORWARD -\n"
+                ":tetherctrl_FORWARD -\n"
                 "COMMIT\n"
                 "*raw\n"
-                ":natctrl_raw_PREROUTING -\n"
+                ":tetherctrl_raw_PREROUTING -\n"
                 "COMMIT\n" },
     };
 
     const ExpectedIptablesCommands SETUP_COMMANDS = {
         { V4,   "*filter\n"
-                ":natctrl_FORWARD -\n"
-                "-A natctrl_FORWARD -j DROP\n"
+                ":tetherctrl_FORWARD -\n"
+                "-A tetherctrl_FORWARD -j DROP\n"
                 "COMMIT\n"
                 "*nat\n"
-                ":natctrl_nat_POSTROUTING -\n"
+                ":tetherctrl_nat_POSTROUTING -\n"
                 "COMMIT\n" },
         { V6,   "*filter\n"
-                ":natctrl_FORWARD -\n"
+                ":tetherctrl_FORWARD -\n"
                 "COMMIT\n"
                 "*raw\n"
-                ":natctrl_raw_PREROUTING -\n"
+                ":tetherctrl_raw_PREROUTING -\n"
                 "COMMIT\n" },
         { V4,   "*mangle\n"
-                "-A natctrl_mangle_FORWARD -p tcp --tcp-flags SYN SYN "
+                "-A tetherctrl_mangle_FORWARD -p tcp --tcp-flags SYN SYN "
                     "-j TCPMSS --clamp-mss-to-pmtu\n"
                 "COMMIT\n" },
         { V4V6, "*filter\n"
-                ":natctrl_tether_counters -\n"
+                ":tetherctrl_counters -\n"
                 "COMMIT\n" },
     };
 
     ExpectedIptablesCommands firstNatCommands(const char *extIf) {
         std::string v4Cmd = StringPrintf(
             "*nat\n"
-            "-A natctrl_nat_POSTROUTING -o %s -j MASQUERADE\n"
+            "-A tetherctrl_nat_POSTROUTING -o %s -j MASQUERADE\n"
             "COMMIT\n", extIf);
         std::string v6Cmd =
             "*filter\n"
-            "-A natctrl_FORWARD -g natctrl_tether_counters\n"
+            "-A tetherctrl_FORWARD -g tetherctrl_counters\n"
             "COMMIT\n";
         return {
             { V4, v4Cmd },
@@ -108,28 +108,28 @@ protected:
     ExpectedIptablesCommands startNatCommands(const char *intIf, const char *extIf) {
         std::string rpfilterCmd = StringPrintf(
             "*raw\n"
-            "-A natctrl_raw_PREROUTING -i %s -m rpfilter --invert ! -s fe80::/64 -j DROP\n"
+            "-A tetherctrl_raw_PREROUTING -i %s -m rpfilter --invert ! -s fe80::/64 -j DROP\n"
             "COMMIT\n", intIf);
 
         std::vector<std::string> v4Cmds = {
             "*filter",
-            StringPrintf("-A natctrl_FORWARD -i %s -o %s -m state --state"
-                         " ESTABLISHED,RELATED -g natctrl_tether_counters", extIf, intIf),
-            StringPrintf("-A natctrl_FORWARD -i %s -o %s -m state --state INVALID -j DROP",
+            StringPrintf("-A tetherctrl_FORWARD -i %s -o %s -m state --state"
+                         " ESTABLISHED,RELATED -g tetherctrl_counters", extIf, intIf),
+            StringPrintf("-A tetherctrl_FORWARD -i %s -o %s -m state --state INVALID -j DROP",
                          intIf, extIf),
-            StringPrintf("-A natctrl_FORWARD -i %s -o %s -g natctrl_tether_counters",
+            StringPrintf("-A tetherctrl_FORWARD -i %s -o %s -g tetherctrl_counters",
                          intIf, extIf),
-            StringPrintf("-A natctrl_tether_counters -i %s -o %s -j RETURN", intIf, extIf),
-            StringPrintf("-A natctrl_tether_counters -i %s -o %s -j RETURN", extIf, intIf),
-            "-D natctrl_FORWARD -j DROP",
-            "-A natctrl_FORWARD -j DROP",
+            StringPrintf("-A tetherctrl_counters -i %s -o %s -j RETURN", intIf, extIf),
+            StringPrintf("-A tetherctrl_counters -i %s -o %s -j RETURN", extIf, intIf),
+            "-D tetherctrl_FORWARD -j DROP",
+            "-A tetherctrl_FORWARD -j DROP",
             "COMMIT\n",
         };
 
         std::vector<std::string> v6Cmds = {
             "*filter",
-            StringPrintf("-A natctrl_tether_counters -i %s -o %s -j RETURN", intIf, extIf),
-            StringPrintf("-A natctrl_tether_counters -i %s -o %s -j RETURN", extIf, intIf),
+            StringPrintf("-A tetherctrl_counters -i %s -o %s -j RETURN", intIf, extIf),
+            StringPrintf("-A tetherctrl_counters -i %s -o %s -j RETURN", extIf, intIf),
             "COMMIT\n",
         };
 
@@ -143,16 +143,16 @@ protected:
     ExpectedIptablesCommands stopNatCommands(const char *intIf, const char *extIf) {
         std::string rpfilterCmd = StringPrintf(
             "*raw\n"
-            "-D natctrl_raw_PREROUTING -i %s -m rpfilter --invert ! -s fe80::/64 -j DROP\n"
+            "-D tetherctrl_raw_PREROUTING -i %s -m rpfilter --invert ! -s fe80::/64 -j DROP\n"
             "COMMIT\n", intIf);
 
         std::vector<std::string> v4Cmds = {
             "*filter",
-            StringPrintf("-D natctrl_FORWARD -i %s -o %s -m state --state"
-                         " ESTABLISHED,RELATED -g natctrl_tether_counters", extIf, intIf),
-            StringPrintf("-D natctrl_FORWARD -i %s -o %s -m state --state INVALID -j DROP",
+            StringPrintf("-D tetherctrl_FORWARD -i %s -o %s -m state --state"
+                         " ESTABLISHED,RELATED -g tetherctrl_counters", extIf, intIf),
+            StringPrintf("-D tetherctrl_FORWARD -i %s -o %s -m state --state INVALID -j DROP",
                          intIf, extIf),
-            StringPrintf("-D natctrl_FORWARD -i %s -o %s -g natctrl_tether_counters",
+            StringPrintf("-D tetherctrl_FORWARD -i %s -o %s -g tetherctrl_counters",
                          intIf, extIf),
             "COMMIT\n",
         };
@@ -199,12 +199,12 @@ TEST_F(TetherControllerTest, TestAddAndRemoveNat) {
 }
 
 std::string kTetherCounterHeaders = Join(std::vector<std::string> {
-    "Chain natctrl_tether_counters (4 references)",
+    "Chain tetherctrl_counters (4 references)",
     "    pkts      bytes target     prot opt in     out     source               destination",
 }, '\n');
 
 std::string kIPv4TetherCounters = Join(std::vector<std::string> {
-    "Chain natctrl_tether_counters (4 references)",
+    "Chain tetherctrl_counters (4 references)",
     "    pkts      bytes target     prot opt in     out     source               destination",
     "      26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0",
     "      27     2002 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0",
@@ -213,7 +213,7 @@ std::string kIPv4TetherCounters = Join(std::vector<std::string> {
 }, '\n');
 
 std::string kIPv6TetherCounters = Join(std::vector<std::string> {
-    "Chain natctrl_tether_counters (2 references)",
+    "Chain tetherctrl_counters (2 references)",
     "    pkts      bytes target     prot opt in     out     source               destination",
     "   10000 10000000 RETURN     all      wlan0  rmnet0  ::/0                 ::/0",
     "   20000 20000000 RETURN     all      rmnet0 wlan0   ::/0                 ::/0",

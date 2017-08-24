@@ -561,7 +561,7 @@ int TetherController::setForwardRules(bool add, const char *intIface, const char
 
     // Always make sure the drop rule is at the end.
     // TODO: instead of doing this, consider just rebuilding LOCAL_FORWARD completely from scratch
-    // every time, starting with ":natctrl_FORWARD -\n". This method would likely be a bit simpler.
+    // every time, starting with ":tetherctrl_FORWARD -\n". This would likely be a bit simpler.
     if (add) {
         v4.push_back(StringPrintf("-D %s -j DROP", LOCAL_FORWARD));
         v4.push_back(StringPrintf("-A %s -j DROP", LOCAL_FORWARD));
@@ -616,14 +616,14 @@ void TetherController::addStats(TetherStatsList& statsList, const TetherStats& s
 
 /*
  * Parse the ptks and bytes out of:
- *   Chain natctrl_tether_counters (4 references)
+ *   Chain tetherctrl_counters (4 references)
  *       pkts      bytes target     prot opt in     out     source               destination
  *         26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
  *         27     2002 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0
  *       1040   107471 RETURN     all  --  bt-pan rmnet0  0.0.0.0/0            0.0.0.0/0
  *       1450  1708806 RETURN     all  --  rmnet0 bt-pan  0.0.0.0/0            0.0.0.0/0
  * or:
- *   Chain natctrl_tether_counters (0 references)
+ *   Chain tetherctrl_counters (0 references)
  *       pkts      bytes target     prot opt in     out     source               destination
  *          0        0 RETURN     all      wlan0  rmnet_data0  ::/0                 ::/0
  *          0        0 RETURN     all      rmnet_data0 wlan0   ::/0                 ::/0
