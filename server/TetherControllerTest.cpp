@@ -198,6 +198,11 @@ TEST_F(TetherControllerTest, TestAddAndRemoveNat) {
     expectIptablesRestoreCommands(expected);
 }
 
+std::string kTetherCounterHeaders = Join(std::vector<std::string> {
+    "Chain natctrl_tether_counters (4 references)",
+    "    pkts      bytes target     prot opt in     out     source               destination",
+}, '\n');
+
 std::string kIPv4TetherCounters = Join(std::vector<std::string> {
     "Chain natctrl_tether_counters (4 references)",
     "    pkts      bytes target     prot opt in     out     source               destination",
@@ -228,7 +233,7 @@ std::string readSocketClientResponse(int fd) {
 
 void expectNoSocketClientResponse(int fd) {
     char buf[64];
-    EXPECT_EQ(-1, read(fd, buf, sizeof(buf)));
+    EXPECT_EQ(-1, read(fd, buf, sizeof(buf))) << "Unexpected response: " << buf << "\n";
 }
 
 TEST_F(TetherControllerTest, TestGetTetherStats) {
@@ -239,74 +244,36 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
     SocketClient cli(socketPair[0], false);
 
     std::string err;
-    TetherController::TetherStats filter;
 
     // If no filter is specified, both IPv4 and IPv6 counters must have at least one interface pair.
     addIptablesRestoreOutput(kIPv4TetherCounters);
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, filter, err));
+    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, err));
     expectNoSocketClientResponse(socketPair[1]);
     clearIptablesRestoreOutput();
 
     addIptablesRestoreOutput(kIPv6TetherCounters);
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, filter, err));
+    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, err));
     clearIptablesRestoreOutput();
 
     // IPv4 and IPv6 counters are properly added together.
     addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
-    filter = TetherController::TetherStats();
     std::string expected =
             "114 wlan0 rmnet0 10002373 10026 20002002 20027\n"
             "114 bt-pan rmnet0 107471 1040 1708806 1450\n"
             "200 Tethering stats list completed\n";
-    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, filter, err));
+    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
     expectNoSocketClientResponse(socketPair[1]);
     clearIptablesRestoreOutput();
 
-    // Test filtering.
-    addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
-    filter = TetherController::TetherStats("bt-pan", "rmnet0", -1, -1, -1, -1);
-    expected = "221 bt-pan rmnet0 107471 1040 1708806 1450\n";
-    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, filter, err));
-    ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
-    expectNoSocketClientResponse(socketPair[1]);
-    clearIptablesRestoreOutput();
-
-    addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
-    filter = TetherController::TetherStats("wlan0", "rmnet0", -1, -1, -1, -1);
-    expected = "221 wlan0 rmnet0 10002373 10026 20002002 20027\n";
-    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, filter, err));
-    ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
-    clearIptablesRestoreOutput();
-
-    // Select nonexistent interfaces.
-    addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
-    filter = TetherController::TetherStats("rmnet0", "foo0", -1, -1, -1, -1);
-    expected = "200 Tethering stats list completed\n";
-    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, filter, err));
-    ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
-    clearIptablesRestoreOutput();
-
-    // No stats with a filter: no error.
-    addIptablesRestoreOutput("", "");
-    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, filter, err));
-    ASSERT_EQ("200 Tethering stats list completed\n", readSocketClientResponse(socketPair[1]));
-    clearIptablesRestoreOutput();
-
-    addIptablesRestoreOutput("foo", "foo");
-    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, filter, err));
-    ASSERT_EQ("200 Tethering stats list completed\n", readSocketClientResponse(socketPair[1]));
-    clearIptablesRestoreOutput();
-
-    // No stats and empty filter: error.
-    filter = TetherController::TetherStats();
+    // No stats: error.
     addIptablesRestoreOutput("", kIPv6TetherCounters);
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, filter, err));
+    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, err));
     expectNoSocketClientResponse(socketPair[1]);
     clearIptablesRestoreOutput();
 
     addIptablesRestoreOutput(kIPv4TetherCounters, "");
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, filter, err));
+    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, err));
     expectNoSocketClientResponse(socketPair[1]);
     clearIptablesRestoreOutput();
 
@@ -319,7 +286,7 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
     expected =
             "114 wlan0 rmnet0 4746 52 4004 54\n"
             "200 Tethering stats list completed\n";
-    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, filter, err));
+    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
     clearIptablesRestoreOutput();
 
@@ -328,7 +295,7 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
     counterLines.resize(3);
     counters = Join(counterLines, "\n") + "\n";
     addIptablesRestoreOutput(counters, counters);
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, filter, err));
+    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, err));
     expectNoSocketClientResponse(socketPair[1]);
     clearIptablesRestoreOutput();
 
@@ -336,15 +303,6 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
     // ignores.
     std::string expectedError = counters;
     EXPECT_EQ(expectedError, err);
-
-    addIptablesRestoreOutput(kIPv4TetherCounters);
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, filter, err));
-    expectNoSocketClientResponse(socketPair[1]);
-    clearIptablesRestoreOutput();
-    addIptablesRestoreOutput(kIPv6TetherCounters);
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, filter, err));
-    expectNoSocketClientResponse(socketPair[1]);
-    clearIptablesRestoreOutput();
 }
 
 }  // namespace net

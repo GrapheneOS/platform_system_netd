@@ -628,11 +628,8 @@ void TetherController::addStats(TetherStatsList& statsList, const TetherStats& s
  *          0        0 RETURN     all      wlan0  rmnet_data0  ::/0                 ::/0
  *          0        0 RETURN     all      rmnet_data0 wlan0   ::/0                 ::/0
  *
- * It results in an error if invoked and no tethering counter rules exist. The constraint
- * helps detect complete parsing failure.
  */
-int TetherController::addForwardChainStats(const TetherStats& filter,
-                                           TetherStatsList& statsList,
+int TetherController::addForwardChainStats(TetherStatsList& statsList,
                                            const std::string& statsOutput,
                                            std::string &extraProcessingInfo) {
     int res;
@@ -642,17 +639,23 @@ int TetherController::addForwardChainStats(const TetherStats& filter,
     char rest[MAX_IPT_OUTPUT_LINE_LEN];
 
     TetherStats stats;
+    const TetherStats empty;
     const char *buffPtr;
     int64_t packets, bytes;
     int statsFound = 0;
 
-    bool filterPair = filter.intIface[0] && filter.extIface[0];
-
-    ALOGV("filter: %s",  filter.getStatsLine().c_str());
-
-    stats = filter;
-
     std::stringstream stream(statsOutput);
+
+    // Skip headers.
+    for (int i = 0; i < 2; i++) {
+        std::getline(stream, statsLine, '\n');
+        extraProcessingInfo += statsLine + "\n";
+        if (statsLine.empty()) {
+            ALOGE("Empty header while parsing tethering stats");
+            return -1;
+        }
+    }
+
     while (std::getline(stream, statsLine, '\n')) {
         buffPtr = statsLine.c_str();
 
@@ -675,66 +678,34 @@ int TetherController::addForwardChainStats(const TetherStats& filter,
         extraProcessingInfo += "\n";
 
         if (res != 5) {
-            continue;
+            return -EREMOTEIO;
         }
         /*
          * The following assumes that the 1st rule has in:extIface out:intIface,
          * which is what TetherController sets up.
-         * If not filtering, the 1st match rx, and sets up the pair for the tx side.
+         * The 1st matches rx, and sets up the pair for the tx side.
          */
-        if (filter.intIface[0] && filter.extIface[0]) {
-            if (filter.intIface == iface0 && filter.extIface == iface1) {
-                ALOGV("2Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.rxPackets = packets;
-                stats.rxBytes = bytes;
-            } else if (filter.intIface == iface1 && filter.extIface == iface0) {
-                ALOGV("2Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.txPackets = packets;
-                stats.txBytes = bytes;
-            }
-        } else if (filter.intIface[0] || filter.extIface[0]) {
-            if (filter.intIface == iface0 || filter.extIface == iface1) {
-                ALOGV("1Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.intIface = iface0;
-                stats.extIface = iface1;
-                stats.rxPackets = packets;
-                stats.rxBytes = bytes;
-            } else if (filter.intIface == iface1 || filter.extIface == iface0) {
-                ALOGV("1Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.intIface = iface1;
-                stats.extIface = iface0;
-                stats.txPackets = packets;
-                stats.txBytes = bytes;
-            }
-        } else /* if (!filter.intFace[0] && !filter.extIface[0]) */ {
-            if (!stats.intIface[0]) {
-                ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.intIface = iface0;
-                stats.extIface = iface1;
-                stats.rxPackets = packets;
-                stats.rxBytes = bytes;
-            } else if (stats.intIface == iface1 && stats.extIface == iface0) {
-                ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.txPackets = packets;
-                stats.txBytes = bytes;
-            }
+        if (!stats.intIface[0]) {
+            ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+            stats.intIface = iface0;
+            stats.extIface = iface1;
+            stats.rxPackets = packets;
+            stats.rxBytes = bytes;
+        } else if (stats.intIface == iface1 && stats.extIface == iface0) {
+            ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+            stats.txPackets = packets;
+            stats.txBytes = bytes;
         }
         if (stats.rxBytes != -1 && stats.txBytes != -1) {
-            ALOGV("rx_bytes=%" PRId64" tx_bytes=%" PRId64" filterPair=%d", stats.rxBytes, stats.txBytes, filterPair);
+            ALOGV("rx_bytes=%" PRId64" tx_bytes=%" PRId64, stats.rxBytes, stats.txBytes);
             addStats(statsList, stats);
-            if (filterPair) {
-                return 0;
-            } else {
-                statsFound++;
-                stats = filter;
-            }
+            statsFound++;
+            stats = empty;
         }
     }
 
     /* It is always an error to find only one side of the stats. */
-    /* It is an error to find nothing when not filtering. */
-    if (((stats.rxBytes == -1) != (stats.txBytes == -1)) ||
-        (!statsFound && !filterPair)) {
+    if (((stats.rxBytes == -1) != (stats.txBytes == -1)) || !statsFound) {
         return -1;
     }
     return 0;
@@ -747,40 +718,28 @@ std::string TetherController::TetherStats::getStatsLine() const {
     return msg;
 }
 
-int TetherController::getTetherStats(SocketClient *cli, TetherStats& filter,
-                                        std::string &extraProcessingInfo) {
-    int res = 0;
-
+int TetherController::getTetherStats(SocketClient *cli, std::string &extraProcessingInfo) {
     TetherStatsList statsList;
 
     for (const IptablesTarget target : {V4, V6}) {
         std::string statsString;
-        res = iptablesRestoreFunction(target, GET_TETHER_STATS_COMMAND, &statsString);
-        if (res != 0) {
-            ALOGE("Failed to run %s err=%d", GET_TETHER_STATS_COMMAND.c_str(), res);
+        if (int ret = iptablesRestoreFunction(target, GET_TETHER_STATS_COMMAND, &statsString)) {
+            ALOGE("Failed to run %s err=%d", GET_TETHER_STATS_COMMAND.c_str(), ret);
             return -1;
         }
 
-        res = addForwardChainStats(filter, statsList, statsString, extraProcessingInfo);
-        if (res != 0) {
-            return res;
+        if (int ret = addForwardChainStats(statsList, statsString, extraProcessingInfo)) {
+            return ret;
         }
     }
 
-    if (filter.intIface[0] && filter.extIface[0] && statsList.size() == 1) {
-        cli->sendMsg(ResponseCode::TetheringStatsResult,
-                     statsList[0].getStatsLine().c_str(), false);
-    } else {
-        for (const auto& stats: statsList) {
-            cli->sendMsg(ResponseCode::TetheringStatsListResult,
-                         stats.getStatsLine().c_str(), false);
-        }
-        if (res == 0) {
-            cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
-        }
+    for (const auto& stats: statsList) {
+        cli->sendMsg(ResponseCode::TetheringStatsListResult,
+                     stats.getStatsLine().c_str(), false);
     }
+    cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
 
-    return res;
+    return 0;
 }
 
 }  // namespace net
