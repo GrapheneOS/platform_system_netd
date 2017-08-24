@@ -40,6 +40,7 @@
 #include <resolv_stats.h>
 
 #include <android-base/strings.h>
+#include <android-base/thread_annotations.h>
 #include <android/net/INetd.h>
 
 #include "DumpWriter.h"
@@ -97,13 +98,13 @@ bool parseServer(const char* server, in_port_t port, sockaddr_storage* parsed) {
 // Structure for tracking the entire set of known Private DNS servers.
 std::mutex privateDnsLock;
 typedef std::set<DnsTlsTransport::Server, AddressComparator> PrivateDnsSet;
-PrivateDnsSet privateDnsServers;
+PrivateDnsSet privateDnsServers GUARDED_BY(privateDnsLock);
 
 // Structure for tracking the validation status of servers on a specific netid.
 // Servers that fail validation are removed from the tracker, and can be retried.
 enum class Validation : bool { in_process, success };
 typedef std::map<DnsTlsTransport::Server, Validation, AddressComparator> PrivateDnsTracker;
-std::map<unsigned, PrivateDnsTracker> privateDnsTransports;
+std::map<unsigned, PrivateDnsTracker> privateDnsTransports GUARDED_BY(privateDnsLock);
 
 PrivateDnsSet parseServers(const char** servers, int numservers, in_port_t port) {
     PrivateDnsSet set;
