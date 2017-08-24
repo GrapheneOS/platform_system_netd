@@ -743,6 +743,9 @@ TEST_F(ResolverTest, GetHostByName_TlsBroken) {
         .sin_port = htons(853),
     };
     ASSERT_TRUE(inet_pton(AF_INET, listen_addr, &tlsServer.sin_addr));
+    const int one = 1;
+    setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &one, sizeof(one));
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
     ASSERT_FALSE(bind(s, reinterpret_cast<struct sockaddr*>(&tlsServer), sizeof(tlsServer)));
     ASSERT_FALSE(listen(s, 1));
 
@@ -832,19 +835,23 @@ TEST_F(ResolverTest, GetHostByName_Tls) {
 TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
     const char* listen_addr = "127.0.0.3";
     const char* listen_udp = "53";
-    const char* listen_tls = "853";
+    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+    ASSERT_TRUE(dns.startServer());
     for (int chain_length = 1; chain_length <= 3; ++chain_length) {
         const char* host_name = StringPrintf("tlsfingerprint%d.example.com.", chain_length).c_str();
-        test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
         dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
-        ASSERT_TRUE(dns.startServer());
         std::vector<std::string> servers = { listen_addr };
 
+        // Run each TLS server on a new port to avoid any possible races related to reopening
+        // sockets that were just closed.
+        int tls_port = 853 + chain_length;
+        const char* listen_tls = std::to_string(tls_port).c_str();
         test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
         tls.set_chain_length(chain_length);
         ASSERT_TRUE(tls.startServer());
-        auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, 853, "SHA-256",
+        auto rv = mNetdSrv->addPrivateDnsServer(listen_addr, tls_port, "SHA-256",
                 { base64Encode(tls.fingerprint()) });
+        EXPECT_EQ(0, rv.exceptionCode());
         ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
         const hostent* result;
@@ -862,9 +869,10 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
         }
 
         rv = mNetdSrv->removePrivateDnsServer(listen_addr);
+        EXPECT_EQ(0, rv.exceptionCode());
         tls.stopServer();
-        dns.stopServer();
     }
+    dns.stopServer();
 }
 
 TEST_F(ResolverTest, GetHostByName_BadTlsFingerprint) {
