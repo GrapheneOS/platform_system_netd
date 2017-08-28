@@ -45,8 +45,7 @@
 
 #define CEIL(x, y) (((x) + (y) - 1) / (y))
 
-MDnsSdListener::MDnsSdListener() :
-                 FrameworkListener("mdns", true) {
+MDnsSdListener::MDnsSdListener() : FrameworkListener(SOCKET_NAME, true) {
     Monitor *m = new Monitor();
     registerCmd(new Handler(m, this));
 }

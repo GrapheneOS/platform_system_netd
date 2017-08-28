@@ -79,6 +79,16 @@ int main() {
 
     blockSigpipe();
 
+    // Before we do anything that could fork, mark CLOEXEC the UNIX sockets that we get from init.
+    // FrameworkListener does this on initialization as well, but we only initialize these
+    // components after having initialized other subsystems that can fork.
+    for (const auto& sock : { CommandListener::SOCKET_NAME,
+                              DnsProxyListener::SOCKET_NAME,
+                              FwmarkServer::SOCKET_NAME,
+                              MDnsSdListener::SOCKET_NAME }) {
+        setCloseOnExec(sock);
+    }
+
     NetlinkManager *nm = NetlinkManager::Instance();
     if (nm == nullptr) {
         ALOGE("Unable to create NetlinkManager");

@@ -136,7 +136,7 @@ res_sendhookact qhook(sockaddr* const * nsap, const u_char** buf, int* buflen,
 }  // namespace
 
 DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl, EventReporter* eventReporter) :
-        FrameworkListener("dnsproxyd"), mNetCtrl(netCtrl), mEventReporter(eventReporter) {
+        FrameworkListener(SOCKET_NAME), mNetCtrl(netCtrl), mEventReporter(eventReporter) {
     registerCmd(new GetAddrInfoCmd(this));
     registerCmd(new GetHostByAddrCmd(this));
     registerCmd(new GetHostByNameCmd(this));
