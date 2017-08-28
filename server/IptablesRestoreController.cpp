@@ -124,11 +124,12 @@ IptablesRestoreController::~IptablesRestoreController() {
 }
 
 void IptablesRestoreController::Init() {
-    // Start the IPv4 and IPv6 processes in parallel, since each one takes 20-30ms.
-    std::thread v4([this] () { mIpRestore.reset(forkAndExec(IPTABLES_PROCESS)); });
-    std::thread v6([this] () { mIp6Restore.reset(forkAndExec(IP6TABLES_PROCESS)); });
-    v4.join();
-    v6.join();
+    // We cannot fork these in parallel or a child process could inherit the pipe fds intended for
+    // use by the other child process. see https://android-review.googlesource.com/469559 for what
+    // breaks. This does not cause a latency hit, because the parent only has to wait for
+    // forkAndExec, which is sub-millisecond, and the child processes then call exec() in parallel.
+    mIpRestore.reset(forkAndExec(IPTABLES_PROCESS));
+    mIp6Restore.reset(forkAndExec(IP6TABLES_PROCESS));
 }
 
 /* static */
