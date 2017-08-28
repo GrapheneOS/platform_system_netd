@@ -29,6 +29,7 @@
 
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
+#include <cutils/sockets.h>
 #include <logwrap/logwrap.h>
 
 #include "Controllers.h"
@@ -163,4 +164,17 @@ void blockSigpipe() {
     sigaddset(&mask, SIGPIPE);
     if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0)
         ALOGW("WARNING: SIGPIPE not blocked\n");
+}
+
+void setCloseOnExec(const char *sock) {
+    int fd = android_get_control_socket(sock);
+    int flags = fcntl(fd, F_GETFD, 0);
+    if (flags == -1) {
+        ALOGE("Can't get fd flags for control socket %s", sock);
+        flags = 0;
+    }
+    flags |= FD_CLOEXEC;
+    if (fcntl(fd, F_SETFD, flags) == -1) {
+        ALOGE("Can't set control socket %s to FD_CLOEXEC", sock);
+    }
 }
