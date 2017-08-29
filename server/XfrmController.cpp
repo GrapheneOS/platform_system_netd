@@ -124,9 +124,9 @@ void* kPadBytes = static_cast<void*>(kPadBytesArray);
     do {                                                                                           \
         logHex(__desc16__, __buf__, __len__);                                                      \
     } while (0)
-#define LOG_IOV(__iov__, __iov_len__)                                                              \
+#define LOG_IOV(__iov__)                                                                           \
     do {                                                                                           \
-        logIov(__iov__, __iov_len__);                                                              \
+        logIov(__iov__);                                                                           \
     } while (0)
 
 void logHex(const char* desc16, const char* buf, size_t len) {
@@ -146,10 +146,9 @@ void logHex(const char* desc16, const char* buf, size_t len) {
     delete[] printBuf;
 }
 
-void logIov(const iovec* iov, size_t iovLen) {
-    for (uint32_t i = 0; i < (uint32_t)iovLen; i++) {
-        const iovec* row = &iov[i];
-        logHex(0, reinterpret_cast<char*>(row->iov_base), row->iov_len);
+void logIov(const std::vector<iovec>& iov) {
+    for (const iovec& row : iov) {
+        logHex(0, reinterpret_cast<char*>(row.iov_base), row.iov_len);
     }
 }
 
@@ -222,29 +221,22 @@ public:
     }
 
     virtual int sendMessage(uint16_t nlMsgType, uint16_t nlMsgFlags, uint16_t nlMsgSeqNum,
-                            iovec* iov, int iovLen) const {
+                            std::vector<iovec>* iovecs) const {
         nlmsghdr nlMsg = {
             .nlmsg_type = nlMsgType, .nlmsg_flags = nlMsgFlags, .nlmsg_seq = nlMsgSeqNum,
         };
 
-        iov[0].iov_base = &nlMsg;
-        iov[0].iov_len = NLMSG_HDRLEN;
-        for (int i = 0; i < iovLen; ++i) {
-            nlMsg.nlmsg_len += iov[i].iov_len;
+        (*iovecs)[0].iov_base = &nlMsg;
+        (*iovecs)[0].iov_len = NLMSG_HDRLEN;
+        for (const iovec& iov : *iovecs) {
+            nlMsg.nlmsg_len += iov.iov_len;
         }
-
-        // TODO: Should use std::vector<iovec> from the beginning, should
-        // replace the iovec array declaration with an iovec vector declaration
-        // in other places of the program.
-        // This line should be removed when the parameter of sendMessage is
-        // changed to use iovev vector.
-        const std::vector<iovec> iovs(iov, iov + iovLen);
 
         ALOGD("Sending Netlink XFRM Message: %s", xfrmMsgTypeToString(nlMsgType));
         if (VDBG)
-            LOG_IOV(iov, iovLen);
+            LOG_IOV(*iovecs);
 
-        StatusOr<size_t> writeResult = getSyscallInstance().writev(mSock, iovs);
+        StatusOr<size_t> writeResult = getSyscallInstance().writev(mSock, *iovecs);
         if (!isOk(writeResult)) {
             ALOGE("netlink socket writev failed (%s)", toString(writeResult).c_str());
             return -writeResult.status().code();
@@ -637,20 +629,9 @@ int XfrmController::createTransportModeSecurityAssociation(const XfrmSaInfo& rec
     nlattr_algo_auth auth{};
     nlattr_encap_tmpl encap{};
 
-    enum {
-        NLMSG_HDR,
-        USERSA,
-        USERSA_PAD,
-        CRYPT,
-        CRYPT_PAD,
-        AUTH,
-        AUTH_PAD,
-        ENCAP,
-        ENCAP_PAD,
-        iovLen
-    };
+    enum { NLMSG_HDR, USERSA, USERSA_PAD, CRYPT, CRYPT_PAD, AUTH, AUTH_PAD, ENCAP, ENCAP_PAD };
 
-    iovec iov[] = {
+    std::vector<iovec> iov = {
         {NULL, 0},      // reserved for the eventual addition of a NLMSG_HDR
         {&usersa, 0},   // main usersa_info struct
         {kPadBytes, 0}, // up to NLMSG_ALIGNTO pad bytes of padding
@@ -674,7 +655,7 @@ int XfrmController::createTransportModeSecurityAssociation(const XfrmSaInfo& rec
 
     len = iov[ENCAP].iov_len = fillNlAttrXfrmEncapTmpl(record, &encap);
     iov[ENCAP_PAD].iov_len = NLA_ALIGN(len) - len;
-    return sock.sendMessage(XFRM_MSG_UPDSA, NETLINK_REQUEST_FLAGS, 0, iov, iovLen);
+    return sock.sendMessage(XFRM_MSG_UPDSA, NETLINK_REQUEST_FLAGS, 0, &iov);
 }
 
 int XfrmController::fillNlAttrXfrmAlgoEnc(const XfrmAlgo& inAlgo, nlattr_algo_crypt* algo) {
@@ -747,9 +728,9 @@ int XfrmController::fillUserSaId(const XfrmSaId& record, xfrm_usersa_id* said) {
 int XfrmController::deleteSecurityAssociation(const XfrmSaId& record, const XfrmSocket& sock) {
     xfrm_usersa_id said{};
 
-    enum { NLMSG_HDR, USERSAID, USERSAID_PAD, iovLen };
+    enum { NLMSG_HDR, USERSAID, USERSAID_PAD };
 
-    iovec iov[] = {
+    std::vector<iovec> iov = {
         {NULL, 0},      // reserved for the eventual addition of a NLMSG_HDR
         {&said, 0},     // main usersa_info struct
         {kPadBytes, 0}, // up to NLMSG_ALIGNTO pad bytes of padding
@@ -759,16 +740,16 @@ int XfrmController::deleteSecurityAssociation(const XfrmSaId& record, const Xfrm
     len = iov[USERSAID].iov_len = fillUserSaId(record, &said);
     iov[USERSAID_PAD].iov_len = NLMSG_ALIGN(len) - len;
 
-    return sock.sendMessage(XFRM_MSG_DELSA, NETLINK_REQUEST_FLAGS, 0, iov, iovLen);
+    return sock.sendMessage(XFRM_MSG_DELSA, NETLINK_REQUEST_FLAGS, 0, &iov);
 }
 
 int XfrmController::allocateSpi(const XfrmSaInfo& record, uint32_t minSpi, uint32_t maxSpi,
                                 uint32_t* outSpi, const XfrmSocket& sock) {
     xfrm_userspi_info spiInfo{};
 
-    enum { NLMSG_HDR, USERSAID, USERSAID_PAD, iovLen };
+    enum { NLMSG_HDR, USERSAID, USERSAID_PAD };
 
-    iovec iov[] = {
+    std::vector<iovec> iov = {
         {NULL, 0},      // reserved for the eventual addition of a NLMSG_HDR
         {&spiInfo, 0},  // main userspi_info struct
         {kPadBytes, 0}, // up to NLMSG_ALIGNTO pad bytes of padding
@@ -787,7 +768,7 @@ int XfrmController::allocateSpi(const XfrmSaInfo& record, uint32_t minSpi, uint3
     while ((spi = spiGen.next()) != INVALID_SPI) {
         spiInfo.min = spi;
         spiInfo.max = spi;
-        ret = sock.sendMessage(XFRM_MSG_ALLOCSPI, NETLINK_REQUEST_FLAGS, 0, iov, iovLen);
+        ret = sock.sendMessage(XFRM_MSG_ALLOCSPI, NETLINK_REQUEST_FLAGS, 0, &iov);
 
         /* If the SPI is in use, we'll get ENOENT */
         if (ret == -ENOENT)
