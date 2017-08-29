@@ -51,6 +51,8 @@ public:
     MDnsSdListener();
     virtual ~MDnsSdListener() {}
 
+    static constexpr const char* SOCKET_NAME = "mdns";
+
     class Context {
     public:
         MDnsSdListener *mListener;

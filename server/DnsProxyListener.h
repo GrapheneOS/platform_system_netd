@@ -35,6 +35,8 @@ public:
     explicit DnsProxyListener(const NetworkController* netCtrl, EventReporter* eventReporter);
     virtual ~DnsProxyListener() {}
 
+    static constexpr const char* SOCKET_NAME = "dnsproxyd";
+
 private:
     const NetworkController *mNetCtrl;
     EventReporter *mEventReporter;
