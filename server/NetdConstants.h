@@ -48,6 +48,7 @@ int execIptablesRestoreCommand(IptablesTarget target, const std::string& table,
 bool isIfaceName(const std::string& name);
 int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, uint8_t *prefixlen);
 void blockSigpipe();
+void setCloseOnExec(const char *sock);
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
