@@ -57,8 +57,10 @@ public:
 
     virtual ~XfrmSocket() { close(); }
 
+    // Sends the netlink message contained in iovecs. This populates iovecs[0] with
+    // a valid netlink message header.
     virtual int sendMessage(uint16_t nlMsgType, uint16_t nlMsgFlags, uint16_t nlMsgSeqNum,
-                            iovec* iov, int iovLen) const = 0;
+                            std::vector<iovec>* iovecs) const = 0;
 
 protected:
     int mSock;
