@@ -104,8 +104,7 @@ void CommandListener::registerLockingCmd(FrameworkCommand *cmd, android::RWLock&
     registerCmd(new LockingFrameworkCommand(cmd, lock));
 }
 
-CommandListener::CommandListener() :
-                 FrameworkListener("netd", true) {
+CommandListener::CommandListener() : FrameworkListener(SOCKET_NAME, true) {
     registerLockingCmd(new InterfaceCmd());
     registerLockingCmd(new IpFwdCmd());
     registerLockingCmd(new TetherCmd());
