@@ -86,6 +86,9 @@ std::string toString(const Status& status);
 
 std::ostream& operator<<(std::ostream& os, const Status& s);
 
+// Evaluate 'stmt' to a Status object and if it results in an error, return that
+// error.  Use 'tmp' as a variable name to avoid shadowing any variables named
+// tmp.
 #define RETURN_IF_NOT_OK_IMPL(tmp, stmt)           \
     do {                                           \
         ::android::netdutils::Status tmp = (stmt); \
@@ -94,6 +97,7 @@ std::ostream& operator<<(std::ostream& os, const Status& s);
         }                                          \
     } while (false)
 
+// Create a unique variable name to avoid shadowing local variables.
 #define RETURN_IF_NOT_OK_CONCAT(line, stmt) RETURN_IF_NOT_OK_IMPL(__CONCAT(_status_, line), stmt)
 
 // Macro to allow exception-like handling of error return values.
