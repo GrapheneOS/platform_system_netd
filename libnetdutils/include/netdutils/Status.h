@@ -31,7 +31,7 @@ class Status {
   public:
     Status() = default;
 
-    Status(int code) : mCode(code) {}
+    explicit Status(int code) : mCode(code) {}
 
     Status(int code, const std::string& msg) : mCode(code), mMsg(msg) { assert(!ok()); }
 
