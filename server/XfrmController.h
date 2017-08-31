@@ -138,9 +138,16 @@ public:
 
     int ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket);
 
+    // Some XFRM netlink attributes comprise a header, a struct, and some data
+    // after the struct. We wrap all of those in one struct for easier
+    // marshalling. The structs below must be ABI compatible with the kernel and
+    // are composed from kernel structures; thus, they use the kernel naming
+    // convention.
+
     // Exposed for testing
     static constexpr size_t MAX_ALGO_LENGTH = 128;
 
+    // Container for the content of an XFRMA_ALG_CRYPT netlink attribute.
     // Exposed for testing
     struct nlattr_algo_crypt {
         nlattr hdr;
@@ -148,6 +155,7 @@ public:
         uint8_t key[MAX_ALGO_LENGTH];
     };
 
+    // Container for the content of an XFRMA_ALG_AUTH_TRUNC netlink attribute.
     // Exposed for testing
     struct nlattr_algo_auth {
         nlattr hdr;
@@ -155,12 +163,14 @@ public:
         uint8_t key[MAX_ALGO_LENGTH];
     };
 
+    // Container for the content of an XFRMA_TMPL netlink attribute.
     // Exposed for testing
     struct nlattr_user_tmpl {
         nlattr hdr;
         xfrm_user_tmpl tmpl;
     };
 
+    // Container for the content of an XFRMA_ENCAP netlink attribute.
     // Exposed for testing
     struct nlattr_encap_tmpl {
         nlattr hdr;
