@@ -52,9 +52,7 @@
 
 #include <netdutils/Syscalls.h>
 #include "BandwidthController.h"
-#include "NatController.h" /* For LOCAL_TETHER_COUNTERS_CHAIN */
 #include "NetdConstants.h"
-#include "ResponseCode.h"
 
 /* Alphabetical */
 #define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %" PRId64" --name %s\n"
@@ -75,12 +73,7 @@ using android::netdutils::UniqueFile;
 namespace {
 
 const char ALERT_GLOBAL_NAME[] = "globalAlert";
-const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
 const std::string NEW_CHAIN_COMMAND = "-N ";
-const std::string GET_TETHER_STATS_COMMAND = StringPrintf(
-    "*filter\n"
-    "-nvx -L %s\n"
-    "COMMIT\n", NatController::LOCAL_TETHER_COUNTERS_CHAIN);
 
 const char NAUGHTY_CHAIN[] = "bw_penalty_box";
 const char NICE_CHAIN[] = "bw_happy_box";
@@ -743,185 +736,6 @@ int BandwidthController::removeCostlyAlert(const std::string& costName, int64_t*
 
     *alertBytes = 0;
     return 0;
-}
-
-void BandwidthController::addStats(TetherStatsList& statsList, const TetherStats& stats) {
-    for (TetherStats& existing : statsList) {
-        if (existing.addStatsIfMatch(stats)) {
-            return;
-        }
-    }
-    // No match. Insert a new interface pair.
-    statsList.push_back(stats);
-}
-
-/*
- * Parse the ptks and bytes out of:
- *   Chain natctrl_tether_counters (4 references)
- *       pkts      bytes target     prot opt in     out     source               destination
- *         26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
- *         27     2002 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0
- *       1040   107471 RETURN     all  --  bt-pan rmnet0  0.0.0.0/0            0.0.0.0/0
- *       1450  1708806 RETURN     all  --  rmnet0 bt-pan  0.0.0.0/0            0.0.0.0/0
- * or:
- *   Chain natctrl_tether_counters (0 references)
- *       pkts      bytes target     prot opt in     out     source               destination
- *          0        0 RETURN     all      wlan0  rmnet_data0  ::/0                 ::/0
- *          0        0 RETURN     all      rmnet_data0 wlan0   ::/0                 ::/0
- *
- * It results in an error if invoked and no tethering counter rules exist. The constraint
- * helps detect complete parsing failure.
- */
-int BandwidthController::addForwardChainStats(const TetherStats& filter,
-                                              TetherStatsList& statsList,
-                                              const std::string& statsOutput,
-                                              std::string &extraProcessingInfo) {
-    int res;
-    std::string statsLine;
-    char iface0[MAX_IPT_OUTPUT_LINE_LEN];
-    char iface1[MAX_IPT_OUTPUT_LINE_LEN];
-    char rest[MAX_IPT_OUTPUT_LINE_LEN];
-
-    TetherStats stats;
-    const char *buffPtr;
-    int64_t packets, bytes;
-    int statsFound = 0;
-
-    bool filterPair = filter.intIface[0] && filter.extIface[0];
-
-    ALOGV("filter: %s",  filter.getStatsLine().c_str());
-
-    stats = filter;
-
-    std::stringstream stream(statsOutput);
-    while (std::getline(stream, statsLine, '\n')) {
-        buffPtr = statsLine.c_str();
-
-        /* Clean up, so a failed parse can still print info */
-        iface0[0] = iface1[0] = rest[0] = packets = bytes = 0;
-        if (strstr(buffPtr, "0.0.0.0")) {
-            // IPv4 has -- indicating what to do with fragments...
-            //       26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
-            res = sscanf(buffPtr, "%" SCNd64" %" SCNd64" RETURN all -- %s %s 0.%s",
-                    &packets, &bytes, iface0, iface1, rest);
-        } else {
-            // ... but IPv6 does not.
-            //       26     2373 RETURN     all      wlan0  rmnet0  ::/0                 ::/0
-            res = sscanf(buffPtr, "%" SCNd64" %" SCNd64" RETURN all %s %s ::/%s",
-                    &packets, &bytes, iface0, iface1, rest);
-        }
-        ALOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%" PRId64" bytes=%" PRId64" rest=<%s> orig line=<%s>", res,
-             iface0, iface1, packets, bytes, rest, buffPtr);
-        extraProcessingInfo += buffPtr;
-        extraProcessingInfo += "\n";
-
-        if (res != 5) {
-            continue;
-        }
-        /*
-         * The following assumes that the 1st rule has in:extIface out:intIface,
-         * which is what NatController sets up.
-         * If not filtering, the 1st match rx, and sets up the pair for the tx side.
-         */
-        if (filter.intIface[0] && filter.extIface[0]) {
-            if (filter.intIface == iface0 && filter.extIface == iface1) {
-                ALOGV("2Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.rxPackets = packets;
-                stats.rxBytes = bytes;
-            } else if (filter.intIface == iface1 && filter.extIface == iface0) {
-                ALOGV("2Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.txPackets = packets;
-                stats.txBytes = bytes;
-            }
-        } else if (filter.intIface[0] || filter.extIface[0]) {
-            if (filter.intIface == iface0 || filter.extIface == iface1) {
-                ALOGV("1Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.intIface = iface0;
-                stats.extIface = iface1;
-                stats.rxPackets = packets;
-                stats.rxBytes = bytes;
-            } else if (filter.intIface == iface1 || filter.extIface == iface0) {
-                ALOGV("1Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.intIface = iface1;
-                stats.extIface = iface0;
-                stats.txPackets = packets;
-                stats.txBytes = bytes;
-            }
-        } else /* if (!filter.intFace[0] && !filter.extIface[0]) */ {
-            if (!stats.intIface[0]) {
-                ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.intIface = iface0;
-                stats.extIface = iface1;
-                stats.rxPackets = packets;
-                stats.rxBytes = bytes;
-            } else if (stats.intIface == iface1 && stats.extIface == iface0) {
-                ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
-                stats.txPackets = packets;
-                stats.txBytes = bytes;
-            }
-        }
-        if (stats.rxBytes != -1 && stats.txBytes != -1) {
-            ALOGV("rx_bytes=%" PRId64" tx_bytes=%" PRId64" filterPair=%d", stats.rxBytes, stats.txBytes, filterPair);
-            addStats(statsList, stats);
-            if (filterPair) {
-                return 0;
-            } else {
-                statsFound++;
-                stats = filter;
-            }
-        }
-    }
-
-    /* It is always an error to find only one side of the stats. */
-    /* It is an error to find nothing when not filtering. */
-    if (((stats.rxBytes == -1) != (stats.txBytes == -1)) ||
-        (!statsFound && !filterPair)) {
-        return -1;
-    }
-    return 0;
-}
-
-std::string BandwidthController::TetherStats::getStatsLine() const {
-    std::string msg;
-    StringAppendF(&msg, "%s %s %" PRId64" %" PRId64" %" PRId64" %" PRId64, intIface.c_str(),
-                  extIface.c_str(), rxBytes, rxPackets, txBytes, txPackets);
-    return msg;
-}
-
-int BandwidthController::getTetherStats(SocketClient *cli, TetherStats& filter,
-                                        std::string &extraProcessingInfo) {
-    int res = 0;
-
-    TetherStatsList statsList;
-
-    for (const IptablesTarget target : {V4, V6}) {
-        std::string statsString;
-        res = iptablesRestoreFunction(target, GET_TETHER_STATS_COMMAND, &statsString);
-        if (res != 0) {
-            ALOGE("Failed to run %s err=%d", GET_TETHER_STATS_COMMAND.c_str(), res);
-            return -1;
-        }
-
-        res = addForwardChainStats(filter, statsList, statsString, extraProcessingInfo);
-        if (res != 0) {
-            return res;
-        }
-    }
-
-    if (filter.intIface[0] && filter.extIface[0] && statsList.size() == 1) {
-        cli->sendMsg(ResponseCode::TetheringStatsResult,
-                     statsList[0].getStatsLine().c_str(), false);
-    } else {
-        for (const auto& stats: statsList) {
-            cli->sendMsg(ResponseCode::TetheringStatsListResult,
-                         stats.getStatsLine().c_str(), false);
-        }
-        if (res == 0) {
-            cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
-        }
-    }
-
-    return res;
 }
 
 void BandwidthController::flushExistingCostlyTables(bool doClean) {

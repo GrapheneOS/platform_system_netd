@@ -26,7 +26,6 @@
 #include "IdletimerController.h"
 #include "InterfaceController.h"
 #include "IptablesRestoreController.h"
-#include "NatController.h"
 #include "NetworkController.h"
 #include "PppController.h"
 #include "ResolverController.h"
@@ -44,7 +43,6 @@ public:
 
     NetworkController netCtrl;
     TetherController tetherCtrl;
-    NatController natCtrl;
     PppController pppCtrl;
     BandwidthController bandwidthCtrl;
     IdletimerController idletimerCtrl;
