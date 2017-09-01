@@ -13,6 +13,10 @@ cc_library {
     ],
     shared_libs: [
         "libbase",
+        "libbinder",
+    ],
+    export_shared_lib_headers: [
+        "libbase",
     ],
     export_include_dirs: ["include"],
 }
