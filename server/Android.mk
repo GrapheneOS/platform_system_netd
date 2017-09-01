@@ -107,7 +107,6 @@ LOCAL_SRC_FILES := \
         IptablesRestoreController.cpp \
         LocalNetwork.cpp \
         MDnsSdListener.cpp \
-        NatController.cpp \
         NetdCommand.cpp \
         NetdConstants.cpp \
         NetdNativeService.cpp \
@@ -181,11 +180,11 @@ LOCAL_SRC_FILES := \
         BandwidthController.cpp BandwidthControllerTest.cpp \
         FirewallControllerTest.cpp FirewallController.cpp \
         IdletimerController.cpp IdletimerControllerTest.cpp \
-        NatControllerTest.cpp NatController.cpp \
         NetlinkCommands.cpp NetlinkManager.cpp \
         RouteController.cpp RouteControllerTest.cpp \
         SockDiagTest.cpp SockDiag.cpp \
         StrictController.cpp StrictControllerTest.cpp \
+        TetherController.cpp TetherControllerTest.cpp \
         UidRanges.cpp \
         NetlinkListener.cpp \
         WakeupController.cpp WakeupControllerTest.cpp \
