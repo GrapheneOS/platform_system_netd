@@ -152,6 +152,7 @@ void logIov(const std::vector<iovec>& iov) {
     }
 }
 
+// TODO: Need to consider a way to refer to the sSycalls instance
 inline Syscalls& getSyscallInstance() { return netdutils::sSyscalls.get(); }
 
 #else
@@ -177,35 +178,37 @@ private:
     };
 
 public:
-    virtual bool open() {
+    netdutils::Status open() override {
         mSock = openNetlinkSocket(NETLINK_XFRM);
-        if (mSock <= 0) {
+        if (mSock < 0) {
             ALOGW("Could not get a new socket, line=%d", __LINE__);
-            return false;
+            return netdutils::statusFromErrno(-mSock, "Could not open netlink socket");
         }
 
-        return true;
+        return netdutils::status::ok;
     }
 
-    static int validateResponse(NetlinkResponse response, size_t len) {
+    static netdutils::Status validateResponse(NetlinkResponse response, size_t len) {
         if (len < sizeof(nlmsghdr)) {
             ALOGW("Invalid response message received over netlink");
-            return -EBADMSG;
+            return netdutils::statusFromErrno(EBADMSG, "Invalid message");
         }
 
         switch (response.hdr.nlmsg_type) {
             case NLMSG_NOOP:
             case NLMSG_DONE:
-                return 0;
+                return netdutils::status::ok;
             case NLMSG_OVERRUN:
                 ALOGD("Netlink request overran kernel buffer");
-                return -EBADMSG;
+                return netdutils::statusFromErrno(EBADMSG, "Kernel buffer overrun");
             case NLMSG_ERROR:
                 if (len < sizeof(NetlinkResponse::_err_)) {
                     ALOGD("Netlink message received malformed error response");
-                    return -EBADMSG;
+                    return netdutils::statusFromErrno(EBADMSG, "Malformed error response");
                 }
-                return response.err.err.error; // Netlink errors are negative errno.
+                return netdutils::statusFromErrno(
+                    -response.err.err.error,
+                    "Error netlink message"); // Netlink errors are negative errno.
             case XFRM_MSG_NEWSA:
                 break;
         }
@@ -213,15 +216,15 @@ public:
         if (response.hdr.nlmsg_type < XFRM_MSG_BASE /*== NLMSG_MIN_TYPE*/ ||
             response.hdr.nlmsg_type > XFRM_MSG_MAX) {
             ALOGD("Netlink message responded with an out-of-range message ID");
-            return -EBADMSG;
+            return netdutils::statusFromErrno(EBADMSG, "Invalid message ID");
         }
 
         // TODO Add more message validation here
-        return 0;
+        return netdutils::status::ok;
     }
 
-    virtual int sendMessage(uint16_t nlMsgType, uint16_t nlMsgFlags, uint16_t nlMsgSeqNum,
-                            std::vector<iovec>* iovecs) const {
+    netdutils::Status sendMessage(uint16_t nlMsgType, uint16_t nlMsgFlags, uint16_t nlMsgSeqNum,
+                                  std::vector<iovec>* iovecs) const override {
         nlmsghdr nlMsg = {
             .nlmsg_type = nlMsgType, .nlmsg_flags = nlMsgFlags, .nlmsg_seq = nlMsgSeqNum,
         };
@@ -239,12 +242,12 @@ public:
         StatusOr<size_t> writeResult = getSyscallInstance().writev(mSock, *iovecs);
         if (!isOk(writeResult)) {
             ALOGE("netlink socket writev failed (%s)", toString(writeResult).c_str());
-            return -writeResult.status().code();
+            return writeResult;
         }
 
         if (nlMsg.nlmsg_len != writeResult.value()) {
             ALOGE("Invalid netlink message length sent %d", static_cast<int>(writeResult.value()));
-            return -EBADMSG;
+            return netdutils::statusFromErrno(EBADMSG, "Invalid message length");
         }
 
         NetlinkResponse response = {};
@@ -253,20 +256,22 @@ public:
             getSyscallInstance().read(Fd(mSock), netdutils::makeSlice(response));
         if (!isOk(readResult)) {
             ALOGE("netlink response error (%s)", toString(readResult).c_str());
-            return -readResult.status().code();
+            return readResult;
         }
 
         LOG_HEX("netlink msg resp", reinterpret_cast<char*>(readResult.value().base()),
                 readResult.value().size());
 
-        int retNum = validateResponse(response, readResult.value().size());
-        if (retNum < 0)
-            ALOGE("netlink response contains error (%s)", strerror(-retNum));
-        return retNum;
+        Status validateStatus = validateResponse(response, readResult.value().size());
+        if (!isOk(validateStatus)) {
+            ALOGE("netlink response contains error (%s)", toString(validateStatus).c_str());
+        }
+
+        return validateStatus;
     }
 };
 
-int convertToXfrmAddr(const std::string& strAddr, xfrm_address_t* xfrmAddr) {
+StatusOr<int> convertToXfrmAddr(const std::string& strAddr, xfrm_address_t* xfrmAddr) {
     if (strAddr.length() == 0) {
         memset(xfrmAddr, 0, sizeof(*xfrmAddr));
         return AF_UNSPEC;
@@ -277,7 +282,7 @@ int convertToXfrmAddr(const std::string& strAddr, xfrm_address_t* xfrmAddr) {
     } else if (inet_pton(AF_INET, strAddr.c_str(), reinterpret_cast<void*>(xfrmAddr))) {
         return AF_INET;
     } else {
-        return -EAFNOSUPPORT;
+        return netdutils::statusFromErrno(EAFNOSUPPORT, "Invalid address family");
     }
 }
 
@@ -333,10 +338,10 @@ private:
 //
 XfrmController::XfrmController(void) {}
 
-int XfrmController::ipSecAllocateSpi(int32_t transformId, int32_t direction,
-                                     const std::string& localAddress,
-                                     const std::string& remoteAddress, int32_t inSpi,
-                                     int32_t* outSpi) {
+netdutils::Status XfrmController::ipSecAllocateSpi(int32_t transformId, int32_t direction,
+                                                   const std::string& localAddress,
+                                                   const std::string& remoteAddress, int32_t inSpi,
+                                                   int32_t* outSpi) {
     ALOGD("XfrmController:%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("transformId=%d", transformId);
     ALOGD("direction=%d", direction);
@@ -345,25 +350,28 @@ int XfrmController::ipSecAllocateSpi(int32_t transformId, int32_t direction,
     ALOGD("inSpi=%0.8x", inSpi);
 
     XfrmSaInfo saInfo{};
-    int ret;
 
-    if ((ret = fillXfrmSaId(direction, localAddress, remoteAddress, INVALID_SPI, &saInfo)) < 0) {
+    netdutils::Status ret =
+        fillXfrmSaId(direction, localAddress, remoteAddress, INVALID_SPI, &saInfo);
+    if (!isOk(ret)) {
         return ret;
     }
 
     XfrmSocketImpl sock;
-    if (!sock.open()) {
+    netdutils::Status socketStatus = sock.open();
+    if (!isOk(socketStatus)) {
         ALOGD("Sock open failed for XFRM, line=%d", __LINE__);
-        return -1; // TODO: return right error; for whatever reason the sock
-                   // failed to open
+        return socketStatus;
     }
 
     int minSpi = RAND_SPI_MIN, maxSpi = RAND_SPI_MAX;
 
     if (inSpi)
         minSpi = maxSpi = inSpi;
+
     ret = allocateSpi(saInfo, minSpi, maxSpi, reinterpret_cast<uint32_t*>(outSpi), sock);
-    if (ret < 0) {
+    if (!isOk(ret)) {
+        // TODO: May want to return a new Status with a modified status string
         ALOGD("Failed to Allocate an SPI, line=%d", __LINE__);
         *outSpi = INVALID_SPI;
     }
@@ -371,7 +379,7 @@ int XfrmController::ipSecAllocateSpi(int32_t transformId, int32_t direction,
     return ret;
 }
 
-int XfrmController::ipSecAddSecurityAssociation(
+netdutils::Status XfrmController::ipSecAddSecurityAssociation(
     int32_t transformId, int32_t mode, int32_t direction, const std::string& localAddress,
     const std::string& remoteAddress, int64_t underlyingNetworkHandle, int32_t spi,
     const std::string& authAlgo, const std::vector<uint8_t>& authKey, int32_t authTruncBits,
@@ -396,9 +404,8 @@ int XfrmController::ipSecAddSecurityAssociation(
     ALOGD("encapRemotePort=%d", encapRemotePort);
 
     XfrmSaInfo saInfo{};
-    int ret;
-
-    if ((ret = fillXfrmSaId(direction, localAddress, remoteAddress, spi, &saInfo)) < 0) {
+    netdutils::Status ret = fillXfrmSaId(direction, localAddress, remoteAddress, spi, &saInfo);
+    if (!isOk(ret)) {
         return ret;
     }
 
@@ -419,21 +426,21 @@ int XfrmController::ipSecAddSecurityAssociation(
             saInfo.mode = static_cast<XfrmMode>(mode);
             break;
         default:
-            return -EINVAL;
+            return netdutils::statusFromErrno(EINVAL, "Invalid xfrm mode");
     }
 
     XfrmSocketImpl sock;
-    if (!sock.open()) {
+    netdutils::Status socketStatus = sock.open();
+    if (!isOk(socketStatus)) {
         ALOGD("Sock open failed for XFRM, line=%d", __LINE__);
-        return -1; // TODO: return right error; for whatever reason the sock
-                   // failed to open
+        return socketStatus;
     }
 
     switch (static_cast<XfrmEncapType>(encapType)) {
         case XfrmEncapType::ESPINUDP:
         case XfrmEncapType::ESPINUDP_NON_IKE:
             if (saInfo.addrFamily != AF_INET) {
-                return -EAFNOSUPPORT;
+                return netdutils::statusFromErrno(EAFNOSUPPORT, "IPv6 encap not supported");
             }
             switch (saInfo.direction) {
                 case XfrmDirection::IN:
@@ -445,28 +452,29 @@ int XfrmController::ipSecAddSecurityAssociation(
                     saInfo.encap.dstPort = encapRemotePort;
                     break;
                 default:
-                    return -EINVAL;
+                    return netdutils::statusFromErrno(EINVAL, "Invalid direction");
             }
         // fall through
         case XfrmEncapType::NONE:
             saInfo.encap.type = static_cast<XfrmEncapType>(encapType);
             break;
         default:
-            return -EINVAL;
+            return netdutils::statusFromErrno(EINVAL, "Invalid encap type");
     }
 
     ret = createTransportModeSecurityAssociation(saInfo, sock);
-    if (ret < 0) {
+    if (!isOk(ret)) {
         ALOGD("Failed creating a Security Association, line=%d", __LINE__);
-        return ret; // something went wrong creating the SA
     }
 
-    return 0;
+    return ret;
 }
 
-int XfrmController::ipSecDeleteSecurityAssociation(int32_t transformId, int32_t direction,
-                                                   const std::string& localAddress,
-                                                   const std::string& remoteAddress, int32_t spi) {
+netdutils::Status XfrmController::ipSecDeleteSecurityAssociation(int32_t transformId,
+                                                                 int32_t direction,
+                                                                 const std::string& localAddress,
+                                                                 const std::string& remoteAddress,
+                                                                 int32_t spi) {
     ALOGD("XfrmController:%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("transformId=%d", transformId);
     ALOGD("direction=%d", direction);
@@ -475,47 +483,48 @@ int XfrmController::ipSecDeleteSecurityAssociation(int32_t transformId, int32_t 
     ALOGD("spi=%0.8x", spi);
 
     XfrmSaId saId;
-    int ret;
-
-    if ((ret = fillXfrmSaId(direction, localAddress, remoteAddress, spi, &saId)) < 0) {
+    netdutils::Status ret = fillXfrmSaId(direction, localAddress, remoteAddress, spi, &saId);
+    if (!isOk(ret)) {
         return ret;
     }
 
     XfrmSocketImpl sock;
-    if (!sock.open()) {
+    netdutils::Status socketStatus = sock.open();
+    if (!isOk(socketStatus)) {
         ALOGD("Sock open failed for XFRM, line=%d", __LINE__);
-        return -1; // TODO: return right error; for whatever reason the sock
-                   // failed to open
+        return socketStatus;
     }
 
     ret = deleteSecurityAssociation(saId, sock);
-    if (ret < 0) {
+    if (!isOk(ret)) {
         ALOGD("Failed to delete Security Association, line=%d", __LINE__);
-        return ret; // something went wrong deleting the SA
     }
 
     return ret;
 }
 
-int XfrmController::fillXfrmSaId(int32_t direction, const std::string& localAddress,
-                                 const std::string& remoteAddress, int32_t spi, XfrmSaId* xfrmId) {
+netdutils::Status XfrmController::fillXfrmSaId(int32_t direction, const std::string& localAddress,
+                                               const std::string& remoteAddress, int32_t spi,
+                                               XfrmSaId* xfrmId) {
     xfrm_address_t localXfrmAddr{}, remoteXfrmAddr{};
 
-    int addrFamilyLocal, addrFamilyRemote;
+    StatusOr<int> addrFamilyLocal, addrFamilyRemote;
     addrFamilyRemote = convertToXfrmAddr(remoteAddress, &remoteXfrmAddr);
     addrFamilyLocal = convertToXfrmAddr(localAddress, &localXfrmAddr);
-    if (addrFamilyRemote < 0 || addrFamilyLocal < 0) {
-        return -EINVAL;
+    if (!isOk(addrFamilyRemote) || !isOk(addrFamilyLocal)) {
+        return netdutils::statusFromErrno(EINVAL,
+                                          "Invalid address " + localAddress + "/" + remoteAddress);
     }
 
-    if (addrFamilyRemote == AF_UNSPEC ||
-        (addrFamilyLocal != AF_UNSPEC && addrFamilyLocal != addrFamilyRemote)) {
-        ALOGD("Invalid or Mismatched Address Families, %d != %d, line=%d", addrFamilyLocal,
-              addrFamilyRemote, __LINE__);
-        return -EINVAL;
+    if (addrFamilyRemote.value() == AF_UNSPEC ||
+        (addrFamilyLocal.value() != AF_UNSPEC &&
+         addrFamilyLocal.value() != addrFamilyRemote.value())) {
+        ALOGD("Invalid or Mismatched Address Families, %d != %d, line=%d", addrFamilyLocal.value(),
+              addrFamilyRemote.value(), __LINE__);
+        return netdutils::statusFromErrno(EINVAL, "Invalid or mismatched address families");
     }
 
-    xfrmId->addrFamily = addrFamilyRemote;
+    xfrmId->addrFamily = addrFamilyRemote.value();
 
     xfrmId->spi = htonl(spi);
 
@@ -533,16 +542,14 @@ int XfrmController::fillXfrmSaId(int32_t direction, const std::string& localAddr
         default:
             ALOGD("Invalid XFRM direction, line=%d", __LINE__);
             // Invalid direction for Transport mode transform: time to bail
-            return -EINVAL;
+            return netdutils::statusFromErrno(EINVAL, "Invalid direction");
     }
-    return 0;
+    return netdutils::status::ok;
 }
 
-int XfrmController::ipSecApplyTransportModeTransform(const android::base::unique_fd& socket,
-                                                     int32_t transformId, int32_t direction,
-                                                     const std::string& localAddress,
-                                                     const std::string& remoteAddress,
-                                                     int32_t spi) {
+netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
+    const android::base::unique_fd& socket, int32_t transformId, int32_t direction,
+    const std::string& localAddress, const std::string& remoteAddress, int32_t spi) {
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("transformId=%d", transformId);
     ALOGD("direction=%d", direction);
@@ -552,12 +559,10 @@ int XfrmController::ipSecApplyTransportModeTransform(const android::base::unique
 
     struct sockaddr_storage saddr;
 
-    int err;
-
     StatusOr<sockaddr_storage> ret = getSyscallInstance().getsockname<sockaddr_storage>(Fd(socket));
     if (!isOk(ret)) {
         ALOGE("Failed to get socket info in %s", __FUNCTION__);
-        return -ret.status().code();
+        return ret;
     }
 
     saddr = ret.value();
@@ -567,16 +572,17 @@ int XfrmController::ipSecApplyTransportModeTransform(const android::base::unique
     saInfo.direction = static_cast<XfrmDirection>(direction);
     saInfo.spi = spi;
 
-    if ((err = fillXfrmSaId(direction, localAddress, remoteAddress, spi, &saInfo)) < 0) {
+    netdutils::Status status = fillXfrmSaId(direction, localAddress, remoteAddress, spi, &saInfo);
+    if (!isOk(status)) {
         ALOGE("Couldn't build SA ID %s", __FUNCTION__);
-        return -err;
+        return status;
     }
 
     if (saInfo.addrFamily != saddr.ss_family) {
         ALOGE("Transform address family(%d) differs from socket address "
               "family(%d)!",
               saInfo.addrFamily, saddr.ss_family);
-        return -EINVAL;
+        return netdutils::statusFromErrno(EINVAL, "Mismatched address family");
     }
 
     struct {
@@ -600,19 +606,21 @@ int XfrmController::ipSecApplyTransportModeTransform(const android::base::unique
             sockLayer = SOL_IPV6;
             break;
         default:
-            return -EAFNOSUPPORT;
+            return netdutils::statusFromErrno(EAFNOSUPPORT, "Invalid address family");
     }
 
-    Status status = getSyscallInstance().setsockopt(Fd(socket), sockLayer, sockOpt, policy);
+    status = getSyscallInstance().setsockopt(Fd(socket), sockLayer, sockOpt, policy);
     if (!isOk(status)) {
         ALOGE("Error setting socket option for XFRM! (%s)", toString(status).c_str());
     }
-    return -status.code();
+
+    return status;
 }
 
-int XfrmController::ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket) {
+netdutils::Status
+XfrmController::ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket) {
     (void)socket;
-    return 0;
+    return netdutils::status::ok;
 }
 
 void XfrmController::fillTransportModeSelector(const XfrmSaInfo& record, xfrm_selector* selector) {
@@ -622,8 +630,8 @@ void XfrmController::fillTransportModeSelector(const XfrmSaInfo& record, xfrm_se
     selector->ifindex = record.netId; // TODO : still need to sort this out
 }
 
-int XfrmController::createTransportModeSecurityAssociation(const XfrmSaInfo& record,
-                                                           const XfrmSocket& sock) {
+netdutils::Status XfrmController::createTransportModeSecurityAssociation(const XfrmSaInfo& record,
+                                                                         const XfrmSocket& sock) {
     xfrm_usersa_info usersa{};
     nlattr_algo_crypt crypt{};
     nlattr_algo_auth auth{};
@@ -725,7 +733,8 @@ int XfrmController::fillUserSaId(const XfrmSaId& record, xfrm_usersa_id* said) {
     return sizeof(*said);
 }
 
-int XfrmController::deleteSecurityAssociation(const XfrmSaId& record, const XfrmSocket& sock) {
+netdutils::Status XfrmController::deleteSecurityAssociation(const XfrmSaId& record,
+                                                            const XfrmSocket& sock) {
     xfrm_usersa_id said{};
 
     enum { NLMSG_HDR, USERSAID, USERSAID_PAD };
@@ -743,8 +752,9 @@ int XfrmController::deleteSecurityAssociation(const XfrmSaId& record, const Xfrm
     return sock.sendMessage(XFRM_MSG_DELSA, NETLINK_REQUEST_FLAGS, 0, &iov);
 }
 
-int XfrmController::allocateSpi(const XfrmSaInfo& record, uint32_t minSpi, uint32_t maxSpi,
-                                uint32_t* outSpi, const XfrmSocket& sock) {
+netdutils::Status XfrmController::allocateSpi(const XfrmSaInfo& record, uint32_t minSpi,
+                                              uint32_t maxSpi, uint32_t* outSpi,
+                                              const XfrmSocket& sock) {
     xfrm_userspi_info spiInfo{};
 
     enum { NLMSG_HDR, USERSAID, USERSAID_PAD };
@@ -764,22 +774,23 @@ int XfrmController::allocateSpi(const XfrmSaInfo& record, uint32_t minSpi, uint3
     iov[USERSAID_PAD].iov_len = NLMSG_ALIGN(len) - len;
 
     RandomSpi spiGen = RandomSpi(minSpi, maxSpi);
-    int spi, ret;
+    int spi;
+    netdutils::Status ret;
     while ((spi = spiGen.next()) != INVALID_SPI) {
         spiInfo.min = spi;
         spiInfo.max = spi;
         ret = sock.sendMessage(XFRM_MSG_ALLOCSPI, NETLINK_REQUEST_FLAGS, 0, &iov);
 
         /* If the SPI is in use, we'll get ENOENT */
-        if (ret == -ENOENT)
+        if (netdutils::equalToErrno(ret, ENOENT))
             continue;
 
-        if (ret == 0) {
+        if (isOk(ret)) {
             *outSpi = spi;
             ALOGD("Allocated an SPI: %x", *outSpi);
         } else {
             *outSpi = INVALID_SPI;
-            ALOGE("SPI Allocation Failed with error %d", ret);
+            ALOGE("SPI Allocation Failed with error %d", ret.code());
         }
 
         return ret;

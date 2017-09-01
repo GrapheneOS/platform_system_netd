@@ -17,6 +17,7 @@
 #ifndef NETUTILS_STATUS_H
 #define NETUTILS_STATUS_H
 
+#include "binder/Status.h"
 #include <cassert>
 #include <ostream>
 
@@ -79,6 +80,9 @@ Status statusFromErrno(int err, const std::string& msg);
 // Helper that checks Status-like object (notably StatusOr) against a
 // value in the errno space.
 bool equalToErrno(const Status& status, int err);
+
+// Converts netdutils Status into binder Status.
+binder::Status asBinderStatus(const netdutils::Status& status);
 
 // Helper that converts Status-like object (notably StatusOr) to a
 // message.
