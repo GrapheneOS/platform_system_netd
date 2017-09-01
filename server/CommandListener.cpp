@@ -546,7 +546,7 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
     // nat  enable intiface extiface
     // nat disable intiface extiface
     if (!strcmp(argv[1], "enable") && argc >= 4) {
-        rc = gCtls->natCtrl.enableNat(argv[2], argv[3]);
+        rc = gCtls->tetherCtrl.enableNat(argv[2], argv[3]);
         if(!rc) {
             /* Ignore ifaces for now. */
             rc = gCtls->bandwidthCtrl.setGlobalAlertInForwardChain();
@@ -554,7 +554,7 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
     } else if (!strcmp(argv[1], "disable") && argc >= 4) {
         /* Ignore ifaces for now. */
         rc = gCtls->bandwidthCtrl.removeGlobalAlertInForwardChain();
-        rc |= gCtls->natCtrl.disableNat(argv[2], argv[3]);
+        rc |= gCtls->tetherCtrl.disableNat(argv[2], argv[3]);
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown nat cmd", false);
         return 0;
@@ -971,21 +971,17 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         return 0;
 
     }
-    if (!strcmp(argv[1], "gettetherstats") || !strcmp(argv[1], "gts")) {
-        BandwidthController::TetherStats tetherStats;
+    if (!strcmp(argv[1], "gettetherstats")) {
         std::string extraProcessingInfo = "";
-        if (argc < 2 || argc > 4) {
-            sendGenericSyntaxError(cli, "gettetherstats [<intInterface> <extInterface>]");
+        if (argc != 2) {
+            sendGenericSyntaxError(cli, "gettetherstats");
             return 0;
         }
-        tetherStats.intIface = argc > 2 ? argv[2] : "";
-        tetherStats.extIface = argc > 3 ? argv[3] : "";
-        // No filtering requested and there are no interface pairs to lookup.
-        if (argc <= 2 && gCtls->natCtrl.ifacePairList.empty()) {
+        if (gCtls->tetherCtrl.ifacePairList.empty()) {
             cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
             return 0;
         }
-        int rc = gCtls->bandwidthCtrl.getTetherStats(cli, tetherStats, extraProcessingInfo);
+        int rc = gCtls->tetherCtrl.getTetherStats(cli, extraProcessingInfo);
         if (rc) {
                 extraProcessingInfo.insert(0, "Failed to get tethering stats.\n");
                 sendGenericOpFailed(cli, extraProcessingInfo.c_str());
