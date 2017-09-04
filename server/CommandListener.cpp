@@ -971,25 +971,6 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         return 0;
 
     }
-    if (!strcmp(argv[1], "gettetherstats")) {
-        std::string extraProcessingInfo = "";
-        if (argc != 2) {
-            sendGenericSyntaxError(cli, "gettetherstats");
-            return 0;
-        }
-        if (gCtls->tetherCtrl.ifacePairList.empty()) {
-            cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
-            return 0;
-        }
-        int rc = gCtls->tetherCtrl.getTetherStats(cli, extraProcessingInfo);
-        if (rc) {
-                extraProcessingInfo.insert(0, "Failed to get tethering stats.\n");
-                sendGenericOpFailed(cli, extraProcessingInfo.c_str());
-                return 0;
-        }
-        return 0;
-
-    }
 
     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown bandwidth cmd", false);
     return 0;

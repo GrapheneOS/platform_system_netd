@@ -323,8 +323,7 @@ void tetherAddStats(PersistableBundle *bundle, const TetherController::TetherSta
 binder::Status NetdNativeService::tetherGetStats(PersistableBundle *bundle) {
     NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock)
 
-    std::string extraProcessingInfo;
-    const auto& statsList = gCtls->tetherCtrl.getTetherStats(extraProcessingInfo);
+    const auto& statsList = gCtls->tetherCtrl.getTetherStats();
     if (!isOk(statsList)) {
         return toBinderStatus(statsList);
     }

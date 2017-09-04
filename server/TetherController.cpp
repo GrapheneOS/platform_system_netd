@@ -714,16 +714,9 @@ int TetherController::addForwardChainStats(TetherStatsList& statsList,
     return 0;
 }
 
-std::string TetherController::TetherStats::getStatsLine() const {
-    std::string msg;
-    StringAppendF(&msg, "%s %s %" PRId64" %" PRId64" %" PRId64" %" PRId64, intIface.c_str(),
-                  extIface.c_str(), rxBytes, rxPackets, txBytes, txPackets);
-    return msg;
-}
-
-StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats(
-        std::string& extraProcessingInfo) {
+StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats() {
     TetherStatsList statsList;
+    std::string parsedIptablesOutput;
 
     for (const IptablesTarget target : {V4, V6}) {
         std::string statsString;
@@ -732,29 +725,14 @@ StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats(
                                                       target, ret));
         }
 
-        if (int ret = addForwardChainStats(statsList, statsString, extraProcessingInfo)) {
+        if (int ret = addForwardChainStats(statsList, statsString, parsedIptablesOutput)) {
             return statusFromErrno(-ret, StringPrintf("failed to parse %s tether stats:\n%s",
                                                       target == V4 ? "IPv4": "IPv6",
-                                                      extraProcessingInfo.c_str()));
+                                                      parsedIptablesOutput.c_str()));
         }
     }
 
     return statsList;
-}
-
-int TetherController::getTetherStats(SocketClient *cli, std::string &extraProcessingInfo) {
-    StatusOr<TetherStatsList> statsList = getTetherStats(extraProcessingInfo);
-    if (!isOk(statsList)) {
-        return -1;
-    }
-
-    for (const auto& stats: statsList.value()) {
-        cli->sendMsg(ResponseCode::TetheringStatsListResult,
-                     stats.getStatsLine().c_str(), false);
-    }
-    cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
-
-    return 0;
 }
 
 }  // namespace net

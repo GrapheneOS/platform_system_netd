@@ -88,11 +88,6 @@ public:
         int64_t rxPackets = -1;
         int64_t txBytes = -1;
         int64_t txPackets = -1;
-        /*
-         * Returns a new string representing this:
-         * intIface extIface rx_bytes rx_packets tx_bytes tx_packets
-         */
-        std::string getStatsLine() const;
 
         bool addStatsIfMatch(const TetherStats& other) {
             if (intIface == other.intIface && extIface == other.extIface) {
@@ -108,13 +103,7 @@ public:
 
     typedef std::vector<TetherStats> TetherStatsList;
 
-    StatusOr<TetherStatsList> getTetherStats(std::string &extraProcessingInfo);
-
-    /*
-     * Sends out to the cli a list of stats TetheringStatsListResult+CommandOkay).
-     * Error is to be handled on the outside.
-     */
-    int getTetherStats(SocketClient *cli, std::string &extraProcessingInfo);
+    StatusOr<TetherStatsList> getTetherStats();
 
     /*
      * extraProcessingInfo: contains raw parsed data, and error info.

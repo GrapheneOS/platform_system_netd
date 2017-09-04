@@ -28,12 +28,16 @@
 
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <netdutils/StatusOr.h>
 
 #include "TetherController.h"
 #include "IptablesBaseTest.h"
 
 using android::base::Join;
 using android::base::StringPrintf;
+using android::netdutils::StatusOr;
+using TetherStats = android::net::TetherController::TetherStats;
+using TetherStatsList = android::net::TetherController::TetherStatsList;
 
 namespace android {
 namespace net {
@@ -219,62 +223,45 @@ std::string kIPv6TetherCounters = Join(std::vector<std::string> {
     "   20000 20000000 RETURN     all      rmnet0 wlan0   ::/0                 ::/0",
 }, '\n');
 
-std::string readSocketClientResponse(int fd) {
-    char buf[32768];
-    ssize_t bytesRead = read(fd, buf, sizeof(buf));
-    if (bytesRead < 0) {
-        return "";
-    }
-    for (int i = 0; i < bytesRead; i++) {
-        if (buf[i] == '\0') buf[i] = '\n';
-    }
-    return std::string(buf, bytesRead);
-}
-
-void expectNoSocketClientResponse(int fd) {
-    char buf[64];
-    EXPECT_EQ(-1, read(fd, buf, sizeof(buf))) << "Unexpected response: " << buf << "\n";
+void expectTetherStatsEqual(const TetherController::TetherStats& expected,
+                            const TetherController::TetherStats& actual) {
+    EXPECT_EQ(expected.intIface, actual.intIface);
+    EXPECT_EQ(expected.extIface, actual.extIface);
+    EXPECT_EQ(expected.rxBytes, actual.rxBytes);
+    EXPECT_EQ(expected.txBytes, actual.txBytes);
+    EXPECT_EQ(expected.rxPackets, actual.rxPackets);
+    EXPECT_EQ(expected.txPackets, actual.txPackets);
 }
 
 TEST_F(TetherControllerTest, TestGetTetherStats) {
-    int socketPair[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, socketPair));
-    ASSERT_EQ(0, fcntl(socketPair[0], F_SETFL, O_NONBLOCK | fcntl(socketPair[0], F_GETFL)));
-    ASSERT_EQ(0, fcntl(socketPair[1], F_SETFL, O_NONBLOCK | fcntl(socketPair[1], F_GETFL)));
-    SocketClient cli(socketPair[0], false);
-
-    std::string err;
-
     // If no filter is specified, both IPv4 and IPv6 counters must have at least one interface pair.
     addIptablesRestoreOutput(kIPv4TetherCounters);
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, err));
-    expectNoSocketClientResponse(socketPair[1]);
+    ASSERT_FALSE(isOk(mTetherCtrl.getTetherStats()));
     clearIptablesRestoreOutput();
 
     addIptablesRestoreOutput(kIPv6TetherCounters);
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, err));
+    ASSERT_FALSE(isOk(mTetherCtrl.getTetherStats()));
     clearIptablesRestoreOutput();
 
     // IPv4 and IPv6 counters are properly added together.
     addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
-    std::string expected =
-            "114 wlan0 rmnet0 10002373 10026 20002002 20027\n"
-            "114 bt-pan rmnet0 107471 1040 1708806 1450\n"
-            "200 Tethering stats list completed\n";
-    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, err));
-    ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
-    expectNoSocketClientResponse(socketPair[1]);
+    TetherStats expected0("wlan0", "rmnet0", 10002373, 10026, 20002002, 20027);
+    TetherStats expected1("bt-pan", "rmnet0", 107471, 1040, 1708806, 1450);
+    StatusOr<TetherStatsList> result = mTetherCtrl.getTetherStats();
+    ASSERT_TRUE(isOk(result));
+    TetherStatsList actual = result.value();
+    ASSERT_EQ(2U, actual.size());
+    expectTetherStatsEqual(expected0, result.value()[0]);
+    expectTetherStatsEqual(expected1, result.value()[1]);
     clearIptablesRestoreOutput();
 
     // No stats: error.
     addIptablesRestoreOutput("", kIPv6TetherCounters);
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, err));
-    expectNoSocketClientResponse(socketPair[1]);
+    ASSERT_FALSE(isOk(mTetherCtrl.getTetherStats()));
     clearIptablesRestoreOutput();
 
     addIptablesRestoreOutput(kIPv4TetherCounters, "");
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, err));
-    expectNoSocketClientResponse(socketPair[1]);
+    ASSERT_FALSE(isOk(mTetherCtrl.getTetherStats()));
     clearIptablesRestoreOutput();
 
     // Include only one pair of interfaces and things are fine.
@@ -283,24 +270,26 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
     counterLines.resize(4);
     std::string counters = Join(counterLines, "\n") + "\n";
     addIptablesRestoreOutput(counters, counters);
-    expected =
-            "114 wlan0 rmnet0 4746 52 4004 54\n"
-            "200 Tethering stats list completed\n";
-    ASSERT_EQ(0, mTetherCtrl.getTetherStats(&cli, err));
-    ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+    TetherStats expected1_0("wlan0", "rmnet0", 4746, 52, 4004, 54);
+    result = mTetherCtrl.getTetherStats();
+    ASSERT_TRUE(isOk(result));
+    actual = result.value();
+    ASSERT_EQ(1U, actual.size());
+    expectTetherStatsEqual(expected1_0, actual[0]);
     clearIptablesRestoreOutput();
 
     // But if interfaces aren't paired, it's always an error.
     counterLines.resize(3);
     counters = Join(counterLines, "\n") + "\n";
     addIptablesRestoreOutput(counters, counters);
-    ASSERT_EQ(-1, mTetherCtrl.getTetherStats(&cli, err));
-    expectNoSocketClientResponse(socketPair[1]);
+    result = mTetherCtrl.getTetherStats();
+    ASSERT_FALSE(isOk(result));
     clearIptablesRestoreOutput();
 
     // Token unit test of the fact that we return the stats in the error message which the caller
     // ignores.
     std::string expectedError = counters;
+    std::string err = result.status().msg();
     ASSERT_LE(expectedError.size(), err.size());
     EXPECT_TRUE(std::equal(expectedError.rbegin(), expectedError.rend(), err.rbegin()));
 }
