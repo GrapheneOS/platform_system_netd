@@ -245,8 +245,8 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
 
     // IPv4 and IPv6 counters are properly added together.
     addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
-    TetherStats expected0("wlan0", "rmnet0", 10002373, 10026, 20002002, 20027);
-    TetherStats expected1("bt-pan", "rmnet0", 107471, 1040, 1708806, 1450);
+    TetherStats expected0("wlan0", "rmnet0", 20002002, 20027, 10002373, 10026);
+    TetherStats expected1("bt-pan", "rmnet0", 1708806, 1450, 107471, 1040);
     StatusOr<TetherStatsList> result = mTetherCtrl.getTetherStats();
     ASSERT_TRUE(isOk(result));
     TetherStatsList actual = result.value();
@@ -270,7 +270,7 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
     counterLines.resize(4);
     std::string counters = Join(counterLines, "\n") + "\n";
     addIptablesRestoreOutput(counters, counters);
-    TetherStats expected1_0("wlan0", "rmnet0", 4746, 52, 4004, 54);
+    TetherStats expected1_0("wlan0", "rmnet0", 4004, 54, 4746, 52);
     result = mTetherCtrl.getTetherStats();
     ASSERT_TRUE(isOk(result));
     actual = result.value();

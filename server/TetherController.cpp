@@ -692,12 +692,12 @@ int TetherController::addForwardChainStats(TetherStatsList& statsList,
             ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
             stats.intIface = iface0;
             stats.extIface = iface1;
-            stats.rxPackets = packets;
-            stats.rxBytes = bytes;
-        } else if (stats.intIface == iface1 && stats.extIface == iface0) {
-            ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
             stats.txPackets = packets;
             stats.txBytes = bytes;
+        } else if (stats.intIface == iface1 && stats.extIface == iface0) {
+            ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+            stats.rxPackets = packets;
+            stats.rxBytes = bytes;
         }
         if (stats.rxBytes != -1 && stats.txBytes != -1) {
             ALOGV("rx_bytes=%" PRId64" tx_bytes=%" PRId64, stats.rxBytes, stats.txBytes);
