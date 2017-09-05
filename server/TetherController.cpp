@@ -34,6 +34,7 @@
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
 #include <cutils/properties.h>
+#include <netdutils/StatusOr.h>
 
 #include "Fwmark.h"
 #include "NetdConstants.h"
@@ -46,6 +47,8 @@
 using android::base::Join;
 using android::base::StringPrintf;
 using android::base::StringAppendF;
+using android::netdutils::StatusOr;
+using android::netdutils::statusFromErrno;
 
 namespace {
 
@@ -652,7 +655,7 @@ int TetherController::addForwardChainStats(TetherStatsList& statsList,
         extraProcessingInfo += statsLine + "\n";
         if (statsLine.empty()) {
             ALOGE("Empty header while parsing tethering stats");
-            return -1;
+            return -EREMOTEIO;
         }
     }
 
@@ -689,12 +692,12 @@ int TetherController::addForwardChainStats(TetherStatsList& statsList,
             ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
             stats.intIface = iface0;
             stats.extIface = iface1;
-            stats.rxPackets = packets;
-            stats.rxBytes = bytes;
-        } else if (stats.intIface == iface1 && stats.extIface == iface0) {
-            ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
             stats.txPackets = packets;
             stats.txBytes = bytes;
+        } else if (stats.intIface == iface1 && stats.extIface == iface0) {
+            ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+            stats.rxPackets = packets;
+            stats.rxBytes = bytes;
         }
         if (stats.rxBytes != -1 && stats.txBytes != -1) {
             ALOGV("rx_bytes=%" PRId64" tx_bytes=%" PRId64, stats.rxBytes, stats.txBytes);
@@ -706,40 +709,30 @@ int TetherController::addForwardChainStats(TetherStatsList& statsList,
 
     /* It is always an error to find only one side of the stats. */
     if (((stats.rxBytes == -1) != (stats.txBytes == -1)) || !statsFound) {
-        return -1;
+        return -EREMOTEIO;
     }
     return 0;
 }
 
-std::string TetherController::TetherStats::getStatsLine() const {
-    std::string msg;
-    StringAppendF(&msg, "%s %s %" PRId64" %" PRId64" %" PRId64" %" PRId64, intIface.c_str(),
-                  extIface.c_str(), rxBytes, rxPackets, txBytes, txPackets);
-    return msg;
-}
-
-int TetherController::getTetherStats(SocketClient *cli, std::string &extraProcessingInfo) {
+StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats() {
     TetherStatsList statsList;
+    std::string parsedIptablesOutput;
 
     for (const IptablesTarget target : {V4, V6}) {
         std::string statsString;
         if (int ret = iptablesRestoreFunction(target, GET_TETHER_STATS_COMMAND, &statsString)) {
-            ALOGE("Failed to run %s err=%d", GET_TETHER_STATS_COMMAND.c_str(), ret);
-            return -1;
+            return statusFromErrno(-ret, StringPrintf("failed to fetch tether stats (%d): %d",
+                                                      target, ret));
         }
 
-        if (int ret = addForwardChainStats(statsList, statsString, extraProcessingInfo)) {
-            return ret;
+        if (int ret = addForwardChainStats(statsList, statsString, parsedIptablesOutput)) {
+            return statusFromErrno(-ret, StringPrintf("failed to parse %s tether stats:\n%s",
+                                                      target == V4 ? "IPv4": "IPv6",
+                                                      parsedIptablesOutput.c_str()));
         }
     }
 
-    for (const auto& stats: statsList) {
-        cli->sendMsg(ResponseCode::TetheringStatsListResult,
-                     stats.getStatsLine().c_str(), false);
-    }
-    cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
-
-    return 0;
+    return statsList;
 }
 
 }  // namespace net

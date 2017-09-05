@@ -106,9 +106,9 @@ void CommandListener::registerLockingCmd(FrameworkCommand *cmd, android::RWLock&
 
 CommandListener::CommandListener() : FrameworkListener(SOCKET_NAME, true) {
     registerLockingCmd(new InterfaceCmd());
-    registerLockingCmd(new IpFwdCmd());
-    registerLockingCmd(new TetherCmd());
-    registerLockingCmd(new NatCmd());
+    registerLockingCmd(new IpFwdCmd(), gCtls->tetherCtrl.lock);
+    registerLockingCmd(new TetherCmd(), gCtls->tetherCtrl.lock);
+    registerLockingCmd(new NatCmd(), gCtls->tetherCtrl.lock);
     registerLockingCmd(new ListTtysCmd());
     registerLockingCmd(new PppdCmd());
     registerLockingCmd(new BandwidthControlCmd(), gCtls->bandwidthCtrl.lock);
@@ -968,25 +968,6 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         }
         int rc = gCtls->bandwidthCtrl.removeInterfaceAlert(argv[2]);
         sendGenericOkFail(cli, rc);
-        return 0;
-
-    }
-    if (!strcmp(argv[1], "gettetherstats")) {
-        std::string extraProcessingInfo = "";
-        if (argc != 2) {
-            sendGenericSyntaxError(cli, "gettetherstats");
-            return 0;
-        }
-        if (gCtls->tetherCtrl.ifacePairList.empty()) {
-            cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
-            return 0;
-        }
-        int rc = gCtls->tetherCtrl.getTetherStats(cli, extraProcessingInfo);
-        if (rc) {
-                extraProcessingInfo.insert(0, "Failed to get tethering stats.\n");
-                sendGenericOpFailed(cli, extraProcessingInfo.c_str());
-                return 0;
-        }
         return 0;
 
     }
