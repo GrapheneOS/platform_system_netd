@@ -41,6 +41,7 @@
 #include "UidRanges.h"
 
 using android::base::StringPrintf;
+using android::os::PersistableBundle;
 
 namespace android {
 namespace net {
@@ -268,9 +269,45 @@ binder::Status NetdNativeService::removePrivateDnsServer(const std::string& serv
 }
 
 binder::Status NetdNativeService::tetherApplyDnsInterfaces(bool *ret) {
-    NETD_BIG_LOCK_RPC(CONNECTIVITY_INTERNAL);
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock)
 
     *ret = gCtls->tetherCtrl.applyDnsInterfaces();
+    return binder::Status::ok();
+}
+
+namespace {
+
+void tetherAddStats(PersistableBundle *bundle, const TetherController::TetherStats& stats) {
+    String16 iface = String16(stats.extIface.c_str());
+    std::vector<int64_t> statsVector(INetd::TETHER_STATS_ARRAY_SIZE);
+
+    bundle->getLongVector(iface, &statsVector);
+    if (statsVector.size() == 0) {
+        for (int i = 0; i < INetd::TETHER_STATS_ARRAY_SIZE; i++) statsVector.push_back(0);
+    }
+
+    statsVector[INetd::TETHER_STATS_RX_BYTES]   += stats.rxBytes;
+    statsVector[INetd::TETHER_STATS_RX_PACKETS] += stats.rxPackets;
+    statsVector[INetd::TETHER_STATS_TX_BYTES]   += stats.txBytes;
+    statsVector[INetd::TETHER_STATS_TX_PACKETS] += stats.txPackets;
+
+    bundle->putLongVector(iface, statsVector);
+}
+
+}  // namespace
+
+binder::Status NetdNativeService::tetherGetStats(PersistableBundle *bundle) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock)
+
+    const auto& statsList = gCtls->tetherCtrl.getTetherStats();
+    if (!isOk(statsList)) {
+        return toBinderStatus(statsList);
+    }
+
+    for (const auto& stats : statsList.value()) {
+        tetherAddStats(bundle, stats);
+    }
+
     return binder::Status::ok();
 }
 
