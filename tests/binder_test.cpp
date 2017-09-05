@@ -60,6 +60,7 @@ using namespace android::binder;
 using android::net::INetd;
 using android::net::TunInterface;
 using android::net::UidRange;
+using android::os::PersistableBundle;
 
 static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
@@ -695,4 +696,80 @@ TEST_F(BinderTest, TestRemovePrivateDnsServer) {
         }
         EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
     }
+}
+
+void expectNoTestCounterRules() {
+    for (const auto& binary : { IPTABLES_PATH, IP6TABLES_PATH }) {
+        std::string command = StringPrintf("%s -w -nvL tetherctrl_counters", binary);
+        std::string allRules = Join(runCommand(command), "\n");
+        EXPECT_EQ(std::string::npos, allRules.find("netdtest_"));
+    }
+}
+
+void addTetherCounterValues(const char *path, std::string if1, std::string if2, int byte, int pkt) {
+    runCommand(StringPrintf("%s -w -A tetherctrl_counters -i %s -o %s -j RETURN -c %d %d",
+                            path, if1.c_str(), if2.c_str(), pkt, byte));
+}
+
+void delTetherCounterValues(const char *path, std::string if1, std::string if2) {
+    runCommand(StringPrintf("%s -w -D tetherctrl_counters -i %s -o %s -j RETURN",
+                            path, if1.c_str(), if2.c_str()));
+    runCommand(StringPrintf("%s -w -D tetherctrl_counters -i %s -o %s -j RETURN",
+                            path, if2.c_str(), if1.c_str()));
+}
+
+TEST_F(BinderTest, TestTetherGetStats) {
+    expectNoTestCounterRules();
+
+    // TODO: fold this into more comprehensive tests once we have binder RPCs for enabling and
+    // disabling tethering. We don't check the return value because these commands will fail if
+    // tethering is already enabled.
+    runCommand(StringPrintf("%s -w -N tetherctrl_counters", IPTABLES_PATH));
+    runCommand(StringPrintf("%s -w -N tetherctrl_counters", IP6TABLES_PATH));
+
+    std::string intIface1 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
+    std::string intIface2 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
+    std::string intIface3 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
+    std::string extIface1 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
+    std::string extIface2 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
+
+    addTetherCounterValues(IPTABLES_PATH,  intIface1, extIface1, 123, 111);
+    addTetherCounterValues(IP6TABLES_PATH, intIface1, extIface1, 456,  10);
+    addTetherCounterValues(IPTABLES_PATH,  extIface1, intIface1, 321, 222);
+    addTetherCounterValues(IP6TABLES_PATH, extIface1, intIface1, 654,  20);
+    // RX is from external to internal, and TX is from internal to external.
+    // So rxBytes is 321 + 654  = 975, txBytes is 123 + 456 = 579, etc.
+    std::vector<int64_t> expected1 = { 975, 242, 579, 121 };
+
+    addTetherCounterValues(IPTABLES_PATH,  intIface2, extIface2, 1000, 333);
+    addTetherCounterValues(IP6TABLES_PATH, intIface2, extIface2, 3000,  30);
+
+    addTetherCounterValues(IPTABLES_PATH,  extIface2, intIface2, 2000, 444);
+    addTetherCounterValues(IP6TABLES_PATH, extIface2, intIface2, 4000,  40);
+
+    addTetherCounterValues(IP6TABLES_PATH, intIface3, extIface2, 1000,  25);
+    addTetherCounterValues(IP6TABLES_PATH, extIface2, intIface3, 2000,  35);
+    std::vector<int64_t> expected2 = { 8000, 519, 5000, 388 };
+
+    PersistableBundle stats;
+    binder::Status status = mNetd->tetherGetStats(&stats);
+    EXPECT_TRUE(status.isOk()) << "Getting tethering stats failed: " << status;
+
+    std::vector<int64_t> actual1;
+    EXPECT_TRUE(stats.getLongVector(String16(extIface1.c_str()), &actual1));
+    EXPECT_EQ(expected1, actual1);
+
+    std::vector<int64_t> actual2;
+    EXPECT_TRUE(stats.getLongVector(String16(extIface2.c_str()), &actual2));
+    EXPECT_EQ(expected2, actual2);
+
+    for (const auto& path : { IPTABLES_PATH, IP6TABLES_PATH }) {
+        delTetherCounterValues(path, intIface1, extIface1);
+        delTetherCounterValues(path, intIface2, extIface2);
+        if (path == IP6TABLES_PATH) {
+            delTetherCounterValues(path, intIface3, extIface2);
+        }
+    }
+
+    expectNoTestCounterRules();
 }
