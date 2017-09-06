@@ -553,8 +553,7 @@ WARN_UNUSED_RESULT int modifyOutputInterfaceRules(const char* interface, uint32_
 // This is for sockets that have not explicitly requested a particular network, but have been
 // bound to one when they called connect(). This ensures that sockets connected on a particular
 // network stay on that network even if the default network changes.
-WARN_UNUSED_RESULT int modifyImplicitNetworkRule(unsigned netId, uint32_t table,
-                                                 Permission permission, bool add) {
+WARN_UNUSED_RESULT int modifyImplicitNetworkRule(unsigned netId, uint32_t table, bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -564,8 +563,8 @@ WARN_UNUSED_RESULT int modifyImplicitNetworkRule(unsigned netId, uint32_t table,
     fwmark.explicitlySelected = false;
     mask.explicitlySelected = true;
 
-    fwmark.permission = permission;
-    mask.permission = permission;
+    fwmark.permission = PERMISSION_NONE;
+    mask.permission = PERMISSION_NONE;
 
     return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_IMPLICIT_NETWORK, table,
                         fwmark.intValue, mask.intValue);
@@ -727,7 +726,31 @@ WARN_UNUSED_RESULT int modifyPhysicalNetwork(unsigned netId, const char* interfa
                                             add)) {
         return ret;
     }
-    return modifyImplicitNetworkRule(netId, table, permission, add);
+
+    // Only set implicit rules for networks that don't require permissions.
+    //
+    // This is so that if the default network ceases to be the default network and then switches
+    // from requiring no permissions to requiring permissions, we ensure that apps only use the
+    // network if they explicitly select it. This is consistent with destroySocketsLackingPermission
+    // - it closes all sockets on the network except sockets that are explicitly selected.
+    //
+    // The lack of this rule only affects the special case above, because:
+    // - The only cases where we implicitly bind a socket to a network are the default network and
+    //   the bypassable VPN that applies to the app, if any.
+    // - This rule doesn't affect VPNs because they don't support permissions at all.
+    // - The default network doesn't require permissions. While we support doing this, the framework
+    //   never does it (partly because we'd end up in the situation where we tell apps that there is
+    //   a default network, but they can't use it).
+    // - If the network is still the default network, the presence or absence of this rule does not
+    //   matter.
+    //
+    // Therefore, for the lack of this rule to affect a socket, the socket has to have been
+    // implicitly bound to a network because at the time of connect() it was the default, and that
+    // network must no longer be the default, and must now require permissions.
+    if (permission == PERMISSION_NONE) {
+        return modifyImplicitNetworkRule(netId, table, add);
+    }
+    return 0;
 }
 
 WARN_UNUSED_RESULT int modifyRejectNonSecureNetworkRule(const UidRanges& uidRanges, bool add) {
