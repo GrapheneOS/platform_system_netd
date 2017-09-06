@@ -126,20 +126,25 @@ TEST_F(StrictControllerTest, TestSetUidCleartextPenalty) {
     std::vector<std::string> acceptCommands = {
         "*filter\n"
         "-D st_OUTPUT -m owner --uid-owner 12345 -j st_clear_detect\n"
-        "-D st_clear_caught -m owner --uid-owner 12345 -j st_penalty_log\n"
-        "-D st_clear_caught -m owner --uid-owner 12345 -j st_penalty_reject\n"
+        "-D st_clear_caught -m owner --uid-owner 12345 -j st_clear_caught_12345\n"
+        "-F st_clear_caught_12345\n"
+        "-X st_clear_caught_12345\n"
         "COMMIT\n"
     };
     std::vector<std::string> logCommands = {
         "*filter\n"
+        ":st_clear_caught_12345 -\n"
         "-I st_OUTPUT -m owner --uid-owner 12345 -j st_clear_detect\n"
-        "-I st_clear_caught -m owner --uid-owner 12345 -j st_penalty_log\n"
+        "-I st_clear_caught -m owner --uid-owner 12345 -j st_clear_caught_12345\n"
+        "-A st_clear_caught_12345 -j st_penalty_log\n"
         "COMMIT\n"
     };
     std::vector<std::string> rejectCommands = {
         "*filter\n"
+        ":st_clear_caught_12345 -\n"
         "-I st_OUTPUT -m owner --uid-owner 12345 -j st_clear_detect\n"
-        "-I st_clear_caught -m owner --uid-owner 12345 -j st_penalty_reject\n"
+        "-I st_clear_caught -m owner --uid-owner 12345 -j st_clear_caught_12345\n"
+        "-A st_clear_caught_12345 -j st_penalty_reject\n"
         "COMMIT\n"
     };
 

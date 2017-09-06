@@ -157,6 +157,13 @@ int StrictController::disableStrict(void) {
 }
 
 int StrictController::setUidCleartextPenalty(uid_t uid, StrictPenalty penalty) {
+    // When a penalty is set, we don't know what penalty the UID previously had. In order to be able
+    // to clear the previous penalty without causing an iptables error by deleting rules that don't
+    // exist, put each UID's rules in a chain specific to that UID. That way, the commands we need
+    // to run to clear the previous penalty don't depend on what the penalty actually was - all we
+    // need to do is clear the chain.
+    std::string perUidChain = StringPrintf("st_clear_caught_%u", uid);
+
     std::vector<std::string> commands;
     if (penalty == ACCEPT) {
         // Clean up any old rules
@@ -165,21 +172,24 @@ int StrictController::setUidCleartextPenalty(uid_t uid, StrictPenalty penalty) {
             StringPrintf("-D %s -m owner --uid-owner %d -j %s",
                          LOCAL_OUTPUT, uid, LOCAL_CLEAR_DETECT),
             StringPrintf("-D %s -m owner --uid-owner %d -j %s",
-                         LOCAL_CLEAR_CAUGHT, uid, LOCAL_PENALTY_LOG),
-            StringPrintf("-D %s -m owner --uid-owner %d -j %s",
-                         LOCAL_CLEAR_CAUGHT, uid, LOCAL_PENALTY_REJECT),
+                         LOCAL_CLEAR_CAUGHT, uid, perUidChain.c_str()),
+            StringPrintf("-F %s", perUidChain.c_str()),
+            StringPrintf("-X %s", perUidChain.c_str()),
         };
     } else {
         // Always take a detour to investigate this UID
         commands.push_back("*filter");
+        commands.push_back(StringPrintf(":%s -", perUidChain.c_str()));
         commands.push_back(StringPrintf("-I %s -m owner --uid-owner %d -j %s",
                                         LOCAL_OUTPUT, uid, LOCAL_CLEAR_DETECT));
+        commands.push_back(StringPrintf("-I %s -m owner --uid-owner %d -j %s",
+                                        LOCAL_CLEAR_CAUGHT, uid, perUidChain.c_str()));
+
         if (penalty == LOG) {
-            commands.push_back(StringPrintf("-I %s -m owner --uid-owner %d -j %s",
-                                            LOCAL_CLEAR_CAUGHT, uid, LOCAL_PENALTY_LOG));
+            commands.push_back(StringPrintf("-A %s -j %s", perUidChain.c_str(), LOCAL_PENALTY_LOG));
         } else if (penalty == REJECT) {
-            commands.push_back(StringPrintf("-I %s -m owner --uid-owner %d -j %s",
-                                            LOCAL_CLEAR_CAUGHT, uid, LOCAL_PENALTY_REJECT));
+            commands.push_back(StringPrintf("-A %s -j %s", perUidChain.c_str(),
+                                            LOCAL_PENALTY_REJECT));
         }
     }
     commands.push_back("COMMIT\n");
