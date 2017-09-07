@@ -54,10 +54,10 @@ netdutils::Status WakeupController::init(NFLogListenerInterface* listener) {
                                                                      const Slice payload) {
             switch (attr.nla_type) {
                 case NFULA_TIMESTAMP: {
-                    timespec timespec = {};
-                    extract(payload, timespec);
+                    timespec ts = {};
+                    extract(payload, ts);
                     constexpr uint64_t kNsPerS = 1000000000ULL;
-                    timestampNs = be32toh(timespec.tv_nsec) + (be32toh(timespec.tv_sec) * kNsPerS);
+                    timestampNs = be32toh(ts.tv_nsec) + (be32toh(ts.tv_sec) * kNsPerS);
                     break;
                 }
                 case NFULA_PREFIX:
