@@ -81,6 +81,14 @@ const char* const ROUTE_TABLE_NAME_LEGACY_SYSTEM  = "legacy_system";
 const char* const ROUTE_TABLE_NAME_LOCAL = "local";
 const char* const ROUTE_TABLE_NAME_MAIN  = "main";
 
+// None of our routes specify priority, which causes them to have the default
+// priority. For throw routes, we use a fixed priority of 100000. This is
+// because we use throw routes either for maximum-length routes (/32 for IPv4,
+// /128 for IPv6), which we never create with any other priority, or for
+// purposely-low-priority default routes that should never match if there is
+// any other route in the table.
+uint32_t PRIO_THROW = 100000;
+
 const char* const RouteController::LOCAL_MANGLE_INPUT = "routectrl_mangle_INPUT";
 
 // These values are upstream, but not yet in our headers.
@@ -120,6 +128,7 @@ rtattr FRATTR_UID_RANGE = { U16_RTA_LENGTH(sizeof(fib_rule_uid_range)), FRA_UID_
 
 rtattr RTATTR_TABLE     = { U16_RTA_LENGTH(sizeof(uint32_t)),           RTA_TABLE };
 rtattr RTATTR_OIF       = { U16_RTA_LENGTH(sizeof(uint32_t)),           RTA_OIF };
+rtattr RTATTR_PRIO      = { U16_RTA_LENGTH(sizeof(uint32_t)),           RTA_PRIORITY };
 
 uint8_t PADDING_BUFFER[RTA_ALIGNTO] = {0, 0, 0, 0};
 
@@ -373,6 +382,8 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
         }
     }
 
+    bool isDefaultThrowRoute = (type == RTN_THROW && prefixLength == 0);
+
     // Assemble a rtmsg and put it in an array of iovec structures.
     rtmsg route = {
         .rtm_protocol = RTPROT_STATIC,
@@ -396,6 +407,8 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
         { &ifindex,      interface != OIF_NONE ? sizeof(ifindex) : 0 },
         { &rtaGateway,   nexthop ? sizeof(rtaGateway) : 0 },
         { rawNexthop,    nexthop ? static_cast<size_t>(rawLength) : 0 },
+        { &RTATTR_PRIO,  isDefaultThrowRoute ? sizeof(RTATTR_PRIO) : 0 },
+        { &PRIO_THROW,   isDefaultThrowRoute ? sizeof(PRIO_THROW) : 0 },
     };
 
     uint16_t flags = (action == RTM_NEWROUTE) ? NETLINK_CREATE_REQUEST_FLAGS :
