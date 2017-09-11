@@ -19,6 +19,7 @@
 
 #include <netinet/in.h>
 #include <set>
+#include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <vector>
@@ -40,6 +41,7 @@ public:
         Server(const sockaddr_storage& ss) : ss(ss) {}
         sockaddr_storage ss;
         std::set<std::vector<uint8_t>> fingerprints;
+        std::string name;
         int protocol = IPPROTO_TCP;
     };
 

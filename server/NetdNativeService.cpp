@@ -228,7 +228,9 @@ binder::Status NetdNativeService::getResolverInfo(int32_t netId,
 }
 
 binder::Status NetdNativeService::addPrivateDnsServer(const std::string& server, int32_t port,
-        const std::string& fingerprintAlgorithm, const std::vector<std::string>& fingerprints) {
+        const std::string& name,
+        const std::string& fingerprintAlgorithm,
+        const std::vector<std::string>& fingerprints) {
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     std::set<std::vector<uint8_t>> decoded_fingerprints;
     for (const std::string& input : fingerprints) {
@@ -249,7 +251,7 @@ binder::Status NetdNativeService::addPrivateDnsServer(const std::string& server,
         }
         decoded_fingerprints.insert(decoded);
     }
-    const int err = gCtls->resolverCtrl.addPrivateDnsServer(server, port,
+    const int err = gCtls->resolverCtrl.addPrivateDnsServer(server, port, name,
             fingerprintAlgorithm, decoded_fingerprints);
     if (err != INetd::PRIVATE_DNS_SUCCESS) {
         return binder::Status::fromServiceSpecificError(err,

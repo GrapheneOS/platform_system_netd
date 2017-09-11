@@ -162,6 +162,7 @@ interface INetd {
      * @param server the DNS server's IP address.  If a private DNS server is already configured
      *        with this IP address, it will be overwritten.
      * @param port the port on which the server is listening, typically 853.
+     * @param name the DNS server's name if name validation is desired, otherwise "".
      * @param fingerprintAlgorithm the hash algorithm used to compute the fingerprints.  This should
      *        be a name in MessageDigest's format.  Currently "SHA-256" is the only supported
      *        algorithm. Set this to the empty string to disable fingerprint validation.
@@ -172,7 +173,7 @@ interface INetd {
      * @throws ServiceSpecificException in case of failure, with an error code indicating the
      *         cause of the the failure.
      */
-    void addPrivateDnsServer(in @utf8InCpp String server, int port,
+    void addPrivateDnsServer(in @utf8InCpp String server, int port, in @utf8InCpp String name,
              in @utf8InCpp String fingerprintAlgorithm, in @utf8InCpp String[] fingerprints);
 
     /**
