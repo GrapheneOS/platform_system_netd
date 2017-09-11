@@ -48,6 +48,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             std::vector<std::string>* domains, std::vector<int32_t>* params,
             std::vector<int32_t>* stats) override;
     binder::Status addPrivateDnsServer(const std::string& server, int32_t port,
+            const std::string& name,
             const std::string& fingerprintAlgorithm,
             const std::vector<std::string>& fingerprints) override;
     binder::Status removePrivateDnsServer(const std::string& server) override;
