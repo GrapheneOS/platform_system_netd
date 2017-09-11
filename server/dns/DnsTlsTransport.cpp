@@ -149,6 +149,17 @@ SSL* DnsTlsTransport::sslConnect(int fd) {
         return nullptr;
     }
 
+    if (!mServer.name.empty()) {
+        if (SSL_set_tlsext_host_name(ssl.get(), mServer.name.c_str()) != 1) {
+            ALOGE("Failed to set SNI to %s", mServer.name.c_str());
+            return nullptr;
+        }
+        X509_VERIFY_PARAM* param = SSL_get0_param(ssl.get());
+        X509_VERIFY_PARAM_set1_host(param, mServer.name.c_str(), 0);
+        // This will cause the handshake to fail if certificate verification fails.
+        SSL_set_verify(ssl.get(), SSL_VERIFY_PEER, nullptr);
+    }
+
     for (;;) {
         if (DBG) {
             ALOGD("%u Calling SSL_connect", mMark);
