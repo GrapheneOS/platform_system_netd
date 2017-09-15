@@ -150,32 +150,28 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAllocateSpi) {
     const int family = GetParam();
     const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
     const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
-    int outSpi = 0;
-    XfrmController ctrl;
 
-    NetlinkResponse response = {};
+    NetlinkResponse response{};
     response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
+    Slice responseSlice = netdutils::makeSlice(response);
 
-    /** It's an injected return result for the sendMessage function to go through */
-    StatusOr<Slice> readStatus(netdutils::makeSlice(response));
-
-    size_t expectMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userspi_info));
-    // Set the return to allow the program go through
-    StatusOr<size_t> expectRet(expectMsgLength);
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userspi_info));
 
     // A vector to hold the flattened netlink message for nlMsgSlice
     std::vector<uint8_t> nlMsgBuf;
     EXPECT_CALL(mockSyscalls, writev(_, _))
-        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectRet)));
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
     EXPECT_CALL(mockSyscalls, read(_, _))
-        .WillOnce(DoAll(SetArgSlice<1>(netdutils::makeSlice(response)), Return(readStatus)));
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
 
+    XfrmController ctrl;
+    int outSpi = 0;
     Status res = ctrl.ipSecAllocateSpi(1 /* resourceId */, static_cast<int>(XfrmDirection::OUT),
                                        localAddr, remoteAddr, DROID_SPI, &outSpi);
 
     EXPECT_TRUE(isOk(res)) << res;
     EXPECT_EQ(DROID_SPI, outSpi);
-    EXPECT_EQ(expectMsgLength, nlMsgBuf.size());
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
 
     Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
     nlMsgSlice = drop(nlMsgSlice, NLMSG_HDRLEN);
@@ -195,30 +191,27 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityAssociation) {
     const int family = GetParam();
     const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
     const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
-    XfrmController ctrl;
 
-    NetlinkResponse response = {};
+    NetlinkResponse response{};
     response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
-
-    /** It's an injected return result for the sendMessage function to go through */
-    StatusOr<Slice> readStatus(netdutils::makeSlice(response));
+    Slice responseSlice = netdutils::makeSlice(response);
 
     std::vector<uint8_t> authKey(KEY_LENGTH, 0);
     std::vector<uint8_t> cryptKey(KEY_LENGTH, 1);
 
     // Calculate the length of the expected netlink message.
-    size_t expectMsgLength =
+    size_t expectedMsgLength =
         NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_usersa_info)) +
         NLA_ALIGN(offsetof(XfrmController::nlattr_algo_crypt, key) + KEY_LENGTH) +
         NLA_ALIGN(offsetof(XfrmController::nlattr_algo_auth, key) + KEY_LENGTH);
-    StatusOr<size_t> expectRet(expectMsgLength);
 
     std::vector<uint8_t> nlMsgBuf;
     EXPECT_CALL(mockSyscalls, writev(_, _))
-        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectRet)));
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
     EXPECT_CALL(mockSyscalls, read(_, _))
-        .WillOnce(DoAll(SetArgSlice<1>(netdutils::makeSlice(response)), Return(readStatus)));
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
 
+    XfrmController ctrl;
     Status res = ctrl.ipSecAddSecurityAssociation(
         1 /* resourceId */, static_cast<int>(XfrmMode::TUNNEL),
         static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr, 0 /* underlying network */,
@@ -227,7 +220,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityAssociation) {
         {}, 0, static_cast<int>(XfrmEncapType::NONE), 0 /* local port */, 0 /* remote port */);
 
     EXPECT_TRUE(isOk(res)) << res;
-    EXPECT_EQ(expectMsgLength, nlMsgBuf.size());
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
 
     Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
     nlMsgSlice = drop(nlMsgSlice, NLMSG_HDRLEN);
@@ -244,6 +237,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityAssociation) {
     expectAddressEquals(family, localAddr, usersa.saddr);
     expectAddressEquals(family, remoteAddr, usersa.id.daddr);
 
+    // Extract and check the encryption/authentication algorithms.
     Slice attr_buf = drop(nlMsgSlice, NLA_ALIGN(sizeof(xfrm_usersa_info)));
 
     // Extract and check the encryption/authentication algorithm
@@ -296,6 +290,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
     const int family = GetParam();
     const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
     const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
     size_t optlen = 0;
     Policy policy{};
     // Need to cast from void* in order to "SaveArg" policy. Easier to invoke a
@@ -303,8 +298,6 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
     auto SavePolicy = [&policy](const void* value) {
         policy = *reinterpret_cast<const Policy*>(value);
     };
-
-    XfrmController ctrl;
 
     struct sockaddr socketaddr;
     socketaddr.sa_family = family;
@@ -318,6 +311,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
         .WillOnce(DoAll(WithArg<3>(Invoke(SavePolicy)), SaveArg<4>(&optlen),
                         Return(netdutils::status::ok)));
 
+    XfrmController ctrl;
     Status res = ctrl.ipSecApplyTransportModeTransform(sock, 1 /* resourceId */,
                                                        static_cast<int>(XfrmDirection::OUT),
                                                        localAddr, remoteAddr, DROID_SPI);
@@ -336,28 +330,25 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityAssociation) {
     const int family = GetParam();
     const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
     const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
-    XfrmController ctrl;
-    NetlinkResponse response = {};
+
+    NetlinkResponse response{};
     response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
+    Slice responseSlice = netdutils::makeSlice(response);
 
-    /** It's an injected return result for the sendMessage function to go through */
-    StatusOr<Slice> readStatus(netdutils::makeSlice(response));
-
-    size_t expectMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_usersa_id));
-    // Set the return to allow the program run through
-    StatusOr<size_t> expectRet(expectMsgLength);
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_usersa_id));
 
     std::vector<uint8_t> nlMsgBuf;
     EXPECT_CALL(mockSyscalls, writev(_, _))
-        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectRet)));
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
     EXPECT_CALL(mockSyscalls, read(_, _))
-        .WillOnce(DoAll(SetArgSlice<1>(netdutils::makeSlice(response)), Return(readStatus)));
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
 
+    XfrmController ctrl;
     Status res = ctrl.ipSecDeleteSecurityAssociation(
         1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr, DROID_SPI);
 
     EXPECT_TRUE(isOk(res)) << res;
-    EXPECT_EQ(expectMsgLength, nlMsgBuf.size());
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
 
     Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
     nlMsgSlice = netdutils::drop(nlMsgSlice, NLMSG_HDRLEN);
