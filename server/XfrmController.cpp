@@ -482,7 +482,7 @@ netdutils::Status XfrmController::ipSecDeleteSecurityAssociation(int32_t transfo
     ALOGD("remoteAddress=%s", remoteAddress.c_str());
     ALOGD("spi=%0.8x", spi);
 
-    XfrmSaId saId;
+    XfrmSaId saId{};
     netdutils::Status ret = fillXfrmSaId(direction, localAddress, remoteAddress, spi, &saId);
     if (!isOk(ret)) {
         return ret;
