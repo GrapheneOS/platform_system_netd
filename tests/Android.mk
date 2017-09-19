@@ -27,7 +27,7 @@ EXTRA_LDLIBS := -lpthread
 LOCAL_SHARED_LIBRARIES += libbase libbinder libcrypto libcutils liblog \
                           libnetd_client libnetutils libssl libutils
 LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder liblogwrap libnetdaidl_static \
-                          libnetdutils libgtest libgmock
+                          libnetdutils
 LOCAL_AIDL_INCLUDES := system/netd/server/binder
 LOCAL_C_INCLUDES += system/netd/include system/netd/binder/include \
                     system/netd/server system/core/logwrapper/include \
@@ -41,10 +41,7 @@ LOCAL_SRC_FILES := binder_test.cpp \
                    netd_integration_test.cpp \
                    netd_test.cpp \
                    tun_interface.cpp \
-                   ../server/XfrmControllerTest.cpp \
                    ../server/NetdConstants.cpp \
-                   ../server/NetlinkCommands.cpp \
-                   ../server/XfrmController.cpp \
                    ../server/binder/android/net/metrics/INetdEventListener.aidl
 LOCAL_MODULE_TAGS := eng tests
 include $(BUILD_NATIVE_TEST)
