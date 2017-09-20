@@ -69,17 +69,23 @@ using ::testing::SetArgPointee;
 using ::testing::_;
 
 /**
- * Set the memory which is pointed to by the Slice parameter
- * with the content pointed to by the input Slice value.
+ * This gMock action works like SetArgPointee, but for netdutils::Slice.
+ * It sets the memory which is pointed to by the N-th argument with the supplied value.
  */
-ACTION_TEMPLATE(SetArgSlice, HAS_1_TEMPLATE_PARAMS(int, k), AND_1_VALUE_PARAMS(value)) {
-    Slice orig = ::testing::get<k>(args);
+ACTION_TEMPLATE(SetArgSlice, HAS_1_TEMPLATE_PARAMS(int, N), AND_1_VALUE_PARAMS(value)) {
+    Slice orig = ::testing::get<N>(args);
     android::netdutils::copy(orig, value);
 }
 
-/** Extract the content of each iovec and put it into a vector. */
-ACTION_TEMPLATE(SaveFlattenedIovecs, HAS_1_TEMPLATE_PARAMS(int, k), AND_1_VALUE_PARAMS(resVec)) {
-    std::vector<iovec> iovs = ::testing::get<k>(args);
+/**
+ * This gMock action works like SaveArg, but is specialized for vector<iovec>.
+ * It copies the memory pointed to by each of the iovecs into a single vector<uint8_t>.
+ *
+ * Flattening the iovec objects cannot be done later, since there is no guarantee that the memory
+ * they point to will still be valid after the mock method returns.
+ */
+ACTION_TEMPLATE(SaveFlattenedIovecs, HAS_1_TEMPLATE_PARAMS(int, N), AND_1_VALUE_PARAMS(resVec)) {
+    const std::vector<iovec>& iovs = ::testing::get<N>(args);
 
     for (const iovec& iov : iovs) {
         resVec->insert(resVec->end(), reinterpret_cast<uint8_t*>(iov.iov_base),
