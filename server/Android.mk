@@ -189,6 +189,7 @@ LOCAL_SRC_FILES := \
         SockDiagTest.cpp SockDiag.cpp \
         StrictController.cpp StrictControllerTest.cpp \
         TetherController.cpp TetherControllerTest.cpp \
+        XfrmController.cpp XfrmControllerTest.cpp \
         UidRanges.cpp \
         NetlinkListener.cpp \
         WakeupController.cpp WakeupControllerTest.cpp \
