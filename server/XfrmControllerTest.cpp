@@ -63,9 +63,11 @@ using android::netdutils::StatusOr;
 using android::netdutils::Syscalls;
 
 using ::testing::DoAll;
+using ::testing::Invoke;
 using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::SetArgPointee;
+using ::testing::WithArg;
 using ::testing::_;
 
 /**
@@ -304,7 +306,13 @@ TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociation) {
 TEST_F(XfrmControllerTest, TestIpSecApplyTransportModeTransform) {
 
     int optlen = 0;
-    const void* optval;
+    Policy policy{};
+    // Need to cast from void* in order to "SaveArg" policy. Easier to invoke a
+    // lambda than to write a gMock action.
+    auto SavePolicy = [&policy](const void* value) {
+        policy = *reinterpret_cast<const Policy*>(value);
+    };
+
     XfrmController ctrl;
 
     struct sockaddr socketaddr;
@@ -316,7 +324,8 @@ TEST_F(XfrmControllerTest, TestIpSecApplyTransportModeTransform) {
         .WillOnce(DoAll(SetArgPointee<1>(socketaddr), Return(netdutils::status::ok)));
 
     EXPECT_CALL(mockSyscalls, setsockopt(_, _, _, _, _))
-        .WillOnce(DoAll(SaveArg<3>(&optval), SaveArg<4>(&optlen), Return(netdutils::status::ok)));
+        .WillOnce(DoAll(WithArg<3>(Invoke(SavePolicy)), SaveArg<4>(&optlen),
+                        Return(netdutils::status::ok)));
 
     Status res = ctrl.ipSecApplyTransportModeTransform(
         sock, 1 /* resourceId */, static_cast<int>(XfrmDirection::OUT),
@@ -325,17 +334,16 @@ TEST_F(XfrmControllerTest, TestIpSecApplyTransportModeTransform) {
     EXPECT_EQ(0, res.code());
     EXPECT_EQ(static_cast<int>(sizeof(Policy)), optlen);
 
-    const Policy* policy = reinterpret_cast<const Policy*>(optval);
-    EXPECT_EQ(1 /* resourceId */, static_cast<int>(policy->tmpl.reqid));
-    EXPECT_EQ(htonl(DROID_SPI), policy->tmpl.id.spi);
+    EXPECT_EQ(1 /* resourceId */, static_cast<int>(policy.tmpl.reqid));
+    EXPECT_EQ(htonl(DROID_SPI), policy.tmpl.id.spi);
 
     xfrm_address_t saddr{};
     inet_pton(AF_INET, "127.0.0.1", reinterpret_cast<void*>(&saddr));
-    EXPECT_EQ(0, memcmp(&saddr, &policy->tmpl.saddr, sizeof(xfrm_address_t)));
+    EXPECT_EQ(0, memcmp(&saddr, &policy.tmpl.saddr, sizeof(xfrm_address_t)));
 
     xfrm_address_t daddr{};
     inet_pton(AF_INET, "8.8.8.8", reinterpret_cast<void*>(&daddr));
-    EXPECT_EQ(0, memcmp(&daddr, &policy->tmpl.id.daddr, sizeof(xfrm_address_t)));
+    EXPECT_EQ(0, memcmp(&daddr, &policy.tmpl.id.daddr, sizeof(xfrm_address_t)));
 }
 
 TEST_F(XfrmControllerTest, TestIpSecDeleteSecurityAssociation) {
