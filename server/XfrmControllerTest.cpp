@@ -157,11 +157,11 @@ TEST_F(XfrmControllerTest, TestIpSecAllocateSpi) {
 
     EXPECT_EQ(AF_INET, userspi.info.sel.family);
 
-    xfrm_address_t saddr;
+    xfrm_address_t saddr{};
     inet_pton(AF_INET, "127.0.0.1", reinterpret_cast<void*>(&saddr));
     EXPECT_EQ(0, memcmp(&saddr, &userspi.info.saddr, sizeof(xfrm_address_t)));
 
-    xfrm_address_t daddr;
+    xfrm_address_t daddr{};
     inet_pton(AF_INET, "8.8.8.8", reinterpret_cast<void*>(&daddr));
     EXPECT_EQ(0, memcmp(&daddr, &userspi.info.id.daddr, sizeof(xfrm_address_t)));
 
@@ -206,11 +206,11 @@ TEST_F(XfrmControllerTest, TestIpSecAllocateSpiIpv6) {
 
     EXPECT_EQ(AF_INET6, userspi.info.sel.family);
 
-    xfrm_address_t saddr;
+    xfrm_address_t saddr{};
     inet_pton(AF_INET6, "::1", reinterpret_cast<void*>(&saddr));
     EXPECT_EQ(0, memcmp(&saddr, &userspi.info.saddr, sizeof(xfrm_address_t)));
 
-    xfrm_address_t daddr;
+    xfrm_address_t daddr{};
     inet_pton(AF_INET6, "2001:4860:4860::8888", reinterpret_cast<void*>(&daddr));
     EXPECT_EQ(0, memcmp(&daddr, &userspi.info.id.daddr, sizeof(xfrm_address_t)));
 
@@ -378,7 +378,7 @@ TEST_F(XfrmControllerTest, TestIpSecDeleteSecurityAssociation) {
     netdutils::extract(nlMsgSlice, said);
 
     EXPECT_EQ(htonl(DROID_SPI), said.spi);
-    xfrm_address_t daddr;
+    xfrm_address_t daddr{};
     inet_pton(AF_INET, "8.8.8.8", reinterpret_cast<void*>(&daddr));
 
     EXPECT_EQ(0, memcmp(&daddr, &said.daddr, sizeof(xfrm_address_t)));
