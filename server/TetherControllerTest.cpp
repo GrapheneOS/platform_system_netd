@@ -234,10 +234,27 @@ void expectTetherStatsEqual(const TetherController::TetherStats& expected,
 }
 
 TEST_F(TetherControllerTest, TestGetTetherStats) {
-    // If no filter is specified, both IPv4 and IPv6 counters must have at least one interface pair.
-    addIptablesRestoreOutput(kIPv4TetherCounters);
+    // Finding no headers is an error.
     ASSERT_FALSE(isOk(mTetherCtrl.getTetherStats()));
     clearIptablesRestoreOutput();
+
+    // Finding only v4 or only v6 headers is an error.
+    addIptablesRestoreOutput(kTetherCounterHeaders, "");
+    ASSERT_FALSE(isOk(mTetherCtrl.getTetherStats()));
+    clearIptablesRestoreOutput();
+
+    addIptablesRestoreOutput("", kTetherCounterHeaders);
+    ASSERT_FALSE(isOk(mTetherCtrl.getTetherStats()));
+    clearIptablesRestoreOutput();
+
+    // Finding headers but no stats is not an error.
+    addIptablesRestoreOutput(kTetherCounterHeaders, kTetherCounterHeaders);
+    StatusOr<TetherStatsList> result = mTetherCtrl.getTetherStats();
+    ASSERT_TRUE(isOk(result));
+    TetherStatsList actual = result.value();
+    ASSERT_EQ(0U, actual.size());
+    clearIptablesRestoreOutput();
+
 
     addIptablesRestoreOutput(kIPv6TetherCounters);
     ASSERT_FALSE(isOk(mTetherCtrl.getTetherStats()));
@@ -247,9 +264,9 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
     addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
     TetherStats expected0("wlan0", "rmnet0", 20002002, 20027, 10002373, 10026);
     TetherStats expected1("bt-pan", "rmnet0", 1708806, 1450, 107471, 1040);
-    StatusOr<TetherStatsList> result = mTetherCtrl.getTetherStats();
+    result = mTetherCtrl.getTetherStats();
     ASSERT_TRUE(isOk(result));
-    TetherStatsList actual = result.value();
+    actual = result.value();
     ASSERT_EQ(2U, actual.size());
     expectTetherStatsEqual(expected0, result.value()[0]);
     expectTetherStatsEqual(expected1, result.value()[1]);

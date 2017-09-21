@@ -645,7 +645,6 @@ int TetherController::addForwardChainStats(TetherStatsList& statsList,
     const TetherStats empty;
     const char *buffPtr;
     int64_t packets, bytes;
-    int statsFound = 0;
 
     std::stringstream stream(statsOutput);
 
@@ -702,13 +701,12 @@ int TetherController::addForwardChainStats(TetherStatsList& statsList,
         if (stats.rxBytes != -1 && stats.txBytes != -1) {
             ALOGV("rx_bytes=%" PRId64" tx_bytes=%" PRId64, stats.rxBytes, stats.txBytes);
             addStats(statsList, stats);
-            statsFound++;
             stats = empty;
         }
     }
 
     /* It is always an error to find only one side of the stats. */
-    if (((stats.rxBytes == -1) != (stats.txBytes == -1)) || !statsFound) {
+    if (((stats.rxBytes == -1) != (stats.txBytes == -1))) {
         return -EREMOTEIO;
     }
     return 0;
