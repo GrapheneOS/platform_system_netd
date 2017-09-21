@@ -235,6 +235,7 @@ const std::vector<std::string> makeInterfaceQuotaCommands(const std::string& ifa
         StringPrintf("-A %s -j bw_penalty_box", c_chain),
         StringPrintf("-I bw_INPUT %d -i %s --jump %s", ruleIndex, c_iface, c_chain),
         StringPrintf("-I bw_OUTPUT %d -o %s --jump %s", ruleIndex, c_iface, c_chain),
+        StringPrintf("-A bw_FORWARD -i %s --jump %s", c_iface, c_chain),
         StringPrintf("-A bw_FORWARD -o %s --jump %s", c_iface, c_chain),
         StringPrintf("-A %s -m quota2 ! --quota %" PRIu64 " --name %s --jump REJECT", c_chain,
                      quota, c_iface),
@@ -251,6 +252,7 @@ const std::vector<std::string> removeInterfaceQuotaCommands(const std::string& i
         "*filter",
         StringPrintf("-D bw_INPUT -i %s --jump %s", c_iface, c_chain),
         StringPrintf("-D bw_OUTPUT -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-D bw_FORWARD -i %s --jump %s", c_iface, c_chain),
         StringPrintf("-D bw_FORWARD -o %s --jump %s", c_iface, c_chain),
         StringPrintf("-F %s", c_chain),
         StringPrintf("-X %s", c_chain),
@@ -288,6 +290,7 @@ const std::vector<std::string> makeInterfaceSharedQuotaCommands(const std::strin
         "*filter",
         StringPrintf("-I bw_INPUT %d -i %s --jump %s", ruleIndex, c_iface, c_chain),
         StringPrintf("-I bw_OUTPUT %d -o %s --jump %s", ruleIndex, c_iface, c_chain),
+        StringPrintf("-A bw_FORWARD -i %s --jump %s", c_iface, c_chain),
         StringPrintf("-A bw_FORWARD -o %s --jump %s", c_iface, c_chain),
     };
     if (insertQuota) {
@@ -307,6 +310,7 @@ const std::vector<std::string> removeInterfaceSharedQuotaCommands(const std::str
         "*filter",
         StringPrintf("-D bw_INPUT -i %s --jump %s", c_iface, c_chain),
         StringPrintf("-D bw_OUTPUT -o %s --jump %s", c_iface, c_chain),
+        StringPrintf("-D bw_FORWARD -i %s --jump %s", c_iface, c_chain),
         StringPrintf("-D bw_FORWARD -o %s --jump %s", c_iface, c_chain),
     };
     if (deleteQuota) {
