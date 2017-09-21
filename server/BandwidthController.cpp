@@ -307,6 +307,7 @@ int BandwidthController::setInterfaceSharedQuota(const std::string& iface, int64
             "*filter",
             StringPrintf("-I bw_INPUT %d -i %s --jump %s", ruleInsertPos, iface.c_str(), chain),
             StringPrintf("-I bw_OUTPUT %d -o %s --jump %s", ruleInsertPos, iface.c_str(), chain),
+            StringPrintf("-A bw_FORWARD -i %s --jump %s", iface.c_str(), chain),
             StringPrintf("-A bw_FORWARD -o %s --jump %s", iface.c_str(), chain),
         };
         if (mSharedQuotaIfaces.empty()) {
@@ -357,6 +358,7 @@ int BandwidthController::removeInterfaceSharedQuota(const std::string& iface) {
         "*filter",
         StringPrintf("-D bw_INPUT -i %s --jump %s", iface.c_str(), chain),
         StringPrintf("-D bw_OUTPUT -o %s --jump %s", iface.c_str(), chain),
+        StringPrintf("-D bw_FORWARD -i %s --jump %s", iface.c_str(), chain),
         StringPrintf("-D bw_FORWARD -o %s --jump %s", iface.c_str(), chain),
     };
     if (mSharedQuotaIfaces.size() == 1) {
@@ -425,6 +427,7 @@ int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t max
                      chain.c_str()),
         StringPrintf("-I bw_OUTPUT %d -o %s --jump %s", ruleInsertPos, iface.c_str(),
                      chain.c_str()),
+        StringPrintf("-A bw_FORWARD -i %s --jump %s", iface.c_str(), chain.c_str()),
         StringPrintf("-A bw_FORWARD -o %s --jump %s", iface.c_str(), chain.c_str()),
         StringPrintf("-A %s -m quota2 ! --quota %" PRId64 " --name %s --jump REJECT",
                      chain.c_str(), maxBytes, cost.c_str()),
@@ -481,6 +484,7 @@ int BandwidthController::removeInterfaceQuota(const std::string& iface) {
         "*filter",
         StringPrintf("-D bw_INPUT -i %s --jump %s", iface.c_str(), chain.c_str()),
         StringPrintf("-D bw_OUTPUT -o %s --jump %s", iface.c_str(), chain.c_str()),
+        StringPrintf("-D bw_FORWARD -i %s --jump %s", iface.c_str(), chain.c_str()),
         StringPrintf("-D bw_FORWARD -o %s --jump %s", iface.c_str(), chain.c_str()),
         StringPrintf("-F %s", chain.c_str()),
         StringPrintf("-X %s", chain.c_str()),
