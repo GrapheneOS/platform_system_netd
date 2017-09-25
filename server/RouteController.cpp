@@ -90,6 +90,8 @@ const char* const RouteController::LOCAL_MANGLE_INPUT = "routectrl_mangle_INPUT"
 const uint8_t AF_FAMILIES[] = {AF_INET, AF_INET6};
 
 const uid_t UID_ROOT = 0;
+const uint32_t FWMARK_NONE = 0;
+const uint32_t MASK_NONE = 0;
 const char* const IIF_LOOPBACK = "lo";
 const char* const IIF_NONE = NULL;
 const char* const OIF_NONE = NULL;
@@ -536,10 +538,10 @@ WARN_UNUSED_RESULT int modifyOutputInterfaceRules(const char* interface, uint32_
     mask.permission = permission;
 
     // If this rule does not specify a UID range, then also add a corresponding high-priority rule
-    // for UID. This covers forwarded packets and system daemons such as the tethering DHCP server.
+    // for root. This covers forwarded packets and system daemons such as the tethering DHCP server.
     if (uidStart == INVALID_UID && uidEnd == INVALID_UID) {
         if (int ret = modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_VPN_OVERRIDE_OIF,
-                                   table, fwmark.intValue, mask.intValue, IIF_NONE, interface,
+                                   table, FWMARK_NONE, MASK_NONE, IIF_NONE, interface,
                                    UID_ROOT, UID_ROOT)) {
             return ret;
         }
