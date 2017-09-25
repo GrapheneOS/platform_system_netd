@@ -81,23 +81,11 @@ const char* const ROUTE_TABLE_NAME_LEGACY_SYSTEM  = "legacy_system";
 const char* const ROUTE_TABLE_NAME_LOCAL = "local";
 const char* const ROUTE_TABLE_NAME_MAIN  = "main";
 
-// None of our routes specify priority, which causes them to have the default
-// priority. For throw routes, we use a fixed priority of 100000. This is
-// because we use throw routes either for maximum-length routes (/32 for IPv4,
-// /128 for IPv6), which we never create with any other priority, or for
-// purposely-low-priority default routes that should never match if there is
-// any other route in the table.
+// None of our regular routes specify priority, which causes them to have the default priority.
+// For default throw routes, we use a fixed priority of 100000.
 uint32_t PRIO_THROW = 100000;
 
 const char* const RouteController::LOCAL_MANGLE_INPUT = "routectrl_mangle_INPUT";
-
-// These values are upstream, but not yet in our headers.
-// TODO: delete these definitions when updating the headers.
-const uint16_t FRA_UID_RANGE = 20;
-struct fib_rule_uid_range {
-        __u32           start;
-        __u32           end;
-};
 
 const uint8_t AF_FAMILIES[] = {AF_INET, AF_INET6};
 
