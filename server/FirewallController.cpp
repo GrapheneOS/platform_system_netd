@@ -239,6 +239,19 @@ int FirewallController::createChain(const char* chain, FirewallType type) {
     return replaceUidChain(chain, type == WHITELIST, NO_UIDS);
 }
 
+/* static */
+std::string FirewallController::makeCriticalCommands(IptablesTarget target, const char* chainName) {
+    // Allow ICMPv6 packets necessary to make IPv6 connectivity work. http://b/23158230 .
+    std::string commands;
+    if (target == V6) {
+        for (size_t i = 0; i < ARRAY_SIZE(ICMPV6_TYPES); i++) {
+            StringAppendF(&commands, "-A %s -p icmpv6 --icmpv6-type %s -j RETURN\n",
+                   chainName, ICMPV6_TYPES[i]);
+        }
+    }
+    return commands;
+}
+
 std::string FirewallController::makeUidRules(IptablesTarget target, const char *name,
         bool isWhitelist, const std::vector<int32_t>& uids) {
     std::string commands;
@@ -264,13 +277,7 @@ std::string FirewallController::makeUidRules(IptablesTarget target, const char *
     StringAppendF(&commands, "-A %s -p tcp --tcp-flags RST RST -j RETURN\n", name);
 
     if (isWhitelist) {
-        // Allow ICMPv6 packets necessary to make IPv6 connectivity work. http://b/23158230 .
-        if (target == V6) {
-            for (size_t i = 0; i < ARRAY_SIZE(ICMPV6_TYPES); i++) {
-                StringAppendF(&commands, "-A %s -p icmpv6 --icmpv6-type %s -j RETURN\n",
-                       name, ICMPV6_TYPES[i]);
-            }
-        }
+        commands.append(makeCriticalCommands(target, name));
     }
 
     // Blacklist chains have UIDs at the end, and new UIDs are added with '-A'.
