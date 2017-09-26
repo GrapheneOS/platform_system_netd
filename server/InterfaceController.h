@@ -39,7 +39,6 @@ public:
     static int setAcceptIPv6Dad(const char *interface, const int on);
     static int setIPv6DadTransmits(const char *interface, const char *value);
     static int setIPv6PrivacyExtensions(const char *interface, const int on);
-    static int setIPv6NdOffload(char* interface, const int on);
     static int setMtu(const char *interface, const char *mtu);
     static int addAddress(const char *interface, const char *addrString, int prefixLength);
     static int delAddress(const char *interface, const char *addrString, int prefixLength);
