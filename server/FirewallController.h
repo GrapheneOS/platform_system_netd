@@ -64,6 +64,8 @@ public:
 
     int replaceUidChain(const char*, bool, const std::vector<int32_t>&);
 
+    static std::string makeCriticalCommands(IptablesTarget target, const char* chainName);
+
     static const char* TABLE;
 
     static const char* LOCAL_INPUT;
