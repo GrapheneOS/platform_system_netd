@@ -57,6 +57,7 @@
 using namespace android;
 using namespace android::base;
 using namespace android::binder;
+using android::base::StartsWith;
 using android::net::INetd;
 using android::net::TunInterface;
 using android::net::UidRange;
@@ -212,13 +213,29 @@ static int bandwidthDataSaverEnabled(const char *binary) {
     // Chain bw_data_saver (1 references)
     // target     prot opt source               destination
     // RETURN     all  --  0.0.0.0/0            0.0.0.0/0
-    EXPECT_EQ(3U, lines.size());
-    if (lines.size() != 3) return -1;
+    //
+    // or:
+    //
+    // Chain bw_data_saver (1 references)
+    // target     prot opt source               destination
+    // ... possibly connectivity critical packet rules here ...
+    // REJECT     all  --  ::/0            ::/0
 
-    EXPECT_TRUE(android::base::StartsWith(lines[2], "RETURN ") ||
-                android::base::StartsWith(lines[2], "REJECT "));
+    EXPECT_GE(lines.size(), 3U);
 
-    return android::base::StartsWith(lines[2], "REJECT");
+    if (lines.size() == 3 && StartsWith(lines[2], "RETURN ")) {
+        // Data saver disabled.
+        return 0;
+    }
+
+    size_t minSize = (std::string(binary) == IPTABLES_PATH) ? 3 : 9;
+
+    if (lines.size() >= minSize && StartsWith(lines[lines.size() -1], "REJECT ")) {
+        // Data saver enabled.
+        return 1;
+    }
+
+    return -1;
 }
 
 bool enableDataSaver(sp<INetd>& netd, bool enable) {

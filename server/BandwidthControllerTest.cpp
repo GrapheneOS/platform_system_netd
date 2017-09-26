@@ -221,20 +221,38 @@ TEST_F(BandwidthControllerTest, TestDisableBandwidthControl) {
 
 TEST_F(BandwidthControllerTest, TestEnableDataSaver) {
     mBw.enableDataSaver(true);
-    std::vector<std::string> expected = {
+    std::string expected4 =
         "*filter\n"
-        "-R bw_data_saver 1 --jump REJECT\n"
-        "COMMIT\n"
-    };
-    expectIptablesRestoreCommands(expected);
+        ":bw_data_saver -\n"
+        "-A bw_data_saver --jump REJECT\n"
+        "COMMIT\n";
+    std::string expected6 =
+        "*filter\n"
+        ":bw_data_saver -\n"
+        "-A bw_data_saver -p icmpv6 --icmpv6-type packet-too-big -j RETURN\n"
+        "-A bw_data_saver -p icmpv6 --icmpv6-type router-solicitation -j RETURN\n"
+        "-A bw_data_saver -p icmpv6 --icmpv6-type router-advertisement -j RETURN\n"
+        "-A bw_data_saver -p icmpv6 --icmpv6-type neighbour-solicitation -j RETURN\n"
+        "-A bw_data_saver -p icmpv6 --icmpv6-type neighbour-advertisement -j RETURN\n"
+        "-A bw_data_saver -p icmpv6 --icmpv6-type redirect -j RETURN\n"
+        "-A bw_data_saver --jump REJECT\n"
+        "COMMIT\n";
+    expectIptablesRestoreCommands({
+        {V4, expected4},
+        {V6, expected6},
+    });
 
     mBw.enableDataSaver(false);
-    expected = {
+    std::string expected = {
         "*filter\n"
-        "-R bw_data_saver 1 --jump RETURN\n"
+        ":bw_data_saver -\n"
+        "-A bw_data_saver --jump RETURN\n"
         "COMMIT\n"
     };
-    expectIptablesRestoreCommands(expected);
+    expectIptablesRestoreCommands({
+        {V4, expected},
+        {V6, expected},
+    });
 }
 
 std::string kIPv4TetherCounters = Join(std::vector<std::string> {

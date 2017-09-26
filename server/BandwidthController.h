@@ -133,6 +133,8 @@ public:
     enum IptFailureLog { IptFailShow, IptFailHide = IptFailShow };
 #endif
 
+    std::string makeDataSaverCommand(IptablesTarget target, bool enable);
+
     int manipulateSpecialApps(const std::vector<std::string>& appStrUids, const std::string& chain,
                               IptJumpOp jumpHandling, IptOp appOp);
 

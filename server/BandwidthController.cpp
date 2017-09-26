@@ -52,6 +52,7 @@
 
 #include <netdutils/Syscalls.h>
 #include "BandwidthController.h"
+#include "FirewallController.h" /* For makeCriticalCommands */
 #include "NatController.h" /* For LOCAL_TETHER_COUNTERS_CHAIN */
 #include "NetdConstants.h"
 #include "ResponseCode.h"
@@ -248,12 +249,25 @@ int BandwidthController::disableBandwidthControl() {
     return 0;
 }
 
-int BandwidthController::enableDataSaver(bool enable) {
-    std::string cmd = StringPrintf(
+std::string BandwidthController::makeDataSaverCommand(IptablesTarget target, bool enable) {
+    std::string cmd;
+    const char *chainName = "bw_data_saver";
+    const char *op = jumpToString(enable ? IptJumpReject : IptJumpReturn);
+    std::string criticalCommands = enable ?
+            FirewallController::makeCriticalCommands(target, chainName) : "";
+    StringAppendF(&cmd,
         "*filter\n"
-        "-R bw_data_saver 1%s\n"
-        "COMMIT\n", jumpToString(enable ? IptJumpReject : IptJumpReturn));
-    return iptablesRestoreFunction(V4V6, cmd, nullptr);
+        ":%s -\n"
+        "%s"
+        "-A %s%s\n"
+        "COMMIT\n", chainName, criticalCommands.c_str(), chainName, op);
+    return cmd;
+}
+
+int BandwidthController::enableDataSaver(bool enable) {
+    int ret = iptablesRestoreFunction(V4, makeDataSaverCommand(V4, enable), nullptr);
+    ret |= iptablesRestoreFunction(V6, makeDataSaverCommand(V6, enable), nullptr);
+    return ret;
 }
 
 int BandwidthController::addNaughtyApps(int numUids, char *appUids[]) {
