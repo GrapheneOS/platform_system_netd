@@ -81,27 +81,17 @@ const char* const ROUTE_TABLE_NAME_LEGACY_SYSTEM  = "legacy_system";
 const char* const ROUTE_TABLE_NAME_LOCAL = "local";
 const char* const ROUTE_TABLE_NAME_MAIN  = "main";
 
-// None of our routes specify priority, which causes them to have the default
-// priority. For throw routes, we use a fixed priority of 100000. This is
-// because we use throw routes either for maximum-length routes (/32 for IPv4,
-// /128 for IPv6), which we never create with any other priority, or for
-// purposely-low-priority default routes that should never match if there is
-// any other route in the table.
+// None of our regular routes specify priority, which causes them to have the default priority.
+// For default throw routes, we use a fixed priority of 100000.
 uint32_t PRIO_THROW = 100000;
 
 const char* const RouteController::LOCAL_MANGLE_INPUT = "routectrl_mangle_INPUT";
 
-// These values are upstream, but not yet in our headers.
-// TODO: delete these definitions when updating the headers.
-const uint16_t FRA_UID_RANGE = 20;
-struct fib_rule_uid_range {
-        __u32           start;
-        __u32           end;
-};
-
 const uint8_t AF_FAMILIES[] = {AF_INET, AF_INET6};
 
 const uid_t UID_ROOT = 0;
+const uint32_t FWMARK_NONE = 0;
+const uint32_t MASK_NONE = 0;
 const char* const IIF_LOOPBACK = "lo";
 const char* const IIF_NONE = NULL;
 const char* const OIF_NONE = NULL;
@@ -548,10 +538,10 @@ WARN_UNUSED_RESULT int modifyOutputInterfaceRules(const char* interface, uint32_
     mask.permission = permission;
 
     // If this rule does not specify a UID range, then also add a corresponding high-priority rule
-    // for UID. This covers forwarded packets and system daemons such as the tethering DHCP server.
+    // for root. This covers forwarded packets and system daemons such as the tethering DHCP server.
     if (uidStart == INVALID_UID && uidEnd == INVALID_UID) {
         if (int ret = modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_VPN_OVERRIDE_OIF,
-                                   table, fwmark.intValue, mask.intValue, IIF_NONE, interface,
+                                   table, FWMARK_NONE, MASK_NONE, IIF_NONE, interface,
                                    UID_ROOT, UID_ROOT)) {
             return ret;
         }
