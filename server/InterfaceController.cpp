@@ -61,8 +61,6 @@ const char ipv6_neigh_conf_dir[] = "/proc/sys/net/ipv6/neigh";
 const char proc_net_path[] = "/proc/sys/net";
 const char sys_net_path[] = "/sys/class/net";
 
-const char wl_util_path[] = "/vendor/xbin/wlutil";
-
 constexpr int kRouteInfoMinPrefixLen = 48;
 
 // RFC 7421 prefix length.
@@ -322,29 +320,6 @@ int InterfaceController::setIPv6PrivacyExtensions(const char *interface, const i
     // 0: disable IPv6 privacy addresses
     // 2: enable IPv6 privacy addresses and prefer them over non-privacy ones.
     return writeValueToPath(ipv6_proc_path, interface, "use_tempaddr", on ? "2" : "0");
-}
-
-// Enables or disables IPv6 ND offload. This is useful for 464xlat on wifi, IPv6 tethering, and
-// generally implementing IPv6 neighbour discovery and duplicate address detection properly.
-// TODO: This should be implemented in wpa_supplicant via driver commands instead.
-int InterfaceController::setIPv6NdOffload(char* interface, const int on) {
-    // Only supported on Broadcom chipsets via wlutil for now.
-    if (access(wl_util_path, X_OK) == 0) {
-        const char *argv[] = {
-            wl_util_path,
-            "-a",
-            interface,
-            "ndoe",
-            on ? "1" : "0"
-        };
-        int ret = android_fork_execvp(ARRAY_SIZE(argv), const_cast<char**>(argv), NULL,
-                                      false, false);
-        ALOGD("%s ND offload on %s: %d (%s)",
-              (on ? "enabling" : "disabling"), interface, ret, strerror(errno));
-        return ret;
-    } else {
-        return 0;
-    }
 }
 
 void InterfaceController::setAcceptRA(const char *value) {

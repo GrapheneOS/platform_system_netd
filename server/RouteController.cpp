@@ -67,7 +67,6 @@ const uint32_t RULE_PRIORITY_IMPLICIT_NETWORK    = 19000;
 const uint32_t RULE_PRIORITY_BYPASSABLE_VPN      = 20000;
 const uint32_t RULE_PRIORITY_VPN_FALLTHROUGH     = 21000;
 const uint32_t RULE_PRIORITY_DEFAULT_NETWORK     = 22000;
-const uint32_t RULE_PRIORITY_DIRECTLY_CONNECTED  = 23000;
 const uint32_t RULE_PRIORITY_UNREACHABLE         = 32000;
 
 const uint32_t ROUTE_TABLE_LOCAL_NETWORK  = 97;
@@ -678,22 +677,6 @@ int configureDummyNetwork() {
     return 0;
 }
 
-// Add a new rule to look up the 'main' table, with the same selectors as the "default network"
-// rule, but with a lower priority. We will never create routes in the main table; it should only be
-// used for directly-connected routes implicitly created by the kernel when adding IP addresses.
-// This is necessary, for example, when adding a route through a directly-connected gateway: in
-// order to add the route, there must already be a directly-connected route that covers the gateway.
-WARN_UNUSED_RESULT int addDirectlyConnectedRule() {
-    Fwmark fwmark;
-    Fwmark mask;
-
-    fwmark.netId = NETID_UNSET;
-    mask.netId = FWMARK_NET_ID_MASK;
-
-    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_DIRECTLY_CONNECTED, RT_TABLE_MAIN,
-                        fwmark.intValue, mask.intValue, IIF_NONE, OIF_NONE, UID_ROOT, UID_ROOT);
-}
-
 // Add an explicit unreachable rule close to the end of the prioriy list to make it clear that
 // relying on the kernel-default "from all lookup main" rule at priority 32766 is not intended
 // behaviour. We do flush the kernel-default rules at startup, but having an explicit unreachable
@@ -844,8 +827,7 @@ WARN_UNUSED_RESULT int modifyTetheredNetwork(uint16_t action, const char* inputI
                         inputInterface, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
-// Adds or removes an IPv4 or IPv6 route to the specified table and, if it's a directly-connected
-// route, to the main table as well.
+// Adds or removes an IPv4 or IPv6 route to the specified table.
 // Returns 0 on success or negative errno on failure.
 WARN_UNUSED_RESULT int modifyRoute(uint16_t action, const char* interface, const char* destination,
                                    const char* nexthop, RouteController::TableType tableType) {
@@ -945,9 +927,6 @@ int RouteController::Init(unsigned localNetId) {
         return ret;
     }
     if (int ret = addLocalNetworkRules(localNetId)) {
-        return ret;
-    }
-    if (int ret = addDirectlyConnectedRule()) {
         return ret;
     }
     if (int ret = addUnreachableRule()) {
