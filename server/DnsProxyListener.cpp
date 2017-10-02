@@ -101,10 +101,30 @@ res_sendhookact qhook(sockaddr* const * nsap, const u_char** buf, int* buflen,
         return res_goahead;
     }
     DnsTlsTransport::Server tlsServer;
-    if (net::gCtls->resolverCtrl.shouldUseTls(thread_netcontext.dns_netid,
-            insecureResolver, &tlsServer)) {
+    auto tlsStatus = net::gCtls->resolverCtrl.getTlsStatus(thread_netcontext.dns_netid,
+            insecureResolver, &tlsServer);
+    if (tlsStatus == ResolverController::Validation::unknown_netid) {
         if (DBG) {
-            ALOGD("qhook using TLS");
+            ALOGD("No TLS for netid %u", thread_netcontext.dns_netid);
+        }
+        return res_goahead;
+    } else if (tlsStatus == ResolverController::Validation::unknown_server) {
+        if (DBG) {
+            ALOGW("Skipping unexpected server in TLS mode");
+        }
+        return res_nextns;
+    } else {
+        if (tlsStatus != ResolverController::Validation::success) {
+            if (DBG) {
+                ALOGD("Server is not ready");
+            }
+            // TLS validation has not completed.  In opportunistic mode, fall back to UDP.
+            // In strict mode, try a different server.
+            bool opportunistic = tlsServer.name.empty() && tlsServer.fingerprints.empty();
+            return opportunistic ? res_goahead : res_nextns;
+        }
+        if (DBG) {
+            ALOGD("Performing query over TLS");
         }
         auto response = DnsTlsTransport::query(tlsServer, thread_netcontext.dns_mark,
                 *buf, *buflen, ans, anssiz, resplen);
@@ -117,18 +137,13 @@ res_sendhookact qhook(sockaddr* const * nsap, const u_char** buf, int* buflen,
         if (DBG) {
             ALOGW("qhook abort: doQuery failed: %d", (int)response);
         }
-        // If there was a network error, try a different name server.
-        // Otherwise, fail hard.
+        // If there was a network error on a validated server, try a different name server.
         if (response == DnsTlsTransport::Response::network_error) {
             return res_nextns;
         }
+        // There was an internal error.  Fail hard.
         return res_error;
     }
-
-    if (DBG) {
-        ALOGD("qhook not using TLS");
-    }
-    return res_goahead;
 }
 
 }  // namespace
