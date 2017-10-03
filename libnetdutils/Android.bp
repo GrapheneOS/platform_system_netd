@@ -11,6 +11,7 @@ cc_library {
         "UniqueFd.cpp",
         "UniqueFile.cpp",
     ],
+    cflags: ["-Wall", "-Werror"],
     shared_libs: [
         "libbase",
         "libbinder",
@@ -28,6 +29,11 @@ cc_test {
         "StatusTest.cpp",
         "FdTest.cpp",
         "SyscallsTest.cpp",
+    ],
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wno-error=unused-variable",
     ],
     static_libs: ["libgmock"],
     shared_libs: ["libnetdutils"],
