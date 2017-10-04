@@ -637,83 +637,57 @@ static std::string base64Encode(const std::vector<uint8_t>& input) {
     return std::string(reinterpret_cast<char*>(output_bytes));
 }
 
-TEST_F(BinderTest, TestAddPrivateDnsServer) {
+TEST_F(BinderTest, TestSetResolverConfiguration_Tls) {
     std::vector<uint8_t> fp(SHA256_SIZE);
+    std::vector<uint8_t> short_fp(1);
+    std::vector<uint8_t> long_fp(SHA256_SIZE + 1);
+    std::vector<std::string> test_domains;
+    std::vector<int> test_params = { 300, 25, 8, 8 };
+    unsigned test_netid = 0;
     static const struct TestData {
-        const std::string address;
-        const int port;
-        const std::string name;
-        const std::string fingerprintAlgorithm;
-        const std::set<std::vector<uint8_t>> fingerprints;
+        const std::vector<std::string> servers;
+        const std::string tlsName;
+        const std::vector<std::vector<uint8_t>> tlsFingerprints;
         const int expectedReturnCode;
     } kTestData[] = {
-        { "192.0.2.1", 853, "", "", {}, INetd::PRIVATE_DNS_SUCCESS },
-        { "2001:db8::2", 65535, "host.name", "", {}, INetd::PRIVATE_DNS_SUCCESS },
-        { "192.0.2.3", 443, "@@@@", "SHA-256", { fp }, INetd::PRIVATE_DNS_SUCCESS },
-        { "2001:db8::4", 1, "", "SHA-256", { fp }, INetd::PRIVATE_DNS_SUCCESS },
-        { "192.0.*.5", 853, "", "", {}, INetd::PRIVATE_DNS_BAD_ADDRESS },
-        { "", 853, "", "", {}, INetd::PRIVATE_DNS_BAD_ADDRESS },
-        { "2001:dg8::6", 65535, "", "", {}, INetd::PRIVATE_DNS_BAD_ADDRESS },
-        { "192.0.2.7", 0, "", "SHA-256", { fp }, INetd::PRIVATE_DNS_BAD_PORT },
-        { "2001:db8::8", 65536, "", "", {}, INetd::PRIVATE_DNS_BAD_PORT },
-        { "192.0.2.9", 50053, "", "SHA-512", { fp }, INetd::PRIVATE_DNS_UNKNOWN_ALGORITHM },
-        { "2001:db8::a", 853, "", "", { fp }, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
-        { "192.0.2.11", 853, "", "SHA-256", {}, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
-        { "2001:db8::c", 853, "", "SHA-256", { { 1 } }, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
-        { "192.0.2.12", 853, "", "SHA-256", { std::vector<uint8_t>(SHA256_SIZE + 1) },
-                INetd::PRIVATE_DNS_BAD_FINGERPRINT },
-        { "2001:db8::e", 1, "", "SHA-256", { fp, fp, fp }, INetd::PRIVATE_DNS_SUCCESS },
-        { "192.0.2.14", 853, "", "SHA-256", { fp, { 1 } }, INetd::PRIVATE_DNS_BAD_FINGERPRINT },
+        { {"192.0.2.1"}, "", {}, 0 },
+        { {"2001:db8::2"}, "host.name", {}, 0 },
+        { {"192.0.2.3"}, "@@@@", { fp }, 0 },
+        { {"2001:db8::4"}, "", { fp }, 0 },
+        { {"192.0.*.5"}, "", {}, EINVAL },
+        { {""}, "", {}, EINVAL },
+        { {"2001:dg8::6"}, "", {}, EINVAL },
+        { {"2001:db8::c"}, "", { short_fp }, EINVAL },
+        { {"192.0.2.12"}, "", { long_fp }, EINVAL },
+        { {"2001:db8::e"}, "", { fp, fp, fp }, 0 },
+        { {"192.0.2.14"}, "", { fp, short_fp }, EINVAL },
     };
 
     for (unsigned int i = 0; i < arraysize(kTestData); i++) {
         const auto &td = kTestData[i];
 
         std::vector<std::string> fingerprints;
-        for (const std::vector<uint8_t>& fingerprint : td.fingerprints) {
+        for (const auto& fingerprint : td.tlsFingerprints) {
             fingerprints.push_back(base64Encode(fingerprint));
         }
-        const binder::Status status = mNetd->addPrivateDnsServer(
-                td.address, td.port, td.name, td.fingerprintAlgorithm, fingerprints);
+        binder::Status status = mNetd->setResolverConfiguration(
+                test_netid, td.servers, test_domains, test_params,
+                true, td.tlsName, fingerprints);
 
-        if (td.expectedReturnCode == INetd::PRIVATE_DNS_SUCCESS) {
+        if (td.expectedReturnCode == 0) {
             SCOPED_TRACE(String8::format("test case %d should have passed", i));
             SCOPED_TRACE(status.toString8());
             EXPECT_EQ(0, status.exceptionCode());
         } else {
             SCOPED_TRACE(String8::format("test case %d should have failed", i));
             EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
         }
-        EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
     }
-}
-
-TEST_F(BinderTest, TestRemovePrivateDnsServer) {
-    static const struct TestData {
-        const std::string address;
-        const int expectedReturnCode;
-    } kTestData[] = {
-        { "192.0.2.1", INetd::PRIVATE_DNS_SUCCESS },
-        { "2001:db8::2", INetd::PRIVATE_DNS_SUCCESS },
-        { "192.0.*.3", INetd::PRIVATE_DNS_BAD_ADDRESS },
-        { "2001:dg8::4", INetd::PRIVATE_DNS_BAD_ADDRESS },
-        { "", INetd::PRIVATE_DNS_BAD_ADDRESS },
-    };
-
-    for (unsigned int i = 0; i < arraysize(kTestData); i++) {
-        const auto &td = kTestData[i];
-
-        const binder::Status status = mNetd->removePrivateDnsServer(td.address);
-
-        if (td.expectedReturnCode == INetd::PRIVATE_DNS_SUCCESS) {
-            SCOPED_TRACE(String8::format("test case %d should have passed", i));
-            EXPECT_EQ(0, status.exceptionCode());
-        } else {
-            SCOPED_TRACE(String8::format("test case %d should have failed", i));
-            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-        }
-        EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
-    }
+    // Ensure TLS is disabled before the start of the next test.
+    mNetd->setResolverConfiguration(
+        test_netid, kTestData[0].servers, test_domains, test_params,
+        false, "", {});
 }
 
 void expectNoTestCounterRules() {

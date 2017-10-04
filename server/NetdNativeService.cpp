@@ -16,9 +16,11 @@
 
 #define LOG_TAG "Netd"
 
+#include <set>
 #include <vector>
 
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <cutils/log.h>
 #include <cutils/properties.h>
 #include <utils/Errors.h>
@@ -199,13 +201,48 @@ binder::Status NetdNativeService::socketDestroy(const std::vector<UidRange>& uid
     return binder::Status::ok();
 }
 
+// Parse a base64 encoded string into a vector of bytes.
+// On failure, return an empty vector.
+static std::vector<uint8_t> parseBase64(const std::string& input) {
+    std::vector<uint8_t> decoded;
+    size_t out_len;
+    if (EVP_DecodedLength(&out_len, input.size()) != 1) {
+        return decoded;
+    }
+    // out_len is now an upper bound on the output length.
+    decoded.resize(out_len);
+    if (EVP_DecodeBase64(decoded.data(), &out_len, decoded.size(),
+            reinterpret_cast<const uint8_t*>(input.data()), input.size()) == 1) {
+        // Possibly shrink the vector if the actual output was smaller than the bound.
+        decoded.resize(out_len);
+    } else {
+        decoded.clear();
+    }
+    if (out_len != SHA256_SIZE) {
+        decoded.clear();
+    }
+    return decoded;
+}
+
 binder::Status NetdNativeService::setResolverConfiguration(int32_t netId,
         const std::vector<std::string>& servers, const std::vector<std::string>& domains,
-        const std::vector<int32_t>& params) {
+        const std::vector<int32_t>& params, bool useTls, const std::string& tlsName,
+        const std::vector<std::string>& tlsFingerprints) {
     // This function intentionally does not lock within Netd, as Bionic is thread-safe.
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
 
-    int err = gCtls->resolverCtrl.setResolverConfiguration(netId, servers, domains, params);
+    std::set<std::vector<uint8_t>> decoded_fingerprints;
+    for (const std::string& fingerprint : tlsFingerprints) {
+        std::vector<uint8_t> decoded = parseBase64(fingerprint);
+        if (decoded.empty()) {
+            return binder::Status::fromServiceSpecificError(EINVAL,
+                    String8::format("ResolverController error: bad fingerprint"));
+        }
+        decoded_fingerprints.emplace(decoded);
+    }
+
+    int err = gCtls->resolverCtrl.setResolverConfiguration(netId, servers, domains, params,
+            useTls, tlsName, decoded_fingerprints);
     if (err != 0) {
         return binder::Status::fromServiceSpecificError(-err,
                 String8::format("ResolverController error: %s", strerror(-err)));
@@ -223,49 +260,6 @@ binder::Status NetdNativeService::getResolverInfo(int32_t netId,
     if (err != 0) {
         return binder::Status::fromServiceSpecificError(-err,
                 String8::format("ResolverController error: %s", strerror(-err)));
-    }
-    return binder::Status::ok();
-}
-
-binder::Status NetdNativeService::addPrivateDnsServer(const std::string& server, int32_t port,
-        const std::string& name,
-        const std::string& fingerprintAlgorithm,
-        const std::vector<std::string>& fingerprints) {
-    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
-    std::set<std::vector<uint8_t>> decoded_fingerprints;
-    for (const std::string& input : fingerprints) {
-        size_t out_len;
-        if (EVP_DecodedLength(&out_len, input.size()) != 1) {
-            return binder::Status::fromServiceSpecificError(INetd::PRIVATE_DNS_BAD_FINGERPRINT,
-                    "ResolverController error: bad fingerprint length");
-        }
-        // out_len is now an upper bound on the output length.
-        std::vector<uint8_t> decoded(out_len);
-        if (EVP_DecodeBase64(decoded.data(), &out_len, decoded.size(),
-                reinterpret_cast<const uint8_t*>(input.data()), input.size()) == 1) {
-            // Possibly shrink the vector if the actual output was smaller than the bound.
-            decoded.resize(out_len);
-        } else {
-            return binder::Status::fromServiceSpecificError(INetd::PRIVATE_DNS_BAD_FINGERPRINT,
-                    "ResolverController error: Base64 parsing failed");
-        }
-        decoded_fingerprints.insert(decoded);
-    }
-    const int err = gCtls->resolverCtrl.addPrivateDnsServer(server, port, name,
-            fingerprintAlgorithm, decoded_fingerprints);
-    if (err != INetd::PRIVATE_DNS_SUCCESS) {
-        return binder::Status::fromServiceSpecificError(err,
-                String8::format("ResolverController error: %d", err));
-    }
-    return binder::Status::ok();
-}
-
-binder::Status NetdNativeService::removePrivateDnsServer(const std::string& server) {
-    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
-    const int err = gCtls->resolverCtrl.removePrivateDnsServer(server);
-    if (err != INetd::PRIVATE_DNS_SUCCESS) {
-        return binder::Status::fromServiceSpecificError(err,
-                String8::format("ResolverController error: %d", err));
     }
     return binder::Status::ok();
 }
