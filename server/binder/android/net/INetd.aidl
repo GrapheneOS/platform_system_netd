@@ -104,11 +104,16 @@ interface INetd {
      * @param params the params to set. This array contains RESOLVER_PARAMS_COUNT integers that
      *   encode the contents of Bionic's __res_params struct, i.e. sample_validity is stored at
      *   position RESOLVER_PARAMS_SAMPLE_VALIDITY, etc.
+     * @param useTls If true, try to contact servers over TLS on port 853.
+     * @param tlsName The TLS subject name to require for all servers, or empty if there is none.
+     * @param tlsFingerprints An array containing TLS public key fingerprints (pins) of which each
+     *   server must match at least one, or empty if there are no pinned keys.
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
      */
     void setResolverConfiguration(int netId, in @utf8InCpp String[] servers,
-            in @utf8InCpp String[] domains, in int[] params);
+            in @utf8InCpp String[] domains, in int[] params, boolean useTls,
+            in @utf8InCpp String tlsName, in @utf8InCpp String[] tlsFingerprints);
 
     // Array indices for resolver stats.
     const int RESOLVER_STATS_SUCCESSES = 0;
@@ -146,44 +151,6 @@ interface INetd {
      */
     void getResolverInfo(int netId, out @utf8InCpp String[] servers,
             out @utf8InCpp String[] domains, out int[] params, out int[] stats);
-
-    // Private DNS function error codes.
-    const int PRIVATE_DNS_SUCCESS = 0;
-    const int PRIVATE_DNS_BAD_ADDRESS = 1;
-    const int PRIVATE_DNS_BAD_PORT = 2;
-    const int PRIVATE_DNS_UNKNOWN_ALGORITHM = 3;
-    const int PRIVATE_DNS_BAD_FINGERPRINT = 4;
-
-    /**
-     * Adds a server to the list of DNS resolvers that support DNS over TLS.  After this action
-     * succeeds, any subsequent call to setResolverConfiguration will opportunistically use DNS
-     * over TLS if the specified server is on this list and is reachable on that network.
-     *
-     * @param server the DNS server's IP address.  If a private DNS server is already configured
-     *        with this IP address, it will be overwritten.
-     * @param port the port on which the server is listening, typically 853.
-     * @param name the DNS server's name if name validation is desired, otherwise "".
-     * @param fingerprintAlgorithm the hash algorithm used to compute the fingerprints.  This should
-     *        be a name in MessageDigest's format.  Currently "SHA-256" is the only supported
-     *        algorithm. Set this to the empty string to disable fingerprint validation.
-     * @param fingerprints the server's public key fingerprints as Base64 strings.
-     *        These can be generated using MessageDigest and android.util.Base64.encodeToString.
-     *        Currently "SHA-256" is the only supported algorithm. Set this to empty to disable
-     *        fingerprint validation.
-     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-     *         cause of the the failure.
-     */
-    void addPrivateDnsServer(in @utf8InCpp String server, int port, in @utf8InCpp String name,
-             in @utf8InCpp String fingerprintAlgorithm, in @utf8InCpp String[] fingerprints);
-
-    /**
-     * Remove a server from the list of DNS resolvers that support DNS over TLS.
-     *
-     * @param server the DNS server's IP address.
-     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-     *         cause of the the failure.
-     */
-    void removePrivateDnsServer(in @utf8InCpp String server);
 
     /**
      * Instruct the tethering DNS server to reevaluated serving interfaces.

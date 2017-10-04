@@ -16,6 +16,8 @@
 
 #include "dns/DnsTlsTransport.h"
 
+#include <algorithm>
+#include <iterator>
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <errno.h>
@@ -32,6 +34,72 @@
 #include "NetdConstants.h"
 #include "Permission.h"
 
+namespace {
+
+// Returns a tuple of references to the elements of a.
+auto make_tie(const sockaddr_in& a) {
+    return std::tie(a.sin_port, a.sin_addr.s_addr);
+}
+
+// Returns a tuple of references to the elements of a.
+auto make_tie(const sockaddr_in6& a) {
+    // Skip flowinfo, which is not relevant.
+    return std::tie(
+        a.sin6_port,
+        a.sin6_addr,
+        a.sin6_scope_id
+    );
+}
+
+} // namespace
+
+// These binary operators make sockaddr_storage comparable.  They need to be
+// in the global namespace so that the std::tuple < and == operators can see them.
+static bool operator <(const in6_addr& x, const in6_addr& y) {
+    return std::lexicographical_compare(
+            std::begin(x.s6_addr), std::end(x.s6_addr),
+            std::begin(y.s6_addr), std::end(y.s6_addr));
+}
+
+static bool operator ==(const in6_addr& x, const in6_addr& y) {
+    return std::equal(
+            std::begin(x.s6_addr), std::end(x.s6_addr),
+            std::begin(y.s6_addr), std::end(y.s6_addr));
+}
+
+static bool operator <(const sockaddr_storage& x, const sockaddr_storage& y) {
+    if (x.ss_family != y.ss_family) {
+        return x.ss_family < y.ss_family;
+    }
+    // Same address family.
+    if (x.ss_family == AF_INET) {
+        const sockaddr_in& x_sin = reinterpret_cast<const sockaddr_in&>(x);
+        const sockaddr_in& y_sin = reinterpret_cast<const sockaddr_in&>(y);
+        return make_tie(x_sin) < make_tie(y_sin);
+    } else if (x.ss_family == AF_INET6) {
+        const sockaddr_in6& x_sin6 = reinterpret_cast<const sockaddr_in6&>(x);
+        const sockaddr_in6& y_sin6 = reinterpret_cast<const sockaddr_in6&>(y);
+        return make_tie(x_sin6) < make_tie(y_sin6);
+    }
+    return false;  // Unknown address type.  This is an error.
+}
+
+static bool operator ==(const sockaddr_storage& x, const sockaddr_storage& y) {
+    if (x.ss_family != y.ss_family) {
+        return false;
+    }
+    // Same address family.
+    if (x.ss_family == AF_INET) {
+        const sockaddr_in& x_sin = reinterpret_cast<const sockaddr_in&>(x);
+        const sockaddr_in& y_sin = reinterpret_cast<const sockaddr_in&>(y);
+        return make_tie(x_sin) == make_tie(y_sin);
+    } else if (x.ss_family == AF_INET6) {
+        const sockaddr_in6& x_sin6 = reinterpret_cast<const sockaddr_in6&>(x);
+        const sockaddr_in6& y_sin6 = reinterpret_cast<const sockaddr_in6&>(y);
+        return make_tie(x_sin6) == make_tie(y_sin6);
+    }
+    return false;  // Unknown address type.  This is an error.
+}
 
 namespace android {
 namespace net {
@@ -125,6 +193,44 @@ bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
     return true;
 }
 
+// This comparison ignores ports and fingerprints.
+// TODO: respect IPv6 scope id (e.g. link-local addresses).
+bool AddressComparator::operator() (const DnsTlsTransport::Server& x,
+        const DnsTlsTransport::Server& y) const {
+    if (x.ss.ss_family != y.ss.ss_family) {
+        return x.ss.ss_family < y.ss.ss_family;
+    }
+    // Same address family.
+    if (x.ss.ss_family == AF_INET) {
+        const sockaddr_in& x_sin = reinterpret_cast<const sockaddr_in&>(x.ss);
+        const sockaddr_in& y_sin = reinterpret_cast<const sockaddr_in&>(y.ss);
+        return x_sin.sin_addr.s_addr < y_sin.sin_addr.s_addr;
+    } else if (x.ss.ss_family == AF_INET6) {
+        const sockaddr_in6& x_sin6 = reinterpret_cast<const sockaddr_in6&>(x.ss);
+        const sockaddr_in6& y_sin6 = reinterpret_cast<const sockaddr_in6&>(y.ss);
+        return x_sin6.sin6_addr < y_sin6.sin6_addr;
+    }
+    return false;  // Unknown address type.  This is an error.
+}
+
+// Returns a tuple of references to the elements of s.
+auto make_tie(const DnsTlsTransport::Server& s) {
+    return std::tie(
+        s.ss,
+        s.name,
+        s.fingerprints,
+        s.protocol
+    );
+}
+
+bool DnsTlsTransport::Server::operator <(const DnsTlsTransport::Server& other) const {
+    return make_tie(*this) < make_tie(other);
+}
+
+bool DnsTlsTransport::Server::operator ==(const DnsTlsTransport::Server& other) const {
+    return make_tie(*this) == make_tie(other);
+}
+
 SSL* DnsTlsTransport::sslConnect(int fd) {
     if (fd < 0) {
         ALOGD("%u makeConnectedSocket() failed with: %s", mMark, strerror(errno));
@@ -140,7 +246,8 @@ SSL* DnsTlsTransport::sslConnect(int fd) {
     }
 
     bssl::UniquePtr<SSL> ssl(SSL_new(ssl_ctx.get()));
-    bssl::UniquePtr<BIO> bio(BIO_new_socket(fd, BIO_CLOSE));
+    // This file descriptor is owned by a unique_fd, so don't let libssl close it.
+    bssl::UniquePtr<BIO> bio(BIO_new_socket(fd, BIO_NOCLOSE));
     SSL_set_bio(ssl.get(), bio.get(), bio.get());
     bio.release();
 
