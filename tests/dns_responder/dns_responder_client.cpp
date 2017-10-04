@@ -91,12 +91,22 @@ void DnsResponderClient::SetupMappings(unsigned num_hosts, const std::vector<std
 
 bool DnsResponderClient::SetResolversForNetwork(const std::vector<std::string>& servers,
         const std::vector<std::string>& domains, const std::vector<int>& params) {
-    auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params);
+    auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
+            false, "", {});
     return rv.isOk();
 }
 
-bool DnsResponderClient::SetResolversForNetwork(const std::vector<std::string>& searchDomains,
-            const std::vector<std::string>& servers, const std::string& params) {
+bool DnsResponderClient::SetResolversWithTls(const std::vector<std::string>& servers,
+        const std::vector<std::string>& domains, const std::vector<int>& params,
+        const std::string& name,
+        const std::vector<std::string>& fingerprints) {
+    auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
+            true, name, fingerprints);
+    return rv.isOk();
+}
+
+bool DnsResponderClient::SetResolversForNetwork(const std::vector<std::string>& servers,
+        const std::vector<std::string>& searchDomains, const std::string& params) {
     std::string cmd = StringPrintf("resolver setnetdns %d \"", mOemNetId);
     if (!searchDomains.empty()) {
         cmd += searchDomains[0].c_str();

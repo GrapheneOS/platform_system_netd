@@ -43,6 +43,9 @@ public:
         std::set<std::vector<uint8_t>> fingerprints;
         std::string name;
         int protocol = IPPROTO_TCP;
+        // Exact comparison of Server objects
+        bool operator <(const Server& other) const;
+        bool operator ==(const Server& other) const;
     };
 
     enum class Response : uint8_t { success, network_error, limit_error, internal_error };
@@ -84,6 +87,12 @@ private:
     const unsigned mMark;  // Socket mark
     const Server mServer;
 };
+
+// This comparison ignores ports, names, and fingerprints.
+struct AddressComparator {
+    bool operator() (const DnsTlsTransport::Server& x, const DnsTlsTransport::Server& y) const;
+};
+
 
 }  // namespace net
 }  // namespace android
