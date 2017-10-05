@@ -125,7 +125,7 @@ inline size_t extract(const Slice src, Head& head) {
 // is less than the sum of all data pointers a suffix of data will be
 // left unmodified. Return the number of bytes copied.
 template <typename Head, typename... Tail>
-inline size_t extract(const Slice src, Head& head, Tail... tail) {
+inline size_t extract(const Slice src, Head& head, Tail&... tail) {
     const auto extracted = extract(src, head);
     return extracted + extract(drop(src, extracted), tail...);
 }
