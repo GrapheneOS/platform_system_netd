@@ -30,11 +30,6 @@
 
 #include <cutils/log.h>
 
-#include <netlink/attr.h>
-#include <netlink/genl/genl.h>
-#include <netlink/handlers.h>
-#include <netlink/msg.h>
-
 #include <linux/netfilter/nfnetlink.h>
 #include <linux/netfilter/nfnetlink_log.h>
 #include <linux/netfilter/nfnetlink_compat.h>

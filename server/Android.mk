@@ -84,7 +84,6 @@ LOCAL_SHARED_LIBRARIES := \
         libnetdaidl \
         libnetutils \
         libnetdutils \
-        libnl \
         libssl \
         libsysutils \
         libbase \
@@ -206,7 +205,6 @@ LOCAL_SHARED_LIBRARIES := \
         liblogwrap \
         libnetutils \
         libnetdutils \
-        libnl \
         libsysutils \
         libutils \
         libssl \
