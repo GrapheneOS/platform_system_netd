@@ -16,6 +16,7 @@
  */
 
 #include <string>
+#include <random>
 #include <vector>
 
 #include <ctype.h>
@@ -308,10 +309,10 @@ void fillXfrmLifetimeDefaults(xfrm_lifetime_cfg* cfg) {
 class RandomSpi {
 public:
     RandomSpi(int min, int max) : mMin(min) {
-        time_t t;
-        srand((unsigned int)time(&t));
-        // TODO: more random random
-        mNext = rand();
+        // Re-seeding should be safe because the seed itself is
+        // sufficiently random and we don't need secure random
+        std::mt19937 rnd = std::mt19937(std::random_device()());
+        mNext = std::uniform_int_distribution<>(1, INT_MAX)(rnd);
         mSize = max - min + 1;
         mCount = mSize;
     }
