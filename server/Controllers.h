@@ -31,6 +31,7 @@
 #include "ResolverController.h"
 #include "StrictController.h"
 #include "TetherController.h"
+#include "TrafficController.h"
 #include "WakeupController.h"
 #include "XfrmController.h"
 
@@ -54,6 +55,7 @@ public:
     IptablesRestoreController iptablesRestoreCtrl;
     WakeupController wakeupCtrl;
     XfrmController xfrmCtrl;
+    TrafficController trafficCtrl;
 
     void init();
 
