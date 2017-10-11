@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
 #include <errno.h>
+#include <stdio.h>
+#include <string.h>
 
 #include <sys/socket.h>
 #include <sys/select.h>
