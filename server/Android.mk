@@ -135,7 +135,9 @@ LOCAL_SRC_FILES := \
         oem_iptables_hook.cpp \
         binder/android/net/UidRange.cpp \
         binder/android/net/metrics/INetdEventListener.aidl \
+        dns/DnsTlsDispatcher.cpp \
         dns/DnsTlsTransport.cpp \
+        dns/DnsTlsServer.cpp \
 
 LOCAL_AIDL_INCLUDES := $(LOCAL_PATH)/binder
 

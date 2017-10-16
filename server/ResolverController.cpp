@@ -48,6 +48,7 @@
 #include "ResolverController.h"
 #include "ResolverStats.h"
 #include "dns/DnsTlsTransport.h"
+#include "dns/DnsTlsServer.h"
 
 namespace android {
 namespace net {
@@ -85,12 +86,12 @@ bool parseServer(const char* server, in_port_t port, sockaddr_storage* parsed) {
 
 // Structure for tracking the validation status of servers on a specific netId.
 // Using the AddressComparator ensures at most one entry per IP address.
-typedef std::map<DnsTlsTransport::Server, ResolverController::Validation,
+typedef std::map<DnsTlsServer, ResolverController::Validation,
         AddressComparator> PrivateDnsTracker;
 std::mutex privateDnsLock;
 std::map<unsigned, PrivateDnsTracker> privateDnsTransports GUARDED_BY(privateDnsLock);
 
-void checkPrivateDnsProvider(const DnsTlsTransport::Server& server,
+void checkPrivateDnsProvider(const DnsTlsServer& server,
         PrivateDnsTracker& tracker, unsigned netId) REQUIRES(privateDnsLock) {
     if (DBG) {
         ALOGD("checkPrivateDnsProvider(%s, %u)", addrToString(&(server.ss)).c_str(), netId);
@@ -154,13 +155,13 @@ int setPrivateDnsProviders(int32_t netId,
                 netId, servers.size(), name.c_str(), fingerprints.size());
     }
     // Parse the list of servers that has been passed in
-    std::set<DnsTlsTransport::Server> set;
+    std::set<DnsTlsServer> set;
     for (size_t i = 0; i < servers.size(); ++i) {
         sockaddr_storage parsed;
         if (!parseServer(servers[i].c_str(), 853, &parsed)) {
             return -EINVAL;
         }
-        DnsTlsTransport::Server server(parsed);
+        DnsTlsServer server(parsed);
         server.name = name;
         server.fingerprints = fingerprints;
         set.insert(server);
@@ -220,7 +221,7 @@ int ResolverController::setDnsServers(unsigned netId, const char* searchDomains,
 
 ResolverController::Validation ResolverController::getTlsStatus(unsigned netId,
         const sockaddr_storage& insecureServer,
-        DnsTlsTransport::Server* secureServer) {
+        DnsTlsServer* secureServer) {
     // This mutex is on the critical path of every DNS lookup that doesn't hit a local cache.
     // If the overhead of mutex acquisition proves too high, we could reduce it by maintaining
     // an atomic_int32_t counter of validated connections, and returning early if it's zero.

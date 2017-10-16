@@ -18,7 +18,6 @@
 #define _RESOLVER_CONTROLLER_H_
 
 #include <vector>
-#include "dns/DnsTlsTransport.h"
 
 struct __res_params;
 struct sockaddr_storage;
@@ -26,6 +25,7 @@ struct sockaddr_storage;
 namespace android {
 namespace net {
 
+struct DnsTlsServer;
 class DumpWriter;
 struct ResolverStats;
 
@@ -47,7 +47,7 @@ public:
     // accessible on this netId.  It returns the validation status, and provides the secure server
     // (including port, name, and fingerprints) in the output parameter.
     Validation getTlsStatus(unsigned netId, const sockaddr_storage& insecureServer,
-            DnsTlsTransport::Server* secureServer);
+            DnsTlsServer* secureServer);
 
     int clearDnsServers(unsigned netid);
 
