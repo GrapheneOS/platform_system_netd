@@ -154,14 +154,14 @@ public:
     // convention.
 
     // Exposed for testing
-    static constexpr size_t MAX_ALGO_LENGTH = 128;
+    static constexpr size_t MAX_KEY_LENGTH = 128;
 
     // Container for the content of an XFRMA_ALG_CRYPT netlink attribute.
     // Exposed for testing
     struct nlattr_algo_crypt {
         nlattr hdr;
         xfrm_algo crypt;
-        uint8_t key[MAX_ALGO_LENGTH];
+        uint8_t key[MAX_KEY_LENGTH];
     };
 
     // Container for the content of an XFRMA_ALG_AUTH_TRUNC netlink attribute.
@@ -169,7 +169,7 @@ public:
     struct nlattr_algo_auth {
         nlattr hdr;
         xfrm_algo_auth auth;
-        uint8_t key[MAX_ALGO_LENGTH];
+        uint8_t key[MAX_KEY_LENGTH];
     };
 
     // Container for the content of an XFRMA_TMPL netlink attribute.
@@ -177,7 +177,7 @@ public:
     struct nlattr_algo_aead {
         nlattr hdr;
         xfrm_algo_aead aead;
-        uint8_t key[MAX_ALGO_LENGTH];
+        uint8_t key[MAX_KEY_LENGTH];
     };
 
     // Exposed for testing
