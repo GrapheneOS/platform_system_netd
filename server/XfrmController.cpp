@@ -681,9 +681,9 @@ netdutils::Status XfrmController::createTransportModeSecurityAssociation(const X
                                                   "Encryption");
     }
 
-    if (record.aead.key.size() > MAX_ALGO_LENGTH || record.auth.key.size() > MAX_ALGO_LENGTH ||
-        record.crypt.key.size() > MAX_ALGO_LENGTH) {
-        return netdutils::statusFromErrno(EINVAL, "Key length invalid; exceeds MAX_ALGO_LENGTH");
+    if (record.aead.key.size() > MAX_KEY_LENGTH || record.auth.key.size() > MAX_KEY_LENGTH ||
+        record.crypt.key.size() > MAX_KEY_LENGTH) {
+        return netdutils::statusFromErrno(EINVAL, "Key length invalid; exceeds MAX_KEY_LENGTH");
     }
 
     int len;
