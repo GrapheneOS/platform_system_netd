@@ -250,8 +250,8 @@ TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociation) {
         static_cast<int>(XfrmDirection::OUT), "127.0.0.1" /* local address */,
         "8.8.8.8" /* remote address */, 0 /* network handle */, reqSpi,
         "hmac(sha256)" /* auth algo */, authKey, 0, "cbc(aes)" /* encryption algo */, cryptKey, 0,
-        UDP_ENCAP_ESPINUDP_NON_IKE /* encapType */, 34567 /* local port */,
-        34567 /* remote port */);
+        "" /* AEAD algo */, {}, 0, UDP_ENCAP_ESPINUDP_NON_IKE /* encapType */,
+        34567 /* local port */, 34567 /* remote port */);
 
     EXPECT_EQ(0, res.code());
     EXPECT_EQ(expectMsgLength, nlMsgBuf.size());

@@ -422,6 +422,7 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
         int32_t spi,
         const std::string& authAlgo, const std::vector<uint8_t>& authKey, int32_t authTruncBits,
         const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits,
+        const std::string& aeadAlgo, const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits,
         int32_t encapType,
         int32_t encapLocalPort,
         int32_t encapRemotePort) {
@@ -434,6 +435,7 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
               spi,
               authAlgo, authKey, authTruncBits,
               cryptAlgo, cryptKey, cryptTruncBits,
+              aeadAlgo, aeadKey, aeadIcvBits,
               encapType, encapLocalPort, encapRemotePort));
 }
 
