@@ -259,6 +259,10 @@ interface INetd {
     * @param cryptAlgo a string identifying the encryption algorithm to be used
     * @param cryptKey a byte arrray containing the encryption key
     * @param cryptTruncBits unused parameter
+    * @param aeadAlgo a string identifying the authenticated encryption algorithm to be used
+    * @param aeadKey a byte arrray containing the key to be used in authenticated encryption
+    * @param aeadIcvBits the truncation length of the ICV produced by the authentication algorithm
+    *        (similar to authTruncBits in function)
     * @param encapType encapsulation type used (if any) for the udp encap socket
     * @param encapLocalPort the port number on the host to be used in encap packets
     * @param encapRemotePort the port number of the remote to be used for encap packets
@@ -273,6 +277,7 @@ interface INetd {
             int spi,
             in @utf8InCpp String authAlgo, in byte[] authKey, in int authTruncBits,
             in @utf8InCpp String cryptAlgo, in byte[] cryptKey, in int cryptTruncBits,
+            in @utf8InCpp String aeadAlgo, in byte[] aeadKey, in int aeadIcvBits,
             int encapType,
             int encapLocalPort,
             int encapRemotePort);
