@@ -39,6 +39,8 @@ extern const uint32_t ALGO_MASK_AUTH_ALL;
 // Exposed for testing
 extern const uint32_t ALGO_MASK_CRYPT_ALL;
 // Exposed for testing
+extern const uint32_t ALGO_MASK_AEAD_ALL;
+// Exposed for testing
 extern const uint8_t REPLAY_WINDOW_SIZE;
 
 // Suggest we avoid the smallest and largest ints
@@ -110,6 +112,7 @@ struct XfrmSaId {
 struct XfrmSaInfo : XfrmSaId {
     XfrmAlgo auth;
     XfrmAlgo crypt;
+    XfrmAlgo aead;
     int netId;
     XfrmMode mode;
     XfrmEncap encap;
@@ -129,6 +132,7 @@ public:
         const std::string& remoteAddress, int64_t underlyingNetworkHandle, int32_t spi,
         const std::string& authAlgo, const std::vector<uint8_t>& authKey, int32_t authTruncBits,
         const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits,
+        const std::string& aeadAlgo, const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits,
         int32_t encapType, int32_t encapLocalPort, int32_t encapRemotePort);
 
     netdutils::Status ipSecDeleteSecurityAssociation(int32_t transformId, int32_t direction,
@@ -150,14 +154,14 @@ public:
     // convention.
 
     // Exposed for testing
-    static constexpr size_t MAX_ALGO_LENGTH = 128;
+    static constexpr size_t MAX_KEY_LENGTH = 128;
 
     // Container for the content of an XFRMA_ALG_CRYPT netlink attribute.
     // Exposed for testing
     struct nlattr_algo_crypt {
         nlattr hdr;
         xfrm_algo crypt;
-        uint8_t key[MAX_ALGO_LENGTH];
+        uint8_t key[MAX_KEY_LENGTH];
     };
 
     // Container for the content of an XFRMA_ALG_AUTH_TRUNC netlink attribute.
@@ -165,10 +169,17 @@ public:
     struct nlattr_algo_auth {
         nlattr hdr;
         xfrm_algo_auth auth;
-        uint8_t key[MAX_ALGO_LENGTH];
+        uint8_t key[MAX_KEY_LENGTH];
     };
 
     // Container for the content of an XFRMA_TMPL netlink attribute.
+    // Exposed for testing
+    struct nlattr_algo_aead {
+        nlattr hdr;
+        xfrm_algo_aead aead;
+        uint8_t key[MAX_KEY_LENGTH];
+    };
+
     // Exposed for testing
     struct nlattr_user_tmpl {
         nlattr hdr;
@@ -242,6 +253,7 @@ private:
     // Shared between Transport and Tunnel Mode
     static int fillNlAttrXfrmAlgoEnc(const XfrmAlgo& in_algo, nlattr_algo_crypt* algo);
     static int fillNlAttrXfrmAlgoAuth(const XfrmAlgo& in_algo, nlattr_algo_auth* algo);
+    static int fillNlAttrXfrmAlgoAead(const XfrmAlgo& in_algo, nlattr_algo_aead* algo);
     static int fillNlAttrXfrmEncapTmpl(const XfrmSaInfo& record, nlattr_encap_tmpl* tmpl);
 
     // Functions for Creating a Transport Mode SA

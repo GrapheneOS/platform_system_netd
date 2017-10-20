@@ -73,6 +73,8 @@ constexpr uint32_t ALGO_MASK_AUTH_ALL = ~0;
 // Exposed for testing
 constexpr uint32_t ALGO_MASK_CRYPT_ALL = ~0;
 // Exposed for testing
+constexpr uint32_t ALGO_MASK_AEAD_ALL = ~0;
+// Exposed for testing
 constexpr uint8_t REPLAY_WINDOW_SIZE = 4;
 
 namespace {
@@ -385,6 +387,7 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
     const std::string& remoteAddress, int64_t underlyingNetworkHandle, int32_t spi,
     const std::string& authAlgo, const std::vector<uint8_t>& authKey, int32_t authTruncBits,
     const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits,
+    const std::string& aeadAlgo, const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits,
     int32_t encapType, int32_t encapLocalPort, int32_t encapRemotePort) {
     android::RWLock::AutoWLock lock(mLock);
 
@@ -400,6 +403,8 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
     ALOGD("authTruncBits=%d", authTruncBits);
     ALOGD("cryptAlgo=%s", cryptAlgo.c_str());
     ALOGD("cryptTruncBits=%d,", cryptTruncBits);
+    ALOGD("aeadAlgo=%s", aeadAlgo.c_str());
+    ALOGD("aeadIcvBits=%d,", aeadIcvBits);
     ALOGD("encapType=%d", encapType);
     ALOGD("encapLocalPort=%d", encapLocalPort);
     ALOGD("encapRemotePort=%d", encapRemotePort);
@@ -418,6 +423,9 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
 
     saInfo.crypt = XfrmAlgo{
         .name = cryptAlgo, .key = cryptKey, .truncLenBits = static_cast<uint16_t>(cryptTruncBits)};
+
+    saInfo.aead = XfrmAlgo{
+        .name = aeadAlgo, .key = aeadKey, .truncLenBits = static_cast<uint16_t>(aeadIcvBits)};
 
     saInfo.direction = static_cast<XfrmDirection>(direction);
 
@@ -636,9 +644,22 @@ netdutils::Status XfrmController::createTransportModeSecurityAssociation(const X
     xfrm_usersa_info usersa{};
     nlattr_algo_crypt crypt{};
     nlattr_algo_auth auth{};
+    nlattr_algo_aead aead{};
     nlattr_encap_tmpl encap{};
 
-    enum { NLMSG_HDR, USERSA, USERSA_PAD, CRYPT, CRYPT_PAD, AUTH, AUTH_PAD, ENCAP, ENCAP_PAD };
+    enum {
+        NLMSG_HDR,
+        USERSA,
+        USERSA_PAD,
+        CRYPT,
+        CRYPT_PAD,
+        AUTH,
+        AUTH_PAD,
+        AEAD,
+        AEAD_PAD,
+        ENCAP,
+        ENCAP_PAD
+    };
 
     std::vector<iovec> iov = {
         {NULL, 0},      // reserved for the eventual addition of a NLMSG_HDR
@@ -648,9 +669,22 @@ netdutils::Status XfrmController::createTransportModeSecurityAssociation(const X
         {kPadBytes, 0}, // up to NLATTR_ALIGNTO pad bytes
         {&auth, 0},     // adjust size if auth algo is present
         {kPadBytes, 0}, // up to NLATTR_ALIGNTO pad bytes
-        {&encap, 0},    // adjust size if auth algo is present
+        {&aead, 0},     // adjust size if aead algo is present
+        {kPadBytes, 0}, // up to NLATTR_ALIGNTO pad bytes
+        {&encap, 0},    // adjust size if encapsulating
         {kPadBytes, 0}, // up to NLATTR_ALIGNTO pad bytes
     };
+
+    if (!record.aead.name.empty() && (!record.auth.name.empty() || !record.crypt.name.empty())) {
+        return netdutils::statusFromErrno(EINVAL, "Invalid xfrm algo selection; AEAD is mutually "
+                                                  "exclusive with both Authentication and "
+                                                  "Encryption");
+    }
+
+    if (record.aead.key.size() > MAX_KEY_LENGTH || record.auth.key.size() > MAX_KEY_LENGTH ||
+        record.crypt.key.size() > MAX_KEY_LENGTH) {
+        return netdutils::statusFromErrno(EINVAL, "Key length invalid; exceeds MAX_KEY_LENGTH");
+    }
 
     int len;
     len = iov[USERSA].iov_len = fillUserSaInfo(record, &usersa);
@@ -662,33 +696,67 @@ netdutils::Status XfrmController::createTransportModeSecurityAssociation(const X
     len = iov[AUTH].iov_len = fillNlAttrXfrmAlgoAuth(record.auth, &auth);
     iov[AUTH_PAD].iov_len = NLA_ALIGN(len) - len;
 
+    len = iov[AEAD].iov_len = fillNlAttrXfrmAlgoAead(record.aead, &aead);
+    iov[AEAD_PAD].iov_len = NLA_ALIGN(len) - len;
+
     len = iov[ENCAP].iov_len = fillNlAttrXfrmEncapTmpl(record, &encap);
     iov[ENCAP_PAD].iov_len = NLA_ALIGN(len) - len;
     return sock.sendMessage(XFRM_MSG_UPDSA, NETLINK_REQUEST_FLAGS, 0, &iov);
 }
 
 int XfrmController::fillNlAttrXfrmAlgoEnc(const XfrmAlgo& inAlgo, nlattr_algo_crypt* algo) {
+    if (inAlgo.name.empty()) { // Do not fill anything if algorithm not provided
+        return 0;
+    }
+
     int len = NLA_HDRLEN + sizeof(xfrm_algo);
+    // Kernel always changes last char to null terminator; no safety checks needed.
     strncpy(algo->crypt.alg_name, inAlgo.name.c_str(), sizeof(algo->crypt.alg_name));
     algo->crypt.alg_key_len = inAlgo.key.size() * 8;      // bits
-    memcpy(algo->key, &inAlgo.key[0], inAlgo.key.size()); // FIXME :safety checks
+    memcpy(algo->key, &inAlgo.key[0], inAlgo.key.size());
     len += inAlgo.key.size();
     fillXfrmNlaHdr(&algo->hdr, XFRMA_ALG_CRYPT, len);
     return len;
 }
 
 int XfrmController::fillNlAttrXfrmAlgoAuth(const XfrmAlgo& inAlgo, nlattr_algo_auth* algo) {
+    if (inAlgo.name.empty()) { // Do not fill anything if algorithm not provided
+        return 0;
+    }
+
     int len = NLA_HDRLEN + sizeof(xfrm_algo_auth);
+    // Kernel always changes last char to null terminator; no safety checks needed.
     strncpy(algo->auth.alg_name, inAlgo.name.c_str(), sizeof(algo->auth.alg_name));
     algo->auth.alg_key_len = inAlgo.key.size() * 8; // bits
 
     // This is the extra field for ALG_AUTH_TRUNC
     algo->auth.alg_trunc_len = inAlgo.truncLenBits;
 
-    memcpy(algo->key, &inAlgo.key[0], inAlgo.key.size()); // FIXME :safety checks
+    memcpy(algo->key, &inAlgo.key[0], inAlgo.key.size());
     len += inAlgo.key.size();
 
     fillXfrmNlaHdr(&algo->hdr, XFRMA_ALG_AUTH_TRUNC, len);
+    return len;
+}
+
+int XfrmController::fillNlAttrXfrmAlgoAead(const XfrmAlgo& inAlgo, nlattr_algo_aead* algo) {
+    if (inAlgo.name.empty()) { // Do not fill anything if algorithm not provided
+        return 0;
+    }
+
+    int len = NLA_HDRLEN + sizeof(xfrm_algo_aead);
+    // Kernel always changes last char to null terminator; no safety checks needed.
+    strncpy(algo->aead.alg_name, inAlgo.name.c_str(), sizeof(algo->aead.alg_name));
+    algo->aead.alg_key_len = inAlgo.key.size() * 8; // bits
+
+    // This is the extra field for ALG_AEAD. ICV length is the same as truncation length
+    // for any AEAD algorithm.
+    algo->aead.alg_icv_len = inAlgo.truncLenBits;
+
+    memcpy(algo->key, &inAlgo.key[0], inAlgo.key.size());
+    len += inAlgo.key.size();
+
+    fillXfrmNlaHdr(&algo->hdr, XFRMA_ALG_AEAD, len);
     return len;
 }
 
