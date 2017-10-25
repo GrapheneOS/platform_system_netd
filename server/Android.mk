@@ -58,7 +58,7 @@ LOCAL_C_INCLUDES := \
         external/mdnsresponder/mDNSShared \
         system/netd/include \
 
-LOCAL_CPPFLAGS := -Wall -Werror -Wthread-safety
+LOCAL_CPPFLAGS := -Wall -Werror -Wthread-safety -Wnullable-to-nonnull-conversion
 LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := netd
 
@@ -144,6 +144,8 @@ LOCAL_SRC_FILES := \
         dns/DnsTlsDispatcher.cpp \
         dns/DnsTlsTransport.cpp \
         dns/DnsTlsServer.cpp \
+        dns/DnsTlsSessionCache.cpp \
+        dns/DnsTlsSocket.cpp \
 
 LOCAL_AIDL_INCLUDES := $(LOCAL_PATH)/binder
 
@@ -206,6 +208,11 @@ LOCAL_SRC_FILES := \
         binder/android/net/UidRange.cpp \
         binder/android/net/metrics/INetdEventListener.aidl \
         ../tests/tun_interface.cpp \
+        dns/DnsTlsDispatcher.cpp \
+        dns/DnsTlsTransport.cpp \
+        dns/DnsTlsServer.cpp \
+        dns/DnsTlsSessionCache.cpp \
+        dns/DnsTlsSocket.cpp \
 
 LOCAL_MODULE_TAGS := tests
 LOCAL_STATIC_LIBRARIES := libgmock libpcap
