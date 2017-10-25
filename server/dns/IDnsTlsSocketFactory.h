@@ -22,6 +22,7 @@
 namespace android {
 namespace net {
 
+class IDnsTlsSocketObserver;
 class DnsTlsSessionCache;
 struct DnsTlsServer;
 
@@ -33,6 +34,7 @@ public:
     virtual std::unique_ptr<IDnsTlsSocket> createDnsTlsSocket(
             const DnsTlsServer& server,
             unsigned mark,
+            IDnsTlsSocketObserver* _Nonnull observer,
             DnsTlsSessionCache* _Nonnull cache) = 0;
 };
 

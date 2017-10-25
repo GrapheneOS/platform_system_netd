@@ -32,17 +32,25 @@
 namespace android {
 namespace net {
 
+class IDnsTlsSocketObserver;
 class DnsTlsSessionCache;
 
 using netdutils::Slice;
 
 // A class for managing a TLS socket that sends and receives messages in
 // [length][value] format, with a 2-byte length (i.e. DNS-over-TCP format).
+// This class is not aware of query-response pairing or anything else about DNS.
+// For the observer:
+// This class is not re-entrant: the observer is not permitted to wait for a call to query()
+// or the destructor in a callback.  Doing so will result in deadlocks.
+// This class may call the observer at any time after initialize(), until the destructor
+// returns (but not after).
 class DnsTlsSocket : public IDnsTlsSocket {
 public:
     DnsTlsSocket(const DnsTlsServer& server, unsigned mark,
+                 IDnsTlsSocketObserver* _Nonnull observer,
                  DnsTlsSessionCache* _Nonnull cache) :
-            mMark(mark), mServer(server), mCache(cache) {}
+            mMark(mark), mServer(server), mObserver(observer), mCache(cache) {}
     ~DnsTlsSocket();
 
     // Creates the SSL context for this session and connect.  Returns false on failure.
@@ -51,12 +59,20 @@ public:
     bool initialize() EXCLUDES(mLock);
 
     // Send a query on the provided SSL socket.  |query| contains
-    // the body of a query, not including the ID header. Returns the server's response.
-    DnsTlsServer::Result query(uint16_t id, const Slice query) override;
+    // the body of a query, not including the ID header. This function will typically return before
+    // the query is actually sent.  If this function fails, DnsTlsSocketObserver will be
+    // notified that the socket is closed.
+    // Note that success here indicates successful sending, not receipt of a response.
+    // Thread-safe.
+    bool query(uint16_t id, const Slice query) override;
 
 private:
-    // Lock to be held while performing a query.
+    // Lock to be held by the SSL event loop thread.  This is not normally in contention.
     std::mutex mLock;
+
+    // Forwards queries and receives responses.  Blocks until the idle timeout.
+    void loop() EXCLUDES(mLock);
+    std::unique_ptr<std::thread> mLoopThread GUARDED_BY(mLock);
 
     // On success, sets mSslFd to a socket connected to mAddr (the
     // connection will likely be in progress if mProtocol is IPPROTO_TCP).
@@ -73,25 +89,36 @@ private:
     // Writes a buffer to the socket.
     bool sslWrite(const Slice buffer) REQUIRES(mLock);
 
-    // Reads exactly the specified number of bytes from the socket.  Blocking.
-    // Returns false if the socket closes before enough bytes can be read.
-    bool sslRead(const Slice buffer) REQUIRES(mLock);
+    // Reads exactly the specified number of bytes from the socket, or fails.
+    // Returns SSL_ERROR_NONE on success.
+    // If |wait| is true, then this function always blocks.  Otherwise, it
+    // will return SSL_ERROR_WANT_READ if there is no data from the server to read.
+    int sslRead(const Slice buffer, bool wait) REQUIRES(mLock);
 
     struct Query {
         uint16_t id;
-        const Slice query;
+        Slice query;
     };
 
     bool sendQuery(const Query& q) REQUIRES(mLock);
-    DnsTlsServer::Result readResponse() REQUIRES(mLock);
+    bool readResponse() REQUIRES(mLock);
+
+    // SOCK_SEQPACKET socket pair used for sending queries from myriad query
+    // threads to the SSL thread.  EOF indicates a close request.
+    // We have to use a socket pair (i.e. a pipe) because the SSL thread needs to wait in
+    // select() for input from either a remote server or a query thread.
+    base::unique_fd mIpcInFd;
+    base::unique_fd mIpcOutFd GUARDED_BY(mLock);
 
     // SSL Socket fields.
     bssl::UniquePtr<SSL_CTX> mSslCtx GUARDED_BY(mLock);
     base::unique_fd mSslFd GUARDED_BY(mLock);
     bssl::UniquePtr<SSL> mSsl GUARDED_BY(mLock);
+    static constexpr std::chrono::seconds kIdleTimeout = std::chrono::seconds(20);
 
     const unsigned mMark;  // Socket mark
     const DnsTlsServer mServer;
+    IDnsTlsSocketObserver* _Nonnull const mObserver;
     DnsTlsSessionCache* _Nonnull const mCache;
 };
 
