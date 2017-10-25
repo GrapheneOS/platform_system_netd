@@ -25,6 +25,7 @@
 namespace android {
 namespace net {
 
+class IDnsTlsSocketObserver;
 class DnsTlsSessionCache;
 struct DnsTlsServer;
 
@@ -32,8 +33,9 @@ struct DnsTlsServer;
 class DnsTlsSocketFactory : public IDnsTlsSocketFactory {
 public:
     std::unique_ptr<IDnsTlsSocket> createDnsTlsSocket(const DnsTlsServer& server, unsigned mark,
+                                                     IDnsTlsSocketObserver* _Nonnull observer,
                                                      DnsTlsSessionCache* _Nonnull cache) override {
-        auto socket = std::make_unique<DnsTlsSocket>(server, mark, cache);
+        auto socket = std::make_unique<DnsTlsSocket>(server, mark, observer, cache);
         if (!socket->initialize()) {
             return nullptr;
         }

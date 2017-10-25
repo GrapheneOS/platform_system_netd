@@ -15,6 +15,7 @@
  */
 
 #define LOG_TAG "DnsTlsTransport"
+//#define LOG_NDEBUG 0
 
 #include "dns/DnsTlsTransport.h"
 
@@ -25,8 +26,6 @@
 #include "dns/DnsTlsSocketFactory.h"
 #include "dns/IDnsTlsSocketFactory.h"
 
-//#define LOG_NDEBUG 0
-
 #include "log/log.h"
 #include "Fwmark.h"
 #undef ADD  // already defined in nameser.h
@@ -36,23 +35,114 @@
 namespace android {
 namespace net {
 
-DnsTlsTransport::Result DnsTlsTransport::query(const netdutils::Slice query) {
-    if (query.size() < 2) {
-        return (Result) { .code = Response::internal_error };
+std::future<DnsTlsTransport::Result> DnsTlsTransport::query(const netdutils::Slice query) {
+    std::lock_guard<std::mutex> guard(mLock);
+
+    auto record = mQueries.recordQuery(query);
+    if (!record) {
+        return std::async(std::launch::deferred, []{
+            return (Result) { .code = Response::internal_error };
+        });
     }
 
-    const uint8_t* data = query.base();
-    uint16_t id = data[0] << 8 | data[1];
-
-    auto socket = mFactory->createDnsTlsSocket(mServer, mMark, &mCache);
-    if (!socket) {
-        return (Result) { .code = Response::network_error };
+    if (!mSocket) {
+        ALOGV("No socket for query.  Opening socket and sending.");
+        doConnect();
+    } else {
+        sendQuery(record->query);
     }
 
-    return socket->query(id, netdutils::drop(query, 2));
+    return std::move(record->result);
+}
+
+bool DnsTlsTransport::sendQuery(const DnsTlsQueryMap::Query q) {
+    // Strip off the ID number and send the new ID instead.
+    bool sent = mSocket->query(q.newId, netdutils::drop(q.query, 2));
+    if (sent) {
+        mQueries.markTried(q.newId);
+    }
+    return sent;
+}
+
+void DnsTlsTransport::doConnect() {
+    ALOGV("Constructing new socket");
+    mSocket = mFactory->createDnsTlsSocket(mServer, mMark, this, &mCache);
+
+    if (mSocket) {
+        auto queries = mQueries.getAll();
+        ALOGV("Initialization succeeded.  Reissuing %zu queries.", queries.size());
+        for(auto& q : queries) {
+            if (!sendQuery(q)) {
+                break;
+            }
+        }
+    } else {
+        ALOGV("Initialization failed.");
+        mSocket.reset();
+        ALOGV("Failing all pending queries.");
+        mQueries.clear();
+    }
+}
+
+void DnsTlsTransport::onResponse(std::vector<uint8_t> response) {
+    mQueries.onResponse(std::move(response));
+}
+
+void DnsTlsTransport::onClosed() {
+    std::lock_guard<std::mutex> guard(mLock);
+    if (mClosing) {
+        return;
+    }
+    // Move remaining operations to a new thread.
+    // This is necessary because
+    // 1. onClosed is currently running on a thread that blocks mSocket's destructor
+    // 2. doReconnect will call that destructor
+    if (mReconnectThread) {
+        // Complete cleanup of a previous reconnect thread, if present.
+        mReconnectThread->join();
+        // Joining a thread that is trying to acquire mLock, while holding mLock,
+        // looks like it risks a deadlock.  However, a deadlock will not occur because
+        // once onClosed is called, it cannot be called again until after doReconnect
+        // acquires mLock.
+    }
+    mReconnectThread.reset(new std::thread(&DnsTlsTransport::doReconnect, this));
+}
+
+void DnsTlsTransport::doReconnect() {
+    std::lock_guard<std::mutex> guard(mLock);
+    if (mClosing) {
+        return;
+    }
+    mQueries.cleanup();
+    if (!mQueries.empty()) {
+        ALOGV("Fast reconnect to retry remaining queries");
+        doConnect();
+    } else {
+        ALOGV("No pending queries.  Going idle.");
+        mSocket.reset();
+    }
 }
 
 DnsTlsTransport::~DnsTlsTransport() {
+    ALOGV("Destructor");
+    {
+        std::lock_guard<std::mutex> guard(mLock);
+        ALOGV("Locked destruction procedure");
+        mQueries.clear();
+        mClosing = true;
+    }
+    // It's possible that a reconnect thread was spawned and waiting for mLock.
+    // It's safe for that thread to run now because mClosing is true (and mQueries is empty),
+    // but we need to wait for it to finish before allowing destruction to proceed.
+    if (mReconnectThread) {
+        ALOGV("Waiting for reconnect thread to terminate");
+        mReconnectThread->join();
+        mReconnectThread.reset();
+    }
+    // Ensure that the socket is destroyed, and can clean up its callback threads,
+    // before any of this object's fields become invalid.
+    mSocket.reset();
+    ALOGV("Destructor completed");
 }
 
 // static
@@ -101,7 +191,7 @@ bool DnsTlsTransport::validate(const DnsTlsServer& server, unsigned netid) {
     int replylen = 0;
     DnsTlsSocketFactory factory;
     DnsTlsTransport transport(server, mark, &factory);
-    auto r = transport.query(Slice(query, qlen));
+    auto r = transport.query(Slice(query, qlen)).get();
     if (r.code != Response::success) {
         ALOGV("query failed");
         return false;
