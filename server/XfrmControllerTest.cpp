@@ -62,13 +62,14 @@ using android::netdutils::Status;
 using android::netdutils::StatusOr;
 using android::netdutils::Syscalls;
 
+using ::testing::_;
 using ::testing::DoAll;
 using ::testing::Invoke;
 using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::SetArgPointee;
+using ::testing::Values;
 using ::testing::WithArg;
-using ::testing::_;
 
 /**
  * This gMock action works like SetArgPointee, but for netdutils::Slice.
@@ -102,6 +103,11 @@ static constexpr int DROID_SPI = 0xD1201D;
 static constexpr size_t KEY_LENGTH = 32;
 static constexpr int NLMSG_DEFAULTSIZE = 8192;
 
+static constexpr char LOCALHOST_V4[] = "127.0.0.1";
+static constexpr char LOCALHOST_V6[] = "::1";
+static constexpr char TEST_ADDR_V4[] = "8.8.8.8";
+static constexpr char TEST_ADDR_V6[] = "2001:4860:4860::8888";
+
 struct Policy {
     xfrm_userpolicy_info info;
     xfrm_user_tmpl tmpl;
@@ -127,35 +133,45 @@ public:
     void SetUp() override { netdutils::sSyscalls.swap(mockSyscalls); }
 };
 
-TEST_F(XfrmControllerTest, TestIpSecAllocateSpi) {
-    int outSpi = 0;
-    XfrmController ctrl;
+// Test class allowing IPv4/IPv6 parameterized tests.
+class XfrmControllerParameterizedTest : public XfrmControllerTest,
+                                        public ::testing::WithParamInterface<int> {};
 
-    NetlinkResponse response = {};
+// Helper to make generated test names readable.
+std::string FamilyName(::testing::TestParamInfo<int> info) {
+    return (info.param == AF_INET) ? "AF_INET" : "AF_INET6";
+}
+
+// The TEST_P cases below will run with each of the following value parameters.
+INSTANTIATE_TEST_CASE_P(ByFamily, XfrmControllerParameterizedTest, Values(AF_INET, AF_INET6),
+                        FamilyName);
+
+TEST_P(XfrmControllerParameterizedTest, TestIpSecAllocateSpi) {
+    const int family = GetParam();
+    const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
+    NetlinkResponse response{};
     response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
+    Slice responseSlice = netdutils::makeSlice(response);
 
-    /** It's an injected return result for the sendMessage function to go through */
-    StatusOr<Slice> readStatus(netdutils::makeSlice(response));
-
-    size_t expectMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userspi_info));
-
-    // Set the return to allow the program go through
-    StatusOr<size_t> expectRet(expectMsgLength);
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userspi_info));
 
     // A vector to hold the flattened netlink message for nlMsgSlice
     std::vector<uint8_t> nlMsgBuf;
     EXPECT_CALL(mockSyscalls, writev(_, _))
-        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectRet)));
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
     EXPECT_CALL(mockSyscalls, read(_, _))
-        .WillOnce(DoAll(SetArgSlice<1>(netdutils::makeSlice(response)), Return(readStatus)));
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
 
-    Status res = ctrl.ipSecAllocateSpi(
-        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), "127.0.0.1" /* local address */,
-        "8.8.8.8" /* remote address */, DROID_SPI /* request spi */, &outSpi);
+    XfrmController ctrl;
+    int outSpi = 0;
+    Status res = ctrl.ipSecAllocateSpi(1 /* resourceId */, static_cast<int>(XfrmDirection::OUT),
+                                       localAddr, remoteAddr, DROID_SPI, &outSpi);
 
     EXPECT_TRUE(isOk(res)) << res;
     EXPECT_EQ(DROID_SPI, outSpi);
-    EXPECT_EQ(expectMsgLength, nlMsgBuf.size());
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
 
     Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
     nlMsgSlice = drop(nlMsgSlice, NLMSG_HDRLEN);
@@ -163,97 +179,48 @@ TEST_F(XfrmControllerTest, TestIpSecAllocateSpi) {
     xfrm_userspi_info userspi{};
     netdutils::extract(nlMsgSlice, userspi);
 
-    EXPECT_EQ(AF_INET, userspi.info.sel.family);
-
-    expectAddressEquals(AF_INET, "127.0.0.1", userspi.info.saddr);
-    expectAddressEquals(AF_INET, "8.8.8.8", userspi.info.id.daddr);
-
-    EXPECT_EQ(DROID_SPI, static_cast<int>(userspi.min));
-    EXPECT_EQ(DROID_SPI, static_cast<int>(userspi.max));
-}
-
-TEST_F(XfrmControllerTest, TestIpSecAllocateSpiIpv6) {
-    int outSpi = 0;
-    XfrmController ctrl;
-
-    NetlinkResponse response = {};
-    response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
-
-    /** It's an injected return result for the sendMessage function to go through */
-    StatusOr<Slice> readStatus(netdutils::makeSlice(response));
-
-    size_t expectMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userspi_info));
-    // Set the return to allow the program go through
-    StatusOr<size_t> expectRet(expectMsgLength);
-
-    // A vector to hold the flattened netlink message for nlMsgSlice
-    std::vector<uint8_t> nlMsgBuf;
-    EXPECT_CALL(mockSyscalls, writev(_, _))
-        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectRet)));
-    EXPECT_CALL(mockSyscalls, read(_, _))
-        .WillOnce(DoAll(SetArgSlice<1>(netdutils::makeSlice(response)), Return(readStatus)));
-
-    Status res = ctrl.ipSecAllocateSpi(
-        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), "::1" /* local address */,
-        "2001:4860:4860::8888" /* remote address */, DROID_SPI /* request spi */, &outSpi);
-
-    EXPECT_TRUE(isOk(res)) << res;
-    EXPECT_EQ(DROID_SPI, outSpi);
-    EXPECT_EQ(expectMsgLength, nlMsgBuf.size());
-
-    Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
-    nlMsgSlice = drop(nlMsgSlice, NLMSG_HDRLEN);
-
-    xfrm_userspi_info userspi{};
-    netdutils::extract(nlMsgSlice, userspi);
-
-    EXPECT_EQ(AF_INET6, userspi.info.sel.family);
-
-    expectAddressEquals(AF_INET6, "::1", userspi.info.saddr);
-    expectAddressEquals(AF_INET6, "2001:4860:4860::8888", userspi.info.id.daddr);
+    EXPECT_EQ(family, userspi.info.sel.family);
+    expectAddressEquals(family, localAddr, userspi.info.saddr);
+    expectAddressEquals(family, remoteAddr, userspi.info.id.daddr);
 
     EXPECT_EQ(DROID_SPI, static_cast<int>(userspi.min));
     EXPECT_EQ(DROID_SPI, static_cast<int>(userspi.max));
 }
 
-TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociation) {
+TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityAssociation) {
+    const int family = GetParam();
+    const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
 
-    int reqSpi = DROID_SPI;
-    XfrmController ctrl;
-
-    NetlinkResponse response = {};
+    NetlinkResponse response{};
     response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
-
-    /** It's an injected return result for the sendMessage function to go through */
-    StatusOr<Slice> readStatus(netdutils::makeSlice(response));
+    Slice responseSlice = netdutils::makeSlice(response);
 
     std::vector<uint8_t> authKey(KEY_LENGTH, 0);
     std::vector<uint8_t> cryptKey(KEY_LENGTH, 1);
 
     // Calculate the length of the expected netlink message.
-    size_t expectMsgLength =
+    size_t expectedMsgLength =
         NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_usersa_info)) +
         NLA_ALIGN(offsetof(XfrmController::nlattr_algo_crypt, key) + KEY_LENGTH) +
-        NLA_ALIGN(offsetof(XfrmController::nlattr_algo_auth, key) + KEY_LENGTH) +
-        NLA_ALIGN(sizeof(XfrmController::nlattr_encap_tmpl));
-    StatusOr<size_t> expectRet(expectMsgLength);
+        NLA_ALIGN(offsetof(XfrmController::nlattr_algo_auth, key) + KEY_LENGTH);
 
     std::vector<uint8_t> nlMsgBuf;
     EXPECT_CALL(mockSyscalls, writev(_, _))
-        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectRet)));
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
     EXPECT_CALL(mockSyscalls, read(_, _))
-        .WillOnce(DoAll(SetArgSlice<1>(netdutils::makeSlice(response)), Return(readStatus)));
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
 
+    XfrmController ctrl;
     Status res = ctrl.ipSecAddSecurityAssociation(
         1 /* resourceId */, static_cast<int>(XfrmMode::TUNNEL),
-        static_cast<int>(XfrmDirection::OUT), "127.0.0.1" /* local address */,
-        "8.8.8.8" /* remote address */, 0 /* network handle */, reqSpi,
-        "hmac(sha256)" /* auth algo */, authKey, 0, "cbc(aes)" /* encryption algo */, cryptKey, 0,
-        "" /* AEAD algo */, {}, 0, UDP_ENCAP_ESPINUDP_NON_IKE /* encapType */,
-        34567 /* local port */, 34567 /* remote port */);
+        static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr, 0 /* underlying network */,
+        DROID_SPI, "hmac(sha256)" /* auth algo */, authKey, 128 /* auth trunc length */,
+        "cbc(aes)" /* encryption algo */, cryptKey, 0 /* crypt trunc length? */, "" /* AEAD algo */,
+        {}, 0, static_cast<int>(XfrmEncapType::NONE), 0 /* local port */, 0 /* remote port */);
 
     EXPECT_TRUE(isOk(res)) << res;
-    EXPECT_EQ(expectMsgLength, nlMsgBuf.size());
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
 
     Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
     nlMsgSlice = drop(nlMsgSlice, NLMSG_HDRLEN);
@@ -261,15 +228,16 @@ TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociation) {
     xfrm_usersa_info usersa{};
     netdutils::extract(nlMsgSlice, usersa);
 
-    EXPECT_EQ(AF_INET, usersa.family);
+    EXPECT_EQ(family, usersa.family);
     EXPECT_EQ(1 /* Transform Id*/, static_cast<int>(usersa.reqid));
     EXPECT_EQ(XFRM_MODE_TUNNEL, usersa.mode);
     EXPECT_EQ(htonl(DROID_SPI), usersa.id.spi);
     EXPECT_EQ(IPPROTO_ESP, usersa.id.proto);
 
-    expectAddressEquals(AF_INET, "127.0.0.1", usersa.saddr);
-    expectAddressEquals(AF_INET, "8.8.8.8", usersa.id.daddr);
+    expectAddressEquals(family, localAddr, usersa.saddr);
+    expectAddressEquals(family, remoteAddr, usersa.id.daddr);
 
+    // Extract and check the encryption/authentication algorithms.
     Slice attr_buf = drop(nlMsgSlice, NLA_ALIGN(sizeof(xfrm_usersa_info)));
 
     // Extract and check the encryption/authentication algorithm
@@ -287,6 +255,8 @@ TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociation) {
             netdutils::extract(buf, authAlgo.auth);
             buf = drop(buf, sizeof(xfrm_algo_auth));
             netdutils::extract(buf, authAlgo.key);
+        } else {
+            FAIL() << "Unexpected nlattr type: " << attr.nla_type;
         }
     };
     forEachNetlinkAttribute(attr_buf, attrHandler);
@@ -298,9 +268,30 @@ TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociation) {
                         reinterpret_cast<void*>(&authAlgo.key), KEY_LENGTH));
 }
 
-TEST_F(XfrmControllerTest, TestIpSecApplyTransportModeTransform) {
+TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv4Encap) {
+    // TODO: Implement this test, which is nearly identical to
+    // TestIpSecAddSecurityAssociation.
+}
 
-    int optlen = 0;
+// Test that input validation rejects IPv6 UDP encap.
+TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv6Encap) {
+    EXPECT_CALL(mockSyscalls, writev(_, _)).Times(0);
+
+    XfrmController ctrl;
+    Status res = ctrl.ipSecAddSecurityAssociation(
+        1, static_cast<int>(XfrmMode::TUNNEL), static_cast<int>(XfrmDirection::OUT), LOCALHOST_V6,
+        TEST_ADDR_V6, 0, DROID_SPI, "hmac(sha256)", {}, 128, "cbc(aes)", {}, 0, "", {}, 0,
+        static_cast<int>(XfrmEncapType::ESPINUDP_NON_IKE), 0, 0);
+
+    EXPECT_FALSE(isOk(res)) << "IPv6 UDP encap not rejected";
+}
+
+TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
+    const int family = GetParam();
+    const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
+    size_t optlen = 0;
     Policy policy{};
     // Need to cast from void* in order to "SaveArg" policy. Easier to invoke a
     // lambda than to write a gMock action.
@@ -308,12 +299,10 @@ TEST_F(XfrmControllerTest, TestIpSecApplyTransportModeTransform) {
         policy = *reinterpret_cast<const Policy*>(value);
     };
 
-    XfrmController ctrl;
-
     struct sockaddr socketaddr;
-    socketaddr.sa_family = AF_INET;
+    socketaddr.sa_family = family;
 
-    unique_fd sock(socket(AF_INET, SOCK_STREAM, 0));
+    unique_fd sock(socket(family, SOCK_STREAM, 0));
 
     EXPECT_CALL(mockSyscalls, getsockname(_, _, _))
         .WillOnce(DoAll(SetArgPointee<1>(socketaddr), Return(netdutils::status::ok)));
@@ -322,44 +311,44 @@ TEST_F(XfrmControllerTest, TestIpSecApplyTransportModeTransform) {
         .WillOnce(DoAll(WithArg<3>(Invoke(SavePolicy)), SaveArg<4>(&optlen),
                         Return(netdutils::status::ok)));
 
-    Status res = ctrl.ipSecApplyTransportModeTransform(
-        sock, 1 /* resourceId */, static_cast<int>(XfrmDirection::OUT),
-        "127.0.0.1" /* local address */, "8.8.8.8" /* remote address */, DROID_SPI);
+    XfrmController ctrl;
+    Status res = ctrl.ipSecApplyTransportModeTransform(sock, 1 /* resourceId */,
+                                                       static_cast<int>(XfrmDirection::OUT),
+                                                       localAddr, remoteAddr, DROID_SPI);
 
     EXPECT_TRUE(isOk(res)) << res;
-    EXPECT_EQ(static_cast<int>(sizeof(Policy)), optlen);
+    EXPECT_EQ(sizeof(Policy), optlen);
 
     EXPECT_EQ(1 /* resourceId */, static_cast<int>(policy.tmpl.reqid));
     EXPECT_EQ(htonl(DROID_SPI), policy.tmpl.id.spi);
 
-    expectAddressEquals(AF_INET, "127.0.0.1", policy.tmpl.saddr);
-    expectAddressEquals(AF_INET, "8.8.8.8", policy.tmpl.id.daddr);
+    expectAddressEquals(family, localAddr, policy.tmpl.saddr);
+    expectAddressEquals(family, remoteAddr, policy.tmpl.id.daddr);
 }
 
-TEST_F(XfrmControllerTest, TestIpSecDeleteSecurityAssociation) {
-    XfrmController ctrl;
-    NetlinkResponse response = {};
+TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityAssociation) {
+    const int family = GetParam();
+    const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
+    NetlinkResponse response{};
     response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
+    Slice responseSlice = netdutils::makeSlice(response);
 
-    /** It's an injected return result for the sendMessage function to go through */
-    StatusOr<Slice> readStatus(netdutils::makeSlice(response));
-
-    size_t expectMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_usersa_id));
-    // Set the return to allow the program run through
-    StatusOr<size_t> expectRet(expectMsgLength);
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_usersa_id));
 
     std::vector<uint8_t> nlMsgBuf;
     EXPECT_CALL(mockSyscalls, writev(_, _))
-        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectRet)));
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
     EXPECT_CALL(mockSyscalls, read(_, _))
-        .WillOnce(DoAll(SetArgSlice<1>(netdutils::makeSlice(response)), Return(readStatus)));
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
 
+    XfrmController ctrl;
     Status res = ctrl.ipSecDeleteSecurityAssociation(
-        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), "127.0.0.1" /* local address */,
-        "8.8.8.8" /* remote address */, DROID_SPI);
+        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr, DROID_SPI);
 
     EXPECT_TRUE(isOk(res)) << res;
-    EXPECT_EQ(expectMsgLength, nlMsgBuf.size());
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
 
     Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
     nlMsgSlice = netdutils::drop(nlMsgSlice, NLMSG_HDRLEN);
@@ -368,8 +357,7 @@ TEST_F(XfrmControllerTest, TestIpSecDeleteSecurityAssociation) {
     netdutils::extract(nlMsgSlice, said);
 
     EXPECT_EQ(htonl(DROID_SPI), said.spi);
-
-    expectAddressEquals(AF_INET, "8.8.8.8", said.daddr);
+    expectAddressEquals(family, remoteAddr, said.daddr);
 }
 
 } // namespace net
