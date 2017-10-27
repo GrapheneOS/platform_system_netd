@@ -45,6 +45,7 @@
 #include "android-base/stringprintf.h"
 #include "android-base/strings.h"
 #include "android-base/unique_fd.h"
+#include <log/log_properties.h>
 #define LOG_TAG "XfrmController"
 #include "NetdConstants.h"
 #include "NetlinkCommands.h"
@@ -56,8 +57,6 @@
 #include <cutils/log.h>
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
-
-#define VDBG 1 // STOPSHIP if true
 
 using android::netdutils::Fd;
 using android::netdutils::Slice;
@@ -122,15 +121,19 @@ const char* xfrmMsgTypeToString(uint16_t msg) {
 uint8_t kPadBytesArray[] = {0, 0, 0};
 void* kPadBytes = static_cast<void*>(kPadBytesArray);
 
-#if VDBG
 #define LOG_HEX(__desc16__, __buf__, __len__)                                                      \
-    do {                                                                                           \
-        logHex(__desc16__, __buf__, __len__);                                                      \
-    } while (0)
+    if (__android_log_is_debuggable()) {                                                           \
+        do {                                                                                       \
+            logHex(__desc16__, __buf__, __len__);                                                  \
+           } while (0);                                                                            \
+    }
+
 #define LOG_IOV(__iov__)                                                                           \
-    do {                                                                                           \
-        logIov(__iov__);                                                                           \
-    } while (0)
+    if (__android_log_is_debuggable()) {                                                           \
+        do {                                                                                       \
+            logIov(__iov__);                                                                       \
+           } while (0);                                                                            \
+     }
 
 void logHex(const char* desc16, const char* buf, size_t len) {
     char* printBuf = new char[len * 2 + 1 + 26]; // len->ascii, +newline, +prefix strlen
@@ -157,11 +160,6 @@ void logIov(const std::vector<iovec>& iov) {
 
 // TODO: Need to consider a way to refer to the sSycalls instance
 inline Syscalls& getSyscallInstance() { return netdutils::sSyscalls.get(); }
-
-#else
-#define LOG_HEX(__desc16__, __buf__, __len__)
-#define LOG_IOV(__iov__, __iov_len__)
-#endif
 
 class XfrmSocketImpl : public XfrmSocket {
 private:
@@ -239,8 +237,7 @@ public:
         }
 
         ALOGD("Sending Netlink XFRM Message: %s", xfrmMsgTypeToString(nlMsgType));
-        if (VDBG)
-            LOG_IOV(*iovecs);
+        LOG_IOV(*iovecs);
 
         StatusOr<size_t> writeResult = getSyscallInstance().writev(mSock, *iovecs);
         if (!isOk(writeResult)) {
