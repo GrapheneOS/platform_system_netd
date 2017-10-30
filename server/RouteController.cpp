@@ -136,7 +136,8 @@ const char *familyName(uint8_t family) {
     }
 }
 
-uint32_t RouteController::getRouteTableForInterface(const char* interface) {
+// Caller must hold sInterfaceToTableLock.
+uint32_t RouteController::getRouteTableForInterfaceLocked(const char* interface) {
     uint32_t index = if_nametoindex(interface);
     if (index) {
         index += RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX;
@@ -151,6 +152,11 @@ uint32_t RouteController::getRouteTableForInterface(const char* interface) {
         return RT_TABLE_UNSPEC;
     }
     return iter->second;
+}
+
+uint32_t RouteController::getRouteTableForInterface(const char* interface) {
+    android::RWLock::AutoRLock lock(sInterfaceToTableLock);
+    return getRouteTableForInterfaceLocked(interface);
 }
 
 void addTableName(uint32_t table, const std::string& name, std::string* contents) {
@@ -173,6 +179,7 @@ void RouteController::updateTableNamesFile() {
     addTableName(ROUTE_TABLE_LEGACY_NETWORK, ROUTE_TABLE_NAME_LEGACY_NETWORK, &contents);
     addTableName(ROUTE_TABLE_LEGACY_SYSTEM,  ROUTE_TABLE_NAME_LEGACY_SYSTEM,  &contents);
 
+    android::RWLock::AutoRLock lock(sInterfaceToTableLock);
     for (const auto& entry : sInterfaceToTable) {
         addTableName(entry.second, entry.first, &contents);
     }
@@ -905,7 +912,9 @@ WARN_UNUSED_RESULT int RouteController::flushRoutes(uint32_t table) {
 
 // Returns 0 on success or negative errno on failure.
 WARN_UNUSED_RESULT int RouteController::flushRoutes(const char* interface) {
-    uint32_t table = getRouteTableForInterface(interface);
+    android::RWLock::AutoWLock lock(sInterfaceToTableLock);
+
+    uint32_t table = getRouteTableForInterfaceLocked(interface);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
     }
@@ -1064,7 +1073,9 @@ int RouteController::removeVirtualNetworkFallthrough(unsigned vpnNetId,
     return modifyVpnFallthroughRule(RTM_DELRULE, vpnNetId, physicalInterface, permission);
 }
 
-// No locks needed because RouteController is accessed only from one thread (in CommandListener).
+// Protects sInterfaceToTable.
+android::RWLock RouteController::sInterfaceToTableLock;
+
 std::map<std::string, uint32_t> RouteController::sInterfaceToTable;
 
 }  // namespace net

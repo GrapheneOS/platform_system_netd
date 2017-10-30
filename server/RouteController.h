@@ -102,11 +102,14 @@ public:
 private:
     friend class RouteControllerTest;
 
+    // Protects access to interfaceToTable.
+    static android::RWLock sInterfaceToTableLock;
     static std::map<std::string, uint32_t> sInterfaceToTable;
 
     static int configureDummyNetwork();
     static int flushRoutes(const char* interface);
     static int flushRoutes(uint32_t table);
+    static uint32_t getRouteTableForInterfaceLocked(const char *interface);
     static uint32_t getRouteTableForInterface(const char *interface);
     static int modifyDefaultNetwork(uint16_t action, const char* interface, Permission permission);
     static int modifyPhysicalNetwork(unsigned netId, const char* interface, Permission permission,
