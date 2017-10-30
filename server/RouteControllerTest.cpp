@@ -30,6 +30,10 @@ public:
     RouteControllerTest() {
         RouteController::iptablesRestoreCommandFunction = fakeExecIptablesRestoreCommand;
     }
+
+    int flushRoutes(uint32_t a) {
+        return RouteController::flushRoutes(a);
+    }
 };
 
 TEST_F(RouteControllerTest, TestGetRulePriority) {
