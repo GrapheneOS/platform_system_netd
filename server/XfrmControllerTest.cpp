@@ -436,6 +436,34 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
     expectAddressEquals(xfrmFamily, remoteAddr, policy.tmpl.id.daddr);
 }
 
+TEST_P(XfrmControllerParameterizedTest, TestIpSecRemoveTransportModeTransform) {
+    const int version = GetParam();
+    const int family = (version == 6) ? AF_INET6 : AF_INET;
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
+    socklen_t optlen;
+    const void* optval;
+
+    struct sockaddr socketaddr;
+    socketaddr.sa_family = family;
+
+    unique_fd sock(socket(family, SOCK_STREAM, 0));
+
+    EXPECT_CALL(mockSyscalls, getsockname(_, _, _))
+        .WillOnce(DoAll(SetArgPointee<1>(socketaddr), Return(netdutils::status::ok)));
+
+    EXPECT_CALL(mockSyscalls, setsockopt(_, _, _, _, _))
+        .WillOnce(DoAll(SaveArg<3>(&optval), SaveArg<4>(&optlen),
+                        Return(netdutils::status::ok)));
+    XfrmController ctrl;
+    Status res = ctrl.ipSecRemoveTransportModeTransform(sock);
+
+    EXPECT_TRUE(isOk(res)) << res;
+    EXPECT_EQ(nullptr, optval);
+    EXPECT_EQ(static_cast<socklen_t>(0), optlen);
+}
+
 TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityAssociation) {
     const int version = GetParam();
     const int family = (version == 6) ? AF_INET6 : AF_INET;
