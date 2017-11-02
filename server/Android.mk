@@ -19,7 +19,7 @@ LOCAL_PATH := $(call my-dir)
 ###
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS := -Wall -Werror
+LOCAL_CFLAGS := -Wall -Werror -Wthread-safety
 LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := libnetdaidl_static
 LOCAL_SHARED_LIBRARIES := \
@@ -36,7 +36,7 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS := -Wall -Werror
+LOCAL_CFLAGS := -Wall -Werror -Wthread-safety
 LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := libnetdaidl
 LOCAL_SHARED_LIBRARIES := \
@@ -58,7 +58,7 @@ LOCAL_C_INCLUDES := \
         external/mdnsresponder/mDNSShared \
         system/netd/include \
 
-LOCAL_CPPFLAGS := -Wall -Werror
+LOCAL_CPPFLAGS := -Wall -Werror -Wthread-safety
 LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := netd
 
@@ -147,7 +147,7 @@ include $(BUILD_EXECUTABLE)
 ###
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS := -Wall -Werror
+LOCAL_CFLAGS := -Wall -Werror -Wthread-safety
 LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_CLANG := true
 LOCAL_MODULE := ndc
@@ -163,7 +163,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := netd_unit_test
 LOCAL_COMPATIBILITY_SUITE := device-tests
 LOCAL_SANITIZE := unsigned-integer-overflow
-LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
+LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter -Wthread-safety
 # Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
 LOCAL_CFLAGS += -Wno-varargs
 
