@@ -791,6 +791,7 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
 
 bool DNSResponder::addAnswerRecords(const DNSQuestion& question,
                                     std::vector<DNSRecord>* answers) const {
+    std::lock_guard<std::mutex> guard(mappings_mutex_);
     auto it = mappings_.find(QueryKey(question.qname.name, question.qtype));
     if (it == mappings_.end()) {
         // TODO(imaipi): handle correctly
