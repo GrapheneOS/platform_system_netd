@@ -18,7 +18,7 @@ LOCAL_PATH := $(call my-dir)
 # TODO describe library here
 include $(CLEAR_VARS)
 LOCAL_MODULE := libnetd_test_dnsresponder
-LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
+LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter -Wthread-safety
 # Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
 LOCAL_CFLAGS += -Wno-varargs
 

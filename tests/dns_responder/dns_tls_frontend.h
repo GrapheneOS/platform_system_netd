@@ -75,7 +75,7 @@ private:
     int socket_ = -1;
     int backend_socket_ = -1;
     std::atomic<int> queries_;
-    std::atomic<bool> terminate_ GUARDED_BY(update_mutex_);
+    std::atomic<bool> terminate_;
     std::thread handler_thread_ GUARDED_BY(update_mutex_);
     std::mutex update_mutex_;
     int chain_length_ = 1;
