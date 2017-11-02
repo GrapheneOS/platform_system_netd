@@ -414,7 +414,6 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
 
     saInfo.transformId = transformId;
 
-    // STOPSHIP : range check the key lengths to prevent puncturing and overflow
     saInfo.auth = XfrmAlgo{
         .name = authAlgo, .key = authKey, .truncLenBits = static_cast<uint16_t>(authTruncBits)};
 
