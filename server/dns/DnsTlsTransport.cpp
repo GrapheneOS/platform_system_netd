@@ -16,13 +16,10 @@
 
 #include "dns/DnsTlsTransport.h"
 
-#include <algorithm>
-#include <iterator>
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <errno.h>
 #include <openssl/err.h>
-#include <stdlib.h>
 
 #define LOG_TAG "DnsTlsTransport"
 #define DBG 0
@@ -33,72 +30,6 @@
 #include "NetdConstants.h"
 #include "Permission.h"
 
-namespace {
-
-// Returns a tuple of references to the elements of a.
-auto make_tie(const sockaddr_in& a) {
-    return std::tie(a.sin_port, a.sin_addr.s_addr);
-}
-
-// Returns a tuple of references to the elements of a.
-auto make_tie(const sockaddr_in6& a) {
-    // Skip flowinfo, which is not relevant.
-    return std::tie(
-        a.sin6_port,
-        a.sin6_addr,
-        a.sin6_scope_id
-    );
-}
-
-} // namespace
-
-// These binary operators make sockaddr_storage comparable.  They need to be
-// in the global namespace so that the std::tuple < and == operators can see them.
-static bool operator <(const in6_addr& x, const in6_addr& y) {
-    return std::lexicographical_compare(
-            std::begin(x.s6_addr), std::end(x.s6_addr),
-            std::begin(y.s6_addr), std::end(y.s6_addr));
-}
-
-static bool operator ==(const in6_addr& x, const in6_addr& y) {
-    return std::equal(
-            std::begin(x.s6_addr), std::end(x.s6_addr),
-            std::begin(y.s6_addr), std::end(y.s6_addr));
-}
-
-static bool operator <(const sockaddr_storage& x, const sockaddr_storage& y) {
-    if (x.ss_family != y.ss_family) {
-        return x.ss_family < y.ss_family;
-    }
-    // Same address family.
-    if (x.ss_family == AF_INET) {
-        const sockaddr_in& x_sin = reinterpret_cast<const sockaddr_in&>(x);
-        const sockaddr_in& y_sin = reinterpret_cast<const sockaddr_in&>(y);
-        return make_tie(x_sin) < make_tie(y_sin);
-    } else if (x.ss_family == AF_INET6) {
-        const sockaddr_in6& x_sin6 = reinterpret_cast<const sockaddr_in6&>(x);
-        const sockaddr_in6& y_sin6 = reinterpret_cast<const sockaddr_in6&>(y);
-        return make_tie(x_sin6) < make_tie(y_sin6);
-    }
-    return false;  // Unknown address type.  This is an error.
-}
-
-static bool operator ==(const sockaddr_storage& x, const sockaddr_storage& y) {
-    if (x.ss_family != y.ss_family) {
-        return false;
-    }
-    // Same address family.
-    if (x.ss_family == AF_INET) {
-        const sockaddr_in& x_sin = reinterpret_cast<const sockaddr_in&>(x);
-        const sockaddr_in& y_sin = reinterpret_cast<const sockaddr_in&>(y);
-        return make_tie(x_sin) == make_tie(y_sin);
-    } else if (x.ss_family == AF_INET6) {
-        const sockaddr_in6& x_sin6 = reinterpret_cast<const sockaddr_in6&>(x);
-        const sockaddr_in6& y_sin6 = reinterpret_cast<const sockaddr_in6&>(y);
-        return make_tie(x_sin6) == make_tie(y_sin6);
-    }
-    return false;  // Unknown address type.  This is an error.
-}
 
 namespace android {
 namespace net {
@@ -200,45 +131,14 @@ bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
     return true;
 }
 
-// This comparison ignores ports and fingerprints.
-// TODO: respect IPv6 scope id (e.g. link-local addresses).
-bool AddressComparator::operator() (const DnsTlsTransport::Server& x,
-        const DnsTlsTransport::Server& y) const {
-    if (x.ss.ss_family != y.ss.ss_family) {
-        return x.ss.ss_family < y.ss.ss_family;
-    }
-    // Same address family.
-    if (x.ss.ss_family == AF_INET) {
-        const sockaddr_in& x_sin = reinterpret_cast<const sockaddr_in&>(x.ss);
-        const sockaddr_in& y_sin = reinterpret_cast<const sockaddr_in&>(y.ss);
-        return x_sin.sin_addr.s_addr < y_sin.sin_addr.s_addr;
-    } else if (x.ss.ss_family == AF_INET6) {
-        const sockaddr_in6& x_sin6 = reinterpret_cast<const sockaddr_in6&>(x.ss);
-        const sockaddr_in6& y_sin6 = reinterpret_cast<const sockaddr_in6&>(y.ss);
-        return x_sin6.sin6_addr < y_sin6.sin6_addr;
-    }
-    return false;  // Unknown address type.  This is an error.
-}
-
-// Returns a tuple of references to the elements of s.
-auto make_tie(const DnsTlsTransport::Server& s) {
-    return std::tie(
-        s.ss,
-        s.name,
-        s.fingerprints,
-        s.protocol
-    );
-}
-
-bool DnsTlsTransport::Server::operator <(const DnsTlsTransport::Server& other) const {
-    return make_tie(*this) < make_tie(other);
-}
-
-bool DnsTlsTransport::Server::operator ==(const DnsTlsTransport::Server& other) const {
-    return make_tie(*this) == make_tie(other);
-}
-
 bool DnsTlsTransport::initialize() {
+    // This method should only be called once, at the beginning, so locking should be
+    // unnecessary.  This lock only serves to help catch bugs in code that calls this method.
+    std::lock_guard<std::mutex> guard(mLock);
+    if (mSslCtx) {
+        // This is a bug in the caller.
+        return false;
+    }
     mSslCtx.reset(SSL_CTX_new(TLS_method()));
     if (!mSslCtx) {
         return false;
@@ -293,7 +193,7 @@ bssl::UniquePtr<SSL> DnsTlsTransport::sslConnect(int fd) {
 
     bssl::UniquePtr<SSL_SESSION> session;
     {
-        std::lock_guard<std::mutex> guard(sLock);
+        std::lock_guard<std::mutex> guard(mLock);
         if (!mSessions.empty()) {
             session = std::move(mSessions.front());
             mSessions.pop_front();
@@ -427,7 +327,7 @@ void DnsTlsTransport::removeSessionCallback(SSL_CTX* ssl_ctx, SSL_SESSION* sessi
 }
 
 void DnsTlsTransport::recordSession(SSL_SESSION* session) {
-    std::lock_guard<std::mutex> guard(sLock);
+    std::lock_guard<std::mutex> guard(mLock);
     mSessions.emplace_front(session);
     if (mSessions.size() > 5) {
         if (DBG) {
@@ -438,7 +338,7 @@ void DnsTlsTransport::recordSession(SSL_SESSION* session) {
 }
 
 void DnsTlsTransport::removeSession(SSL_SESSION* session) {
-    std::lock_guard<std::mutex> guard(sLock);
+    std::lock_guard<std::mutex> guard(mLock);
     if (session) {
         // TODO: Consider implementing targeted removal.
         mSessions.clear();
@@ -521,57 +421,7 @@ bool DnsTlsTransport::sslRead(int fd, SSL *ssl, uint8_t *buffer, int len) {
     return true;
 }
 
-// static
-std::mutex DnsTlsTransport::sLock;
-std::map<DnsTlsTransport::Key, std::unique_ptr<DnsTlsTransport>> DnsTlsTransport::sStore;
-DnsTlsTransport::Response DnsTlsTransport::query(const Server& server, unsigned mark,
-        const uint8_t *query, size_t qlen, uint8_t *response, size_t limit, int *resplen) {
-    const Key key = std::make_pair(mark, server);
-    DnsTlsTransport* xport;
-    {
-        std::lock_guard<std::mutex> guard(sLock);
-        auto it = sStore.find(key);
-        if (it == sStore.end()) {
-            xport = new DnsTlsTransport(server, mark);
-            if (!xport->initialize()) {
-                return DnsTlsTransport::Response::internal_error;
-            }
-            sStore[key].reset(xport);
-        } else {
-            xport = it->second.get();
-        }
-        ++xport->mUseCount;
-    }
-
-    Response res = xport->doQuery(query, qlen, response, limit, resplen);
-    auto now = std::chrono::steady_clock::now();
-    {
-        std::lock_guard<std::mutex> guard(sLock);
-        --xport->mUseCount;
-        xport->mLastUsed = now;
-        cleanup(now);
-    }
-    return res;
-}
-
-static constexpr std::chrono::minutes IDLE_TIMEOUT(5);
-std::chrono::time_point<std::chrono::steady_clock> DnsTlsTransport::sLastCleanup;
-void DnsTlsTransport::cleanup(std::chrono::time_point<std::chrono::steady_clock> now) {
-    if (now - sLastCleanup < IDLE_TIMEOUT) {
-        return;
-    }
-    for (auto it = sStore.begin(); it != sStore.end(); ) {
-        auto& xport = it->second;
-        if (xport->mUseCount == 0 && now - xport->mLastUsed > IDLE_TIMEOUT) {
-            it = sStore.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    sLastCleanup = now;
-}
-
-DnsTlsTransport::Response DnsTlsTransport::doQuery(const uint8_t *query, size_t qlen,
+DnsTlsTransport::Response DnsTlsTransport::query(const uint8_t *query, size_t qlen,
         uint8_t *response, size_t limit, int *resplen) {
     android::base::unique_fd fd = makeConnectedSocket();
     if (fd.get() < 0) {
@@ -592,7 +442,8 @@ DnsTlsTransport::Response DnsTlsTransport::doQuery(const uint8_t *query, size_t 
     return res;
 }
 
-DnsTlsTransport::Response DnsTlsTransport::sendQuery(int fd, SSL* ssl, const uint8_t *query, size_t qlen) {
+DnsTlsTransport::Response DnsTlsTransport::sendQuery(int fd, SSL* ssl,
+        const uint8_t *query, size_t qlen) {
     if (DBG) {
         ALOGD("sending query");
     }
@@ -611,7 +462,8 @@ DnsTlsTransport::Response DnsTlsTransport::sendQuery(int fd, SSL* ssl, const uin
     return Response::success;
 }
 
-DnsTlsTransport::Response DnsTlsTransport::readResponse(int fd, SSL* ssl, const uint8_t *query, uint8_t *response, size_t limit, int *resplen) {
+DnsTlsTransport::Response DnsTlsTransport::readResponse(int fd, SSL* ssl,
+        const uint8_t *query, uint8_t *response, size_t limit, int *resplen) {
     if (DBG) {
         ALOGD("reading response");
     }
@@ -650,7 +502,7 @@ DnsTlsTransport::Response DnsTlsTransport::readResponse(int fd, SSL* ssl, const 
 }
 
 // static
-bool DnsTlsTransport::validate(const Server& server, unsigned netid) {
+bool DnsTlsTransport::validate(const DnsTlsServer& server, unsigned netid) {
     if (DBG) {
         ALOGD("Beginning validation on %u", netid);
     }
@@ -696,7 +548,11 @@ bool DnsTlsTransport::validate(const Server& server, unsigned netid) {
     fwmark.netId = netid;
     unsigned mark = fwmark.intValue;
     int replylen = 0;
-    DnsTlsTransport::query(server, mark, query, qlen, recvbuf, kRecvBufSize, &replylen);
+    DnsTlsTransport transport(server, mark);
+    if (!transport.initialize()) {
+        return false;
+    }
+    transport.query(query, qlen, recvbuf, kRecvBufSize, &replylen);
     if (replylen == 0) {
         if (DBG) {
             ALOGD("query failed");
