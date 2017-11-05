@@ -17,65 +17,63 @@
 #ifndef _DNS_DNSTLSTRANSPORT_H
 #define _DNS_DNSTLSTRANSPORT_H
 
-#include <netinet/in.h>
-#include <set>
-#include <string>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <vector>
+#include <deque>
+#include <mutex>
+#include <openssl/ssl.h>
 
-#include "android-base/unique_fd.h"
+#include <android-base/thread_annotations.h>
+#include <android-base/unique_fd.h>
 
-// Forward declaration.
-typedef struct ssl_st SSL;
+#include "dns/DnsTlsServer.h"
 
 namespace android {
 namespace net {
 
 class DnsTlsTransport {
 public:
-    struct Server {
-        // Default constructor
-        Server() {}
-        // Allow sockaddr_storage to be promoted to Server automatically.
-        Server(const sockaddr_storage& ss) : ss(ss) {}
-        sockaddr_storage ss;
-        std::set<std::vector<uint8_t>> fingerprints;
-        std::string name;
-        int protocol = IPPROTO_TCP;
-        // Exact comparison of Server objects
-        bool operator <(const Server& other) const;
-        bool operator ==(const Server& other) const;
-    };
+    DnsTlsTransport(const DnsTlsServer& server, unsigned mark)
+            : mMark(mark), mServer(server)
+            {}
+    ~DnsTlsTransport() {}
 
+    // Creates the SSL context for this session.  Returns false on failure.
+    // This method should be called after construction and before use of a DnsTlsTransport.
+    bool initialize();
+    
     enum class Response : uint8_t { success, network_error, limit_error, internal_error };
 
-    // Given a |query| of length |qlen|, sends it to the server on the network indicated by |mark|,
-    // and writes the response into |ans|, which can accept up to |anssiz| bytes.  Indicates
-    // the number of bytes written in |resplen|.  If |resplen| is zero, an
+    // Given a |query| of length |qlen|, this method sends it to the server
+    // and writes the response into |ans|, which can accept up to |anssiz| bytes.
+    // The number of bytes is written to |resplen|.  If |resplen| is zero, an
     // error has occurred.
-    static Response query(const Server& server, unsigned mark, const uint8_t *query, size_t qlen,
+    Response query(const uint8_t *query, size_t qlen,
             uint8_t *ans, size_t anssiz, int *resplen);
 
     // Check that a given TLS server is fully working on the specified netid, and has the
     // provided SHA-256 fingerprint (if nonempty).  This function is used in ResolverController
     // to ensure that we don't enable DNS over TLS on networks where it doesn't actually work.
-    static bool validate(const Server& server, unsigned netid);
+    static bool validate(const DnsTlsServer& server, unsigned netid);
 
 private:
-    DnsTlsTransport(const Server& server, unsigned mark)
-            : mMark(mark), mServer(server)
-            {}
-    ~DnsTlsTransport() {}
+    // Send a query on the provided SSL socket.
+    Response sendQuery(int fd, SSL* ssl, const uint8_t *query, size_t qlen);
 
-    Response doQuery(const uint8_t *query, size_t qlen, uint8_t *ans, size_t anssiz, int *resplen);
+    // Wait for the response to |query| on |ssl|, and write it to |ans|, an output buffer
+    // of size |anssiz|.  If |resplen| is zero, the read failed.
+    Response readResponse(int fd, SSL* ssl, const uint8_t *query,
+        uint8_t *ans, size_t anssiz, int *resplen);
 
     // On success, returns a non-blocking socket connected to mAddr (the
     // connection will likely be in progress if mProtocol is IPPROTO_TCP).
     // On error, returns -1 with errno set appropriately.
-    android::base::unique_fd makeConnectedSocket() const;
+    base::unique_fd makeConnectedSocket() const;
 
-    SSL* sslConnect(int fd);
+    // Connect an SSL session on the provided socket.  If connection fails, closing the
+    // socket remains the caller's responsibility.
+    bssl::UniquePtr<SSL> sslConnect(int fd);
+
+    // Disconnect the SSL session and close the socket.
+    void sslDisconnect(bssl::UniquePtr<SSL> ssl, base::unique_fd fd);
 
     // Writes a buffer to the socket.
     bool sslWrite(int fd, SSL *ssl, const uint8_t *buffer, int len);
@@ -84,15 +82,21 @@ private:
     // Returns false if the socket closes before enough bytes can be read.
     bool sslRead(int fd, SSL *ssl, uint8_t *buffer, int len);
 
+    // Using SSL_CTX to create new SSL objects is thread-safe, so this object does not
+    // require a lock annotation.
+    bssl::UniquePtr<SSL_CTX> mSslCtx;
+
     const unsigned mMark;  // Socket mark
-    const Server mServer;
-};
+    const DnsTlsServer mServer;
 
-// This comparison ignores ports, names, and fingerprints.
-struct AddressComparator {
-    bool operator() (const DnsTlsTransport::Server& x, const DnsTlsTransport::Server& y) const;
+    // Cache of recently seen SSL_SESSIONs.  This is used to support session tickets.
+    static int newSessionCallback(SSL* ssl, SSL_SESSION* session);
+    void recordSession(SSL_SESSION* session);
+    static void removeSessionCallback(SSL_CTX* ssl_ctx, SSL_SESSION* session);
+    void removeSession(SSL_SESSION* session);
+    std::mutex mLock;
+    std::deque<bssl::UniquePtr<SSL_SESSION>> mSessions GUARDED_BY(mLock);
 };
-
 
 }  // namespace net
 }  // namespace android

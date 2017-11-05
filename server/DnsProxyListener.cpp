@@ -43,7 +43,9 @@
 #include "Controllers.h"
 #include "Fwmark.h"
 #include "DnsProxyListener.h"
+#include "dns/DnsTlsDispatcher.h"
 #include "dns/DnsTlsTransport.h"
+#include "dns/DnsTlsServer.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
 #include "ResponseCode.h"
@@ -100,7 +102,7 @@ res_sendhookact qhook(sockaddr* const * nsap, const u_char** buf, int* buflen,
         ALOGE("qhook abort: unknown address family");
         return res_goahead;
     }
-    DnsTlsTransport::Server tlsServer;
+    DnsTlsServer tlsServer;
     auto tlsStatus = net::gCtls->resolverCtrl.getTlsStatus(thread_netcontext.dns_netid,
             insecureResolver, &tlsServer);
     if (tlsStatus == ResolverController::Validation::unknown_netid) {
@@ -126,7 +128,7 @@ res_sendhookact qhook(sockaddr* const * nsap, const u_char** buf, int* buflen,
         if (DBG) {
             ALOGD("Performing query over TLS");
         }
-        auto response = DnsTlsTransport::query(tlsServer, thread_netcontext.dns_mark,
+        auto response = DnsTlsDispatcher::query(tlsServer, thread_netcontext.dns_mark,
                 *buf, *buflen, ans, anssiz, resplen);
         if (response == DnsTlsTransport::Response::success) {
             if (DBG) {
