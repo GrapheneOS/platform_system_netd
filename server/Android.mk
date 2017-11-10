@@ -92,9 +92,12 @@ LOCAL_SHARED_LIBRARIES := \
         libbase \
         libutils \
         libpcap \
+        libqtaguid \
 
 LOCAL_SRC_FILES := \
         BandwidthController.cpp \
+        BpfProgSets.cpp \
+        BpfUtils.cpp \
         ClatdController.cpp \
         CommandListener.cpp \
         Controllers.cpp \
@@ -127,6 +130,7 @@ LOCAL_SRC_FILES := \
         SockDiag.cpp \
         StrictController.cpp \
         TetherController.cpp \
+        TrafficController.cpp \
         UidRanges.cpp \
         VirtualNetwork.cpp \
         WakeupController.cpp \

@@ -38,6 +38,12 @@ bool isOverriddenBy(const char *name) {
     return isBuildDebuggable && getenv(name);
 }
 
+bool commandHasFd(int cmdId) {
+    return (cmdId != FwmarkCommand::QUERY_USER_ACCESS) &&
+        (cmdId != FwmarkCommand::SET_COUNTERSET) &&
+        (cmdId != FwmarkCommand::DELETE_TAGDATA);
+}
+
 }  // namespace
 
 bool FwmarkClient::shouldSetFwmark(int family) {
@@ -73,6 +79,8 @@ int FwmarkClient::send(FwmarkCommand* data, int fd, FwmarkConnectInfo* connectIn
                                    sizeof(FWMARK_SERVER_PATH))) == -1) {
         // If we are unable to connect to the fwmark server, assume there's no error. This protects
         // against future changes if the fwmark server goes away.
+        // TODO: This means that fd will very likely be misrouted. See if we can delete this in a
+        //       separate CL.
         return 0;
     }
 
@@ -90,7 +98,7 @@ int FwmarkClient::send(FwmarkCommand* data, int fd, FwmarkConnectInfo* connectIn
         char cmsg[CMSG_SPACE(sizeof(fd))];
     } cmsgu;
 
-    if (data->cmdId != FwmarkCommand::QUERY_USER_ACCESS) {
+    if (commandHasFd(data->cmdId)) {
         memset(cmsgu.cmsg, 0, sizeof(cmsgu.cmsg));
         message.msg_control = cmsgu.cmsg;
         message.msg_controllen = sizeof(cmsgu.cmsg);
