@@ -92,6 +92,7 @@ LOCAL_SHARED_LIBRARIES := \
         libbase \
         libutils \
         libpcap \
+        libqtaguid \
 
 LOCAL_SRC_FILES := \
         BandwidthController.cpp \
