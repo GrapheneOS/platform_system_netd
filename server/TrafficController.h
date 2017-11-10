@@ -170,6 +170,7 @@ class TrafficController {
      * monitoring the traffic on egress side.
      */
     int mOutProgFd;
+    bool ebpfSupported;
 };
 
 }  // namespace net
