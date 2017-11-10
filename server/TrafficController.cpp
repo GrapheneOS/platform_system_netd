@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <inttypes.h>
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>
@@ -22,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/utsname.h>
 
 #include "BpfProgSets.h"
 #include "BpfUtils.h"
@@ -29,6 +31,7 @@
 
 #define LOG_TAG "Netd"
 #include "log/log.h"
+#include "qtaguid/qtaguid.h"
 
 using namespace android::net::bpf;
 using namespace android::net::bpf_prog;
@@ -38,6 +41,28 @@ namespace net {
 
 int TrafficController::start() {
     int ret;
+    struct utsname buf;
+    int kernel_version_major;
+    int kernel_version_minor;
+
+    ret = uname(&buf);
+    if (ret) {
+        ret = -errno;
+        ALOGE("Get system information failed: %s\n", strerror(errno));
+        return ret;
+    }
+    ret = sscanf(buf.release, "%d.%d", &kernel_version_major, &kernel_version_minor);
+    if (ret >= 2 && ((kernel_version_major == 4 && kernel_version_minor >= 9) ||
+                     (kernel_version_major > 4))) {
+        // Turn off the eBPF feature temporarily since the selinux rules and kernel changes are not
+        // landed yet.
+        // TODO: turn back on when all the other dependencies are ready.
+        ebpfSupported = false;
+        return 0;
+    } else {
+        ebpfSupported = false;
+        return 0;
+    }
     ALOGI("START to load TrafficController\n");
     mCookieTagMap = setUpBPFMap(sizeof(uint64_t), sizeof(struct UidTag), COOKIE_UID_MAP_SIZE,
                                 COOKIE_UID_MAP_PATH, BPF_MAP_TYPE_HASH);
@@ -132,6 +157,12 @@ uint64_t getSocketCookie(int sockFd) {
 }
 
 int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
+
+    if (legacy_tagSocket(sockFd, tag, uid))
+      return -errno;
+    if (!ebpfSupported)
+      return 0;
+
     uint64_t sock_cookie = getSocketCookie(sockFd);
     if (sock_cookie == INET_DIAG_NOCOOKIE) return -errno;
     UidTag newKey = {.uid = (uint32_t)uid, .tag = tag};
@@ -151,6 +182,10 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
 }
 
 int TrafficController::untagSocket(int sockFd) {
+
+    if (legacy_untagSocket(sockFd))
+        return -errno;
+    if (!ebpfSupported) return 0;
     uint64_t sock_cookie = getSocketCookie(sockFd);
 
     if (sock_cookie == INET_DIAG_NOCOOKIE) return -errno;
@@ -164,8 +199,10 @@ int TrafficController::untagSocket(int sockFd) {
 
 int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
     if (counterSetNum < 0 || counterSetNum >= COUNTERSETS_LIMIT) return -EINVAL;
-
     int res;
+    if (legacy_setCounterSet(counterSetNum, uid))
+        return -errno;
+    if (!ebpfSupported) return 0;;
     if (counterSetNum == 0) {
         res = deleteMapEntry(mUidCounterSetMap, &uid);
         if (res == 0 || (res == -1 && errno == ENOENT)) {
@@ -186,6 +223,11 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
 
 int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     int res = 0;
+
+    if (legacy_deleteTagData(tag, uid))
+        return -errno;
+    if (!ebpfSupported) return 0;
+
     uint64_t curCookie = 0;
     uint64_t nextCookie = 0;
     UidTag tmp_uidtag;
@@ -259,11 +301,6 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
         }
     }
     return res;
-}
-
-int TrafficController::setPacifier(uint32_t on) {
-    ALOGI("TrafficController Pacifier set to: %d", on);
-    return 0;
 }
 
 }  // namespace net
