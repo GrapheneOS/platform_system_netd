@@ -39,6 +39,13 @@ int setNetworkForUser(uid_t uid, int socketFd);
 
 int queryUserAccess(uid_t uid, unsigned netId);
 
+int tagSocket(int socketFd, uint32_t tag, uid_t uid);
+
+int untagSocket(int socketFd);
+
+int setCounterSet(uint32_t counterSet, uid_t uid);
+
+int deleteTagData(uint32_t tag, uid_t uid);
 __END_DECLS
 
 #endif  // NETD_INCLUDE_NETD_CLIENT_H
