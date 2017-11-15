@@ -64,10 +64,18 @@ oneway interface INetdEventListener {
     /**
      * Logs a single RX packet which caused the main CPU to exit sleep state.
      * @param prefix arbitrary string provided via wakeupAddInterface()
-     * @param UID of the destination process or -1 if no UID is available.
-     * @param GID of the destination process or -1 if no GID is available.
-     * @param receive timestamp for the offending packet. In units of nanoseconds and
+     * @param uid UID of the destination process or -1 if no UID is available.
+     * @param ethertype of the RX packet encoded in an int in native order, or -1 if not available.
+     * @param ipNextHeader ip protocol of the RX packet as IPPROTO_* number,
+              or -1 if the packet was not IPv4 or IPv6.
+     * @param dstHw destination hardware address, or 0 if not available.
+     * @param srcIp source IP address, or null if not available.
+     * @param dstIp destination IP address, or null if not available.
+     * @param srcPort src port of RX packet in native order, or -1 if the packet was not UDP or TCP.
+     * @param dstPort dst port of RX packet in native order, or -1 if the packet was not UDP or TCP.
+     * @param timestampNs receive timestamp for the offending packet. In units of nanoseconds and
      *        synchronized to CLOCK_MONOTONIC.
      */
-    void onWakeupEvent(String prefix, int uid, int gid, long timestampNs);
+    void onWakeupEvent(String prefix, int uid, int ethertype, int ipNextHeader, in byte[] dstHw,
+            String srcIp, String dstIp, int srcPort, int dstPort, long timestampNs);
 }
