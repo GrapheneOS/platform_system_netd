@@ -87,6 +87,7 @@ LOCAL_SHARED_LIBRARIES := \
         libnetdaidl \
         libnetutils \
         libnetdutils \
+        libselinux \
         libssl \
         libsysutils \
         libbase \
