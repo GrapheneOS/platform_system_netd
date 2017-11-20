@@ -655,7 +655,58 @@ XfrmController::ipSecRemoveTransportModeTransform(const android::base::unique_fd
     return status;
 }
 
-void XfrmController::fillTransportModeSelector(const XfrmSaInfo& record, xfrm_selector* selector) {
+netdutils::Status XfrmController::ipSecAddSecurityPolicy(int32_t transformId, int32_t direction,
+                                                         const std::string& localAddress,
+                                                         const std::string& remoteAddress,
+                                                         int32_t spi) {
+    return processSecurityPolicy(transformId, direction, localAddress, remoteAddress, spi,
+                                 XFRM_MSG_NEWPOLICY);
+}
+
+netdutils::Status XfrmController::ipSecUpdateSecurityPolicy(int32_t transformId, int32_t direction,
+                                                            const std::string& localAddress,
+                                                            const std::string& remoteAddress,
+                                                            int32_t spi) {
+    return processSecurityPolicy(transformId, direction, localAddress, remoteAddress, spi,
+                                 XFRM_MSG_UPDPOLICY);
+}
+
+netdutils::Status XfrmController::ipSecDeleteSecurityPolicy(int32_t transformId, int32_t direction,
+                                                            const std::string& localAddress,
+                                                            const std::string& remoteAddress) {
+    return processSecurityPolicy(transformId, direction, localAddress, remoteAddress, 0,
+                                 XFRM_MSG_DELPOLICY);
+}
+
+netdutils::Status XfrmController::processSecurityPolicy(int32_t transformId, int32_t direction,
+                                                        const std::string& localAddress,
+                                                        const std::string& remoteAddress,
+                                                        int32_t spi, int32_t msgType) {
+    ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
+    ALOGD("transformId=%d", transformId);
+    ALOGD("direction=%d", direction);
+    ALOGD("localAddress=%s", localAddress.c_str());
+    ALOGD("remoteAddress=%s", remoteAddress.c_str());
+    ALOGD("spi=%0.8x", spi);
+    ALOGD("msgType=%d", msgType);
+
+    XfrmSaInfo saInfo{};
+    saInfo.mode = XfrmMode::TUNNEL;
+
+    XfrmSocketImpl sock;
+    RETURN_IF_NOT_OK(sock.open());
+
+    RETURN_IF_NOT_OK(fillXfrmId(localAddress, remoteAddress, spi, transformId, &saInfo));
+
+    if (msgType == XFRM_MSG_DELPOLICY) {
+        return deleteTunnelModeSecurityPolicy(saInfo, sock, static_cast<XfrmDirection>(direction));
+    } else {
+        return updateTunnelModeSecurityPolicy(saInfo, sock, static_cast<XfrmDirection>(direction),
+                                              msgType);
+    }
+}
+
+void XfrmController::fillXfrmSelector(const XfrmSaInfo& record, xfrm_selector* selector) {
     selector->family = record.addrFamily;
     selector->proto = AF_UNSPEC;      // TODO: do we need to match the protocol? it's
                                       // possible via the socket
@@ -797,7 +848,7 @@ int XfrmController::fillNlAttrXfrmEncapTmpl(const XfrmSaInfo& record, nlattr_enc
 }
 
 int XfrmController::fillUserSaInfo(const XfrmSaInfo& record, xfrm_usersa_info* usersa) {
-    fillTransportModeSelector(record, &usersa->sel);
+    fillXfrmSelector(record, &usersa->sel);
 
     usersa->id.proto = IPPROTO_ESP;
     usersa->id.spi = record.spi;
@@ -898,9 +949,65 @@ netdutils::Status XfrmController::allocateSpi(const XfrmSaInfo& record, uint32_t
     return ret;
 }
 
+netdutils::Status XfrmController::updateTunnelModeSecurityPolicy(const XfrmSaInfo& record,
+                                                                 const XfrmSocket& sock,
+                                                                 XfrmDirection direction,
+                                                                 uint16_t msgType) {
+    xfrm_userpolicy_info userpolicy{};
+    nlattr_user_tmpl usertmpl{};
+
+    enum {
+        NLMSG_HDR,
+        USERPOLICY,
+        USERPOLICY_PAD,
+        USERTMPL,
+        USERTMPL_PAD,
+    };
+
+    std::vector<iovec> iov = {
+        {NULL, 0},        // reserved for the eventual addition of a NLMSG_HDR
+        {&userpolicy, 0}, // main xfrm_userpolicy_info struct
+        {kPadBytes, 0},   // up to NLMSG_ALIGNTO pad bytes of padding
+        {&usertmpl, 0},   // adjust size if xfrm_user_tmpl struct is present
+        {kPadBytes, 0},   // up to NLATTR_ALIGNTO pad bytes
+    };
+
+    int len;
+    len = iov[USERPOLICY].iov_len = fillTransportModeUserSpInfo(record, direction, &userpolicy);
+    iov[USERPOLICY_PAD].iov_len = NLMSG_ALIGN(len) - len;
+
+    len = iov[USERTMPL].iov_len = fillNlAttrUserTemplate(record, &usertmpl);
+    iov[USERTMPL_PAD].iov_len = NLA_ALIGN(len) - len;
+
+    return sock.sendMessage(msgType, NETLINK_REQUEST_FLAGS, 0, &iov);
+}
+
+netdutils::Status XfrmController::deleteTunnelModeSecurityPolicy(const XfrmSaInfo& record,
+                                                                 const XfrmSocket& sock,
+                                                                 XfrmDirection direction) {
+    xfrm_userpolicy_id policyid{};
+
+    enum {
+        NLMSG_HDR,
+        USERPOLICYID,
+        USERPOLICYID_PAD,
+    };
+
+    std::vector<iovec> iov = {
+        {NULL, 0},      // reserved for the eventual addition of a NLMSG_HDR
+        {&policyid, 0}, // main xfrm_userpolicy_id struct
+        {kPadBytes, 0}, // up to NLMSG_ALIGNTO pad bytes of padding
+    };
+
+    int len = iov[USERPOLICYID].iov_len = fillUserPolicyId(record, direction, &policyid);
+    iov[USERPOLICYID_PAD].iov_len = NLMSG_ALIGN(len) - len;
+
+    return sock.sendMessage(XFRM_MSG_DELPOLICY, NETLINK_REQUEST_FLAGS, 0, &iov);
+}
+
 int XfrmController::fillTransportModeUserSpInfo(const XfrmSaInfo& record, XfrmDirection direction,
                                                 xfrm_userpolicy_info* usersp) {
-    fillTransportModeSelector(record, &usersp->sel);
+    fillXfrmSelector(record, &usersp->sel);
     fillXfrmLifetimeDefaults(&usersp->lft);
     fillXfrmCurLifetimeDefaults(&usersp->curlft);
     /* if (index) index & 0x3 == dir -- must be true
@@ -929,8 +1036,25 @@ int XfrmController::fillUserTemplate(const XfrmSaInfo& record, xfrm_user_tmpl* t
                                         // algos, we should find it and apply it.
                                         // I can't find one.
     tmpl->ealgos = ALGO_MASK_CRYPT_ALL; // TODO: if there's a bitmask somewhere...
-    return 0;
+    return sizeof(xfrm_user_tmpl*);
 }
+
+int XfrmController::fillNlAttrUserTemplate(const XfrmSaInfo& record, nlattr_user_tmpl* tmpl) {
+    fillUserTemplate(record, &tmpl->tmpl);
+
+    int len = NLA_HDRLEN + sizeof(xfrm_user_tmpl);
+    fillXfrmNlaHdr(&tmpl->hdr, XFRMA_TMPL, len);
+    return len;
+}
+
+int XfrmController::fillUserPolicyId(const XfrmSaInfo& record, XfrmDirection direction,
+                                     xfrm_userpolicy_id* usersp) {
+    // For DELPOLICY, when index is absent, selector is needed to match the policy
+    fillXfrmSelector(record, &usersp->sel);
+    usersp->dir = static_cast<uint8_t>(direction);
+    return sizeof(*usersp);
+}
+
 
 } // namespace net
 } // namespace android

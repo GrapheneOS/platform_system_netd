@@ -499,5 +499,128 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityAssociation) {
     expectAddressEquals(family, remoteAddr, said.daddr);
 }
 
+TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityPolicy) {
+    const int version = GetParam();
+    const int family = (version == 6) ? AF_INET6 : AF_INET;
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
+    NetlinkResponse response{};
+    response.hdr.nlmsg_type = XFRM_MSG_NEWPOLICY;
+    Slice responseSlice = netdutils::makeSlice(response);
+
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userpolicy_info)) +
+                               NLMSG_ALIGN(sizeof(XfrmController::nlattr_user_tmpl));
+
+    std::vector<uint8_t> nlMsgBuf;
+    EXPECT_CALL(mockSyscalls, writev(_, _))
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
+    EXPECT_CALL(mockSyscalls, read(_, _))
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
+
+    XfrmController ctrl;
+    Status res =
+        ctrl.ipSecAddSecurityPolicy(1 /* resourceId */, static_cast<int>(XfrmDirection::OUT),
+                                    localAddr, remoteAddr, 0 /* SPI */);
+
+    EXPECT_TRUE(isOk(res)) << res;
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
+
+    Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
+    nlmsghdr hdr;
+    netdutils::extract(nlMsgSlice, hdr);
+    EXPECT_EQ(XFRM_MSG_NEWPOLICY, hdr.nlmsg_type);
+
+    nlMsgSlice = netdutils::drop(nlMsgSlice, NLMSG_HDRLEN);
+    xfrm_userpolicy_info userpolicy{};
+    netdutils::extract(nlMsgSlice, userpolicy);
+
+    EXPECT_EQ(static_cast<uint8_t>(XfrmDirection::OUT), userpolicy.dir);
+
+    // Drop the user policy info.
+    Slice attr_buf = drop(nlMsgSlice, NLA_ALIGN(sizeof(xfrm_userpolicy_info)));
+
+    // Extract and check the user tmpl.
+    XfrmController::nlattr_user_tmpl usertmpl{};
+    auto attrHandler = [&usertmpl](const nlattr& attr, const Slice& attr_payload) {
+        Slice buf = attr_payload;
+        if (attr.nla_type == XFRMA_TMPL) {
+            usertmpl.hdr = attr;
+            netdutils::extract(buf, usertmpl.tmpl);
+        } else {
+            FAIL() << "Unexpected nlattr type: " << attr.nla_type;
+        }
+    };
+    forEachNetlinkAttribute(attr_buf, attrHandler);
+
+    expectAddressEquals(family, remoteAddr, usertmpl.tmpl.id.daddr);
+}
+
+TEST_P(XfrmControllerParameterizedTest, TestIpSecUpdateSecurityPolicy) {
+    const int version = GetParam();
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
+    NetlinkResponse response{};
+    response.hdr.nlmsg_type = XFRM_MSG_UPDPOLICY;
+    Slice responseSlice = netdutils::makeSlice(response);
+
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userpolicy_info)) +
+                               NLMSG_ALIGN(sizeof(XfrmController::nlattr_user_tmpl));
+
+    std::vector<uint8_t> nlMsgBuf;
+    EXPECT_CALL(mockSyscalls, writev(_, _))
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
+    EXPECT_CALL(mockSyscalls, read(_, _))
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
+
+    XfrmController ctrl;
+    Status res =
+        ctrl.ipSecUpdateSecurityPolicy(1 /* resourceId */, static_cast<int>(XfrmDirection::OUT),
+                                       localAddr, remoteAddr, 0 /* SPI */);
+
+    EXPECT_TRUE(isOk(res)) << res;
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
+
+    Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
+    nlmsghdr hdr;
+    netdutils::extract(nlMsgSlice, hdr);
+    EXPECT_EQ(XFRM_MSG_UPDPOLICY, hdr.nlmsg_type);
+}
+
+TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityPolicy) {
+    const int version = GetParam();
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
+    NetlinkResponse response{};
+    response.hdr.nlmsg_type = XFRM_MSG_DELPOLICY;
+    Slice responseSlice = netdutils::makeSlice(response);
+
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userpolicy_id));
+
+    std::vector<uint8_t> nlMsgBuf;
+    EXPECT_CALL(mockSyscalls, writev(_, _))
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
+    EXPECT_CALL(mockSyscalls, read(_, _))
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
+
+    XfrmController ctrl;
+    Status res =
+        ctrl.ipSecDeleteSecurityPolicy(1 /* resourceId */, static_cast<int>(XfrmDirection::OUT),
+                                       localAddr, remoteAddr);
+
+    EXPECT_TRUE(isOk(res)) << res;
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
+
+    Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
+    nlMsgSlice = netdutils::drop(nlMsgSlice, NLMSG_HDRLEN);
+
+    xfrm_userpolicy_id policyid{};
+    netdutils::extract(nlMsgSlice, policyid);
+
+    EXPECT_EQ(static_cast<uint8_t>(XfrmDirection::OUT), policyid.dir);
+}
+
 } // namespace net
 } // namespace android
