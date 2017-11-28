@@ -45,7 +45,7 @@ int bpf(int cmd, Slice bpfAttr) {
 
 int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size, uint32_t max_entries,
               uint32_t map_flags) {
-    bpf_attr attr;
+    new_bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.map_type = map_type;
     attr.key_size = key_size;
@@ -57,7 +57,7 @@ int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size, uin
 }
 
 int writeToMapEntry(const base::unique_fd& map_fd, void* key, void* value, uint64_t flags) {
-    bpf_attr attr;
+    new_bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.map_fd = map_fd.get();
     attr.key = ptr_to_u64(key);
@@ -68,7 +68,7 @@ int writeToMapEntry(const base::unique_fd& map_fd, void* key, void* value, uint6
 }
 
 int findMapEntry(const base::unique_fd& map_fd, void* key, void* value) {
-    bpf_attr attr;
+    new_bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.map_fd = map_fd.get();
     attr.key = ptr_to_u64(key);
@@ -78,7 +78,7 @@ int findMapEntry(const base::unique_fd& map_fd, void* key, void* value) {
 }
 
 int deleteMapEntry(const base::unique_fd& map_fd, void* key) {
-    bpf_attr attr;
+    new_bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.map_fd = map_fd.get();
     attr.key = ptr_to_u64(key);
@@ -87,7 +87,7 @@ int deleteMapEntry(const base::unique_fd& map_fd, void* key) {
 }
 
 int getNextMapKey(const base::unique_fd& map_fd, void* key, void* next_key) {
-    bpf_attr attr;
+    new_bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.map_fd = map_fd.get();
     attr.key = ptr_to_u64(key);
@@ -98,7 +98,7 @@ int getNextMapKey(const base::unique_fd& map_fd, void* key, void* next_key) {
 
 int bpfProgLoad(bpf_prog_type prog_type, Slice bpf_insns, const char* license,
                 uint32_t kern_version, Slice bpf_log) {
-    bpf_attr attr;
+    new_bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.prog_type = prog_type;
     attr.insns = ptr_to_u64(bpf_insns.base());
@@ -121,7 +121,7 @@ int bpfProgLoad(bpf_prog_type prog_type, Slice bpf_insns, const char* license,
 }
 
 int mapPin(const base::unique_fd& map_fd, const char* pathname) {
-    bpf_attr attr;
+    new_bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.pathname = ptr_to_u64((void*)pathname);
     attr.bpf_fd = map_fd.get();
@@ -129,17 +129,16 @@ int mapPin(const base::unique_fd& map_fd, const char* pathname) {
     return bpf(BPF_OBJ_PIN, Slice(&attr, sizeof(attr)));
 }
 
-int mapRetrieve(const char* pathname, uint32_t) {
-    bpf_attr attr;
+int mapRetrieve(const char* pathname, uint32_t flag) {
+    new_bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.pathname = ptr_to_u64((void*)pathname);
-    // TODO: Add the file flag field back after the kernel changes for bpf obj flags is merged and
-    // the android uapi header is updated.
+    attr.file_flags = flag;
     return bpf(BPF_OBJ_GET, Slice(&attr, sizeof(attr)));
 }
 
 int attachProgram(bpf_attach_type type, uint32_t prog_fd, uint32_t cg_fd) {
-    bpf_attr attr;
+    new_bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.target_fd = cg_fd;
     attr.attach_bpf_fd = prog_fd;
@@ -149,7 +148,7 @@ int attachProgram(bpf_attach_type type, uint32_t prog_fd, uint32_t cg_fd) {
 }
 
 int detachProgram(bpf_attach_type type, uint32_t cg_fd) {
-    bpf_attr attr;
+    new_bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.target_fd = cg_fd;
     attr.attach_type = type;
@@ -173,7 +172,7 @@ StatusOr<unique_fd> setUpBPFMap(uint32_t key_size, uint32_t value_size, uint32_t
                                                        path));
         }
     } else if (ret < 0 && errno == ENOENT) {
-        map_fd = base::unique_fd(createMap(map_type, key_size, value_size, map_size, 0));
+        map_fd = base::unique_fd(createMap(map_type, key_size, value_size, map_size, BPF_F_NO_PREALLOC));
         if (map_fd < 0) {
             return statusFromErrno(errno, StringPrintf("map create failed!: %s", path));
         }

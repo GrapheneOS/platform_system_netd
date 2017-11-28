@@ -65,8 +65,85 @@
 namespace android {
 namespace bpf {
 
-int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size, uint32_t max_entries,
-              uint32_t map_flags);
+//The following definition and the new_bpf_attr struct is from upstream header
+//v4.15 but not in bionic uapi header yet since 4.15 is still at rc stage.
+//TODO: delete these definition once bionic uapi header get updated.
+
+#ifndef BPF_OBJ_NAME_LEN
+#define BPF_OBJ_NAME_LEN 16U
+#else
+#error clean up the definition here.
+#endif
+
+/* Flags for accessing BPF object */
+#ifndef BPF_F_RDONLY
+#define BPF_F_RDONLY            (1U << 3)
+#else
+#error clean up the definition here
+#endif
+
+#ifndef BPF_F_WRONLY
+#define BPF_F_WRONLY            (1U << 4)
+#else
+#error clean up the definition here
+#endif
+
+union new_bpf_attr {
+    struct { /* anonymous struct used by BPF_MAP_CREATE command */
+        __u32   map_type;       /* one of enum bpf_map_type */
+        __u32   key_size;       /* size of key in bytes */
+        __u32   value_size;     /* size of value in bytes */
+        __u32   max_entries;    /* max number of entries in a map */
+        __u32   map_flags;      /* BPF_MAP_CREATE related
+                                 * flags defined above.
+                                 */
+        __u32   inner_map_fd;   /* fd pointing to the inner map */
+        __u32   numa_node;      /* numa node (effective only if
+                                 * BPF_F_NUMA_NODE is set).
+                                 */
+        char    map_name[BPF_OBJ_NAME_LEN];
+    };
+
+    struct { /* anonymous struct used by BPF_MAP_*_ELEM commands */
+        __u32           map_fd;
+        __aligned_u64   key;
+        union {
+                __aligned_u64 value;
+                __aligned_u64 next_key;
+        };
+        __u64           flags;
+    };
+
+    struct { /* anonymous struct used by BPF_PROG_LOAD command */
+        __u32           prog_type;      /* one of enum bpf_prog_type */
+        __u32           insn_cnt;
+        __aligned_u64   insns;
+        __aligned_u64   license;
+        __u32           log_level;      /* verbosity level of verifier */
+        __u32           log_size;       /* size of user buffer */
+        __aligned_u64   log_buf;        /* user supplied buffer */
+        __u32           kern_version;   /* checked when prog_type=kprobe */
+        __u32           prog_flags;
+        char            prog_name[BPF_OBJ_NAME_LEN];
+        __u32           prog_ifindex;   /* ifindex of netdev to prep for */
+    };
+
+    struct { /* anonymous struct used by BPF_OBJ_* commands */
+        __aligned_u64   pathname;
+        __u32           bpf_fd;
+        __u32           file_flags;
+    };
+
+    struct { /* anonymous struct used by BPF_PROG_ATTACH/DETACH commands */
+        __u32           target_fd;      /* container object to attach to */
+        __u32           attach_bpf_fd;  /* eBPF program to attach */
+        __u32           attach_type;
+        __u32           attach_flags;
+    };
+} __attribute__((aligned(8)));
+
+int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size,
+              uint32_t max_entries, uint32_t map_flags);
 int writeToMapEntry(const base::unique_fd& map_fd, void* key, void* value, uint64_t flags);
 int findMapEntry(const base::unique_fd& map_fd, void* key, void* value);
 int deleteMapEntry(const base::unique_fd& map_fd, void* key);
