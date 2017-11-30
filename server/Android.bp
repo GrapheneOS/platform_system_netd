@@ -1,0 +1,5 @@
+// AIDL interface between netd and framework.jar
+filegroup {
+    name: "netd_aidl",
+    srcs: ["binder/android/net/INetd.aidl"],
+}
