@@ -283,7 +283,7 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint8_t 
         { PADDING_BUFFER,    oifPadding },
     };
 
-    uint16_t flags = (action == RTM_NEWRULE) ? NETLINK_CREATE_REQUEST_FLAGS : NETLINK_REQUEST_FLAGS;
+    uint16_t flags = (action == RTM_NEWRULE) ? NETLINK_RULE_CREATE_FLAGS : NETLINK_REQUEST_FLAGS;
     for (size_t i = 0; i < ARRAY_SIZE(AF_FAMILIES); ++i) {
         rule.family = AF_FAMILIES[i];
         if (int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr)) {
@@ -400,8 +400,7 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
         { &PRIO_THROW,   isDefaultThrowRoute ? sizeof(PRIO_THROW) : 0 },
     };
 
-    uint16_t flags = (action == RTM_NEWROUTE) ? NETLINK_CREATE_REQUEST_FLAGS :
-                                                NETLINK_REQUEST_FLAGS;
+    uint16_t flags = (action == RTM_NEWROUTE) ? NETLINK_ROUTE_CREATE_FLAGS : NETLINK_REQUEST_FLAGS;
     int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr);
     if (ret) {
         ALOGE("Error %s route %s -> %s %s to table %u: %s",
