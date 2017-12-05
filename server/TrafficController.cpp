@@ -21,6 +21,8 @@
 #include <linux/if_ether.h>
 #include <linux/in.h>
 #include <linux/inet_diag.h>
+#include <linux/netlink.h>
+#include <linux/sock_diag.h>
 #include <linux/unistd.h>
 #include <net/if.h>
 #include <stdlib.h>
@@ -35,9 +37,13 @@
 #include <android-base/unique_fd.h>
 #include <netdutils/StatusOr.h>
 
+#include <netdutils/Misc.h>
+#include <netdutils/Syscalls.h>
 #include "BpfProgSets.h"
 #include "TrafficController.h"
 #include "bpf/BpfUtils.h"
+
+#include "NetlinkListener.h"
 #include "qtaguid/qtaguid.h"
 
 using namespace android::bpf;
@@ -48,9 +54,13 @@ namespace net {
 
 using base::StringPrintf;
 using base::unique_fd;
+using netdutils::extract;
+using netdutils::Slice;
+using netdutils::sSyscalls;
 using netdutils::Status;
 using netdutils::statusFromErrno;
 using netdutils::StatusOr;
+using netdutils::status::ok;
 
 Status TrafficController::loadAndAttachProgram(bpf_attach_type type, const char* path,
                                                const char* name, base::unique_fd& cg_fd) {
@@ -88,6 +98,32 @@ Status TrafficController::loadAndAttachProgram(bpf_attach_type type, const char*
         return statusFromErrno(errno, StringPrintf("Pin %s as file failed(%s)", name, path));
     }
     return netdutils::status::ok;
+}
+
+constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
+constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
+
+StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener() {
+    const auto& sys = sSyscalls.get();
+    ASSIGN_OR_RETURN(auto event, sys.eventfd(0, EFD_CLOEXEC));
+    const int domain = AF_NETLINK;
+    const int type = SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK;
+    const int protocol = NETLINK_INET_DIAG;
+    ASSIGN_OR_RETURN(auto sock, sys.socket(domain, type, protocol));
+
+    sockaddr_nl addr = {
+        .nl_family = AF_NETLINK,
+        .nl_groups = 1 << (SKNLGRP_INET_TCP_DESTROY - 1) | 1 << (SKNLGRP_INET_UDP_DESTROY - 1) |
+                     1 << (SKNLGRP_INET6_TCP_DESTROY - 1) | 1 << (SKNLGRP_INET6_UDP_DESTROY - 1)};
+    RETURN_IF_NOT_OK(sys.bind(sock, addr));
+
+    const sockaddr_nl kernel = {.nl_family = AF_NETLINK};
+    RETURN_IF_NOT_OK(sys.connect(sock, kernel));
+
+    std::unique_ptr<NetlinkListenerInterface> listener =
+        std::make_unique<NetlinkListener>(std::move(event), std::move(sock));
+
+    return listener;
 }
 
 Status TrafficController::start() {
@@ -182,6 +218,35 @@ Status TrafficController::start() {
     if (ret) {
         return statusFromErrno(errno, "change tagStatsMap mode failed.");
     }
+
+    auto result = makeSkDestroyListener();
+    if (!isOk(result)) {
+        ALOGE("Unable to create SkDestroyListener: %s", toString(result).c_str());
+    } else {
+        mSkDestroyListener = std::move(result.value());
+    }
+    // Rx handler extracts nfgenmsg looks up and invokes registered dispatch function.
+    const auto rxHandler = [this](const nlmsghdr&, const Slice msg) {
+        inet_diag_msg diagmsg = {};
+        if (extract(msg, diagmsg) < sizeof(inet_diag_msg)) {
+            ALOGE("unrecognized netlink message: %s", toString(msg).c_str());
+            return;
+        }
+        uint64_t sock_cookie = static_cast<uint64_t>(diagmsg.id.idiag_cookie[0]) |
+                               (static_cast<uint64_t>(diagmsg.id.idiag_cookie[1]) << 32);
+
+        deleteMapEntry(mCookieTagMap, &sock_cookie);
+    };
+    expectOk(mSkDestroyListener->subscribe(kSockDiagMsgType, rxHandler));
+
+    // In case multiple netlink message comes in as a stream, we need to handle the rxDone message
+    // properly.
+    const auto rxDoneHandler = [](const nlmsghdr&, const Slice msg) {
+        // Ignore NLMSG_DONE  messages
+        inet_diag_msg diagmsg = {};
+        extract(msg, diagmsg);
+    };
+    expectOk(mSkDestroyListener->subscribe(kSockDiagDoneMsgType, rxDoneHandler));
 
     RETURN_IF_NOT_OK(loadAndAttachProgram(BPF_CGROUP_INET_INGRESS, BPF_INGRESS_PROG_PATH,
                                           "Ingress_prog", cg_fd));

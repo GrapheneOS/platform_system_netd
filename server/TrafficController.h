@@ -20,6 +20,7 @@
 #include <linux/bpf.h>
 
 #include <netdutils/StatusOr.h>
+#include "NetlinkListener.h"
 #include "Network.h"
 #include "android-base/unique_fd.h"
 
@@ -167,6 +168,8 @@ class TrafficController {
      * transport protocol on egress and ingress direction.
      */
     base::unique_fd mTagStatsMap;
+
+    std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
 
     bool ebpfSupported;
 
