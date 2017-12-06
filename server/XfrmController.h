@@ -26,7 +26,6 @@
 #include <linux/udp.h>
 #include <linux/xfrm.h>
 #include <sysutils/SocketClient.h>
-#include <utils/RWLock.h>
 
 #include "NetdConstants.h"
 #include "netdutils/Status.h"
@@ -194,9 +193,6 @@ public:
     };
 
 private:
-    // prevent concurrent modification of XFRM
-    android::RWLock mLock;
-
 /*
  * Below is a redefinition of the xfrm_usersa_info struct that is part
  * of the Linux uapi <linux/xfrm.h> to align the structures to a 64-bit
