@@ -254,8 +254,8 @@ private:
     static int fillNlAttrXfrmEncapTmpl(const XfrmSaInfo& record, nlattr_encap_tmpl* tmpl);
 
     // Functions for Creating a Transport Mode SA
-    static netdutils::Status createTransportModeSecurityAssociation(const XfrmSaInfo& record,
-                                                                    const XfrmSocket& sock);
+    static netdutils::Status createSecurityAssociation(const XfrmSaInfo& record,
+                                                       const XfrmSocket& sock);
     static int fillUserSaInfo(const XfrmSaInfo& record, xfrm_usersa_info* usersa);
 
     // Functions for deleting a Transport Mode SA
