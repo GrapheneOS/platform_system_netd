@@ -386,8 +386,6 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
     const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits,
     const std::string& aeadAlgo, const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits,
     int32_t encapType, int32_t encapLocalPort, int32_t encapRemotePort) {
-    android::RWLock::AutoWLock lock(mLock);
-
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("transformId=%d", transformId);
     ALOGD("mode=%d", mode);
