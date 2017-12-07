@@ -16,6 +16,7 @@
 
 #include <set>
 
+#include <cstdint>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -266,6 +267,14 @@ std::string FirewallController::makeUidRules(IptablesTarget target, const char *
         // Always whitelist system UIDs.
         StringAppendF(&commands,
                 "-A %s -m owner --uid-owner %d-%d -j RETURN\n", name, 0, MAX_SYSTEM_UID);
+
+        // This rule inverts the match for all UIDs; ie, if there is no UID match here,
+        // there is no socket to be found
+        StringAppendF(&commands,
+                "-A %s -m owner ! --uid-owner %d-%u -j RETURN\n", name, 0, UINT32_MAX-1);
+
+        // Always whitelist traffic with protocol ESP, or no known socket - required for IPSec
+        StringAppendF(&commands, "-A %s -p esp -j RETURN\n", name);
     }
 
     // Always allow networking on loopback.
