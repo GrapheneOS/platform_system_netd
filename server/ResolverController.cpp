@@ -63,25 +63,22 @@ std::string addrToString(const sockaddr_storage* addr) {
     return std::string(out);
 }
 
-bool parseServer(const char* server, in_port_t port, sockaddr_storage* parsed) {
-    sockaddr_in* sin = reinterpret_cast<sockaddr_in*>(parsed);
-    if (inet_pton(AF_INET, server, &(sin->sin_addr)) == 1) {
-        // IPv4 parse succeeded, so it's IPv4
-        sin->sin_family = AF_INET;
-        sin->sin_port = htons(port);
-        return true;
+bool parseServer(const char* server, sockaddr_storage* parsed) {
+    addrinfo hints = {
+        .ai_family = AF_UNSPEC,
+        .ai_flags = AI_NUMERICHOST | AI_NUMERICSERV
+    };
+    addrinfo* res;
+
+    int err = getaddrinfo(server, "853", &hints, &res);
+    if (err != 0) {
+        ALOGW("Failed to parse server address (%s): %s", server, gai_strerror(err));
+        return false;
     }
-    sockaddr_in6* sin6 = reinterpret_cast<sockaddr_in6*>(parsed);
-    if (inet_pton(AF_INET6, server, &(sin6->sin6_addr)) == 1){
-        // IPv6 parse succeeded, so it's IPv6.
-        sin6->sin6_family = AF_INET6;
-        sin6->sin6_port = htons(port);
-        return true;
-    }
-    if (DBG) {
-        ALOGW("Failed to parse server address: %s", server);
-    }
-    return false;
+
+    memcpy(parsed, res->ai_addr, res->ai_addrlen);
+    freeaddrinfo(res);
+    return true;
 }
 
 // Structure for tracking the validation status of servers on a specific netId.
@@ -158,7 +155,7 @@ int setPrivateDnsProviders(int32_t netId,
     std::set<DnsTlsServer> set;
     for (size_t i = 0; i < servers.size(); ++i) {
         sockaddr_storage parsed;
-        if (!parseServer(servers[i].c_str(), 853, &parsed)) {
+        if (!parseServer(servers[i].c_str(), &parsed)) {
             return -EINVAL;
         }
         DnsTlsServer server(parsed);
