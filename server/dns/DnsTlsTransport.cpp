@@ -145,6 +145,10 @@ bool DnsTlsTransport::initialize() {
     }
     SSL_CTX_sess_set_new_cb(mSslCtx.get(), DnsTlsTransport::newSessionCallback);
     SSL_CTX_sess_set_remove_cb(mSslCtx.get(), DnsTlsTransport::removeSessionCallback);
+
+    // Enable TLS false start.
+    SSL_CTX_set_false_start_allowed_without_alpn(mSslCtx.get(), 1);
+    SSL_CTX_set_mode(mSslCtx.get(), SSL_MODE_ENABLE_FALSE_START);
     return true;
 }
 
