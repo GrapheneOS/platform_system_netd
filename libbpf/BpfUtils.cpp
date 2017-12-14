@@ -156,6 +156,20 @@ int detachProgram(bpf_attach_type type, uint32_t cg_fd) {
     return bpf(BPF_PROG_DETACH, Slice(&attr, sizeof(attr)));
 }
 
+uint64_t getSocketCookie(int sockFd) {
+    uint64_t sock_cookie;
+    socklen_t cookie_len = sizeof(sock_cookie);
+    int res = getsockopt(sockFd, SOL_SOCKET, SO_COOKIE, &sock_cookie, &cookie_len);
+    if (res < 0) {
+        res = -errno;
+        ALOGE("Failed to get socket cookie: %s\n", strerror(errno));
+        errno = -res;
+        // 0 is an invalid cookie. See INET_DIAG_NOCOOKIE.
+        return 0;
+    }
+    return sock_cookie;
+}
+
 StatusOr<unique_fd> setUpBPFMap(uint32_t key_size, uint32_t value_size, uint32_t map_size,
                                 const char* path, bpf_map_type map_type) {
     int ret;

@@ -154,6 +154,7 @@ int mapPin(const base::unique_fd& map_fd, const char* pathname);
 int mapRetrieve(const char* pathname, uint32_t flags);
 int attachProgram(bpf_attach_type type, uint32_t prog_fd, uint32_t cg_fd);
 int detachProgram(bpf_attach_type type, uint32_t cg_fd);
+uint64_t getSocketCookie(int sockFd);
 netdutils::StatusOr<base::unique_fd> setUpBPFMap(uint32_t key_size, uint32_t value_size,
                                                  uint32_t map_size, const char* path,
                                                  bpf_map_type map_type);

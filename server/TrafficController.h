@@ -175,6 +175,9 @@ class TrafficController {
 
     netdutils::Status loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
                                            base::unique_fd& cg_fd);
+
+    // For testing
+    friend class TrafficControllerTest;
 };
 
 }  // namespace net

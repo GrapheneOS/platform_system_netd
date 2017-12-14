@@ -195,6 +195,7 @@ LOCAL_SRC_FILES := \
         SockDiagTest.cpp SockDiag.cpp \
         StrictController.cpp StrictControllerTest.cpp \
         TetherController.cpp TetherControllerTest.cpp \
+        TrafficController.cpp TrafficControllerTest.cpp \
         XfrmController.cpp XfrmControllerTest.cpp \
         UidRanges.cpp \
         NetlinkListener.cpp \
@@ -207,6 +208,7 @@ LOCAL_SRC_FILES := \
 LOCAL_MODULE_TAGS := tests
 LOCAL_STATIC_LIBRARIES := libgmock libpcap
 LOCAL_SHARED_LIBRARIES := \
+        libbpf    \
         libnetdaidl \
         libbase \
         libbinder \
@@ -216,6 +218,7 @@ LOCAL_SHARED_LIBRARIES := \
         liblogwrap \
         libnetutils \
         libnetdutils \
+        libqtaguid \
         libsysutils \
         libutils \
         libssl \

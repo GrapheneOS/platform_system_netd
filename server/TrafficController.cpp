@@ -253,20 +253,6 @@ Status TrafficController::start() {
     return loadAndAttachProgram(BPF_CGROUP_INET_EGRESS, BPF_EGRESS_PROG_PATH, "egress_prog", cg_fd);
 }
 
-uint64_t getSocketCookie(int sockFd) {
-    uint64_t sock_cookie;
-    socklen_t cookie_len = sizeof(sock_cookie);
-    int res = getsockopt(sockFd, SOL_SOCKET, SO_COOKIE, &sock_cookie, &cookie_len);
-    if (res < 0) {
-        res = -errno;
-        ALOGE("Failed to get socket cookie: %s\n", strerror(errno));
-        errno = -res;
-        // 0 is an invalid cookie. See INET_DIAG_NOCOOKIE.
-        return 0;
-    }
-    return sock_cookie;
-}
-
 int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
     if (legacy_tagSocket(sockFd, tag, uid)) return -errno;
     if (!ebpfSupported) return 0;
@@ -388,7 +374,7 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     }
 
     // If the tag is not zero, we already deleted all the data entry required. If tag is 0, we also
-    // need to delete the stats stored in uidStatsMap
+    // need to delete the stats stored in uidStatsMap and counterSet map.
     if (tag != 0) return 0;
 
     res = deleteMapEntry(mUidCounterSetMap, &uid);
