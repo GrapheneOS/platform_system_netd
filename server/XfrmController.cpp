@@ -612,10 +612,10 @@ netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
         return status;
     }
 
-    if (saInfo.addrFamily != saddr.ss_family) {
-        ALOGE("Transform address family(%d) differs from socket address "
-              "family(%d)!",
-              saInfo.addrFamily, saddr.ss_family);
+    if (saddr.ss_family == AF_INET && saInfo.addrFamily != AF_INET) {
+        ALOGE("IPV4 socket address family(%d) should match IPV4 Transform "
+              "address family(%d)!",
+              saddr.ss_family, saInfo.addrFamily);
         return netdutils::statusFromErrno(EINVAL, "Mismatched address family");
     }
 
@@ -630,7 +630,7 @@ netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
     LOG_HEX("XfrmUserPolicy", reinterpret_cast<char*>(&policy), sizeof(policy));
 
     int sockOpt, sockLayer;
-    switch (saInfo.addrFamily) {
+    switch (saddr.ss_family) {
         case AF_INET:
             sockOpt = IP_XFRM_POLICY;
             sockLayer = SOL_IP;

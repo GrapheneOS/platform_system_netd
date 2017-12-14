@@ -139,7 +139,12 @@ class XfrmControllerParameterizedTest : public XfrmControllerTest,
 
 // Helper to make generated test names readable.
 std::string FamilyName(::testing::TestParamInfo<int> info) {
-    return (info.param == AF_INET) ? "AF_INET" : "AF_INET6";
+    switch(info.param) {
+        case 4: return "IPv4";
+        case 5: return "IPv64DualStack";
+        case 6: return "IPv6";
+    }
+    return android::base::StringPrintf("UNKNOWN family type: %d", info.param);
 }
 
 /* Generate function to set value refered to by 3rd argument.
@@ -210,13 +215,14 @@ TEST_F(XfrmControllerTest, TestFchownNonUdpEncap) {
 }
 
 // The TEST_P cases below will run with each of the following value parameters.
-INSTANTIATE_TEST_CASE_P(ByFamily, XfrmControllerParameterizedTest, Values(AF_INET, AF_INET6),
+INSTANTIATE_TEST_CASE_P(ByFamily, XfrmControllerParameterizedTest, Values(4, 5, 6),
                         FamilyName);
 
 TEST_P(XfrmControllerParameterizedTest, TestIpSecAllocateSpi) {
-    const int family = GetParam();
-    const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
-    const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+    const int version = GetParam();
+    const int family = (version == 6) ? AF_INET6 : AF_INET;
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
 
     NetlinkResponse response{};
     response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
@@ -254,10 +260,11 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAllocateSpi) {
     EXPECT_EQ(DROID_SPI, static_cast<int>(userspi.max));
 }
 
-void testIpSecAddSecurityAssociation(int family, const MockSyscalls& mockSyscalls,
+void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscalls,
                                      const XfrmMode& mode) {
-    const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
-    const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+    const int family = (version == 6) ? AF_INET6 : AF_INET;
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
 
     NetlinkResponse response{};
     response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
@@ -343,13 +350,13 @@ void testIpSecAddSecurityAssociation(int family, const MockSyscalls& mockSyscall
 }
 
 TEST_P(XfrmControllerParameterizedTest, TestTransportModeIpSecAddSecurityAssociation) {
-    const int family = GetParam();
-    testIpSecAddSecurityAssociation(family, mockSyscalls, XfrmMode::TRANSPORT);
+    const int version = GetParam();
+    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TRANSPORT);
 }
 
 TEST_P(XfrmControllerParameterizedTest, TestTunnelModeIpSecAddSecurityAssociation) {
-    const int family = GetParam();
-    testIpSecAddSecurityAssociation(family, mockSyscalls, XfrmMode::TUNNEL);
+    const int version = GetParam();
+    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TUNNEL);
 }
 
 TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv4Encap) {
@@ -370,10 +377,29 @@ TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv6Encap) {
     EXPECT_FALSE(isOk(res)) << "IPv6 UDP encap not rejected";
 }
 
+TEST_F(XfrmControllerTest, TestIpSecApplyTransportModeTransformChecksFamily) {
+    struct sockaddr socketaddr;
+    socketaddr.sa_family = AF_INET;
+
+    unique_fd sock(socket(AF_INET, SOCK_STREAM, 0));
+
+    EXPECT_CALL(mockSyscalls, getsockname(Fd(sock), _, _))
+        .WillOnce(DoAll(SetArgPointee<1>(socketaddr), Return(netdutils::status::ok)));
+
+    XfrmController ctrl;
+    Status res = ctrl.ipSecApplyTransportModeTransform(sock, 1 /* resourceId */,
+                                                       static_cast<int>(XfrmDirection::OUT),
+                                                       LOCALHOST_V6, TEST_ADDR_V6, DROID_SPI);
+
+    EXPECT_EQ(res.code(), EINVAL);
+}
+
 TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
-    const int family = GetParam();
-    const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
-    const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+    const int version = GetParam();
+    const int sockFamily = (version == 4) ? AF_INET : AF_INET6;
+    const int xfrmFamily = (version == 6) ? AF_INET6: AF_INET;
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
 
     size_t optlen = 0;
     Policy policy{};
@@ -384,9 +410,9 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
     };
 
     struct sockaddr socketaddr;
-    socketaddr.sa_family = family;
+    socketaddr.sa_family = sockFamily;
 
-    unique_fd sock(socket(family, SOCK_STREAM, 0));
+    unique_fd sock(socket(sockFamily, SOCK_STREAM, 0));
 
     EXPECT_CALL(mockSyscalls, getsockname(_, _, _))
         .WillOnce(DoAll(SetArgPointee<1>(socketaddr), Return(netdutils::status::ok)));
@@ -406,14 +432,14 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
     EXPECT_EQ(1 /* resourceId */, static_cast<int>(policy.tmpl.reqid));
     EXPECT_EQ(htonl(DROID_SPI), policy.tmpl.id.spi);
 
-    expectAddressEquals(family, localAddr, policy.tmpl.saddr);
-    expectAddressEquals(family, remoteAddr, policy.tmpl.id.daddr);
+    expectAddressEquals(xfrmFamily, localAddr, policy.tmpl.saddr);
+    expectAddressEquals(xfrmFamily, remoteAddr, policy.tmpl.id.daddr);
 }
 
 TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityAssociation) {
-    const int family = GetParam();
-    const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
-    const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+    const int family = (GetParam() == 6) ? AF_INET6 : AF_INET;
+    const std::string localAddr = (family == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (family == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
 
     NetlinkResponse response{};
     response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
