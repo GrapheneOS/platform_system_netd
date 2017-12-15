@@ -22,11 +22,11 @@
 #include <sys/socket.h>
 
 #include "BpfProgSets.h"
-#include "BpfUtils.h"
 #include "TrafficController.h"
+#include "bpf/BpfUtils.h"
 #include "netdutils/Slice.h"
 
-using namespace android::net::bpf;
+using namespace android::bpf;
 using android::netdutils::Slice;
 
 namespace android {

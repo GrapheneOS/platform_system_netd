@@ -20,26 +20,31 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sstream>
+#include <string>
 
-#include "BpfUtils.h"
-#include "TrafficController.h"
-#include "netdutils/Slice.h"
+#include <android-base/stringprintf.h>
+#include <android-base/unique_fd.h>
+#include <netdutils/Slice.h>
+#include <netdutils/StatusOr.h>
+#include "bpf/BpfUtils.h"
 
-#define LOG_TAG "Netd"
-#include "log/log.h"
-
+using android::base::StringPrintf;
+using android::base::unique_fd;
 using android::netdutils::Slice;
+using android::netdutils::statusFromErrno;
+using android::netdutils::StatusOr;
 
 namespace android {
-namespace net {
 namespace bpf {
 
 int bpf(int cmd, Slice bpfAttr) {
     return syscall(__NR_bpf, cmd, bpfAttr.base(), bpfAttr.size());
 }
 
-int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size,
-              uint32_t max_entries, uint32_t map_flags) {
+int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size, uint32_t max_entries,
+              uint32_t map_flags) {
     bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.map_type = map_type;
@@ -51,10 +56,10 @@ int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size,
     return bpf(BPF_MAP_CREATE, Slice(&attr, sizeof(attr)));
 }
 
-int writeToMapEntry(int fd, void* key, void* value, uint64_t flags) {
+int writeToMapEntry(const base::unique_fd& map_fd, void* key, void* value, uint64_t flags) {
     bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
-    attr.map_fd = fd;
+    attr.map_fd = map_fd.get();
     attr.key = ptr_to_u64(key);
     attr.value = ptr_to_u64(value);
     attr.flags = flags;
@@ -62,29 +67,29 @@ int writeToMapEntry(int fd, void* key, void* value, uint64_t flags) {
     return bpf(BPF_MAP_UPDATE_ELEM, Slice(&attr, sizeof(attr)));
 }
 
-int findMapEntry(uint32_t fd, void* key, void* value) {
+int findMapEntry(const base::unique_fd& map_fd, void* key, void* value) {
     bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
-    attr.map_fd = fd;
+    attr.map_fd = map_fd.get();
     attr.key = ptr_to_u64(key);
     attr.value = ptr_to_u64(value);
 
     return bpf(BPF_MAP_LOOKUP_ELEM, Slice(&attr, sizeof(attr)));
 }
 
-int deleteMapEntry(uint32_t fd, void* key) {
+int deleteMapEntry(const base::unique_fd& map_fd, void* key) {
     bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
-    attr.map_fd = fd;
+    attr.map_fd = map_fd.get();
     attr.key = ptr_to_u64(key);
 
     return bpf(BPF_MAP_DELETE_ELEM, Slice(&attr, sizeof(attr)));
 }
 
-int getNextMapKey(uint32_t fd, void* key, void* next_key) {
+int getNextMapKey(const base::unique_fd& map_fd, void* key, void* next_key) {
     bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
-    attr.map_fd = fd;
+    attr.map_fd = map_fd.get();
     attr.key = ptr_to_u64(key);
     attr.next_key = ptr_to_u64(next_key);
 
@@ -105,20 +110,26 @@ int bpfProgLoad(bpf_prog_type prog_type, Slice bpf_insns, const char* license,
     attr.kern_version = kern_version;
     int ret = bpf(BPF_PROG_LOAD, Slice(&attr, sizeof(attr)));
 
-    if (ret < 0) ALOGE("program load failed:\n%s", bpf_log.base());
+    if (ret < 0) {
+        std::string prog_log = netdutils::toString(bpf_log);
+        std::istringstream iss(prog_log);
+        for (std::string line; std::getline(iss, line);) {
+            ALOGE("%s", line.c_str());
+        }
+    }
     return ret;
 }
 
-int mapPin(uint32_t fd, const char* pathname) {
+int mapPin(const base::unique_fd& map_fd, const char* pathname) {
     bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.pathname = ptr_to_u64((void*)pathname);
-    attr.bpf_fd = fd;
+    attr.bpf_fd = map_fd.get();
 
     return bpf(BPF_OBJ_PIN, Slice(&attr, sizeof(attr)));
 }
 
-int mapRetrieve(const char* pathname) {
+int mapRetrieve(const char* pathname, uint32_t) {
     bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.pathname = ptr_to_u64((void*)pathname);
@@ -146,39 +157,35 @@ int detachProgram(bpf_attach_type type, uint32_t cg_fd) {
     return bpf(BPF_PROG_DETACH, Slice(&attr, sizeof(attr)));
 }
 
-int setUpBPFMap(uint32_t key_size, uint32_t value_size, uint32_t map_size, const char* path,
-                bpf_map_type map_type) {
+StatusOr<unique_fd> setUpBPFMap(uint32_t key_size, uint32_t value_size, uint32_t map_size,
+                                const char* path, bpf_map_type map_type) {
     int ret;
-    int map_fd = -1;
+    base::unique_fd map_fd;
     ret = access(path, R_OK);
     /* Check the pinned location first to check if the map is already there.
      * otherwise create a new one.
      */
     if (ret == 0) {
-        map_fd = mapRetrieve(path);
-        if (map_fd < 0)
-            ALOGE("pinned map not accessable or not exist: %s(%s)\n", strerror(errno), path);
-    } else if (ret < 0 && errno == ENOENT) {
-        map_fd = createMap(map_type, key_size, value_size, map_size, 0);
+        map_fd = base::unique_fd(mapRetrieve(path, 0));
         if (map_fd < 0) {
-            ret = -errno;
-            ALOGE("map create failed!: %s(%s)\n", strerror(errno), path);
-            return ret;
+            return statusFromErrno(errno, StringPrintf("pinned map not accessible or does not "
+                                                       "exist: (%s)\n",
+                                                       path));
+        }
+    } else if (ret < 0 && errno == ENOENT) {
+        map_fd = base::unique_fd(createMap(map_type, key_size, value_size, map_size, 0));
+        if (map_fd < 0) {
+            return statusFromErrno(errno, StringPrintf("map create failed!: %s", path));
         }
         ret = mapPin(map_fd, path);
         if (ret) {
-            ret = -errno;
-            ALOGE("bpf map pin(%d, %s): %s\n", map_fd, path, strerror(errno));
-            return ret;
+            return statusFromErrno(errno, StringPrintf("bpf map pin(%d, %s)", map_fd.get(), path));
         }
     } else {
-        ret = -errno;
-        ALOGE("pinned map not accessable: %s(%s)\n", strerror(errno), path);
-        return ret;
+        return statusFromErrno(errno, StringPrintf("pinned map not accessible: %s", path));
     }
     return map_fd;
 }
 
 }  // namespace bpf
-}  // namespace net
 }  // namespace android

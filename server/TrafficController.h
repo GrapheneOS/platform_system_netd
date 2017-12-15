@@ -19,7 +19,9 @@
 
 #include <linux/bpf.h>
 
+#include <netdutils/StatusOr.h>
 #include "Network.h"
+#include "android-base/unique_fd.h"
 
 #ifndef DEFAULT_OVERFLOWUID
 #define DEFAULT_OVERFLOWUID 65534
@@ -33,6 +35,8 @@ constexpr const char* COOKIE_UID_MAP_PATH = BPF_PATH "/traffic_cookie_uid_map";
 constexpr const char* UID_COUNTERSET_MAP_PATH = BPF_PATH "/traffic_uid_counterSet_map";
 constexpr const char* UID_STATS_MAP_PATH = BPF_PATH "/traffic_uid_stats_map";
 constexpr const char* TAG_STATS_MAP_PATH = BPF_PATH "/traffic_tag_stats_map";
+constexpr const char* BPF_EGRESS_PROG_PATH = BPF_PATH "/egress_prog";
+constexpr const char* BPF_INGRESS_PROG_PATH = BPF_PATH "/ingress_prog";
 
 constexpr const char* CGROUP_ROOT_PATH = "/dev/cg2_bpf";
 
@@ -46,6 +50,8 @@ constexpr const int UID_STATS_MAP_SIZE = 100;
 constexpr const int TAG_STATS_MAP_SIZE = 100;
 
 constexpr const int COUNTERSETS_LIMIT = 2;
+
+constexpr const int NONEXIST_COOKIE = 0;
 
 namespace android {
 namespace net {
@@ -62,6 +68,9 @@ struct StatsKey {
     uint32_t ifaceIndex;
 };
 
+// TODO: verify if framework side still need the detail number about TCP and UDP
+// traffic. If not, remove the related tx/rx bytes and packets field to save
+// space and simplify the eBPF program.
 struct Stats {
     uint64_t rxTcpPackets;
     uint64_t rxTcpBytes;
@@ -82,7 +91,7 @@ class TrafficController {
     /*
      * Initialize the whole controller
      */
-    int start();
+    netdutils::Status start();
     /*
      * Tag the socket with the specified tag and uid. In the qtaguid module, the
      * first tag request that grab the spinlock of rb_tree can update the tag
@@ -117,18 +126,16 @@ class TrafficController {
      */
     int deleteTagData(uint32_t tag, uid_t uid);
 
-    /* Old api for debugging the qtaguid module. When the pacifier is on, all
-     * the command will return successful but no actual action is taken.
-     */
-    int setPacifier(uint32_t on);
-
   private:
+    struct StatsKey NONEXIST_STATSKEY = {
+        .uid = DEFAULT_OVERFLOWUID, .tag = 0, .counterSet = 0, .ifaceIndex = 0};
+
     /*
      * mCookieTagMap: Store the corresponding tag and uid for a specific socket.
      * Map Key: uint64_t socket cookie
      * Map Value: struct UidTag, contains a uint32 uid and a uint32 tag.
      */
-    int mCookieTagMap;
+    base::unique_fd mCookieTagMap;
 
     /*
      * mUidCounterSetMap: Store the counterSet of a specific uid.
@@ -136,17 +143,19 @@ class TrafficController {
      * Map Value: uint32 counterSet specifies if the traffic is a background
      * or foreground traffic.
      */
-    int mUidCounterSetMap;
+    base::unique_fd mUidCounterSetMap;
 
     /*
      * mUidStatsMap: Store the traffic statistics for a specific combination of
-     * uid, iface and counterSet.
+     * uid, iface and counterSet. We maintain this map in addition to
+     * mTagStatsMap because we want to be able to track per-UID data usage even
+     * if mTagStatsMap is full.
      * Map Key: Struct StatsKey contains the uid, counterSet and ifaceIndex
      * information. The Tag in the StatsKey should always be 0.
      * Map Value: struct Stats, contains packet count and byte count of each
      * transport protocol on egress and ingress direction.
      */
-    int mUidStatsMap;
+    base::unique_fd mUidStatsMap;
 
     /*
      * mTagStatsMap: Store the traffic statistics for a specific combination of
@@ -157,20 +166,12 @@ class TrafficController {
      * Map Value: struct Stats, contains packet count and byte count of each
      * transport protocol on egress and ingress direction.
      */
-    int mTagStatsMap;
+    base::unique_fd mTagStatsMap;
 
-    /*
-     * IngressProgram: Program attached to the root cgroup directory and
-     * monitoring the traffic on ingress side.
-     */
-    int mInProgFd;
-
-    /*
-     * EgressProgram: Program attached to the root cgroup directory and
-     * monitoring the traffic on egress side.
-     */
-    int mOutProgFd;
     bool ebpfSupported;
+
+    netdutils::Status loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
+                                           base::unique_fd& cg_fd);
 };
 
 }  // namespace net

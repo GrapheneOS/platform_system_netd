@@ -265,16 +265,17 @@ void Controllers::initIptablesRules() {
 
 void Controllers::init() {
     initIptablesRules();
-    int ret = trafficCtrl.start();
-    if (ret) {
-        ALOGE("failed to start trafficcontroller: (%s)", strerror(-ret));
-    }
     Stopwatch s;
+    netdutils::Status tcStatus = trafficCtrl.start();
+    if (!isOk(tcStatus)) {
+        ALOGE("failed to start trafficcontroller: (%s)", toString(tcStatus).c_str());
+    }
+    ALOGI("initializing traffic control: %.1fms", s.getTimeAndReset());
+
     bandwidthCtrl.enableBandwidthControl(false);
     ALOGI("Disabling bandwidth control: %.1fms", s.getTimeAndReset());
 
-    ret = RouteController::Init(NetworkController::LOCAL_NET_ID);
-    if (ret) {
+    if (int ret = RouteController::Init(NetworkController::LOCAL_NET_ID)) {
         ALOGE("failed to initialize RouteController (%s)", strerror(-ret));
     }
     ALOGI("Initializing RouteController: %.1fms", s.getTimeAndReset());

@@ -76,6 +76,7 @@ LOCAL_INIT_RC := netd.rc
 LOCAL_SHARED_LIBRARIES := \
         android.system.net.netd@1.0 \
         libbinder \
+        libbpf    \
         libcrypto \
         libcutils \
         libdl \
@@ -98,7 +99,6 @@ LOCAL_SHARED_LIBRARIES := \
 LOCAL_SRC_FILES := \
         BandwidthController.cpp \
         BpfProgSets.cpp \
-        BpfUtils.cpp \
         ClatdController.cpp \
         CommandListener.cpp \
         Controllers.cpp \
