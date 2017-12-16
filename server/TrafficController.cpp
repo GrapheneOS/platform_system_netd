@@ -127,27 +127,8 @@ StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener() {
 }
 
 Status TrafficController::start() {
-    int ret;
-    struct utsname buf;
-    int kernel_version_major;
-    int kernel_version_minor;
-
-    ret = uname(&buf);
-    if (ret) {
-        return statusFromErrno(errno, "Get system information failed");
-    }
-
-    char dummy;
-    ret = sscanf(buf.release, "%d.%d%c", &kernel_version_major, &kernel_version_minor, &dummy);
-    if (ret >= 2 &&
-        ((kernel_version_major == 4 && kernel_version_minor >= 9) || (kernel_version_major > 4))) {
-        // Turn off the eBPF feature temporarily since the selinux rules and kernel changes are not
-        // landed yet.
-        // TODO: turn back on when all the other dependencies are ready.
-        ebpfSupported = false;
-        return netdutils::status::ok;
-    } else {
-        ebpfSupported = false;
+    ebpfSupported = hasBpfSupport();
+    if (!ebpfSupported) {
         return netdutils::status::ok;
     }
 
@@ -173,7 +154,7 @@ Status TrafficController::start() {
     // net_bw_acct does not grant all process in that group the permission to access bpf maps. They
     // still need correct sepolicy to read/write the map. And only system_server and netd have that
     // permission for now.
-    ret = chown(COOKIE_UID_MAP_PATH, AID_ROOT, AID_NET_BW_ACCT);
+    int ret = chown(COOKIE_UID_MAP_PATH, AID_ROOT, AID_NET_BW_ACCT);
     if (ret) {
         return statusFromErrno(errno, "change cookieTagMap group failed.");
     }
@@ -192,8 +173,8 @@ Status TrafficController::start() {
     }
 
     ASSIGN_OR_RETURN(mUidStatsMap,
-                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct Stats), UID_STATS_MAP_SIZE,
-                                 UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct StatsValue),
+                                 UID_STATS_MAP_SIZE, UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
     // Change the file mode of pinned map so both netd and system server can get the map fd
     // from it.
     ret = chown(UID_STATS_MAP_PATH, AID_ROOT, AID_NET_BW_ACCT);
@@ -206,8 +187,8 @@ Status TrafficController::start() {
     }
 
     ASSIGN_OR_RETURN(mTagStatsMap,
-                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct Stats), TAG_STATS_MAP_SIZE,
-                                 TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct StatsValue),
+                                 TAG_STATS_MAP_SIZE, TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
     // Change the file mode of pinned map so both netd and system server can get the map fd
     // from the path.
     ret = chown(TAG_STATS_MAP_PATH, AID_ROOT, AID_NET_BW_STATS);
@@ -358,7 +339,7 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     // set to the nonexist_statskey because it will never be in the map, and thus getNextMapKey will
     // return 0 and set nextKey to the first key in the map.
     struct StatsKey curKey, nextKey;
-    curKey = NONEXIST_STATSKEY;
+    curKey = android::bpf::NONEXISTENT_STATSKEY;
     while (getNextMapKey(mTagStatsMap, &curKey, &nextKey) != -1) {
         if (nextKey.uid == uid && (nextKey.tag == tag || tag == 0)) {
             res = deleteMapEntry(mTagStatsMap, &nextKey);
@@ -386,16 +367,16 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     // removed uid entry. The removed uid is stored in uid 0, tag 0 and
     // counterSet as COUNTERSETS_LIMIT.
     StatsKey removedStatsKey = {0, 0, COUNTERSETS_LIMIT, 0};
-    Stats removedStatsTotal = {};
+    StatsValue removedStatsTotal = {};
     res = findMapEntry(mUidStatsMap, &removedStatsKey, &removedStatsTotal);
     if (res < 0 && errno != ENOENT) {
         ALOGE("Failed to get stats of removed uid: %s", strerror(errno));
     }
 
-    curKey = NONEXIST_STATSKEY;
+    curKey = android::bpf::NONEXISTENT_STATSKEY;
     while (getNextMapKey(mUidStatsMap, &curKey, &nextKey) != -1) {
         if (nextKey.uid == uid) {
-            Stats old_stats = {};
+            StatsValue old_stats = {};
             res = findMapEntry(mUidStatsMap, &nextKey, &old_stats);
             if (res < 0) {
                 if (errno != ENOENT) {
