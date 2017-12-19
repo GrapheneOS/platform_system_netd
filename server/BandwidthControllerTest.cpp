@@ -32,6 +32,7 @@
 
 #include <netdutils/MockSyscalls.h>
 #include "BandwidthController.h"
+#include "Fwmark.h"
 #include "IptablesBaseTest.h"
 #include "tun_interface.h"
 
@@ -155,6 +156,16 @@ TEST_F(BandwidthControllerTest, TestSetupIptablesHooks) {
     expectSetupCommands(expectedCleanCmds, "");
 }
 
+TEST_F(BandwidthControllerTest, TestCheckUidBillingMask) {
+    uint32_t uidBillingMask = Fwmark::getUidBillingMask();
+
+    // If mask is non-zero, and mask & mask-1 is equal to 0, then the mask is a power of two.
+    bool isPowerOfTwo = uidBillingMask && (uidBillingMask & (uidBillingMask - 1)) == 0;
+
+    // Must be exactly a power of two
+    EXPECT_TRUE(isPowerOfTwo);
+}
+
 TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
     // Pretend no bw_costly_shared_<iface> rules already exist...
     addIptablesRestoreOutput(
@@ -165,9 +176,16 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
     // ... so none are flushed or deleted.
     std::string expectedClean = "";
 
+    uint32_t uidBillingMask = Fwmark::getUidBillingMask();
     std::string expectedAccounting =
         "*filter\n"
-        "-A bw_INPUT -m owner --socket-exists\n"
+        "-A bw_INPUT -p esp -j RETURN\n" +
+        StringPrintf("-A bw_INPUT -m mark --mark 0x%x/0x%x -j RETURN\n",
+                    uidBillingMask, uidBillingMask) +
+        "-A bw_INPUT -m owner --socket-exists\n" +
+        StringPrintf("-A bw_INPUT -j MARK --or-mark 0x%x\n", uidBillingMask) +
+        "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN\n"
+        "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN\n"
         "-A bw_OUTPUT -m owner --socket-exists\n"
         "-A bw_costly_shared --jump bw_penalty_box\n"
         "-A bw_penalty_box --jump bw_happy_box\n"
@@ -176,10 +194,15 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
         "-I bw_happy_box -m owner --uid-owner 0-9999 --jump RETURN\n"
         "COMMIT\n"
         "*raw\n"
+        "-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN\n"
+        "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN\n"
         "-A bw_raw_PREROUTING -m owner --socket-exists\n"
         "COMMIT\n"
         "*mangle\n"
-        "-A bw_mangle_POSTROUTING -m owner --socket-exists\n"
+        "-A bw_mangle_POSTROUTING -o " IPSEC_IFACE_PREFIX "+ -j RETURN\n"
+        "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN\n"
+        "-A bw_mangle_POSTROUTING -m owner --socket-exists\n" +
+        StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x\n", uidBillingMask) +
         "COMMIT\n";
 
     mBw.enableBandwidthControl(false);
