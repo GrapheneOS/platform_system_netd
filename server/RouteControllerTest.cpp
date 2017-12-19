@@ -18,9 +18,14 @@
 
 #include <gtest/gtest.h>
 
+#include "Fwmark.h"
 #include "IptablesBaseTest.h"
 #include "NetlinkCommands.h"
 #include "RouteController.h"
+
+#include <android-base/stringprintf.h>
+
+using android::base::StringPrintf;
 
 namespace android {
 namespace net {
@@ -85,14 +90,22 @@ TEST_F(RouteControllerTest, TestRouteFlush) {
 }
 
 TEST_F(RouteControllerTest, TestModifyIncomingPacketMark) {
-    static constexpr int TEST_NETID = 30;
-    EXPECT_EQ(0, modifyIncomingPacketMark(TEST_NETID, "netdtest0", PERMISSION_NONE, true));
-    expectIptablesRestoreCommands({
-        "-t mangle -A routectrl_mangle_INPUT -i netdtest0 -j MARK --set-mark 0x3001e" });
+  uint32_t mask = ~Fwmark::getUidBillingMask();
 
-    EXPECT_EQ(0, modifyIncomingPacketMark(TEST_NETID, "netdtest0", PERMISSION_NONE, false));
-    expectIptablesRestoreCommands({
-          "-t mangle -D routectrl_mangle_INPUT -i netdtest0 -j MARK --set-mark 0x3001e" });
+  static constexpr int TEST_NETID = 30;
+  EXPECT_EQ(0, modifyIncomingPacketMark(TEST_NETID, "netdtest0",
+                                        PERMISSION_NONE, true));
+  expectIptablesRestoreCommands({StringPrintf(
+      "-t mangle -A routectrl_mangle_INPUT -i netdtest0 -j MARK --set-mark "
+      "0x3001e/0x%x",
+      mask)});
+
+  EXPECT_EQ(0, modifyIncomingPacketMark(TEST_NETID, "netdtest0",
+                                        PERMISSION_NONE, false));
+  expectIptablesRestoreCommands({StringPrintf(
+      "-t mangle -D routectrl_mangle_INPUT -i netdtest0 -j MARK --set-mark "
+      "0x3001e/0x%x",
+      mask)});
 }
 
 }  // namespace net

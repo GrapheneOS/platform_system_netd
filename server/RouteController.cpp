@@ -425,9 +425,11 @@ WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* inte
     fwmark.protectedFromVpn = true;
     fwmark.permission = permission;
 
-    std::string cmd = StringPrintf("%s %s -i %s -j MARK --set-mark 0x%x",
-                                   add ? "-A" : "-D", RouteController::LOCAL_MANGLE_INPUT,
-                                   interface, fwmark.intValue);
+    const uint32_t mask = ~Fwmark::getUidBillingMask();
+
+    std::string cmd = StringPrintf(
+        "%s %s -i %s -j MARK --set-mark 0x%x/0x%x", add ? "-A" : "-D",
+        RouteController::LOCAL_MANGLE_INPUT, interface, fwmark.intValue, mask);
     if (RouteController::iptablesRestoreCommandFunction(V4V6, "mangle", cmd, nullptr) != 0) {
         ALOGE("failed to change iptables rule that sets incoming packet mark");
         return -EREMOTEIO;
