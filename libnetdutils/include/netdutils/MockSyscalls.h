@@ -37,6 +37,8 @@ class MockSyscalls : public Syscalls {
                        StatusOr<UniqueFd>(const std::string& pathname, int flags, mode_t mode));
     MOCK_CONST_METHOD3(socket, StatusOr<UniqueFd>(int domain, int type, int protocol));
     MOCK_CONST_METHOD3(getsockname, Status(Fd sock, sockaddr* addr, socklen_t* addrlen));
+    MOCK_CONST_METHOD5(getsockopt, Status(Fd sock, int level, int optname, void* optval,
+                                          socklen_t *optlen));
     MOCK_CONST_METHOD5(setsockopt, Status(Fd sock, int level, int optname, const void* optval,
                                           socklen_t optlen));
 

@@ -54,6 +54,8 @@ TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
         "*filter",
         ":fw_whitelist -",
         "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
+        "-A fw_whitelist -m owner ! --uid-owner 0-4294967294 -j RETURN",
+        "-A fw_whitelist -p esp -j RETURN",
         "-A fw_whitelist -i lo -j RETURN",
         "-A fw_whitelist -o lo -j RETURN",
         "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN",
@@ -64,6 +66,8 @@ TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
         "*filter",
         ":fw_whitelist -",
         "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
+        "-A fw_whitelist -m owner ! --uid-owner 0-4294967294 -j RETURN",
+        "-A fw_whitelist -p esp -j RETURN",
         "-A fw_whitelist -i lo -j RETURN",
         "-A fw_whitelist -o lo -j RETURN",
         "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN",
@@ -163,6 +167,8 @@ TEST_F(FirewallControllerTest, TestReplaceWhitelistUidRule) {
             "-A FW_whitechain -m owner --uid-owner 210153 -j RETURN\n"
             "-A FW_whitechain -m owner --uid-owner 210024 -j RETURN\n"
             "-A FW_whitechain -m owner --uid-owner 0-9999 -j RETURN\n"
+            "-A FW_whitechain -m owner ! --uid-owner 0-4294967294 -j RETURN\n"
+            "-A FW_whitechain -p esp -j RETURN\n"
             "-A FW_whitechain -i lo -j RETURN\n"
             "-A FW_whitechain -o lo -j RETURN\n"
             "-A FW_whitechain -p tcp --tcp-flags RST RST -j RETURN\n"

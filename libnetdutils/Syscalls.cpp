@@ -65,6 +65,15 @@ class RealSyscalls final : public Syscalls {
         return status::ok;
     }
 
+    Status getsockopt(Fd sock, int level, int optname, void* optval,
+                      socklen_t* optlen) const override {
+        auto rv = ::getsockopt(sock.get(), level, optname, optval, optlen);
+        if (rv == -1) {
+            return statusFromErrno(errno, "getsockopt() failed");
+        }
+        return status::ok;
+    }
+
     Status setsockopt(Fd sock, int level, int optname, const void* optval,
                       socklen_t optlen) const override {
         auto rv = ::setsockopt(sock.get(), level, optname, optval, optlen);
