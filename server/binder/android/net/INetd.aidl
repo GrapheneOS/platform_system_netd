@@ -226,6 +226,15 @@ interface INetd {
     void setMetricsReportingLevel(int level);
 
    /**
+    * Sets owner of socket FileDescriptor to the new UID, checking to ensure that the caller's
+    * uid is that of the old owner's, and that this is a UDP-encap socket
+    *
+    * @param FileDescriptor socket Socket file descriptor
+    * @param int newUid UID of the new socket fd owner
+    */
+    void ipSecSetEncapSocketOwner(in FileDescriptor socket, int newUid);
+
+   /**
     * Reserve an SPI from the kernel
     *
     * @param transformId a unique identifier for allocated resources

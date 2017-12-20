@@ -122,6 +122,9 @@ class XfrmController {
 public:
     XfrmController();
 
+    netdutils::Status ipSecSetEncapSocketOwner(const android::base::unique_fd& socket, int newUid,
+                                               uid_t callerUid);
+
     netdutils::Status ipSecAllocateSpi(int32_t transformId, int32_t direction,
                                        const std::string& localAddress,
                                        const std::string& remoteAddress, int32_t inSpi,
