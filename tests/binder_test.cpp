@@ -292,8 +292,7 @@ static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
     std::string suffix = StringPrintf(" iif lo uidrange %d-%d %s\n",
             range.getStart(), range.getStop(), action.c_str());
     for (std::string line : rules) {
-        if (android::base::StartsWith(line, prefix.c_str())
-                && android::base::EndsWith(line, suffix.c_str())) {
+        if (android::base::StartsWith(line, prefix) && android::base::EndsWith(line, suffix)) {
             return true;
         }
     }
