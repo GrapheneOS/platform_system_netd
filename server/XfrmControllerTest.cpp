@@ -142,6 +142,73 @@ std::string FamilyName(::testing::TestParamInfo<int> info) {
     return (info.param == AF_INET) ? "AF_INET" : "AF_INET6";
 }
 
+/* Generate function to set value refered to by 3rd argument.
+ *
+ * This allows us to mock functions that pass in a pointer, expecting the result to be put into
+ * that location.
+ */
+ACTION_P(SetArg3IntValue, value) { *static_cast<int*>(arg3) = value; }
+
+TEST_F(XfrmControllerTest, TestFchown) {
+    XfrmController ctrl;
+    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM, 0));
+
+    EXPECT_CALL(mockSyscalls, getsockopt(Fd(sockFd), IPPROTO_UDP, UDP_ENCAP, _, _))
+        .WillOnce(DoAll(SetArg3IntValue(UDP_ENCAP_ESPINUDP), Return(netdutils::status::ok)));
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(sockFd, 1001, getuid());
+    EXPECT_EQ(netdutils::status::ok, res);
+
+    struct stat info;
+    EXPECT_EQ(0, fstat(sockFd.get(), &info));
+    EXPECT_EQ(1001, (int)info.st_uid);
+}
+
+TEST_F(XfrmControllerTest, TestFchownInvalidFd) {
+    XfrmController ctrl;
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(unique_fd(), 1001, getuid());
+    EXPECT_EQ(netdutils::statusFromErrno(errno, "Failed to stat socket file descriptor"), res);
+}
+
+TEST_F(XfrmControllerTest, TestFchownIncorrectCallerUid) {
+    XfrmController ctrl;
+    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM, 0));
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(sockFd, 1001, 1001);
+    EXPECT_EQ(netdutils::statusFromErrno(EPERM, "fchown disabled for non-owner calls"), res);
+}
+
+TEST_F(XfrmControllerTest, TestFchownNonSocketFd) {
+    XfrmController ctrl;
+    unique_fd fd(open("/dev/null", 0));
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(fd, 1001, getuid());
+    EXPECT_EQ(netdutils::statusFromErrno(EINVAL, "File descriptor was not a socket"), res);
+}
+
+TEST_F(XfrmControllerTest, TestFchownNonUdp) {
+    XfrmController ctrl;
+    unique_fd sockFd(socket(AF_INET, SOCK_STREAM, 0));
+
+    EXPECT_CALL(mockSyscalls, getsockopt(Fd(sockFd), IPPROTO_UDP, UDP_ENCAP, _, _))
+        .WillOnce(DoAll(SetArg3IntValue(0), Return(netdutils::status::ok)));
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(sockFd, 1001, getuid());
+    EXPECT_EQ(netdutils::statusFromErrno(EINVAL, "Socket was not a UDP socket"), res);
+}
+
+TEST_F(XfrmControllerTest, TestFchownNonUdpEncap) {
+    XfrmController ctrl;
+    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM, 0));
+
+    EXPECT_CALL(mockSyscalls, getsockopt(Fd(sockFd), IPPROTO_UDP, UDP_ENCAP, _, _))
+        .WillOnce(DoAll(SetArg3IntValue(0), Return(netdutils::status::ok)));
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(sockFd, 1001, getuid());
+    EXPECT_EQ(netdutils::statusFromErrno(EINVAL, "Socket did not have UDP-encap sockopt set"), res);
+}
+
 // The TEST_P cases below will run with each of the following value parameters.
 INSTANTIATE_TEST_CASE_P(ByFamily, XfrmControllerParameterizedTest, Values(AF_INET, AF_INET6),
                         FamilyName);
