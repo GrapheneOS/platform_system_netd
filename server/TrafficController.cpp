@@ -418,5 +418,9 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     return res;
 }
 
+bool TrafficController::checkBpfStatsEnable() {
+    return ebpfSupported;
+}
+
 }  // namespace net
 }  // namespace android

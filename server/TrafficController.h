@@ -89,6 +89,12 @@ class TrafficController {
      */
     int deleteTagData(uint32_t tag, uid_t uid);
 
+    /*
+     * Check if the current device have the bpf traffic stats accounting service
+     * running.
+     */
+    bool checkBpfStatsEnable();
+
   private:
     /*
      * mCookieTagMap: Store the corresponding tag and uid for a specific socket.
