@@ -498,7 +498,7 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
             return netdutils::statusFromErrno(EINVAL, "Invalid encap type");
     }
 
-    ret = createTransportModeSecurityAssociation(saInfo, sock);
+    ret = createSecurityAssociation(saInfo, sock);
     if (!isOk(ret)) {
         ALOGD("Failed creating a Security Association, line=%d", __LINE__);
     }
@@ -664,8 +664,8 @@ void XfrmController::fillTransportModeSelector(const XfrmSaInfo& record, xfrm_se
     selector->ifindex = record.netId; // TODO : still need to sort this out
 }
 
-netdutils::Status XfrmController::createTransportModeSecurityAssociation(const XfrmSaInfo& record,
-                                                                         const XfrmSocket& sock) {
+netdutils::Status XfrmController::createSecurityAssociation(const XfrmSaInfo& record,
+                                                            const XfrmSocket& sock) {
     xfrm_usersa_info usersa{};
     nlattr_algo_crypt crypt{};
     nlattr_algo_auth auth{};
@@ -814,7 +814,13 @@ int XfrmController::fillUserSaInfo(const XfrmSaInfo& record, xfrm_usersa_info* u
     usersa->family = record.addrFamily;
     usersa->mode = static_cast<uint8_t>(record.mode);
     usersa->replay_window = REPLAY_WINDOW_SIZE;
-    usersa->flags = 0; // TODO: should we actually set flags, XFRM_SA_XFLAG_DONT_ENCAP_DSCP?
+
+    if (record.mode == XfrmMode::TRANSPORT) {
+        usersa->flags = 0; // TODO: should we actually set flags, XFRM_SA_XFLAG_DONT_ENCAP_DSCP?
+    } else {
+        usersa->flags = XFRM_STATE_AF_UNSPEC;
+    }
+
     return sizeof(*usersa);
 }
 
