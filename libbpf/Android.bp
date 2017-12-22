@@ -61,3 +61,22 @@ cc_library {
     ],
 }
 
+cc_test {
+    name: "libbpf_test",
+    srcs: [
+        "BpfNetworkStatsTest.cpp",
+    ],
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wno-error=unused-variable",
+    ],
+    static_libs: ["libgmock"],
+    shared_libs: [
+        "libbpf",
+        "libbase",
+        "liblog",
+        "libnetdutils",
+        "libutils",
+    ],
+}
