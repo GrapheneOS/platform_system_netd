@@ -142,6 +142,73 @@ std::string FamilyName(::testing::TestParamInfo<int> info) {
     return (info.param == AF_INET) ? "AF_INET" : "AF_INET6";
 }
 
+/* Generate function to set value refered to by 3rd argument.
+ *
+ * This allows us to mock functions that pass in a pointer, expecting the result to be put into
+ * that location.
+ */
+ACTION_P(SetArg3IntValue, value) { *static_cast<int*>(arg3) = value; }
+
+TEST_F(XfrmControllerTest, TestFchown) {
+    XfrmController ctrl;
+    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM, 0));
+
+    EXPECT_CALL(mockSyscalls, getsockopt(Fd(sockFd), IPPROTO_UDP, UDP_ENCAP, _, _))
+        .WillOnce(DoAll(SetArg3IntValue(UDP_ENCAP_ESPINUDP), Return(netdutils::status::ok)));
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(sockFd, 1001, getuid());
+    EXPECT_EQ(netdutils::status::ok, res);
+
+    struct stat info;
+    EXPECT_EQ(0, fstat(sockFd.get(), &info));
+    EXPECT_EQ(1001, (int)info.st_uid);
+}
+
+TEST_F(XfrmControllerTest, TestFchownInvalidFd) {
+    XfrmController ctrl;
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(unique_fd(), 1001, getuid());
+    EXPECT_EQ(netdutils::statusFromErrno(errno, "Failed to stat socket file descriptor"), res);
+}
+
+TEST_F(XfrmControllerTest, TestFchownIncorrectCallerUid) {
+    XfrmController ctrl;
+    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM, 0));
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(sockFd, 1001, 1001);
+    EXPECT_EQ(netdutils::statusFromErrno(EPERM, "fchown disabled for non-owner calls"), res);
+}
+
+TEST_F(XfrmControllerTest, TestFchownNonSocketFd) {
+    XfrmController ctrl;
+    unique_fd fd(open("/dev/null", 0));
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(fd, 1001, getuid());
+    EXPECT_EQ(netdutils::statusFromErrno(EINVAL, "File descriptor was not a socket"), res);
+}
+
+TEST_F(XfrmControllerTest, TestFchownNonUdp) {
+    XfrmController ctrl;
+    unique_fd sockFd(socket(AF_INET, SOCK_STREAM, 0));
+
+    EXPECT_CALL(mockSyscalls, getsockopt(Fd(sockFd), IPPROTO_UDP, UDP_ENCAP, _, _))
+        .WillOnce(DoAll(SetArg3IntValue(0), Return(netdutils::status::ok)));
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(sockFd, 1001, getuid());
+    EXPECT_EQ(netdutils::statusFromErrno(EINVAL, "Socket was not a UDP socket"), res);
+}
+
+TEST_F(XfrmControllerTest, TestFchownNonUdpEncap) {
+    XfrmController ctrl;
+    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM, 0));
+
+    EXPECT_CALL(mockSyscalls, getsockopt(Fd(sockFd), IPPROTO_UDP, UDP_ENCAP, _, _))
+        .WillOnce(DoAll(SetArg3IntValue(0), Return(netdutils::status::ok)));
+
+    netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(sockFd, 1001, getuid());
+    EXPECT_EQ(netdutils::statusFromErrno(EINVAL, "Socket did not have UDP-encap sockopt set"), res);
+}
+
 // The TEST_P cases below will run with each of the following value parameters.
 INSTANTIATE_TEST_CASE_P(ByFamily, XfrmControllerParameterizedTest, Values(AF_INET, AF_INET6),
                         FamilyName);
@@ -187,8 +254,8 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAllocateSpi) {
     EXPECT_EQ(DROID_SPI, static_cast<int>(userspi.max));
 }
 
-TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityAssociation) {
-    const int family = GetParam();
+void testIpSecAddSecurityAssociation(int family, const MockSyscalls& mockSyscalls,
+                                     const XfrmMode& mode) {
     const std::string localAddr = (family == AF_INET6) ? LOCALHOST_V6 : LOCALHOST_V4;
     const std::string remoteAddr = (family == AF_INET6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
 
@@ -213,7 +280,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityAssociation) {
 
     XfrmController ctrl;
     Status res = ctrl.ipSecAddSecurityAssociation(
-        1 /* resourceId */, static_cast<int>(XfrmMode::TUNNEL),
+        1 /* resourceId */, static_cast<int>(mode),
         static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr, 0 /* underlying network */,
         DROID_SPI, "hmac(sha256)" /* auth algo */, authKey, 128 /* auth trunc length */,
         "cbc(aes)" /* encryption algo */, cryptKey, 0 /* crypt trunc length? */, "" /* AEAD algo */,
@@ -230,7 +297,14 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityAssociation) {
 
     EXPECT_EQ(family, usersa.family);
     EXPECT_EQ(1 /* Transform Id*/, static_cast<int>(usersa.reqid));
-    EXPECT_EQ(XFRM_MODE_TUNNEL, usersa.mode);
+    EXPECT_EQ(static_cast<int>(mode), usersa.mode);
+
+    if (mode == XfrmMode::TUNNEL) {
+        EXPECT_EQ(XFRM_STATE_AF_UNSPEC, usersa.flags);
+    } else {
+        EXPECT_EQ(0, usersa.flags);
+    }
+
     EXPECT_EQ(htonl(DROID_SPI), usersa.id.spi);
     EXPECT_EQ(IPPROTO_ESP, usersa.id.proto);
 
@@ -268,6 +342,16 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityAssociation) {
                         reinterpret_cast<void*>(&authAlgo.key), KEY_LENGTH));
 }
 
+TEST_P(XfrmControllerParameterizedTest, TestTransportModeIpSecAddSecurityAssociation) {
+    const int family = GetParam();
+    testIpSecAddSecurityAssociation(family, mockSyscalls, XfrmMode::TRANSPORT);
+}
+
+TEST_P(XfrmControllerParameterizedTest, TestTunnelModeIpSecAddSecurityAssociation) {
+    const int family = GetParam();
+    testIpSecAddSecurityAssociation(family, mockSyscalls, XfrmMode::TUNNEL);
+}
+
 TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv4Encap) {
     // TODO: Implement this test, which is nearly identical to
     // TestIpSecAddSecurityAssociation.
@@ -279,9 +363,9 @@ TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv6Encap) {
 
     XfrmController ctrl;
     Status res = ctrl.ipSecAddSecurityAssociation(
-        1, static_cast<int>(XfrmMode::TUNNEL), static_cast<int>(XfrmDirection::OUT), LOCALHOST_V6,
-        TEST_ADDR_V6, 0, DROID_SPI, "hmac(sha256)", {}, 128, "cbc(aes)", {}, 0, "", {}, 0,
-        static_cast<int>(XfrmEncapType::ESPINUDP_NON_IKE), 0, 0);
+        1, static_cast<int>(XfrmMode::TRANSPORT), static_cast<int>(XfrmDirection::OUT),
+        LOCALHOST_V6, TEST_ADDR_V6, 0, DROID_SPI, "hmac(sha256)", {}, 128, "cbc(aes)",
+        {}, 0, "", {}, 0, static_cast<int>(XfrmEncapType::ESPINUDP_NON_IKE), 0, 0);
 
     EXPECT_FALSE(isOk(res)) << "IPv6 UDP encap not rejected";
 }

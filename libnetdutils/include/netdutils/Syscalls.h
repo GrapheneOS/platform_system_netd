@@ -47,6 +47,9 @@ class Syscalls {
 
     virtual Status getsockname(Fd sock, sockaddr* addr, socklen_t* addrlen) const = 0;
 
+    virtual Status getsockopt(Fd sock, int level, int optname, void *optval,
+                              socklen_t *optlen) const = 0;
+
     virtual Status setsockopt(Fd sock, int level, int optname, const void* optval,
                               socklen_t optlen) const = 0;
 
@@ -112,6 +115,11 @@ class Syscalls {
         socklen_t addrlen = sizeof(addr);
         RETURN_IF_NOT_OK(getsockname(sock, asSockaddrPtr(&addr), &addrlen));
         return addr;
+    }
+
+    template <typename SockoptT>
+    Status getsockopt(Fd sock, int level, int optname, void* optval, socklen_t* optlen) const {
+        return getsockopt(sock, level, optname, optval, optlen);
     }
 
     template <typename SockoptT>

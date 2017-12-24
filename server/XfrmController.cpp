@@ -340,6 +340,39 @@ private:
 //
 XfrmController::XfrmController(void) {}
 
+netdutils::Status XfrmController::ipSecSetEncapSocketOwner(const android::base::unique_fd& socket,
+                                                           int newUid, uid_t callerUid) {
+    ALOGD("XfrmController:%s, line=%d", __FUNCTION__, __LINE__);
+
+    const int fd = socket.get();
+    struct stat info;
+    if (fstat(fd, &info)) {
+        return netdutils::statusFromErrno(errno, "Failed to stat socket file descriptor");
+    }
+    if (info.st_uid != callerUid) {
+        return netdutils::statusFromErrno(EPERM, "fchown disabled for non-owner calls");
+    }
+    if (S_ISSOCK(info.st_mode) == 0){
+        return netdutils::statusFromErrno(EINVAL, "File descriptor was not a socket");
+    }
+
+    int optval;
+    socklen_t optlen;
+    netdutils::Status status = getSyscallInstance().getsockopt(Fd(socket), IPPROTO_UDP, UDP_ENCAP,
+                                                               &optval, &optlen);
+    if (status != netdutils::status::ok) {
+        return status;
+    }
+    if (optval != UDP_ENCAP_ESPINUDP && optval != UDP_ENCAP_ESPINUDP_NON_IKE){
+        return netdutils::statusFromErrno(EINVAL, "Socket did not have UDP-encap sockopt set");
+    }
+    if (fchown(fd, newUid, -1)) {
+        return netdutils::statusFromErrno(errno, "Failed to fchown socket file descriptor");
+    }
+
+    return netdutils::status::ok;
+}
+
 netdutils::Status XfrmController::ipSecAllocateSpi(int32_t transformId, int32_t direction,
                                                    const std::string& localAddress,
                                                    const std::string& remoteAddress, int32_t inSpi,
@@ -465,7 +498,7 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
             return netdutils::statusFromErrno(EINVAL, "Invalid encap type");
     }
 
-    ret = createTransportModeSecurityAssociation(saInfo, sock);
+    ret = createSecurityAssociation(saInfo, sock);
     if (!isOk(ret)) {
         ALOGD("Failed creating a Security Association, line=%d", __LINE__);
     }
@@ -631,8 +664,8 @@ void XfrmController::fillTransportModeSelector(const XfrmSaInfo& record, xfrm_se
     selector->ifindex = record.netId; // TODO : still need to sort this out
 }
 
-netdutils::Status XfrmController::createTransportModeSecurityAssociation(const XfrmSaInfo& record,
-                                                                         const XfrmSocket& sock) {
+netdutils::Status XfrmController::createSecurityAssociation(const XfrmSaInfo& record,
+                                                            const XfrmSocket& sock) {
     xfrm_usersa_info usersa{};
     nlattr_algo_crypt crypt{};
     nlattr_algo_auth auth{};
@@ -781,7 +814,13 @@ int XfrmController::fillUserSaInfo(const XfrmSaInfo& record, xfrm_usersa_info* u
     usersa->family = record.addrFamily;
     usersa->mode = static_cast<uint8_t>(record.mode);
     usersa->replay_window = REPLAY_WINDOW_SIZE;
-    usersa->flags = 0; // TODO: should we actually set flags, XFRM_SA_XFLAG_DONT_ENCAP_DSCP?
+
+    if (record.mode == XfrmMode::TRANSPORT) {
+        usersa->flags = 0; // TODO: should we actually set flags, XFRM_SA_XFLAG_DONT_ENCAP_DSCP?
+    } else {
+        usersa->flags = XFRM_STATE_AF_UNSPEC;
+    }
+
     return sizeof(*usersa);
 }
 

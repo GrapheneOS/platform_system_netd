@@ -76,6 +76,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status getMetricsReportingLevel(int *reportingLevel) override;
     binder::Status setMetricsReportingLevel(const int reportingLevel) override;
 
+    binder::Status ipSecSetEncapSocketOwner(const android::base::unique_fd& socket, int newUid);
+
     binder::Status ipSecAllocateSpi(
             int32_t transformId,
             int32_t direction,

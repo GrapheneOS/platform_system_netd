@@ -122,6 +122,9 @@ class XfrmController {
 public:
     XfrmController();
 
+    netdutils::Status ipSecSetEncapSocketOwner(const android::base::unique_fd& socket, int newUid,
+                                               uid_t callerUid);
+
     netdutils::Status ipSecAllocateSpi(int32_t transformId, int32_t direction,
                                        const std::string& localAddress,
                                        const std::string& remoteAddress, int32_t inSpi,
@@ -254,8 +257,8 @@ private:
     static int fillNlAttrXfrmEncapTmpl(const XfrmSaInfo& record, nlattr_encap_tmpl* tmpl);
 
     // Functions for Creating a Transport Mode SA
-    static netdutils::Status createTransportModeSecurityAssociation(const XfrmSaInfo& record,
-                                                                    const XfrmSocket& sock);
+    static netdutils::Status createSecurityAssociation(const XfrmSaInfo& record,
+                                                       const XfrmSocket& sock);
     static int fillUserSaInfo(const XfrmSaInfo& record, xfrm_usersa_info* usersa);
 
     // Functions for deleting a Transport Mode SA

@@ -66,6 +66,9 @@ using android::os::PersistableBundle;
 static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
 
+static const std::string NO_SOCKET_ALLOW_RULE("! owner UID match 0-4294967294");
+static const std::string ESP_ALLOW_RULE("esp");
+
 class BinderTest : public ::testing::Test {
 
 public:
@@ -159,6 +162,28 @@ static int iptablesRuleLineLength(const char *binary, const char *chainName) {
     return listIptablesRule(binary, chainName).size();
 }
 
+static bool iptablesRuleExists(const char *binary,
+                               const char *chainName,
+                               const std::string expectedRule) {
+    std::vector<std::string> rules = listIptablesRule(binary, chainName);
+    for(std::string &rule: rules) {
+        if(rule.find(expectedRule) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool iptablesNoSocketAllowRuleExists(const char *chainName){
+    return iptablesRuleExists(IPTABLES_PATH, chainName, NO_SOCKET_ALLOW_RULE) &&
+           iptablesRuleExists(IP6TABLES_PATH, chainName, NO_SOCKET_ALLOW_RULE);
+}
+
+static bool iptablesEspAllowRuleExists(const char *chainName){
+    return iptablesRuleExists(IPTABLES_PATH, chainName, ESP_ALLOW_RULE) &&
+           iptablesRuleExists(IP6TABLES_PATH, chainName, ESP_ALLOW_RULE);
+}
+
 TEST_F(BinderTest, TestFirewallReplaceUidChain) {
     std::string chainName = StringPrintf("netd_binder_test_%u", arc4random_uniform(10000));
     const int kNumUids = 500;
@@ -174,8 +199,10 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), true, uids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ((int) uids.size() + 7, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ((int) uids.size() + 13, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 9, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 15, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(true, iptablesNoSocketAllowRuleExists(chainName.c_str()));
+    EXPECT_EQ(true, iptablesEspAllowRuleExists(chainName.c_str()));
     {
         TimedOperation op("Clearing whitelist chain");
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, noUids, &ret);
@@ -191,6 +218,8 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
     EXPECT_EQ(true, ret);
     EXPECT_EQ((int) uids.size() + 5, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
     EXPECT_EQ((int) uids.size() + 5, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(false, iptablesNoSocketAllowRuleExists(chainName.c_str()));
+    EXPECT_EQ(false, iptablesEspAllowRuleExists(chainName.c_str()));
 
     {
         TimedOperation op("Clearing blacklist chain");
@@ -292,8 +321,7 @@ static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
     std::string suffix = StringPrintf(" iif lo uidrange %d-%d %s\n",
             range.getStart(), range.getStop(), action.c_str());
     for (std::string line : rules) {
-        if (android::base::StartsWith(line, prefix.c_str())
-                && android::base::EndsWith(line, suffix.c_str())) {
+        if (android::base::StartsWith(line, prefix) && android::base::EndsWith(line, suffix)) {
             return true;
         }
     }

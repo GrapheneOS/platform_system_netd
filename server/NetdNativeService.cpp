@@ -393,6 +393,16 @@ binder::Status NetdNativeService::setMetricsReportingLevel(const int reportingLe
             : binder::Status::fromExceptionCode(binder::Status::EX_ILLEGAL_ARGUMENT);
 }
 
+binder::Status NetdNativeService::ipSecSetEncapSocketOwner(const android::base::unique_fd& socket,
+                                                      int newUid) {
+    ENFORCE_PERMISSION(NETWORK_STACK)
+    ALOGD("ipSecSetEncapSocketOwner()");
+
+    uid_t callerUid = IPCThreadState::self()->getCallingUid();
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecSetEncapSocketOwner(socket, newUid, callerUid));
+}
+
+
 binder::Status NetdNativeService::ipSecAllocateSpi(
         int32_t transformId,
         int32_t direction,
