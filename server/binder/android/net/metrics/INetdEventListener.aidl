@@ -50,6 +50,17 @@ oneway interface INetdEventListener {
             in String[] ipAddresses, int ipAddressesCount, int uid);
 
     /**
+     * Represents a private DNS validation success or failure.
+     *
+     * @param netId the ID of the network the validation was performed on.
+     * @param ipAddress the IP address for which validation was performed.
+     * @param hostname the hostname for which validation was performed.
+     * @param validated whether or not validation was successful.
+     */
+    void onPrivateDnsValidationEvent(int netId, String ipAddress, String hostname,
+            boolean validated);
+
+    /**
      * Logs a single connect library call.
      *
      * @param netId the ID of the network the connect was performed on.
