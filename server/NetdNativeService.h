@@ -176,6 +176,22 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             int32_t markMask);
 
     binder::Status trafficCheckBpfStatsEnable(bool* ret) override;
+
+    binder::Status addVirtualTunnelInterface(
+            const std::string& deviceName,
+            const std::string& localAddress,
+            const std::string& remoteAddress,
+            int32_t iKey,
+            int32_t oKey);
+
+    binder::Status updateVirtualTunnelInterface(
+            const std::string& deviceName,
+            const std::string& localAddress,
+            const std::string& remoteAddress,
+            int32_t iKey,
+            int32_t oKey);
+
+    binder::Status removeVirtualTunnelInterface(const std::string& deviceName);
 };
 
 }  // namespace net

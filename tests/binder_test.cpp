@@ -243,6 +243,40 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
     EXPECT_EQ(false, ret);
 }
 
+TEST_F(BinderTest, TestVirtualTunnelInterface) {
+    static const struct TestData {
+        const std::string& family;
+        const std::string& deviceName;
+        const std::string& localAddress;
+        const std::string& remoteAddress;
+        int32_t iKey;
+        int32_t oKey;
+    } kTestData[] = {
+        { "IPV4", "test_vti", "127.0.0.1", "8.8.8.8", 0x1234 + 53, 0x1234 + 53 },
+        { "IPV6", "test_vti6", "::1", "2001:4860:4860::8888", 0x1234 + 50, 0x1234 + 50 },
+    };
+
+    for (unsigned int i = 0; i < arraysize(kTestData); i++) {
+        const auto &td = kTestData[i];
+
+        binder::Status status;
+
+        // Create Virtual Tunnel Interface.
+        status = mNetd->addVirtualTunnelInterface(td.deviceName, td.localAddress,
+                                                  td.remoteAddress, td.iKey, td.oKey);
+        EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
+
+        // Update Virtual Tunnel Interface.
+        status = mNetd->updateVirtualTunnelInterface(td.deviceName, td.localAddress,
+                                                     td.remoteAddress, td.iKey, td.oKey);
+        EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
+
+        // Remove Virtual Tunnel Interface.
+        status = mNetd->removeVirtualTunnelInterface(td.deviceName);
+        EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
+    }
+}
+
 static int bandwidthDataSaverEnabled(const char *binary) {
     std::vector<std::string> lines = listIptablesRule(binary, "bw_data_saver");
 

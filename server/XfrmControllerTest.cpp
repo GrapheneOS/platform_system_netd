@@ -671,5 +671,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityPolicy) {
 
 }
 
+// TODO: Add tests for VTIs, ensuring that we are sending the correct data over netlink.
+
 } // namespace net
 } // namespace android

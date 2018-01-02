@@ -618,6 +618,61 @@ binder::Status NetdNativeService::ipSecDeleteSecurityPolicy(
                     markMask));
 }
 
+binder::Status NetdNativeService::addVirtualTunnelInterface(
+        const std::string& deviceName,
+        const std::string& localAddress,
+        const std::string& remoteAddress,
+        int32_t iKey,
+        int32_t oKey) {
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    ALOGD("addVirtualTunnelInterface()");
+    int ret = gCtls->xfrmCtrl.addVirtualTunnelInterface(
+                             deviceName,
+                             localAddress,
+                             remoteAddress,
+                             iKey,
+                             oKey,
+                             false);
+
+    return (ret == 0) ? binder::Status::ok() :
+                        asBinderStatus(netdutils::statusFromErrno(
+                                       ret, "Error in creating virtual tunnel interface."));
+}
+
+binder::Status NetdNativeService::updateVirtualTunnelInterface(
+        const std::string& deviceName,
+        const std::string& localAddress,
+        const std::string& remoteAddress,
+        int32_t iKey,
+        int32_t oKey) {
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    ALOGD("updateVirtualTunnelInterface()");
+    int ret = gCtls->xfrmCtrl.addVirtualTunnelInterface(
+                             deviceName,
+                             localAddress,
+                             remoteAddress,
+                             iKey,
+                             oKey,
+                             true);
+
+    return (ret == 0) ? binder::Status::ok() :
+                        asBinderStatus(netdutils::statusFromErrno(
+                                       ret, "Error in updating virtual tunnel interface."));
+}
+
+binder::Status NetdNativeService::removeVirtualTunnelInterface(const std::string& deviceName) {
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    ALOGD("removeVirtualTunnelInterface()");
+    int ret = gCtls->xfrmCtrl.removeVirtualTunnelInterface(deviceName);
+
+    return (ret == 0) ? binder::Status::ok() :
+                        asBinderStatus(netdutils::statusFromErrno(
+                                       ret, "Error in removing virtual tunnel interface."));
+}
+
 binder::Status NetdNativeService::setIPv6AddrGenMode(const std::string& ifName,
                                                      int32_t mode) {
     ENFORCE_PERMISSION(NETWORK_STACK);

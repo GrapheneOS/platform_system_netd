@@ -22,12 +22,15 @@
 #include <string>
 #include <utility> // for pair
 
+#include <linux/if_link.h>
+#include <linux/if_tunnel.h>
 #include <linux/netlink.h>
 #include <linux/udp.h>
 #include <linux/xfrm.h>
 #include <sysutils/SocketClient.h>
 
 #include "NetdConstants.h"
+#include "netdutils/Slice.h"
 #include "netdutils/Status.h"
 
 namespace android {
@@ -166,6 +169,13 @@ public:
                                                 const std::string& sourceAddress,
                                                 const std::string& destinationAddress,
                                                 int32_t markValue, int32_t markMask);
+
+    int addVirtualTunnelInterface(const std::string& deviceName,
+                                  const std::string& localAddress,
+                                  const std::string& remoteAddress,
+                                  int32_t ikey, int32_t okey, bool isUpdate);
+
+    int removeVirtualTunnelInterface(const std::string& deviceName);
 
     // Some XFRM netlink attributes comprise a header, a struct, and some data
     // after the struct. We wrap all of those in one struct for easier
@@ -323,7 +333,6 @@ private:
     static netdutils::Status deleteTunnelModeSecurityPolicy(const XfrmSaInfo& record,
                                                             const XfrmSocket& sock,
                                                             XfrmDirection direction);
-
     // END TODO(messagerefactor)
 };
 

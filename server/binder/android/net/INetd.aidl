@@ -483,6 +483,45 @@ interface INetd {
             int markMask);
 
    /**
+    * Add a Virtual Tunnel Interface.
+    *
+    * @param devName a unique identifier that represents the name of the device
+    * @param localAddress InetAddress as string for the local endpoint
+    * @param remoteAddress InetAddress as string for the remote endpoint
+    * @param iKey, to match Policies and SAs for input packets.
+    * @param oKey, to match Policies and SAs for output packets.
+    */
+    void addVirtualTunnelInterface(
+            in @utf8InCpp String deviceName,
+            in @utf8InCpp String localAddress,
+            in @utf8InCpp String remoteAddress,
+            int iKey,
+            int oKey);
+
+   /**
+    * Update a Virtual Tunnel Interface.
+    *
+    * @param devName a unique identifier that represents the name of the device
+    * @param localAddress InetAddress as string for the local endpoint
+    * @param remoteAddress InetAddress as string for the remote endpoint
+    * @param iKey, to match Policies and SAs for input packets.
+    * @param oKey, to match Policies and SAs for output packets.
+    */
+    void updateVirtualTunnelInterface(
+            in @utf8InCpp String deviceName,
+            in @utf8InCpp String localAddress,
+            in @utf8InCpp String remoteAddress,
+            int iKey,
+            int oKey);
+
+   /**
+    * Removes a Virtual Tunnel Interface.
+    *
+    * @param devName a unique identifier that represents the name of the device
+    */
+    void removeVirtualTunnelInterface(in @utf8InCpp String deviceName);
+
+   /**
     * Request notification of wakeup packets arriving on an interface. Notifications will be
     * delivered to INetdEventListener.onWakeupEvent().
     *
