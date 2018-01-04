@@ -347,6 +347,8 @@ interface INetd {
     * @param destinationAddress InetAddress as string for the receiving endpoint
     * @param underlyingNetworkHandle the networkHandle of the network to which the SA is applied
     * @param spi a 32-bit unique ID allocated to the user
+    * @param markValue a 32-bit unique ID chosen by the user
+    * @param markMask a 32-bit mask chosen by the user
     * @param authAlgo a string identifying the authentication algorithm to be used
     * @param authKey a byte array containing the authentication key
     * @param authTruncBits the truncation length of the MAC produced by the authentication algorithm
@@ -368,6 +370,8 @@ interface INetd {
             in @utf8InCpp String destinationAddress,
             long underlyingNetworkHandle,
             int spi,
+            int markValue,
+            int markMask,
             in @utf8InCpp String authAlgo, in byte[] authKey, in int authTruncBits,
             in @utf8InCpp String cryptAlgo, in byte[] cryptKey, in int cryptTruncBits,
             in @utf8InCpp String aeadAlgo, in byte[] aeadKey, in int aeadIcvBits,
@@ -382,12 +386,16 @@ interface INetd {
     * @param sourceAddress InetAddress as string for the sending endpoint
     * @param destinationAddress InetAddress as string for the receiving endpoint
     * @param spi a requested 32-bit unique ID allocated to the user
+    * @param markValue a 32-bit unique ID chosen by the user
+    * @param markMask a 32-bit mask chosen by the user
     */
     void ipSecDeleteSecurityAssociation(
             int transformId,
             in @utf8InCpp String sourceAddress,
             in @utf8InCpp String destinationAddress,
-            int spi);
+            int spi,
+            int markValue,
+            int markMask);
 
    /**
     * Apply a previously created SA to a specified socket, starting IPsec on that socket
