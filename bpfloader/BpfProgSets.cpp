@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <arpa/inet.h>
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>
@@ -22,16 +23,13 @@
 #include <sys/socket.h>
 
 #include "BpfProgSets.h"
-#include "TrafficController.h"
 #include "bpf/BpfUtils.h"
 #include "netdutils/Slice.h"
 
-using namespace android::bpf;
 using android::netdutils::Slice;
 
 namespace android {
-namespace net {
-namespace bpf_prog {
+namespace bpf {
 
 int loadIngressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCounterSetMap) {
     struct bpf_insn ingressProg[] = {
@@ -602,6 +600,5 @@ int loadEgressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCo
     return bpfProgLoad(BPF_PROG_TYPE_CGROUP_SKB, egressInsn, "Apache", 0, bpfLog);
 }
 
-}  // namespace bpf_prog
-}  // namespace net
+}  // namespace bpf
 }  // namespace android

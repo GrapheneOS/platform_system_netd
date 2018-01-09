@@ -29,17 +29,19 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/utsname.h>
+#include <sys/wait.h>
 #include <unordered_set>
 #include <vector>
 
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
+#include <logwrap/logwrap.h>
 #include <netdutils/StatusOr.h>
 
 #include <netdutils/Misc.h>
 #include <netdutils/Syscalls.h>
-#include "BpfProgSets.h"
 #include "TrafficController.h"
 #include "bpf/BpfUtils.h"
 
@@ -47,7 +49,6 @@
 #include "qtaguid/qtaguid.h"
 
 using namespace android::bpf;
-using namespace android::net::bpf_prog;
 
 namespace android {
 namespace net {
@@ -61,44 +62,6 @@ using netdutils::Status;
 using netdutils::statusFromErrno;
 using netdutils::StatusOr;
 using netdutils::status::ok;
-
-Status TrafficController::loadAndAttachProgram(bpf_attach_type type, const char* path,
-                                               const char* name, base::unique_fd& cg_fd) {
-    base::unique_fd fd;
-    int ret = access(path, R_OK);
-    if (ret == 0) {
-        // The program already exist and we can access it.
-        return netdutils::status::ok;
-    }
-
-    if (errno != ENOENT) {
-        // The program exist but we cannot access it.
-        return statusFromErrno(errno, StringPrintf("Cannot access %s at path: %s", name, path));
-    }
-
-    // Program does not exist yet. Load, attach and pin it.
-    if (type == BPF_CGROUP_INET_EGRESS) {
-        fd.reset(loadEgressProg(mCookieTagMap.get(), mUidStatsMap.get(), mTagStatsMap.get(),
-                                mUidCounterSetMap.get()));
-    } else {
-        fd.reset(loadIngressProg(mCookieTagMap.get(), mUidStatsMap.get(), mTagStatsMap.get(),
-                                 mUidCounterSetMap.get()));
-    }
-    if (fd < 0) {
-        return statusFromErrno(errno, StringPrintf("load %s failed", name));
-    }
-
-    ret = attachProgram(type, fd, cg_fd);
-    if (ret) {
-        return statusFromErrno(errno, StringPrintf("%s attach failed", name));
-    }
-
-    ret = mapPin(fd, path);
-    if (ret) {
-        return statusFromErrno(errno, StringPrintf("Pin %s as file failed(%s)", name, path));
-    }
-    return netdutils::status::ok;
-}
 
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
@@ -141,10 +104,6 @@ Status TrafficController::start() {
      */
 
     ALOGI("START to load TrafficController");
-    base::unique_fd cg_fd(open(CGROUP_ROOT_PATH, O_DIRECTORY | O_RDONLY | O_CLOEXEC));
-    if (cg_fd < 0) {
-        return statusFromErrno(errno, "Failed to open the cgroup directory");
-    }
 
     ASSIGN_OR_RETURN(mCookieTagMap,
                      setUpBPFMap(sizeof(uint64_t), sizeof(struct UidTag), COOKIE_UID_MAP_SIZE,
@@ -229,9 +188,33 @@ Status TrafficController::start() {
     };
     expectOk(mSkDestroyListener->subscribe(kSockDiagDoneMsgType, rxDoneHandler));
 
-    RETURN_IF_NOT_OK(loadAndAttachProgram(BPF_CGROUP_INET_INGRESS, BPF_INGRESS_PROG_PATH,
-                                          "Ingress_prog", cg_fd));
-    return loadAndAttachProgram(BPF_CGROUP_INET_EGRESS, BPF_EGRESS_PROG_PATH, "egress_prog", cg_fd);
+    int* status = nullptr;
+
+    std::vector<const char*> prog_args{
+        "/system/bin/bpfloader",
+    };
+    ret = access(BPF_INGRESS_PROG_PATH, R_OK);
+    if (ret != 0 && errno == ENOENT) {
+        prog_args.push_back((char*)"-i");
+    }
+    ret = access(BPF_EGRESS_PROG_PATH, R_OK);
+    if (ret != 0 && errno == ENOENT) {
+        prog_args.push_back((char*)"-e");
+    }
+
+    if (prog_args.size() == 1) {
+        // both program are loaded already.
+        return netdutils::status::ok;
+    }
+
+    prog_args.push_back(nullptr);
+    ret = android_fork_execvp(prog_args.size(), (char**)prog_args.data(), status, false, true);
+    if (ret) {
+        ret = errno;
+        ALOGE("failed to execute %s: %s", prog_args[0], strerror(errno));
+        return statusFromErrno(ret, "run bpf loader failed");
+    }
+    return netdutils::status::ok;
 }
 
 int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {

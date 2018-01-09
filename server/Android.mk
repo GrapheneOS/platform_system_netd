@@ -98,7 +98,6 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_SRC_FILES := \
         BandwidthController.cpp \
-        BpfProgSets.cpp \
         ClatdController.cpp \
         CommandListener.cpp \
         Controllers.cpp \

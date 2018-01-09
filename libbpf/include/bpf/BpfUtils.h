@@ -187,6 +187,11 @@ struct Stats {
 
 #define BPF_PATH "/sys/fs/bpf"
 
+constexpr const char* BPF_EGRESS_PROG_PATH = BPF_PATH "/egress_prog";
+constexpr const char* BPF_INGRESS_PROG_PATH = BPF_PATH "/ingress_prog";
+
+constexpr const char* CGROUP_ROOT_PATH = "/dev/cg2_bpf";
+
 constexpr const char* COOKIE_UID_MAP_PATH = BPF_PATH "/traffic_cookie_uid_map";
 constexpr const char* UID_COUNTERSET_MAP_PATH = BPF_PATH "/traffic_uid_counterSet_map";
 constexpr const char* UID_STATS_MAP_PATH = BPF_PATH "/traffic_uid_stats_map";

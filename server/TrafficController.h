@@ -24,23 +24,11 @@
 #include "Network.h"
 #include "android-base/unique_fd.h"
 
-#define LOG_BUF_SIZE 65536
-
-#define BPF_PATH "/sys/fs/bpf"
-
-constexpr const char* BPF_EGRESS_PROG_PATH = BPF_PATH "/egress_prog";
-constexpr const char* BPF_INGRESS_PROG_PATH = BPF_PATH "/ingress_prog";
-
-constexpr const char* CGROUP_ROOT_PATH = "/dev/cg2_bpf";
-
-constexpr const int IPV6_TRANSPORT_PROTOCOL_OFFSET = 6;
-constexpr const int IPV4_TRANSPORT_PROTOCOL_OFFSET = 9;
-
 // TODO: change it to a reasonable size.
-constexpr const int COOKIE_UID_MAP_SIZE = 100;
-constexpr const int UID_COUNTERSET_MAP_SIZE = 100;
-constexpr const int UID_STATS_MAP_SIZE = 100;
-constexpr const int TAG_STATS_MAP_SIZE = 100;
+constexpr const int COOKIE_UID_MAP_SIZE = 1000;
+constexpr const int UID_COUNTERSET_MAP_SIZE = 1000;
+constexpr const int UID_STATS_MAP_SIZE = 1000;
+constexpr const int TAG_STATS_MAP_SIZE = 1000;
 
 constexpr const int COUNTERSETS_LIMIT = 2;
 
