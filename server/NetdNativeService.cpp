@@ -405,9 +405,8 @@ binder::Status NetdNativeService::ipSecSetEncapSocketOwner(const android::base::
 
 binder::Status NetdNativeService::ipSecAllocateSpi(
         int32_t transformId,
-        int32_t direction,
-        const std::string& localAddress,
-        const std::string& remoteAddress,
+        const std::string& sourceAddress,
+        const std::string& destinationAddress,
         int32_t inSpi,
         int32_t* outSpi) {
     // Necessary locking done in IpSecService and kernel
@@ -415,9 +414,8 @@ binder::Status NetdNativeService::ipSecAllocateSpi(
     ALOGD("ipSecAllocateSpi()");
     return asBinderStatus(gCtls->xfrmCtrl.ipSecAllocateSpi(
                     transformId,
-                    direction,
-                    localAddress,
-                    remoteAddress,
+                    sourceAddress,
+                    destinationAddress,
                     inSpi,
                     outSpi));
 }
@@ -425,9 +423,8 @@ binder::Status NetdNativeService::ipSecAllocateSpi(
 binder::Status NetdNativeService::ipSecAddSecurityAssociation(
         int32_t transformId,
         int32_t mode,
-        int32_t direction,
-        const std::string& localAddress,
-        const std::string& remoteAddress,
+        const std::string& sourceAddress,
+        const std::string& destinationAddress,
         int64_t underlyingNetworkHandle,
         int32_t spi,
         const std::string& authAlgo, const std::vector<uint8_t>& authKey, int32_t authTruncBits,
@@ -440,7 +437,7 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ALOGD("ipSecAddSecurityAssociation()");
     return asBinderStatus(gCtls->xfrmCtrl.ipSecAddSecurityAssociation(
-              transformId, mode, direction, localAddress, remoteAddress,
+              transformId, mode, sourceAddress, destinationAddress,
               underlyingNetworkHandle,
               spi,
               authAlgo, authKey, authTruncBits,
@@ -451,18 +448,16 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
 
 binder::Status NetdNativeService::ipSecDeleteSecurityAssociation(
         int32_t transformId,
-        int32_t direction,
-        const std::string& localAddress,
-        const std::string& remoteAddress,
+        const std::string& sourceAddress,
+        const std::string& destinationAddress,
         int32_t spi) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ALOGD("ipSecDeleteSecurityAssociation()");
     return asBinderStatus(gCtls->xfrmCtrl.ipSecDeleteSecurityAssociation(
                     transformId,
-                    direction,
-                    localAddress,
-                    remoteAddress,
+                    sourceAddress,
+                    destinationAddress,
                     spi));
 }
 
@@ -470,8 +465,8 @@ binder::Status NetdNativeService::ipSecApplyTransportModeTransform(
         const android::base::unique_fd& socket,
         int32_t transformId,
         int32_t direction,
-        const std::string& localAddress,
-        const std::string& remoteAddress,
+        const std::string& sourceAddress,
+        const std::string& destinationAddress,
         int32_t spi) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
@@ -480,8 +475,8 @@ binder::Status NetdNativeService::ipSecApplyTransportModeTransform(
                     socket,
                     transformId,
                     direction,
-                    localAddress,
-                    remoteAddress,
+                    sourceAddress,
+                    destinationAddress,
                     spi));
 }
 

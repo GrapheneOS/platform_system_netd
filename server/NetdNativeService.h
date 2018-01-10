@@ -80,7 +80,6 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     binder::Status ipSecAllocateSpi(
             int32_t transformId,
-            int32_t direction,
             const std::string& localAddress,
             const std::string& remoteAddress,
             int32_t inSpi,
@@ -89,9 +88,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status ipSecAddSecurityAssociation(
             int32_t transformId,
             int32_t mode,
-            int32_t direction,
-            const std::string& localAddress,
-            const std::string& remoteAddress,
+            const std::string& sourceAddress,
+            const std::string& destinationAddress,
             int64_t underlyingNetworkHandle,
             int32_t spi,
             const std::string& authAlgo,
@@ -109,17 +107,16 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     binder::Status ipSecDeleteSecurityAssociation(
             int32_t transformId,
-            int32_t direction,
-            const std::string& localAddress,
-            const std::string& remoteAddress,
+            const std::string& sourceAddress,
+            const std::string& destinationAddress,
             int32_t spi);
 
     binder::Status ipSecApplyTransportModeTransform(
             const android::base::unique_fd& socket,
             int32_t transformId,
             int32_t direction,
-            const std::string& localAddress,
-            const std::string& remoteAddress,
+            const std::string& sourceAddress,
+            const std::string& destinationAddress,
             int32_t spi);
 
     binder::Status ipSecRemoveTransportModeTransform(
