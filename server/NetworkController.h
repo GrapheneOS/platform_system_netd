@@ -131,9 +131,14 @@ public:
     void dump(DumpWriter& dw);
 
 private:
-    bool isValidNetwork(unsigned netId) const;
     bool isValidNetworkLocked(unsigned netId) const;
     Network* getNetworkLocked(unsigned netId) const;
+    uint32_t getNetworkForDnsLocked(unsigned* netId, uid_t uid) const;
+    unsigned getNetworkForUserLocked(uid_t uid) const;
+    unsigned getNetworkForConnectLocked(uid_t uid) const;
+    unsigned getNetworkForInterfaceLocked(const char* interface) const;
+    bool canProtectLocked(uid_t uid) const;
+
     VirtualNetwork* getVirtualNetworkForUserLocked(uid_t uid) const;
     Permission getPermissionForUserLocked(uid_t uid) const;
     int checkUserNetworkAccessLocked(uid_t uid, unsigned netId) const;
