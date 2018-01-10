@@ -19,16 +19,9 @@
 // The methods in this file are called from multiple threads (from CommandListener, FwmarkServer
 // and DnsProxyListener). So, all accesses to shared state are guarded by a lock.
 //
-// In some cases, a single non-const method acquires and releases the lock several times, like so:
-//     if (isValidNetwork(...)) {  // isValidNetwork() acquires and releases the lock.
-//        setDefaultNetwork(...);  // setDefaultNetwork() also acquires and releases the lock.
-//
-// It might seem that this allows races where the state changes between the two statements, but in
-// fact there are no races because:
-//     1. This pattern only occurs in non-const methods (i.e., those that mutate state).
-//     2. Only CommandListener calls these non-const methods. The others call only const methods.
-//     3. CommandListener only processes one command at a time. I.e., it's serialized.
-// Thus, no other mutation can occur in between the two statements above.
+// Public functions accessible by external callers should be thread-safe and are responsible for
+// acquiring the lock. Private functions in this file should call xxxLocked() methods and access
+// internal state directly.
 
 #include "NetworkController.h"
 
@@ -188,8 +181,7 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
     return 0;
 }
 
-uint32_t NetworkController::getNetworkForDns(unsigned* netId, uid_t uid) const {
-    android::RWLock::AutoRLock lock(mRWLock);
+uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) const {
     Fwmark fwmark;
     fwmark.protectedFromVpn = true;
     fwmark.permission = PERMISSION_SYSTEM;
@@ -225,6 +217,11 @@ uint32_t NetworkController::getNetworkForDns(unsigned* netId, uid_t uid) const {
     return fwmark.intValue;
 }
 
+uint32_t NetworkController::getNetworkForDns(unsigned* netId, uid_t uid) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    return getNetworkForDnsLocked(netId, uid);
+}
+
 // Returns the NetId that a given UID would use if no network is explicitly selected. Specifically,
 // the VPN that applies to the UID if any; otherwise, the default network.
 unsigned NetworkController::getNetworkForUser(uid_t uid) const {
@@ -249,8 +246,7 @@ unsigned NetworkController::getNetworkForUser(uid_t uid) const {
 // traffic to the default network. But it does mean that if the bypassable VPN goes away (and thus
 // the fallthrough rules also go away), the socket that used to fallthrough to the default network
 // will stop working.
-unsigned NetworkController::getNetworkForConnect(uid_t uid) const {
-    android::RWLock::AutoRLock lock(mRWLock);
+unsigned NetworkController::getNetworkForConnectLocked(uid_t uid) const {
     VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
     if (virtualNetwork && !virtualNetwork->isSecure()) {
         return virtualNetwork->getNetId();
@@ -258,8 +254,15 @@ unsigned NetworkController::getNetworkForConnect(uid_t uid) const {
     return mDefaultNetId;
 }
 
+unsigned NetworkController::getNetworkForConnect(uid_t uid) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    return getNetworkForConnectLocked(uid);
+}
+
 void NetworkController::getNetworkContext(
         unsigned netId, uid_t uid, struct android_net_context* netcontext) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+
     struct android_net_context nc = {
             .app_netid = netId,
             .app_mark = MARK_UNSET,
@@ -283,17 +286,17 @@ void NetworkController::getNetworkContext(
     // such cases as explicitlySelected.
     const bool explicitlySelected = (nc.app_netid != NETID_UNSET);
     if (!explicitlySelected) {
-        nc.app_netid = getNetworkForConnect(uid);
+        nc.app_netid = getNetworkForConnectLocked(uid);
     }
 
     Fwmark fwmark;
     fwmark.netId = nc.app_netid;
     fwmark.explicitlySelected = explicitlySelected;
-    fwmark.protectedFromVpn = explicitlySelected && canProtect(uid);
-    fwmark.permission = getPermissionForUser(uid);
+    fwmark.protectedFromVpn = explicitlySelected && canProtectLocked(uid);
+    fwmark.permission = getPermissionForUserLocked(uid);
     nc.app_mark = fwmark.intValue;
 
-    nc.dns_mark = getNetworkForDns(&(nc.dns_netid), uid);
+    nc.dns_mark = getNetworkForDnsLocked(&(nc.dns_netid), uid);
 
     if (DBG) {
         ALOGD("app_netid:0x%x app_mark:0x%x dns_netid:0x%x dns_mark:0x%x uid:%d",
@@ -305,14 +308,18 @@ void NetworkController::getNetworkContext(
     }
 }
 
-unsigned NetworkController::getNetworkForInterface(const char* interface) const {
-    android::RWLock::AutoRLock lock(mRWLock);
+unsigned NetworkController::getNetworkForInterfaceLocked(const char* interface) const {
     for (const auto& entry : mNetworks) {
         if (entry.second->hasInterface(interface)) {
             return entry.first;
         }
     }
     return NETID_UNSET;
+}
+
+unsigned NetworkController::getNetworkForInterface(const char* interface) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    return getNetworkForInterfaceLocked(interface);
 }
 
 bool NetworkController::isVirtualNetwork(unsigned netId) const {
@@ -376,17 +383,18 @@ int NetworkController::createPhysicalOemNetwork(Permission permission, unsigned 
 }
 
 int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns, bool secure) {
+    android::RWLock::AutoWLock lock(mRWLock);
+
     if (!(MIN_NET_ID <= netId && netId <= MAX_NET_ID)) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
     }
 
-    if (isValidNetwork(netId)) {
+    if (isValidNetworkLocked(netId)) {
         ALOGE("duplicate netId %u", netId);
         return -EEXIST;
     }
 
-    android::RWLock::AutoWLock lock(mRWLock);
     if (int ret = modifyFallthroughLocked(netId, true)) {
         return ret;
     }
@@ -395,18 +403,19 @@ int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns, bool se
 }
 
 int NetworkController::destroyNetwork(unsigned netId) {
+    android::RWLock::AutoWLock lock(mRWLock);
+
     if (netId == LOCAL_NET_ID) {
         ALOGE("cannot destroy local network");
         return -EINVAL;
     }
-    if (!isValidNetwork(netId)) {
+    if (!isValidNetworkLocked(netId)) {
         ALOGE("no such netId %u", netId);
         return -ENONET;
     }
 
     // TODO: ioctl(SIOCKILLADDR, ...) to kill all sockets on the old network.
 
-    android::RWLock::AutoWLock lock(mRWLock);
     Network* network = getNetworkLocked(netId);
 
     // If we fail to destroy a network, things will get stuck badly. Therefore, unlike most of the
@@ -436,28 +445,30 @@ int NetworkController::destroyNetwork(unsigned netId) {
 }
 
 int NetworkController::addInterfaceToNetwork(unsigned netId, const char* interface) {
-    if (!isValidNetwork(netId)) {
+    android::RWLock::AutoWLock lock(mRWLock);
+
+    if (!isValidNetworkLocked(netId)) {
         ALOGE("no such netId %u", netId);
         return -ENONET;
     }
 
-    unsigned existingNetId = getNetworkForInterface(interface);
+    unsigned existingNetId = getNetworkForInterfaceLocked(interface);
     if (existingNetId != NETID_UNSET && existingNetId != netId) {
         ALOGE("interface %s already assigned to netId %u", interface, existingNetId);
         return -EBUSY;
     }
 
-    android::RWLock::AutoWLock lock(mRWLock);
     return getNetworkLocked(netId)->addInterface(interface);
 }
 
 int NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* interface) {
-    if (!isValidNetwork(netId)) {
+    android::RWLock::AutoWLock lock(mRWLock);
+
+    if (!isValidNetworkLocked(netId)) {
         ALOGE("no such netId %u", netId);
         return -ENONET;
     }
 
-    android::RWLock::AutoWLock lock(mRWLock);
     return getNetworkLocked(netId)->removeInterface(interface);
 }
 
@@ -545,10 +556,14 @@ int NetworkController::removeRoute(unsigned netId, const char* interface, const 
     return modifyRoute(netId, interface, destination, nexthop, false, legacy, uid);
 }
 
-bool NetworkController::canProtect(uid_t uid) const {
-    android::RWLock::AutoRLock lock(mRWLock);
+bool NetworkController::canProtectLocked(uid_t uid) const {
     return ((getPermissionForUserLocked(uid) & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) ||
            mProtectableUsers.find(uid) != mProtectableUsers.end();
+}
+
+bool NetworkController::canProtect(uid_t uid) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    return canProtectLocked(uid);
 }
 
 void NetworkController::allowProtect(const std::vector<uid_t>& uids) {
@@ -596,11 +611,6 @@ void NetworkController::dump(DumpWriter& dw) {
 
 bool NetworkController::isValidNetworkLocked(unsigned netId) const {
     return getNetworkLocked(netId);
-}
-
-bool NetworkController::isValidNetwork(unsigned netId) const {
-    android::RWLock::AutoRLock lock(mRWLock);
-    return isValidNetworkLocked(netId);
 }
 
 Network* NetworkController::getNetworkLocked(unsigned netId) const {
@@ -657,11 +667,13 @@ int NetworkController::checkUserNetworkAccessLocked(uid_t uid, unsigned netId) c
 
 int NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
                                    const char* nexthop, bool add, bool legacy, uid_t uid) {
-    if (!isValidNetwork(netId)) {
+    android::RWLock::AutoRLock lock(mRWLock);
+
+    if (!isValidNetworkLocked(netId)) {
         ALOGE("no such netId %u", netId);
         return -ENONET;
     }
-    unsigned existingNetId = getNetworkForInterface(interface);
+    unsigned existingNetId = getNetworkForInterfaceLocked(interface);
     if (existingNetId == NETID_UNSET) {
         ALOGE("interface %s not assigned to any netId", interface);
         return -ENODEV;
@@ -675,7 +687,7 @@ int NetworkController::modifyRoute(unsigned netId, const char* interface, const 
     if (netId == LOCAL_NET_ID) {
         tableType = RouteController::LOCAL_NETWORK;
     } else if (legacy) {
-        if ((getPermissionForUser(uid) & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
+        if ((getPermissionForUserLocked(uid) & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
             tableType = RouteController::LEGACY_SYSTEM;
         } else {
             tableType = RouteController::LEGACY_NETWORK;
