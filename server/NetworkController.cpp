@@ -60,6 +60,13 @@ const unsigned NetworkController::DUMMY_NET_ID = 51;
 const unsigned NetworkController::LOCAL_NET_ID = 99;
 
 // All calls to methods here are made while holding a write lock on mRWLock.
+// They are mostly not called directly from this class, but from methods in PhysicalNetwork.cpp.
+// However, we're the only user of that class, so all calls to those methods come from here and are
+// made under lock.
+// For example, PhysicalNetwork::setPermission ends up calling addFallthrough and removeFallthrough,
+// but it's only called from here under lock (specifically, from createPhysicalNetworkLocked and
+// setPermissionForNetworks).
+// TODO: use std::mutex and GUARDED_BY instead of manual inspection.
 class NetworkController::DelegateImpl : public PhysicalNetwork::Delegate {
 public:
     explicit DelegateImpl(NetworkController* networkController);
