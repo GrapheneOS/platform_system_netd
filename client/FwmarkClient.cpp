@@ -19,7 +19,6 @@
 #include "FwmarkCommand.h"
 
 #include <errno.h>
-#include <cutils/properties.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -32,7 +31,11 @@ namespace {
 
 const sockaddr_un FWMARK_SERVER_PATH = {AF_UNIX, "/dev/socket/fwmarkd"};
 
-const bool isBuildDebuggable = property_get_bool("ro.debuggable", 0) == 1;
+#if defined(NETD_CLIENT_DEBUGGABLE_BUILD)
+constexpr bool isBuildDebuggable = true;
+#else
+constexpr bool isBuildDebuggable = false;
+#endif
 
 bool isOverriddenBy(const char *name) {
     return isBuildDebuggable && getenv(name);
