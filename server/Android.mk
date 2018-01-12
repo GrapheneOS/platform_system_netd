@@ -76,6 +76,7 @@ LOCAL_INIT_RC := netd.rc
 LOCAL_SHARED_LIBRARIES := \
         android.system.net.netd@1.0 \
         libbinder \
+        libbpf    \
         libcrypto \
         libcutils \
         libdl \
@@ -98,7 +99,6 @@ LOCAL_SHARED_LIBRARIES := \
 LOCAL_SRC_FILES := \
         BandwidthController.cpp \
         BpfProgSets.cpp \
-        BpfUtils.cpp \
         ClatdController.cpp \
         CommandListener.cpp \
         Controllers.cpp \
@@ -195,6 +195,7 @@ LOCAL_SRC_FILES := \
         SockDiagTest.cpp SockDiag.cpp \
         StrictController.cpp StrictControllerTest.cpp \
         TetherController.cpp TetherControllerTest.cpp \
+        TrafficController.cpp TrafficControllerTest.cpp \
         XfrmController.cpp XfrmControllerTest.cpp \
         UidRanges.cpp \
         NetlinkListener.cpp \
@@ -207,6 +208,7 @@ LOCAL_SRC_FILES := \
 LOCAL_MODULE_TAGS := tests
 LOCAL_STATIC_LIBRARIES := libgmock libpcap
 LOCAL_SHARED_LIBRARIES := \
+        libbpf    \
         libnetdaidl \
         libbase \
         libbinder \
@@ -216,6 +218,7 @@ LOCAL_SHARED_LIBRARIES := \
         liblogwrap \
         libnetutils \
         libnetdutils \
+        libqtaguid \
         libsysutils \
         libutils \
         libssl \
