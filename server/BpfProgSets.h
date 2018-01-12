@@ -13,13 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <linux/bpf.h>
-#include <linux/if_ether.h>
-#include <linux/in.h>
-#include <linux/unistd.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
 
 namespace android {
 namespace net {
