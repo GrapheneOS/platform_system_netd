@@ -59,6 +59,94 @@ interface INetd {
      */
     boolean bandwidthEnableDataSaver(boolean enable);
 
+    // Network permission values.
+    const String PERMISSION_NETWORK = "NETWORK";
+    const String PERMISSION_SYSTEM = "SYSTEM";
+
+    /**
+     * Creates a physical network (i.e., one containing physical interfaces.
+     *
+     * @param netId the networkId to create.
+     * @param permission the permission necessary to use the network. Must be one of the
+     *         PERMISSION_xxx values above.
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void networkCreatePhysical(int netId, @utf8InCpp String permission);
+
+    /**
+     * Creates a VPN network.
+     *
+     * @param netId the network to create.
+     * @param hasDns whether the VPN has DNS servers.
+     * @param secure whether unprivileged apps are allowed to bypass the VPN.
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void networkCreateVpn(int netId, boolean hasDns, boolean secure);
+
+    /**
+     * Destroys a network. Any interfaces added to the network are removed, and the network ceases
+     * to be the default network.
+     *
+     * @param netId the network to destroy.
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void networkDestroy(int netId);
+
+    /**
+     * Adds an interface to a network. The interface must not be assigned to any network, including
+     * the specified network.
+     *
+     * @param netId the network to add the interface to.
+     * @param interface the name of the interface to add.
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void networkAddInterface(int netId, in @utf8InCpp String iface);
+
+    /**
+     * Adds an interface to a network. The interface must be assigned to the specified network.
+     *
+     * @param netId the network to remove the interface from.
+     * @param interface the name of the interface to remove.
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void networkRemoveInterface(int netId, in @utf8InCpp String iface);
+
+    /**
+     * Adds the specified UID ranges to the specified network. The network must be a VPN. Traffic
+     * from the UID ranges will be routed through the VPN.
+     *
+     * @param netId the network ID of the network to add the ranges to.
+     * @param uidRanges a set of non-overlapping, contiguous ranges of UIDs to add. The ranges
+     *        must not overlap with existing ranges routed to this network.
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void networkAddUidRanges(int netId, in UidRange[] uidRanges);
+
+    /**
+     * Adds the specified UID ranges to the specified network. The network must be a VPN. Traffic
+     * from the UID ranges will no longer be routed through the VPN.
+     *
+     * @param netId the network ID of the network to remove the ranges from.
+     * @param uidRanges a set of non-overlapping, contiguous ranges of UIDs to add. The ranges
+     *        must already be routed to this network.
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void networkRemoveUidRanges(int netId, in UidRange[] uidRanges);
+
     /**
      * Adds or removes one rule for each supplied UID range to prohibit all network activity outside
      * of secure VPN.

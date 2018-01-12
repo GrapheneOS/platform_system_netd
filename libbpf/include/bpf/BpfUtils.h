@@ -142,6 +142,7 @@ union new_bpf_attr {
     };
 } __attribute__((aligned(8)));
 
+bool bpfSupported();
 int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size,
               uint32_t max_entries, uint32_t map_flags);
 int writeToMapEntry(const base::unique_fd& map_fd, void* key, void* value, uint64_t flags);

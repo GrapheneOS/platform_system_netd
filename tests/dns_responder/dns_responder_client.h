@@ -45,9 +45,9 @@ public:
 
     static void ShutdownDNSServers(std::vector<std::unique_ptr<test::DNSResponder>>* dns);
 
-    static int SetupOemNetwork();
+    int SetupOemNetwork();
 
-    static void TearDownOemNetwork(int oemNetId);
+    void TearDownOemNetwork(int oemNetId);
 
     virtual void SetUp();
 
