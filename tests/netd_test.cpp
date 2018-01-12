@@ -37,7 +37,6 @@
 
 #define LOG_TAG "netd_test"
 // TODO: make this dynamic and stop depending on implementation details.
-#define TEST_OEM_NETWORK "oem29"
 #define TEST_NETID 30
 
 #include "NetdClient.h"
@@ -281,7 +280,7 @@ TEST_F(ResolverTest, GetHostByName) {
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
 
     const hostent* result;
 
@@ -389,7 +388,7 @@ TEST_F(ResolverTest, GetAddrInfo) {
 
 
     std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
     dns.clearQueries();
     dns2.clearQueries();
 
@@ -422,7 +421,7 @@ TEST_F(ResolverTest, GetAddrInfo) {
 
     // Change the DNS resolver, ensure that queries are still cached.
     servers = { listen_addr2 };
-    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
     dns.clearQueries();
     dns2.clearQueries();
 
@@ -456,7 +455,7 @@ TEST_F(ResolverTest, GetAddrInfoV4) {
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.5");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
 
     addrinfo hints;
     memset(&hints, 0, sizeof(hints));
@@ -480,7 +479,7 @@ TEST_F(ResolverTest, MultidomainResolution) {
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(SetResolversForNetwork(servers, searchDomains, mDefaultParams));
+    ASSERT_TRUE(SetResolversForNetwork(servers, searchDomains, mDefaultParams_Binder));
 
     dns.clearQueries();
     const hostent* result = gethostbyname("nihao");
@@ -510,11 +509,8 @@ TEST_F(ResolverTest, GetAddrInfoV6_failing) {
     ASSERT_TRUE(dns1.startServer());
     std::vector<std::string> servers = { listen_addr0, listen_addr1 };
     // <sample validity in s> <success threshold in percent> <min samples> <max samples>
-    unsigned sample_validity = 300;
-    int success_threshold = 25;
     int sample_count = 8;
-    std::string params = StringPrintf("%u %d %d %d", sample_validity, success_threshold,
-            sample_count, sample_count);
+    const std::vector<int> params = { 300, 25, sample_count, sample_count };
     ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, params));
 
     // Repeatedly perform resolutions for non-existing domains until MAXNSSAMPLES resolutions have
@@ -577,7 +573,7 @@ TEST_F(ResolverTest, GetAddrInfoV6_concurrent) {
             }
             if (serverSubset.empty()) serverSubset = servers;
             ASSERT_TRUE(SetResolversForNetwork(serverSubset, mDefaultSearchDomains,
-                    mDefaultParams));
+                    mDefaultParams_Binder));
             addrinfo hints;
             memset(&hints, 0, sizeof(hints));
             hints.ai_family = AF_INET6;
@@ -644,7 +640,7 @@ TEST_F(ResolverTest, SearchPathChange) {
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
     std::vector<std::string> domains = { "domain1.org" };
-    ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams));
+    ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams_Binder));
 
     addrinfo hints;
     memset(&hints, 0, sizeof(hints));
@@ -657,7 +653,7 @@ TEST_F(ResolverTest, SearchPathChange) {
 
     // Test that changing the domain search path on its own works.
     domains = { "domain2.org" };
-    ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams));
+    ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams_Binder));
     dns.clearQueries();
 
     EXPECT_EQ(0, getaddrinfo("test13", nullptr, &hints, &result));

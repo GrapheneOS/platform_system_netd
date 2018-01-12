@@ -43,6 +43,12 @@ int bpf(int cmd, Slice bpfAttr) {
     return syscall(__NR_bpf, cmd, bpfAttr.base(), bpfAttr.size());
 }
 
+bool bpfSupported() {
+    new_bpf_attr attr = {};
+    int ret = bpf(BPF_MAP_LOOKUP_ELEM, Slice(&attr, sizeof(attr)));
+    return !(ret == -1 && errno == ENOSYS);
+}
+
 int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size, uint32_t max_entries,
               uint32_t map_flags) {
     new_bpf_attr attr;

@@ -57,6 +57,8 @@ constexpr uint32_t TEST_TAG = 42;
 constexpr int TEST_COUNTERSET = 1;
 constexpr int DEFAULT_COUNTERSET = 0;
 
+#define SKIP_IF_BPF_NOT_SUPPORTED do { if (!bpfSupported()) return; } while(0);
+
 class TrafficControllerTest : public ::testing::Test {
   protected:
     TrafficControllerTest() {}
@@ -67,6 +69,8 @@ class TrafficControllerTest : public ::testing::Test {
     unique_fd mFakeTagStatsMap;
 
     void SetUp() {
+        SKIP_IF_BPF_NOT_SUPPORTED;
+
         mFakeCookieTagMap = unique_fd(createMap(BPF_MAP_TYPE_HASH, sizeof(uint64_t),
                                                 sizeof(struct UidTag), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakeCookieTagMap);
@@ -140,6 +144,8 @@ class TrafficControllerTest : public ::testing::Test {
 };
 
 TEST_F(TrafficControllerTest, TestTagSocketV4) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     uint64_t sockCookie;
     int v4socket = setUpSocketAndTag(AF_INET, &sockCookie, TEST_TAG, TEST_UID);
     expectUidTag(sockCookie, TEST_UID, TEST_TAG);
@@ -149,6 +155,8 @@ TEST_F(TrafficControllerTest, TestTagSocketV4) {
 }
 
 TEST_F(TrafficControllerTest, TestReTagSocket) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     uint64_t sockCookie;
     int v4socket = setUpSocketAndTag(AF_INET, &sockCookie, TEST_TAG, TEST_UID);
     expectUidTag(sockCookie, TEST_UID, TEST_TAG);
@@ -157,6 +165,8 @@ TEST_F(TrafficControllerTest, TestReTagSocket) {
 }
 
 TEST_F(TrafficControllerTest, TestTagTwoSockets) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     uint64_t sockCookie1;
     uint64_t sockCookie2;
     int v4socket1 = setUpSocketAndTag(AF_INET, &sockCookie1, TEST_TAG, TEST_UID);
@@ -171,6 +181,8 @@ TEST_F(TrafficControllerTest, TestTagTwoSockets) {
 }
 
 TEST_F(TrafficControllerTest, TestTagSocketV6) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     uint64_t sockCookie;
     int v6socket = setUpSocketAndTag(AF_INET6, &sockCookie, TEST_TAG, TEST_UID);
     expectUidTag(sockCookie, TEST_UID, TEST_TAG);
@@ -180,12 +192,16 @@ TEST_F(TrafficControllerTest, TestTagSocketV6) {
 }
 
 TEST_F(TrafficControllerTest, TestTagInvalidSocket) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     int invalidSocket = -1;
     ASSERT_GT(0, mTc.tagSocket(invalidSocket, TEST_TAG, TEST_UID));
     expectTagMapEmpty();
 }
 
 TEST_F(TrafficControllerTest, TestUntagInvalidSocket) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     int invalidSocket = -1;
     ASSERT_GT(0, mTc.untagSocket(invalidSocket));
     int v4socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -194,6 +210,8 @@ TEST_F(TrafficControllerTest, TestUntagInvalidSocket) {
 }
 
 TEST_F(TrafficControllerTest, TestSetCounterSet) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     ASSERT_EQ(0, mTc.setCounterSet(TEST_COUNTERSET, TEST_UID));
     uid_t uid = TEST_UID;
     int counterSetResult;
@@ -206,6 +224,8 @@ TEST_F(TrafficControllerTest, TestSetCounterSet) {
 }
 
 TEST_F(TrafficControllerTest, TestSetInvalidCounterSet) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     ASSERT_GT(0, mTc.setCounterSet(COUNTERSETS_LIMIT, TEST_UID));
     uid_t uid = TEST_UID;
     int counterSetResult;
@@ -215,6 +235,8 @@ TEST_F(TrafficControllerTest, TestSetInvalidCounterSet) {
 }
 
 TEST_F(TrafficControllerTest, TestDeleteTagData) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     uint64_t cookie = 1;
     uid_t uid = TEST_UID;
     uint32_t tag = TEST_TAG;
@@ -234,6 +256,8 @@ TEST_F(TrafficControllerTest, TestDeleteTagData) {
 }
 
 TEST_F(TrafficControllerTest, TestDeleteAllUidData) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     uint64_t cookie = 1;
     uid_t uid = TEST_UID;
     uint32_t tag = TEST_TAG;
@@ -255,6 +279,8 @@ TEST_F(TrafficControllerTest, TestDeleteAllUidData) {
 }
 
 TEST_F(TrafficControllerTest, TestDeleteDataWithTwoTags) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     uint64_t cookie1 = 1;
     uint64_t cookie2 = 2;
     uid_t uid = TEST_UID;
@@ -281,6 +307,8 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoTags) {
 }
 
 TEST_F(TrafficControllerTest, TestDeleteDataWithTwoUids) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     uint64_t cookie1 = 1;
     uint64_t cookie2 = 2;
     uid_t uid1 = TEST_UID;
