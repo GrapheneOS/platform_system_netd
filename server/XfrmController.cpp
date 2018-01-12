@@ -498,9 +498,9 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
             return netdutils::statusFromErrno(EINVAL, "Invalid encap type");
     }
 
-    ret = createSecurityAssociation(saInfo, sock);
+    ret = updateSecurityAssociation(saInfo, sock);
     if (!isOk(ret)) {
-        ALOGD("Failed creating a Security Association, line=%d", __LINE__);
+        ALOGD("Failed updating a Security Association, line=%d", __LINE__);
     }
 
     return ret;
@@ -664,7 +664,7 @@ void XfrmController::fillTransportModeSelector(const XfrmSaInfo& record, xfrm_se
     selector->ifindex = record.netId; // TODO : still need to sort this out
 }
 
-netdutils::Status XfrmController::createSecurityAssociation(const XfrmSaInfo& record,
+netdutils::Status XfrmController::updateSecurityAssociation(const XfrmSaInfo& record,
                                                             const XfrmSocket& sock) {
     xfrm_usersa_info usersa{};
     nlattr_algo_crypt crypt{};
