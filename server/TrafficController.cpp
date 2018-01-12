@@ -14,32 +14,119 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "TrafficController"
+
 #include <inttypes.h>
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>
 #include <linux/inet_diag.h>
+#include <linux/netlink.h>
+#include <linux/sock_diag.h>
 #include <linux/unistd.h>
+#include <net/if.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/utsname.h>
+#include <unordered_set>
+#include <vector>
 
+#include <android-base/stringprintf.h>
+#include <android-base/unique_fd.h>
+#include <netdutils/StatusOr.h>
+
+#include <netdutils/Misc.h>
+#include <netdutils/Syscalls.h>
 #include "BpfProgSets.h"
-#include "BpfUtils.h"
 #include "TrafficController.h"
+#include "bpf/BpfUtils.h"
 
-#define LOG_TAG "Netd"
-#include "log/log.h"
+#include "NetlinkListener.h"
 #include "qtaguid/qtaguid.h"
 
-using namespace android::net::bpf;
+using namespace android::bpf;
 using namespace android::net::bpf_prog;
 
 namespace android {
 namespace net {
 
-int TrafficController::start() {
+using base::StringPrintf;
+using base::unique_fd;
+using netdutils::extract;
+using netdutils::Slice;
+using netdutils::sSyscalls;
+using netdutils::Status;
+using netdutils::statusFromErrno;
+using netdutils::StatusOr;
+using netdutils::status::ok;
+
+Status TrafficController::loadAndAttachProgram(bpf_attach_type type, const char* path,
+                                               const char* name, base::unique_fd& cg_fd) {
+    base::unique_fd fd;
+    int ret = access(path, R_OK);
+    if (ret == 0) {
+        // The program already exist and we can access it.
+        return netdutils::status::ok;
+    }
+
+    if (errno != ENOENT) {
+        // The program exist but we cannot access it.
+        return statusFromErrno(errno, StringPrintf("Cannot access %s at path: %s", name, path));
+    }
+
+    // Program does not exist yet. Load, attach and pin it.
+    if (type == BPF_CGROUP_INET_EGRESS) {
+        fd.reset(loadEgressProg(mCookieTagMap.get(), mUidStatsMap.get(), mTagStatsMap.get(),
+                                mUidCounterSetMap.get()));
+    } else {
+        fd.reset(loadIngressProg(mCookieTagMap.get(), mUidStatsMap.get(), mTagStatsMap.get(),
+                                 mUidCounterSetMap.get()));
+    }
+    if (fd < 0) {
+        return statusFromErrno(errno, StringPrintf("load %s failed", name));
+    }
+
+    ret = attachProgram(type, fd, cg_fd);
+    if (ret) {
+        return statusFromErrno(errno, StringPrintf("%s attach failed", name));
+    }
+
+    ret = mapPin(fd, path);
+    if (ret) {
+        return statusFromErrno(errno, StringPrintf("Pin %s as file failed(%s)", name, path));
+    }
+    return netdutils::status::ok;
+}
+
+constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
+constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
+
+StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener() {
+    const auto& sys = sSyscalls.get();
+    ASSIGN_OR_RETURN(auto event, sys.eventfd(0, EFD_CLOEXEC));
+    const int domain = AF_NETLINK;
+    const int type = SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK;
+    const int protocol = NETLINK_INET_DIAG;
+    ASSIGN_OR_RETURN(auto sock, sys.socket(domain, type, protocol));
+
+    sockaddr_nl addr = {
+        .nl_family = AF_NETLINK,
+        .nl_groups = 1 << (SKNLGRP_INET_TCP_DESTROY - 1) | 1 << (SKNLGRP_INET_UDP_DESTROY - 1) |
+                     1 << (SKNLGRP_INET6_TCP_DESTROY - 1) | 1 << (SKNLGRP_INET6_UDP_DESTROY - 1)};
+    RETURN_IF_NOT_OK(sys.bind(sock, addr));
+
+    const sockaddr_nl kernel = {.nl_family = AF_NETLINK};
+    RETURN_IF_NOT_OK(sys.connect(sock, kernel));
+
+    std::unique_ptr<NetlinkListenerInterface> listener =
+        std::make_unique<NetlinkListener>(std::move(event), std::move(sock));
+
+    return listener;
+}
+
+Status TrafficController::start() {
     int ret;
     struct utsname buf;
     int kernel_version_major;
@@ -47,50 +134,21 @@ int TrafficController::start() {
 
     ret = uname(&buf);
     if (ret) {
-        ret = -errno;
-        ALOGE("Get system information failed: %s\n", strerror(errno));
-        return ret;
+        return statusFromErrno(errno, "Get system information failed");
     }
-    ret = sscanf(buf.release, "%d.%d", &kernel_version_major, &kernel_version_minor);
-    if (ret >= 2 && ((kernel_version_major == 4 && kernel_version_minor >= 9) ||
-                     (kernel_version_major > 4))) {
+
+    char dummy;
+    ret = sscanf(buf.release, "%d.%d%c", &kernel_version_major, &kernel_version_minor, &dummy);
+    if (ret >= 2 &&
+        ((kernel_version_major == 4 && kernel_version_minor >= 9) || (kernel_version_major > 4))) {
         // Turn off the eBPF feature temporarily since the selinux rules and kernel changes are not
         // landed yet.
         // TODO: turn back on when all the other dependencies are ready.
         ebpfSupported = false;
-        return 0;
+        return netdutils::status::ok;
     } else {
         ebpfSupported = false;
-        return 0;
-    }
-    ALOGI("START to load TrafficController\n");
-    mCookieTagMap = setUpBPFMap(sizeof(uint64_t), sizeof(struct UidTag), COOKIE_UID_MAP_SIZE,
-                                COOKIE_UID_MAP_PATH, BPF_MAP_TYPE_HASH);
-    if (mCookieTagMap < 0) {
-        ret = -errno;
-        ALOGE("mCookieTagMap load failed\n");
-        return ret;
-    }
-    mUidCounterSetMap = setUpBPFMap(sizeof(uint32_t), sizeof(uint32_t), UID_COUNTERSET_MAP_SIZE,
-                                    UID_COUNTERSET_MAP_PATH, BPF_MAP_TYPE_HASH);
-    if (mUidCounterSetMap < 0) {
-        ret = -errno;
-        ALOGE("mUidCounterSetMap load failed\n");
-        return ret;
-    }
-    mUidStatsMap = setUpBPFMap(sizeof(struct StatsKey), sizeof(struct Stats), UID_STATS_MAP_SIZE,
-                               UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH);
-    if (mUidStatsMap < 0) {
-        ret = -errno;
-        ALOGE("mUidStatsMap load failed\n");
-        return ret;
-    }
-    mTagStatsMap = setUpBPFMap(sizeof(struct StatsKey), sizeof(struct Stats), TAG_STATS_MAP_SIZE,
-                               TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH);
-    if (mTagStatsMap < 0) {
-        ret = -errno;
-        ALOGE("mTagStatsMap load failed\n");
-        return ret;
+        return netdutils::status::ok;
     }
 
     /* When netd restart from a crash without total system reboot, the program
@@ -101,67 +159,103 @@ int TrafficController::start() {
      * if the socket no longer exist
      */
 
-    int cg_fd = open(CGROUP_ROOT_PATH, O_DIRECTORY | O_RDONLY | O_CLOEXEC);
+    ALOGI("START to load TrafficController");
+    base::unique_fd cg_fd(open(CGROUP_ROOT_PATH, O_DIRECTORY | O_RDONLY | O_CLOEXEC));
     if (cg_fd < 0) {
-        ret = -errno;
-        ALOGE("Failed to open the cgroup directory\n");
-        return ret;
+        return statusFromErrno(errno, "Failed to open the cgroup directory");
     }
 
-    ret = detachProgram(BPF_CGROUP_INET_EGRESS, cg_fd);
-    ret = detachProgram(BPF_CGROUP_INET_INGRESS, cg_fd);
+    ASSIGN_OR_RETURN(mCookieTagMap,
+                     setUpBPFMap(sizeof(uint64_t), sizeof(struct UidTag), COOKIE_UID_MAP_SIZE,
+                                 COOKIE_UID_MAP_PATH, BPF_MAP_TYPE_HASH));
 
-    mInProgFd = loadIngressProg(mCookieTagMap, mUidStatsMap, mTagStatsMap, mUidCounterSetMap);
-    if (mInProgFd < 0) {
-        ret = -errno;
-        ALOGE("Load ingress program failed\n");
-        return ret;
-    }
-
-    mOutProgFd = loadEgressProg(mCookieTagMap, mUidStatsMap, mTagStatsMap, mUidCounterSetMap);
-    if (mOutProgFd < 0) {
-        ret = -errno;
-        ALOGE("load egress program failed\n");
-        return ret;
-    }
-
-    ret = attachProgram(BPF_CGROUP_INET_EGRESS, mOutProgFd, cg_fd);
+    // Allow both netd and system server to obtain map fd from the path. Chown the group to
+    // net_bw_acct does not grant all process in that group the permission to access bpf maps. They
+    // still need correct sepolicy to read/write the map. And only system_server and netd have that
+    // permission for now.
+    ret = chown(COOKIE_UID_MAP_PATH, AID_ROOT, AID_NET_BW_ACCT);
     if (ret) {
-        ret = -errno;
-        ALOGE("egress program attach failed: %s\n", strerror(errno));
-        return ret;
+        return statusFromErrno(errno, "change cookieTagMap group failed.");
     }
-
-    ret = attachProgram(BPF_CGROUP_INET_INGRESS, mInProgFd, cg_fd);
+    ret = chmod(COOKIE_UID_MAP_PATH, S_IRWXU | S_IRGRP | S_IWGRP);
     if (ret) {
-        ret = -errno;
-        ALOGE("ingress program attach failed: %s\n", strerror(errno));
-        return ret;
+        return statusFromErrno(errno, "change cookieTagMap mode failed.");
     }
-    close(cg_fd);
-    return 0;
-}
 
-uint64_t getSocketCookie(int sockFd) {
-    uint64_t sock_cookie;
-    socklen_t cookie_len = sizeof(sock_cookie);
-    int res = getsockopt(sockFd, SOL_SOCKET, SO_COOKIE, &sock_cookie, &cookie_len);
-    if (res < 0) {
-        res = -errno;
-        ALOGE("Failed to get socket cookie: %s\n", strerror(errno));
-        errno = -res;
-        // 0 is an invalid cookie. See INET_DIAG_NOCOOKIE.
-        return 0;
+    ASSIGN_OR_RETURN(mUidCounterSetMap,
+                     setUpBPFMap(sizeof(uint32_t), sizeof(uint32_t), UID_COUNTERSET_MAP_SIZE,
+                                 UID_COUNTERSET_MAP_PATH, BPF_MAP_TYPE_HASH));
+    // Only netd can access the file.
+    ret = chmod(UID_COUNTERSET_MAP_PATH, S_IRWXU);
+    if (ret) {
+        return statusFromErrno(errno, "change uidCounterSetMap mode failed.");
     }
-    return sock_cookie;
+
+    ASSIGN_OR_RETURN(mUidStatsMap,
+                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct Stats), UID_STATS_MAP_SIZE,
+                                 UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    // Change the file mode of pinned map so both netd and system server can get the map fd
+    // from it.
+    ret = chown(UID_STATS_MAP_PATH, AID_ROOT, AID_NET_BW_ACCT);
+    if (ret) {
+        return statusFromErrno(errno, "change uidStatsMap group failed.");
+    }
+    ret = chmod(UID_STATS_MAP_PATH, S_IRWXU | S_IRGRP | S_IWGRP);
+    if (ret) {
+        return statusFromErrno(errno, "change uidStatsMap mode failed.");
+    }
+
+    ASSIGN_OR_RETURN(mTagStatsMap,
+                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct Stats), TAG_STATS_MAP_SIZE,
+                                 TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    // Change the file mode of pinned map so both netd and system server can get the map fd
+    // from the path.
+    ret = chown(TAG_STATS_MAP_PATH, AID_ROOT, AID_NET_BW_STATS);
+    if (ret) {
+        return statusFromErrno(errno, "change tagStatsMap group failed.");
+    }
+    ret = chmod(TAG_STATS_MAP_PATH, S_IRWXU | S_IRGRP | S_IWGRP);
+    if (ret) {
+        return statusFromErrno(errno, "change tagStatsMap mode failed.");
+    }
+
+    auto result = makeSkDestroyListener();
+    if (!isOk(result)) {
+        ALOGE("Unable to create SkDestroyListener: %s", toString(result).c_str());
+    } else {
+        mSkDestroyListener = std::move(result.value());
+    }
+    // Rx handler extracts nfgenmsg looks up and invokes registered dispatch function.
+    const auto rxHandler = [this](const nlmsghdr&, const Slice msg) {
+        inet_diag_msg diagmsg = {};
+        if (extract(msg, diagmsg) < sizeof(inet_diag_msg)) {
+            ALOGE("unrecognized netlink message: %s", toString(msg).c_str());
+            return;
+        }
+        uint64_t sock_cookie = static_cast<uint64_t>(diagmsg.id.idiag_cookie[0]) |
+                               (static_cast<uint64_t>(diagmsg.id.idiag_cookie[1]) << 32);
+
+        deleteMapEntry(mCookieTagMap, &sock_cookie);
+    };
+    expectOk(mSkDestroyListener->subscribe(kSockDiagMsgType, rxHandler));
+
+    // In case multiple netlink message comes in as a stream, we need to handle the rxDone message
+    // properly.
+    const auto rxDoneHandler = [](const nlmsghdr&, const Slice msg) {
+        // Ignore NLMSG_DONE  messages
+        inet_diag_msg diagmsg = {};
+        extract(msg, diagmsg);
+    };
+    expectOk(mSkDestroyListener->subscribe(kSockDiagDoneMsgType, rxDoneHandler));
+
+    RETURN_IF_NOT_OK(loadAndAttachProgram(BPF_CGROUP_INET_INGRESS, BPF_INGRESS_PROG_PATH,
+                                          "Ingress_prog", cg_fd));
+    return loadAndAttachProgram(BPF_CGROUP_INET_EGRESS, BPF_EGRESS_PROG_PATH, "egress_prog", cg_fd);
 }
 
 int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
-
-    if (legacy_tagSocket(sockFd, tag, uid))
-      return -errno;
-    if (!ebpfSupported)
-      return 0;
+    if (legacy_tagSocket(sockFd, tag, uid)) return -errno;
+    if (!ebpfSupported) return 0;
 
     uint64_t sock_cookie = getSocketCookie(sockFd);
     if (sock_cookie == INET_DIAG_NOCOOKIE) return -errno;
@@ -175,16 +269,14 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
     int res = writeToMapEntry(mCookieTagMap, &sock_cookie, &newKey, BPF_ANY);
     if (res < 0) {
         res = -errno;
-        ALOGE("Failed to tag the socket: %s\n", strerror(errno));
+        ALOGE("Failed to tag the socket: %s, fd: %d", strerror(errno), mCookieTagMap.get());
     }
 
     return res;
 }
 
 int TrafficController::untagSocket(int sockFd) {
-
-    if (legacy_untagSocket(sockFd))
-        return -errno;
+    if (legacy_untagSocket(sockFd)) return -errno;
     if (!ebpfSupported) return 0;
     uint64_t sock_cookie = getSocketCookie(sockFd);
 
@@ -200,9 +292,11 @@ int TrafficController::untagSocket(int sockFd) {
 int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
     if (counterSetNum < 0 || counterSetNum >= COUNTERSETS_LIMIT) return -EINVAL;
     int res;
-    if (legacy_setCounterSet(counterSetNum, uid))
-        return -errno;
-    if (!ebpfSupported) return 0;;
+    if (legacy_setCounterSet(counterSetNum, uid)) return -errno;
+    if (!ebpfSupported) return 0;
+
+    // The default counter set for all uid is 0, so deleting the current counterset for that uid
+    // will automatically set it to 0.
     if (counterSetNum == 0) {
         res = deleteMapEntry(mUidCounterSetMap, &uid);
         if (res == 0 || (res == -1 && errno == ENOENT)) {
@@ -216,89 +310,129 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
     res = writeToMapEntry(mUidCounterSetMap, &uid, &counterSetNum, BPF_ANY);
     if (res < 0) {
         res = -errno;
-        ALOGE("Failed to set the counterSet: %s\n", strerror(errno));
+        ALOGE("Failed to set the counterSet: %s, fd: %d", strerror(errno), mUidCounterSetMap.get());
     }
     return res;
 }
 
+// TODO: Add a lock for delete tag Data so when several request for different uid comes in, they do
+// not race with each other.
 int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     int res = 0;
 
-    if (legacy_deleteTagData(tag, uid))
-        return -errno;
+    if (legacy_deleteTagData(tag, uid)) return -errno;
     if (!ebpfSupported) return 0;
 
-    uint64_t curCookie = 0;
+    uint64_t curCookie = NONEXIST_COOKIE;
     uint64_t nextCookie = 0;
     UidTag tmp_uidtag;
-    bool end = false;
-
-    // First we go through the cookieTagMap to delete the target uid tag combanition. Or delete all
-    // the tags related to the uid if the tag is 0
-    while (!end && getNextMapKey(mCookieTagMap, &curCookie, &nextCookie) > -1) {
-        curCookie = nextCookie;
-        res = findMapEntry(mCookieTagMap, &curCookie, &tmp_uidtag);
+    std::vector<uint64_t> cookieList;
+    // First we go through the cookieTagMap to delete the target uid tag combination. Or delete all
+    // the tags related to the uid if the tag is 0, we start the map iteration with a cookie of
+    // INET_DIAG_NOCOOKIE because it's guaranteed that that will not be in the map.
+    while (getNextMapKey(mCookieTagMap, &curCookie, &nextCookie) != -1) {
+        res = findMapEntry(mCookieTagMap, &nextCookie, &tmp_uidtag);
         if (res < 0) {
             res = -errno;
-            ALOGE("Failed to get tag info(cookie = %" PRIu64": %s\n", curCookie, strerror(errno));
-            return res;
+            ALOGE("Failed to get tag info(cookie = %" PRIu64 ": %s\n", nextCookie, strerror(errno));
+            // Continue to look for next entry.
+            curCookie = nextCookie;
+            continue;
         }
 
         if (tmp_uidtag.uid == uid && (tmp_uidtag.tag == tag || tag == 0)) {
-            // To prevent we iterrate the map again from the begining, we firstly get the key next
-            // to the key we are going to delete here. And use it as the key when we get next entry.
-            res = getNextMapKey(mCookieTagMap, &curCookie, &nextCookie);
-            if (res == -1) end = true;
-            res = deleteMapEntry(mCookieTagMap, &curCookie);
-            if (res != 0 || (res == -1 && errno != ENOENT)) {
+            res = deleteMapEntry(mCookieTagMap, &nextCookie);
+            if (res < 0 && errno != ENOENT) {
                 res = -errno;
-                ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", uid, tag, strerror(errno));
-                return res;
+                ALOGE("Failed to delete data(cookie = %" PRIu64 "): %s\n", nextCookie,
+                      strerror(errno));
             }
+        } else {
+            // Move forward to next cookie in the map.
             curCookie = nextCookie;
         }
     }
 
     // Now we go through the Tag stats map and delete the data entry with correct uid and tag
-    // combanition. Or all tag stats under that uid if the target tag is 0.
+    // combination. Or all tag stats under that uid if the target tag is 0. The initial key is
+    // set to the nonexist_statskey because it will never be in the map, and thus getNextMapKey will
+    // return 0 and set nextKey to the first key in the map.
     struct StatsKey curKey, nextKey;
-    memset(&curKey, 0, sizeof(curKey));
-    curKey.uid = DEFAULT_OVERFLOWUID;
-    end = false;
-    while (getNextMapKey(mTagStatsMap, &curKey, &nextKey) > -1) {
-        curKey = nextKey;
-        if (curKey.uid == uid && (curKey.tag == tag || tag == 0)) {
-            res = getNextMapKey(mTagStatsMap, &curKey, &nextKey);
-            if (res == -1) end = true;
-            res = deleteMapEntry(mTagStatsMap, &curKey);
-            if (res != 0 || (res == -1 && errno != ENOENT)) {
-                res = -errno;
-                ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", uid, tag, strerror(errno));
-                return res;
+    curKey = NONEXIST_STATSKEY;
+    while (getNextMapKey(mTagStatsMap, &curKey, &nextKey) != -1) {
+        if (nextKey.uid == uid && (nextKey.tag == tag || tag == 0)) {
+            res = deleteMapEntry(mTagStatsMap, &nextKey);
+            if (res < 0 && errno != ENOENT) {
+                // Skip the current entry if unexpected error happened.
+                ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", nextKey.uid, nextKey.tag,
+                      strerror(errno));
+                curKey = nextKey;
             }
+        } else {
             curKey = nextKey;
         }
     }
 
     // If the tag is not zero, we already deleted all the data entry required. If tag is 0, we also
-    // need to delete the stats stored in uidStatsMap
-    if (tag != 0) return res;
-    memset(&curKey, 0, sizeof(curKey));
-    curKey.uid = DEFAULT_OVERFLOWUID;
-    end = false;
-    while (getNextMapKey(mUidStatsMap, &curKey, &nextKey) > -1) {
-        curKey = nextKey;
-        if (curKey.uid == uid) {
-            res = getNextMapKey(mTagStatsMap, &curKey, &nextKey);
-            if (res == -1) end = true;
-            res = deleteMapEntry(mUidStatsMap, &curKey);
-            if (res != 0 || (res == -1 && errno != ENOENT)) {
-                res = -errno;
-                ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", uid, tag, strerror(errno));
-                return res;
+    // need to delete the stats stored in uidStatsMap and counterSet map.
+    if (tag != 0) return 0;
+
+    res = deleteMapEntry(mUidCounterSetMap, &uid);
+    if (res < 0 && errno != ENOENT) {
+        ALOGE("Failed to delete counterSet data(uid=%u, tag=%u): %s\n", uid, tag, strerror(errno));
+    }
+
+    // For the uid stats deleted from the map, move them into a special
+    // removed uid entry. The removed uid is stored in uid 0, tag 0 and
+    // counterSet as COUNTERSETS_LIMIT.
+    StatsKey removedStatsKey = {0, 0, COUNTERSETS_LIMIT, 0};
+    Stats removedStatsTotal = {};
+    res = findMapEntry(mUidStatsMap, &removedStatsKey, &removedStatsTotal);
+    if (res < 0 && errno != ENOENT) {
+        ALOGE("Failed to get stats of removed uid: %s", strerror(errno));
+    }
+
+    curKey = NONEXIST_STATSKEY;
+    while (getNextMapKey(mUidStatsMap, &curKey, &nextKey) != -1) {
+        if (nextKey.uid == uid) {
+            Stats old_stats = {};
+            res = findMapEntry(mUidStatsMap, &nextKey, &old_stats);
+            if (res < 0) {
+                if (errno != ENOENT) {
+                    // if errno is ENOENT Somebody else deleted nextKey. Lookup the next key from
+                    // curKey. If we have other error. Skip this key to avoid an infinite loop.
+                    curKey = nextKey;
+                }
+                continue;
             }
+            res = deleteMapEntry(mUidStatsMap, &nextKey);
+            if (res < 0 && errno != ENOENT) {
+                ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", nextKey.uid, nextKey.tag,
+                      strerror(errno));
+                curKey = nextKey;
+                continue;
+            }
+            removedStatsTotal.rxTcpPackets += old_stats.rxTcpPackets;
+            removedStatsTotal.rxTcpBytes += old_stats.rxTcpBytes;
+            removedStatsTotal.txTcpPackets += old_stats.txTcpPackets;
+            removedStatsTotal.txTcpBytes += old_stats.txTcpBytes;
+            removedStatsTotal.rxUdpPackets += old_stats.rxUdpPackets;
+            removedStatsTotal.rxUdpBytes += old_stats.rxUdpBytes;
+            removedStatsTotal.txUdpPackets += old_stats.txUdpPackets;
+            removedStatsTotal.txUdpBytes += old_stats.txUdpBytes;
+            removedStatsTotal.rxOtherPackets += old_stats.rxOtherPackets;
+            removedStatsTotal.rxOtherBytes += old_stats.rxOtherBytes;
+            removedStatsTotal.txOtherPackets += old_stats.txOtherPackets;
+            removedStatsTotal.txOtherBytes += old_stats.txOtherBytes;
+        } else {
             curKey = nextKey;
         }
+    }
+
+    res = writeToMapEntry(mUidStatsMap, &removedStatsKey, &removedStatsTotal, BPF_ANY);
+    if (res) {
+        res = -errno;
+        ALOGE("Failed to add deleting stats to removed uid: %s", strerror(errno));
     }
     return res;
 }
