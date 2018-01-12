@@ -34,14 +34,36 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     virtual status_t dump(int fd, const Vector<String16> &args) override;
 
     binder::Status isAlive(bool *alive) override;
+
+    // Firewall commands.
     binder::Status firewallReplaceUidChain(
             const String16& chainName, bool isWhitelist,
             const std::vector<int32_t>& uids, bool *ret) override;
+
+    // Bandwidth control commands.
     binder::Status bandwidthEnableDataSaver(bool enable, bool *ret) override;
+
+    // Network and routing commands.
+    binder::Status networkCreatePhysical(int32_t netId, const std::string& permission)
+            override;
+    binder::Status networkCreateVpn(int32_t netId, bool hasDns, bool secure) override;
+    binder::Status networkDestroy(int32_t netId) override;
+
+    binder::Status networkAddInterface(int32_t netId, const std::string& iface) override;
+    binder::Status networkRemoveInterface(int32_t netId, const std::string& iface) override;
+
+    binder::Status networkAddUidRanges(int32_t netId, const std::vector<UidRange>& uids)
+            override;
+    binder::Status networkRemoveUidRanges(int32_t netId, const std::vector<UidRange>& uids)
+            override;
     binder::Status networkRejectNonSecureVpn(bool enable, const std::vector<UidRange>& uids)
             override;
+
+    // SOCK_DIAG commands.
     binder::Status socketDestroy(const std::vector<UidRange>& uids,
             const std::vector<int32_t>& skipUids) override;
+
+    // Resolver commands.
     binder::Status setResolverConfiguration(int32_t netId, const std::vector<std::string>& servers,
             const std::vector<std::string>& domains, const std::vector<int32_t>& params,
             bool useTls, const std::string& tlsName,
@@ -63,6 +85,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status tetherApplyDnsInterfaces(bool *ret) override;
     binder::Status tetherGetStats(android::os::PersistableBundle *ret) override;
 
+    // Interface-related commands.
     binder::Status interfaceAddAddress(const std::string &ifName,
             const std::string &addrString, int prefixLength) override;
     binder::Status interfaceDelAddress(const std::string &ifName,
