@@ -96,6 +96,14 @@ binder::Status checkPermission(const char *permission) {
     android::RWLock::AutoWLock _lock(lock);
 
 #define NETD_BIG_LOCK_RPC(permission) NETD_LOCKING_RPC((permission), gBigNetdLock)
+
+inline binder::Status statusFromErrcode(int ret) {
+    if (ret) {
+        return binder::Status::fromServiceSpecificError(-ret, strerror(-ret));
+    }
+    return binder::Status::ok();
+}
+
 }  // namespace
 
 
@@ -154,6 +162,53 @@ binder::Status NetdNativeService::bandwidthEnableDataSaver(bool enable, bool *re
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::networkCreatePhysical(int32_t netId,
+        const std::string& permission) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    int ret = gCtls->netCtrl.createPhysicalNetwork(netId, stringToPermission(permission.c_str()));
+    return statusFromErrcode(ret);
+}
+
+binder::Status NetdNativeService::networkCreateVpn(int32_t netId, bool hasDns, bool secure) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    int ret = gCtls->netCtrl.createVirtualNetwork(netId, hasDns, secure);
+    return statusFromErrcode(ret);
+}
+
+binder::Status NetdNativeService::networkDestroy(int32_t netId) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    int ret = gCtls->netCtrl.destroyNetwork(netId);
+    return statusFromErrcode(ret);
+}
+
+binder::Status NetdNativeService::networkAddInterface(int32_t netId, const std::string& iface) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    int ret = gCtls->netCtrl.addInterfaceToNetwork(netId, iface.c_str());
+    return statusFromErrcode(ret);
+}
+
+binder::Status NetdNativeService::networkRemoveInterface(int32_t netId, const std::string& iface) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    int ret = gCtls->netCtrl.removeInterfaceFromNetwork(netId, iface.c_str());
+    return statusFromErrcode(ret);
+}
+
+binder::Status NetdNativeService::networkAddUidRanges(int32_t netId,
+        const std::vector<UidRange>& uidRangeArray) {
+    // NetworkController::addUsersToNetwork is thread-safe.
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    int ret = gCtls->netCtrl.addUsersToNetwork(netId, UidRanges(uidRangeArray));
+    return statusFromErrcode(ret);
+}
+
+binder::Status NetdNativeService::networkRemoveUidRanges(int32_t netId,
+        const std::vector<UidRange>& uidRangeArray) {
+    // NetworkController::removeUsersFromNetwork is thread-safe.
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    int ret = gCtls->netCtrl.removeUsersFromNetwork(netId, UidRanges(uidRangeArray));
+    return statusFromErrcode(ret);
+}
+
 binder::Status NetdNativeService::networkRejectNonSecureVpn(bool add,
         const std::vector<UidRange>& uidRangeArray) {
     // TODO: elsewhere RouteController is only used from the tethering and network controllers, so
@@ -172,11 +227,7 @@ binder::Status NetdNativeService::networkRejectNonSecureVpn(bool add,
         err = RouteController::removeUsersFromRejectNonSecureNetworkRule(uidRanges);
     }
 
-    if (err != 0) {
-        return binder::Status::fromServiceSpecificError(-err,
-                String8::format("RouteController error: %s", strerror(-err)));
-    }
-    return binder::Status::ok();
+    return statusFromErrcode(err);
 }
 
 binder::Status NetdNativeService::socketDestroy(const std::vector<UidRange>& uids,
