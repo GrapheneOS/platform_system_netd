@@ -34,6 +34,7 @@
 #include "TrafficController.h"
 #include "WakeupController.h"
 #include "XfrmController.h"
+#include "TcpSocketMonitor.h"
 
 namespace android {
 namespace net {
@@ -56,6 +57,7 @@ public:
     WakeupController wakeupCtrl;
     XfrmController xfrmCtrl;
     TrafficController trafficCtrl;
+    TcpSocketMonitor tcpSocketMonitor;
 
     void init();
 

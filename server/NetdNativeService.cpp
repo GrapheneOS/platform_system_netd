@@ -119,7 +119,7 @@ status_t NetdNativeService::start() {
     return android::OK;
 }
 
-status_t NetdNativeService::dump(int fd, const Vector<String16> & /* args */) {
+status_t NetdNativeService::dump(int fd, const Vector<String16> &args) {
     const binder::Status dump_permission = checkPermission(DUMP);
     if (!dump_permission.isOk()) {
         const String8 msg(dump_permission.toString8());
@@ -129,7 +129,16 @@ status_t NetdNativeService::dump(int fd, const Vector<String16> & /* args */) {
 
     // This method does not grab any locks. If individual classes need locking
     // their dump() methods MUST handle locking appropriately.
+
     DumpWriter dw(fd);
+
+    if (!args.isEmpty() && args[0] == TcpSocketMonitor::DUMP_KEYWORD) {
+      dw.blankline();
+      gCtls->tcpSocketMonitor.dump(dw);
+      dw.blankline();
+      return NO_ERROR;
+    }
+
     dw.blankline();
     gCtls->netCtrl.dump(dw);
     dw.blankline();
