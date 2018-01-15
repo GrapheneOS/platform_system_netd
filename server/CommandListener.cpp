@@ -1407,9 +1407,11 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
             return syntaxError(client, "Incorrect number of arguments");
         }
         unsigned netId = stringToNetId(argv[2]);
+        // Both of these functions manage their own locking internally.
         if (int ret = gCtls->netCtrl.destroyNetwork(netId)) {
             return operationError(client, "destroyNetwork() failed", ret);
         }
+        gCtls->resolverCtrl.clearDnsServers(netId);
         return success(client);
     }
 
