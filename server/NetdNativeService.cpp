@@ -176,8 +176,10 @@ binder::Status NetdNativeService::networkCreateVpn(int32_t netId, bool hasDns, b
 }
 
 binder::Status NetdNativeService::networkDestroy(int32_t netId) {
-    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
-    int ret = gCtls->netCtrl.destroyNetwork(netId);
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    // Both of these functions manage their own locking internally.
+    const int ret = gCtls->netCtrl.destroyNetwork(netId);
+    gCtls->resolverCtrl.clearDnsServers(netId);
     return statusFromErrcode(ret);
 }
 
