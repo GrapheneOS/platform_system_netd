@@ -437,9 +437,10 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
 }
 
 TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityAssociation) {
-    const int family = (GetParam() == 6) ? AF_INET6 : AF_INET;
-    const std::string localAddr = (family == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
-    const std::string remoteAddr = (family == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+    const int version = GetParam();
+    const int family = (version == 6) ? AF_INET6 : AF_INET;
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
 
     NetlinkResponse response{};
     response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
