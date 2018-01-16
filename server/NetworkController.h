@@ -34,6 +34,8 @@ struct android_net_context;
 namespace android {
 namespace net {
 
+constexpr uint32_t kHandleMagic = 0xcafed00d;
+
 // Utility to convert from netId to net_handle_t. Doing this here as opposed to exporting
 // from net.c as it may have NDK implications. Besides no conversion available in net.c for
 // obtaining handle given netId.
@@ -42,7 +44,6 @@ static inline unsigned netHandleToNetId(net_handle_t fromNetHandle) {
     const uint32_t k32BitMask = 0xffffffff;
     // This value MUST be kept in sync with the corresponding value in
     // the android.net.Network#getNetworkHandle() implementation.
-    const uint32_t kHandleMagic = 0xfacade;
 
     // Check for minimum acceptable version of the API in the low bits.
     if (fromNetHandle != NETWORK_UNSPECIFIED &&
@@ -56,12 +57,10 @@ static inline unsigned netHandleToNetId(net_handle_t fromNetHandle) {
 // Utility to convert from nethandle to netid, keep in sync with getNetworkHandle
 // in Network.java.
 static inline net_handle_t netIdToNetHandle(unsigned fromNetId) {
-    const net_handle_t HANDLE_MAGIC = 0xfacade;
-
     if (!fromNetId) {
         return NETWORK_UNSPECIFIED;
     }
-    return (((net_handle_t)fromNetId << 32) | HANDLE_MAGIC);
+    return (((net_handle_t)fromNetId << 32) | kHandleMagic);
 }
 
 class DumpWriter;
