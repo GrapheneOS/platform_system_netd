@@ -36,6 +36,8 @@ namespace net {
 
 namespace {
 
+constexpr const char kCaCertDir[] = "/system/etc/security/cacerts";
+
 bool setNonBlocking(int fd, bool enabled) {
     int flags = fcntl(fd, F_GETFL);
     if (flags < 0) return false;
@@ -143,6 +145,15 @@ bool DnsTlsTransport::initialize() {
     if (!mSslCtx) {
         return false;
     }
+
+    // Load system CA certs for hostname verification.
+    //
+    // For discussion of alternative, sustainable approaches see b/71909242.
+    if (SSL_CTX_load_verify_locations(mSslCtx.get(), nullptr, kCaCertDir) != 1) {
+        ALOGE("Failed to load CA cert dir: %s", kCaCertDir);
+        return false;
+    }
+
     SSL_CTX_sess_set_new_cb(mSslCtx.get(), DnsTlsTransport::newSessionCallback);
     SSL_CTX_sess_set_remove_cb(mSslCtx.get(), DnsTlsTransport::removeSessionCallback);
 
