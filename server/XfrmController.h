@@ -101,7 +101,6 @@ struct XfrmEncap {
 
 // minimally sufficient structure to match either an SA or a Policy
 struct XfrmId {
-    XfrmDirection direction;
     xfrm_address_t dstAddr; // network order
     xfrm_address_t srcAddr;
     int addrFamily;  // AF_INET or AF_INET6
@@ -125,20 +124,19 @@ public:
     netdutils::Status ipSecSetEncapSocketOwner(const android::base::unique_fd& socket, int newUid,
                                                uid_t callerUid);
 
-    netdutils::Status ipSecAllocateSpi(int32_t transformId, int32_t direction,
-                                       const std::string& localAddress,
+    netdutils::Status ipSecAllocateSpi(int32_t transformId, const std::string& localAddress,
                                        const std::string& remoteAddress, int32_t inSpi,
                                        int32_t* outSpi);
 
     netdutils::Status ipSecAddSecurityAssociation(
-        int32_t transformId, int32_t mode, int32_t direction, const std::string& localAddress,
-        const std::string& remoteAddress, int64_t underlyingNetworkHandle, int32_t spi,
+        int32_t transformId, int32_t mode, const std::string& sourceAddress,
+        const std::string& destinationAddress, int64_t underlyingNetworkHandle, int32_t spi,
         const std::string& authAlgo, const std::vector<uint8_t>& authKey, int32_t authTruncBits,
         const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits,
         const std::string& aeadAlgo, const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits,
         int32_t encapType, int32_t encapLocalPort, int32_t encapRemotePort);
 
-    netdutils::Status ipSecDeleteSecurityAssociation(int32_t transformId, int32_t direction,
+    netdutils::Status ipSecDeleteSecurityAssociation(int32_t transformId,
                                                      const std::string& localAddress,
                                                      const std::string& remoteAddress, int32_t spi);
 
@@ -238,9 +236,9 @@ private:
 #endif
 
     // helper function for filling in the XfrmId (and XfrmSaInfo) structure
-    static netdutils::Status fillXfrmId(int32_t direction, const std::string& localAddress,
-                                          const std::string& remoteAddress, int32_t spi,
-                                          int32_t transformId, XfrmId* xfrmId);
+    static netdutils::Status fillXfrmId(const std::string& sourceAddress,
+                                        const std::string& destinationAddress, int32_t spi,
+                                        int32_t transformId, XfrmId* xfrmId);
 
     // Top level functions for managing a Transport Mode Transform
     static netdutils::Status addTransportModeTransform(const XfrmSaInfo& record);
@@ -266,7 +264,8 @@ private:
                                                        const XfrmSocket& sock);
     static int fillUserSaId(const XfrmId& record, xfrm_usersa_id* said);
     static int fillUserTemplate(const XfrmSaInfo& record, xfrm_user_tmpl* tmpl);
-    static int fillTransportModeUserSpInfo(const XfrmSaInfo& record, xfrm_userpolicy_info* usersp);
+    static int fillTransportModeUserSpInfo(const XfrmSaInfo& record, XfrmDirection direction,
+                                           xfrm_userpolicy_info* usersp);
 
     static netdutils::Status allocateSpi(const XfrmSaInfo& record, uint32_t minSpi, uint32_t maxSpi,
                                          uint32_t* outSpi, const XfrmSocket& sock);
