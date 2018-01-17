@@ -326,17 +326,15 @@ interface INetd {
     * Reserve an SPI from the kernel
     *
     * @param transformId a unique identifier for allocated resources
-    * @param direction DIRECTION_IN or DIRECTION_OUT
-    * @param localAddress InetAddress as string for the local endpoint
-    * @param remoteAddress InetAddress as string for the remote endpoint
+    * @param sourceAddress InetAddress as string for the sending endpoint
+    * @param destinationAddress InetAddress as string for the receiving endpoint
     * @param spi a requested 32-bit unique ID or 0 to request random allocation
     * @return the SPI that was allocated or 0 if failed
     */
     int ipSecAllocateSpi(
             int transformId,
-            int direction,
-            in @utf8InCpp String localAddress,
-            in @utf8InCpp String remoteAddress,
+            in @utf8InCpp String sourceAddress,
+            in @utf8InCpp String destinationAddress,
             int spi);
 
    /**
@@ -345,9 +343,8 @@ interface INetd {
     *
     * @param transformId a unique identifier for allocated resources
     * @param mode either Transport or Tunnel mode
-    * @param direction DIRECTION_IN or DIRECTION_OUT
-    * @param localAddress InetAddress as string for the local endpoint
-    * @param remoteAddress InetAddress as string for the remote endpoint
+    * @param sourceAddress InetAddress as string for the sending endpoint
+    * @param destinationAddress InetAddress as string for the receiving endpoint
     * @param underlyingNetworkHandle the networkHandle of the network to which the SA is applied
     * @param spi a 32-bit unique ID allocated to the user
     * @param authAlgo a string identifying the authentication algorithm to be used
@@ -367,9 +364,8 @@ interface INetd {
     void ipSecAddSecurityAssociation(
             int transformId,
             int mode,
-            int direction,
-            in @utf8InCpp String localAddress,
-            in @utf8InCpp String remoteAddress,
+            in @utf8InCpp String sourceAddress,
+            in @utf8InCpp String destinationAddress,
             long underlyingNetworkHandle,
             int spi,
             in @utf8InCpp String authAlgo, in byte[] authKey, in int authTruncBits,
@@ -383,16 +379,14 @@ interface INetd {
     * Delete a previously created security association identified by the provided parameters
     *
     * @param transformId a unique identifier for allocated resources
-    * @param direction DIRECTION_IN or DIRECTION_OUT
-    * @param localAddress InetAddress as string for the local endpoint
-    * @param remoteAddress InetAddress as string for the remote endpoint
+    * @param sourceAddress InetAddress as string for the sending endpoint
+    * @param destinationAddress InetAddress as string for the receiving endpoint
     * @param spi a requested 32-bit unique ID allocated to the user
     */
     void ipSecDeleteSecurityAssociation(
             int transformId,
-            int direction,
-            in @utf8InCpp String localAddress,
-            in @utf8InCpp String remoteAddress,
+            in @utf8InCpp String sourceAddress,
+            in @utf8InCpp String destinationAddress,
             int spi);
 
    /**
@@ -401,16 +395,16 @@ interface INetd {
     * @param socket a user-provided socket that will have IPsec applied
     * @param transformId a unique identifier for allocated resources
     * @param direction DIRECTION_IN or DIRECTION_OUT
-    * @param localAddress InetAddress as string for the local endpoint
-    * @param remoteAddress InetAddress as string for the remote endpoint
+    * @param sourceAddress InetAddress as string for the sending endpoint
+    * @param destinationAddress InetAddress as string for the receiving endpoint
     * @param spi a 32-bit unique ID allocated to the user (socket owner)
     */
     void ipSecApplyTransportModeTransform(
             in FileDescriptor socket,
             int transformId,
             int direction,
-            in @utf8InCpp String localAddress,
-            in @utf8InCpp String remoteAddress,
+            in @utf8InCpp String sourceAddress,
+            in @utf8InCpp String destinationAddress,
             int spi);
 
    /**
