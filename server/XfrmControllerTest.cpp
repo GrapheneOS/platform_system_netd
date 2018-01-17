@@ -239,8 +239,8 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAllocateSpi) {
 
     XfrmController ctrl;
     int outSpi = 0;
-    Status res = ctrl.ipSecAllocateSpi(1 /* resourceId */, static_cast<int>(XfrmDirection::OUT),
-                                       localAddr, remoteAddr, DROID_SPI, &outSpi);
+    Status res = ctrl.ipSecAllocateSpi(1 /* resourceId */, localAddr,
+                                       remoteAddr, DROID_SPI, &outSpi);
 
     EXPECT_TRUE(isOk(res)) << res;
     EXPECT_EQ(DROID_SPI, outSpi);
@@ -287,11 +287,11 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
 
     XfrmController ctrl;
     Status res = ctrl.ipSecAddSecurityAssociation(
-        1 /* resourceId */, static_cast<int>(mode),
-        static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr, 0 /* underlying network */,
-        DROID_SPI, "hmac(sha256)" /* auth algo */, authKey, 128 /* auth trunc length */,
-        "cbc(aes)" /* encryption algo */, cryptKey, 0 /* crypt trunc length? */, "" /* AEAD algo */,
-        {}, 0, static_cast<int>(XfrmEncapType::NONE), 0 /* local port */, 0 /* remote port */);
+        1 /* resourceId */, static_cast<int>(mode), localAddr, remoteAddr,
+        0 /* underlying network */, DROID_SPI, "hmac(sha256)" /* auth algo */,
+        authKey, 128 /* auth trunc length */, "cbc(aes)" /* encryption algo */, cryptKey,
+        0 /* crypt trunc length? */, "" /* AEAD algo */, {}, 0,
+        static_cast<int>(XfrmEncapType::NONE), 0 /* local port */, 0 /* remote port */);
 
     EXPECT_TRUE(isOk(res)) << res;
     EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
@@ -370,7 +370,7 @@ TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv6Encap) {
 
     XfrmController ctrl;
     Status res = ctrl.ipSecAddSecurityAssociation(
-        1, static_cast<int>(XfrmMode::TRANSPORT), static_cast<int>(XfrmDirection::OUT),
+        1, static_cast<int>(XfrmMode::TRANSPORT),
         LOCALHOST_V6, TEST_ADDR_V6, 0, DROID_SPI, "hmac(sha256)", {}, 128, "cbc(aes)",
         {}, 0, "", {}, 0, static_cast<int>(XfrmEncapType::ESPINUDP_NON_IKE), 0, 0);
 
@@ -456,7 +456,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityAssociation) {
 
     XfrmController ctrl;
     Status res = ctrl.ipSecDeleteSecurityAssociation(
-        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr, DROID_SPI);
+        1 /* resourceId */, localAddr, remoteAddr, DROID_SPI);
 
     EXPECT_TRUE(isOk(res)) << res;
     EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
