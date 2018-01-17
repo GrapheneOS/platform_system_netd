@@ -31,7 +31,6 @@
 #include <android-base/strings.h>
 #include <cutils/log.h>
 
-#include "Fwmark.h"
 #include "NetdConstants.h"
 #include "Permission.h"
 #include "SockDiag.h"
@@ -217,6 +216,7 @@ int SockDiag::readDiagMsg(uint8_t proto, const SockDiag::DestroyFilter& shouldDe
 
 int SockDiag::readDiagMsgWithTcpInfo(const TcpInfoReader& tcpInfoReader) {
     NetlinkDumpCallback callback = [tcpInfoReader] (nlmsghdr *nlh) {
+        Fwmark mark;
         struct tcp_info *tcpinfo = nullptr;
         inet_diag_msg *msg = reinterpret_cast<inet_diag_msg *>(NLMSG_DATA(nlh));
         uint32_t attr_len = nlh->nlmsg_len - NLMSG_LENGTH(sizeof(*msg));
@@ -224,12 +224,14 @@ int SockDiag::readDiagMsgWithTcpInfo(const TcpInfoReader& tcpInfoReader) {
         while (RTA_OK(attr, attr_len)) {
             if (attr->rta_type == INET_DIAG_INFO) {
                 tcpinfo = reinterpret_cast<struct tcp_info*>(RTA_DATA(attr));
-                break;
+            }
+            if (attr->rta_type == INET_DIAG_MARK) {
+                mark.intValue = *reinterpret_cast<uint32_t*>(RTA_DATA(attr));
             }
             attr = RTA_NEXT(attr, attr_len);
         }
 
-        tcpInfoReader(msg, tcpinfo);
+        tcpInfoReader(mark, msg, tcpinfo);
     };
 
     return processNetlinkDump(mSock, callback);

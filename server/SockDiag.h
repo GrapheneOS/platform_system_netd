@@ -27,6 +27,7 @@
 #include <functional>
 #include <set>
 
+#include "Fwmark.h"
 #include "NetlinkCommands.h"
 #include "Permission.h"
 #include "UidRanges.h"
@@ -48,7 +49,7 @@ class SockDiag {
     typedef std::function<bool(uint8_t proto, const inet_diag_msg *)> DestroyFilter;
 
     // Callback function that is called once for every socket in the sockInfo dump.
-    typedef std::function<void(const struct inet_diag_msg *, const struct tcp_info *)>
+    typedef std::function<void(Fwmark mark, const struct inet_diag_msg *, const struct tcp_info *)>
             TcpInfoReader;
 
     struct DestroyRequest {

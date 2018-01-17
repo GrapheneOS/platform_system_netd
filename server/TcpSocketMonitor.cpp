@@ -19,6 +19,7 @@
 #include "TcpSocketMonitor.h"
 #include "DumpWriter.h"
 
+#include "Fwmark.h"
 #include "SockDiag.h"
 
 #include <arpa/inet.h>
@@ -57,7 +58,7 @@ constexpr const char* getTcpStateName(int t) {
     }
 }
 
-static void tcpInfoPrint(DumpWriter &dw, const struct inet_diag_msg *sockinfo,
+static void tcpInfoPrint(DumpWriter &dw, Fwmark mark, const struct inet_diag_msg *sockinfo,
                          const struct tcp_info *tcpinfo) {
   char saddr[INET6_ADDRSTRLEN] = {};
   char daddr[INET6_ADDRSTRLEN] = {};
@@ -65,9 +66,11 @@ static void tcpInfoPrint(DumpWriter &dw, const struct inet_diag_msg *sockinfo,
   inet_ntop(sockinfo->idiag_family, &(sockinfo->id.idiag_dst), daddr, sizeof(daddr));
 
   dw.println(
-      "uid=%u saddr=%s daddr=%s sport=%u dport=%u tcp_state=%s(%u) "
+      "netId=%d uid=%u mark=0x%x saddr=%s daddr=%s sport=%u dport=%u tcp_state=%s(%u) "
       "rqueue=%u wqueue=%u  rtt=%gms var_rtt=%gms rcv_rtt=%gms unacked=%u snd_cwnd=%u",
+      mark.netId,
       sockinfo->idiag_uid,
+      mark.intValue,
       saddr,
       daddr,
       ntohs(sockinfo->id.idiag_sport),
@@ -94,9 +97,9 @@ void TcpSocketMonitor::dump(DumpWriter& dw) {
        return;
     }
 
-    const auto tcpInfoReader = [&dw](const struct inet_diag_msg *sockinfo,
+    const auto tcpInfoReader = [&dw](Fwmark mark, const struct inet_diag_msg *sockinfo,
                                      const struct tcp_info *tcpinfo) {
-        tcpInfoPrint(dw, sockinfo, tcpinfo);
+        tcpInfoPrint(dw, mark, sockinfo, tcpinfo);
     };
 
     if (int ret = sd.getLiveTcpInfos(tcpInfoReader)) {
