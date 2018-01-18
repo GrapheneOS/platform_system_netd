@@ -136,6 +136,7 @@ LOCAL_SRC_FILES := \
         VirtualNetwork.cpp \
         WakeupController.cpp \
         XfrmController.cpp \
+        TcpSocketMonitor.cpp \
         main.cpp \
         oem_iptables_hook.cpp \
         binder/android/net/UidRange.cpp \
@@ -197,6 +198,7 @@ LOCAL_SRC_FILES := \
         TetherController.cpp TetherControllerTest.cpp \
         TrafficController.cpp TrafficControllerTest.cpp \
         XfrmController.cpp XfrmControllerTest.cpp \
+        TcpSocketMonitor.cpp \
         UidRanges.cpp \
         NetlinkListener.cpp \
         WakeupController.cpp WakeupControllerTest.cpp \
