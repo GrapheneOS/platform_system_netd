@@ -352,18 +352,18 @@ netdutils::Status XfrmController::ipSecSetEncapSocketOwner(const android::base::
     if (info.st_uid != callerUid) {
         return netdutils::statusFromErrno(EPERM, "fchown disabled for non-owner calls");
     }
-    if (S_ISSOCK(info.st_mode) == 0){
+    if (S_ISSOCK(info.st_mode) == 0) {
         return netdutils::statusFromErrno(EINVAL, "File descriptor was not a socket");
     }
 
     int optval;
     socklen_t optlen;
-    netdutils::Status status = getSyscallInstance().getsockopt(Fd(socket), IPPROTO_UDP, UDP_ENCAP,
-                                                               &optval, &optlen);
+    netdutils::Status status =
+        getSyscallInstance().getsockopt(Fd(socket), IPPROTO_UDP, UDP_ENCAP, &optval, &optlen);
     if (status != netdutils::status::ok) {
         return status;
     }
-    if (optval != UDP_ENCAP_ESPINUDP && optval != UDP_ENCAP_ESPINUDP_NON_IKE){
+    if (optval != UDP_ENCAP_ESPINUDP && optval != UDP_ENCAP_ESPINUDP_NON_IKE) {
         return netdutils::statusFromErrno(EINVAL, "Socket did not have UDP-encap sockopt set");
     }
     if (fchown(fd, newUid, -1)) {
@@ -373,20 +373,19 @@ netdutils::Status XfrmController::ipSecSetEncapSocketOwner(const android::base::
     return netdutils::status::ok;
 }
 
-netdutils::Status XfrmController::ipSecAllocateSpi(int32_t transformId, int32_t direction,
-                                                   const std::string& localAddress,
-                                                   const std::string& remoteAddress, int32_t inSpi,
-                                                   int32_t* outSpi) {
+netdutils::Status XfrmController::ipSecAllocateSpi(int32_t transformId,
+                                                   const std::string& sourceAddress,
+                                                   const std::string& destinationAddress,
+                                                   int32_t inSpi, int32_t* outSpi) {
     ALOGD("XfrmController:%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("transformId=%d", transformId);
-    ALOGD("direction=%d", direction);
-    ALOGD("localAddress=%s", localAddress.c_str());
-    ALOGD("remoteAddress=%s", remoteAddress.c_str());
+    ALOGD("sourceAddress=%s", sourceAddress.c_str());
+    ALOGD("destinationAddress=%s", destinationAddress.c_str());
     ALOGD("inSpi=%0.8x", inSpi);
 
     XfrmSaInfo saInfo{};
     netdutils::Status ret =
-        fillXfrmId(direction, localAddress, remoteAddress, INVALID_SPI, transformId, &saInfo);
+        fillXfrmId(sourceAddress, destinationAddress, INVALID_SPI, transformId, &saInfo);
     if (!isOk(ret)) {
         return ret;
     }
@@ -414,8 +413,8 @@ netdutils::Status XfrmController::ipSecAllocateSpi(int32_t transformId, int32_t 
 }
 
 netdutils::Status XfrmController::ipSecAddSecurityAssociation(
-    int32_t transformId, int32_t mode, int32_t direction, const std::string& localAddress,
-    const std::string& remoteAddress, int64_t underlyingNetworkHandle, int32_t spi,
+    int32_t transformId, int32_t mode, const std::string& sourceAddress,
+    const std::string& destinationAddress, int64_t underlyingNetworkHandle, int32_t spi,
     const std::string& authAlgo, const std::vector<uint8_t>& authKey, int32_t authTruncBits,
     const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits,
     const std::string& aeadAlgo, const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits,
@@ -423,9 +422,8 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("transformId=%d", transformId);
     ALOGD("mode=%d", mode);
-    ALOGD("direction=%d", direction);
-    ALOGD("localAddress=%s", localAddress.c_str());
-    ALOGD("remoteAddress=%s", remoteAddress.c_str());
+    ALOGD("sourceAddress=%s", sourceAddress.c_str());
+    ALOGD("destinationAddress=%s", destinationAddress.c_str());
     ALOGD("underlyingNetworkHandle=%" PRIx64, underlyingNetworkHandle);
     ALOGD("spi=%0.8x", spi);
     ALOGD("authAlgo=%s", authAlgo.c_str());
@@ -440,7 +438,7 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
 
     XfrmSaInfo saInfo{};
     netdutils::Status ret =
-        fillXfrmId(direction, localAddress, remoteAddress, spi, transformId, &saInfo);
+        fillXfrmId(sourceAddress, destinationAddress, spi, transformId, &saInfo);
     if (!isOk(ret)) {
         return ret;
     }
@@ -453,8 +451,6 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
 
     saInfo.aead = XfrmAlgo{
         .name = aeadAlgo, .key = aeadKey, .truncLenBits = static_cast<uint16_t>(aeadIcvBits)};
-
-    saInfo.direction = static_cast<XfrmDirection>(direction);
 
     switch (static_cast<XfrmMode>(mode)) {
         case XfrmMode::TRANSPORT:
@@ -478,18 +474,10 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
             if (saInfo.addrFamily != AF_INET) {
                 return netdutils::statusFromErrno(EAFNOSUPPORT, "IPv6 encap not supported");
             }
-            switch (saInfo.direction) {
-                case XfrmDirection::IN:
-                    saInfo.encap.srcPort = encapRemotePort;
-                    saInfo.encap.dstPort = encapLocalPort;
-                    break;
-                case XfrmDirection::OUT:
-                    saInfo.encap.srcPort = encapLocalPort;
-                    saInfo.encap.dstPort = encapRemotePort;
-                    break;
-                default:
-                    return netdutils::statusFromErrno(EINVAL, "Invalid direction");
-            }
+            // The ports are not used on input SAs, so this is OK to be wrong when
+            // direction is ultimately input.
+            saInfo.encap.srcPort = encapLocalPort;
+            saInfo.encap.dstPort = encapRemotePort;
         // fall through
         case XfrmEncapType::NONE:
             saInfo.encap.type = static_cast<XfrmEncapType>(encapType);
@@ -498,29 +486,26 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
             return netdutils::statusFromErrno(EINVAL, "Invalid encap type");
     }
 
-    ret = createSecurityAssociation(saInfo, sock);
+    ret = updateSecurityAssociation(saInfo, sock);
     if (!isOk(ret)) {
-        ALOGD("Failed creating a Security Association, line=%d", __LINE__);
+        ALOGD("Failed updating a Security Association, line=%d", __LINE__);
     }
 
     return ret;
 }
 
-netdutils::Status XfrmController::ipSecDeleteSecurityAssociation(int32_t transformId,
-                                                                 int32_t direction,
-                                                                 const std::string& localAddress,
-                                                                 const std::string& remoteAddress,
-                                                                 int32_t spi) {
+netdutils::Status
+XfrmController::ipSecDeleteSecurityAssociation(int32_t transformId,
+                                               const std::string& sourceAddress,
+                                               const std::string& destinationAddress, int32_t spi) {
     ALOGD("XfrmController:%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("transformId=%d", transformId);
-    ALOGD("direction=%d", direction);
-    ALOGD("localAddress=%s", localAddress.c_str());
-    ALOGD("remoteAddress=%s", remoteAddress.c_str());
+    ALOGD("sourceAddress=%s", sourceAddress.c_str());
+    ALOGD("destinationAddress=%s", destinationAddress.c_str());
     ALOGD("spi=%0.8x", spi);
 
     XfrmId saId{};
-    netdutils::Status ret =
-        fillXfrmId(direction, localAddress, remoteAddress, spi, transformId, &saId);
+    netdutils::Status ret = fillXfrmId(sourceAddress, destinationAddress, spi, transformId, &saId);
     if (!isOk(ret)) {
         return ret;
     }
@@ -540,61 +525,45 @@ netdutils::Status XfrmController::ipSecDeleteSecurityAssociation(int32_t transfo
     return ret;
 }
 
-netdutils::Status XfrmController::fillXfrmId(int32_t direction, const std::string& localAddress,
-                                             const std::string& remoteAddress, int32_t spi,
+netdutils::Status XfrmController::fillXfrmId(const std::string& sourceAddress,
+                                             const std::string& destinationAddress, int32_t spi,
                                              int32_t transformId, XfrmId* xfrmId) {
     // Fill the straightforward fields first
     xfrmId->transformId = transformId;
-    xfrmId->direction = static_cast<XfrmDirection>(direction);
     xfrmId->spi = htonl(spi);
 
     // Use the addresses to determine the address family and do validation
-    xfrm_address_t localXfrmAddr{}, remoteXfrmAddr{};
-    StatusOr<int> addrFamilyLocal, addrFamilyRemote;
-    addrFamilyRemote = convertToXfrmAddr(remoteAddress, &remoteXfrmAddr);
-    addrFamilyLocal = convertToXfrmAddr(localAddress, &localXfrmAddr);
-    if (!isOk(addrFamilyRemote) || !isOk(addrFamilyLocal)) {
-        return netdutils::statusFromErrno(EINVAL,
-                                          "Invalid address " + localAddress + "/" + remoteAddress);
+    xfrm_address_t sourceXfrmAddr{}, destXfrmAddr{};
+    StatusOr<int> sourceFamily, destFamily;
+    sourceFamily = convertToXfrmAddr(sourceAddress, &sourceXfrmAddr);
+    destFamily = convertToXfrmAddr(destinationAddress, &destXfrmAddr);
+    if (!isOk(sourceFamily) || !isOk(destFamily)) {
+        return netdutils::statusFromErrno(EINVAL, "Invalid address " + sourceAddress + "/" +
+                                                      destinationAddress);
     }
 
-    if (addrFamilyRemote.value() == AF_UNSPEC ||
-        (addrFamilyLocal.value() != AF_UNSPEC &&
-         addrFamilyLocal.value() != addrFamilyRemote.value())) {
-        ALOGD("Invalid or Mismatched Address Families, %d != %d, line=%d", addrFamilyLocal.value(),
-              addrFamilyRemote.value(), __LINE__);
+    if (destFamily.value() == AF_UNSPEC ||
+        (sourceFamily.value() != AF_UNSPEC && sourceFamily.value() != destFamily.value())) {
+        ALOGD("Invalid or Mismatched Address Families, %d != %d, line=%d", sourceFamily.value(),
+              destFamily.value(), __LINE__);
         return netdutils::statusFromErrno(EINVAL, "Invalid or mismatched address families");
     }
 
-    xfrmId->addrFamily = addrFamilyRemote.value();
+    xfrmId->addrFamily = destFamily.value();
 
-    switch (static_cast<XfrmDirection>(direction)) {
-        case XfrmDirection::IN:
-            xfrmId->dstAddr = localXfrmAddr;
-            xfrmId->srcAddr = remoteXfrmAddr;
-            break;
-
-        case XfrmDirection::OUT:
-            xfrmId->dstAddr = remoteXfrmAddr;
-            xfrmId->srcAddr = localXfrmAddr;
-            break;
-
-        default:
-            ALOGD("Invalid XFRM direction, line=%d", __LINE__);
-            // Invalid direction for Transport mode transform: time to bail
-            return netdutils::statusFromErrno(EINVAL, "Invalid direction");
-    }
+    xfrmId->dstAddr = destXfrmAddr;
+    xfrmId->srcAddr = sourceXfrmAddr;
     return netdutils::status::ok;
 }
 
 netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
     const android::base::unique_fd& socket, int32_t transformId, int32_t direction,
-    const std::string& localAddress, const std::string& remoteAddress, int32_t spi) {
+    const std::string& sourceAddress, const std::string& destinationAddress, int32_t spi) {
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("transformId=%d", transformId);
     ALOGD("direction=%d", direction);
-    ALOGD("localAddress=%s", localAddress.c_str());
-    ALOGD("remoteAddress=%s", remoteAddress.c_str());
+    ALOGD("sourceAddress=%s", sourceAddress.c_str());
+    ALOGD("destinationAddress=%s", destinationAddress.c_str());
     ALOGD("spi=%0.8x", spi);
 
     StatusOr<sockaddr_storage> ret = getSyscallInstance().getsockname<sockaddr_storage>(Fd(socket));
@@ -606,7 +575,7 @@ netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
 
     XfrmSaInfo saInfo{};
     netdutils::Status status =
-        fillXfrmId(direction, localAddress, remoteAddress, spi, transformId, &saInfo);
+        fillXfrmId(sourceAddress, destinationAddress, spi, transformId, &saInfo);
     if (!isOk(status)) {
         ALOGE("Couldn't build SA ID %s", __FUNCTION__);
         return status;
@@ -624,7 +593,7 @@ netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
         xfrm_user_tmpl tmpl;
     } policy{};
 
-    fillTransportModeUserSpInfo(saInfo, &policy.info);
+    fillTransportModeUserSpInfo(saInfo, static_cast<XfrmDirection>(direction), &policy.info);
     fillUserTemplate(saInfo, &policy.tmpl);
 
     LOG_HEX("XfrmUserPolicy", reinterpret_cast<char*>(&policy), sizeof(policy));
@@ -664,7 +633,7 @@ void XfrmController::fillTransportModeSelector(const XfrmSaInfo& record, xfrm_se
     selector->ifindex = record.netId; // TODO : still need to sort this out
 }
 
-netdutils::Status XfrmController::createSecurityAssociation(const XfrmSaInfo& record,
+netdutils::Status XfrmController::updateSecurityAssociation(const XfrmSaInfo& record,
                                                             const XfrmSocket& sock) {
     xfrm_usersa_info usersa{};
     nlattr_algo_crypt crypt{};
@@ -900,7 +869,7 @@ netdutils::Status XfrmController::allocateSpi(const XfrmSaInfo& record, uint32_t
     return ret;
 }
 
-int XfrmController::fillTransportModeUserSpInfo(const XfrmSaInfo& record,
+int XfrmController::fillTransportModeUserSpInfo(const XfrmSaInfo& record, XfrmDirection direction,
                                                 xfrm_userpolicy_info* usersp) {
     fillTransportModeSelector(record, &usersp->sel);
     fillXfrmLifetimeDefaults(&usersp->lft);
@@ -908,7 +877,7 @@ int XfrmController::fillTransportModeUserSpInfo(const XfrmSaInfo& record,
     /* if (index) index & 0x3 == dir -- must be true
      * xfrm_user.c:verify_newpolicy_info() */
     usersp->index = 0;
-    usersp->dir = static_cast<uint8_t>(record.direction);
+    usersp->dir = static_cast<uint8_t>(direction);
     usersp->action = XFRM_POLICY_ALLOW;
     usersp->flags = XFRM_POLICY_LOCALOK;
     usersp->share = XFRM_SHARE_UNIQUE;
