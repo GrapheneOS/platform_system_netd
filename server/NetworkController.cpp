@@ -355,6 +355,9 @@ int NetworkController::createPhysicalNetworkLocked(unsigned netId, Permission pe
     }
 
     mNetworks[netId] = physicalNetwork;
+
+    updateTcpSocketMonitorPolling();
+
     return 0;
 }
 
@@ -448,6 +451,9 @@ int NetworkController::destroyNetwork(unsigned netId) {
     mNetworks.erase(netId);
     delete network;
     _resolv_delete_cache_for_net(netId);
+
+    updateTcpSocketMonitorPolling();
+
     return ret;
 }
 
@@ -728,6 +734,23 @@ int NetworkController::modifyFallthroughLocked(unsigned vpnNetId, bool add) {
         }
     }
     return 0;
+}
+
+void NetworkController::updateTcpSocketMonitorPolling() {
+    bool physicalNetworkExists = false;
+    for (const auto& entry : mNetworks) {
+        const auto& network = entry.second;
+        if (network->getType() == Network::PHYSICAL && network->getNetId() >= MIN_NET_ID) {
+            physicalNetworkExists = true;
+            break;
+        }
+    }
+
+    if (physicalNetworkExists) {
+        android::net::gCtls->tcpSocketMonitor.resumePolling();
+    } else {
+        android::net::gCtls->tcpSocketMonitor.suspendPolling();
+    }
 }
 
 }  // namespace net
