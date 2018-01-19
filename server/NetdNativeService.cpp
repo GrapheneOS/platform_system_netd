@@ -557,6 +557,67 @@ binder::Status NetdNativeService::ipSecRemoveTransportModeTransform(
                     socket));
 }
 
+binder::Status NetdNativeService::ipSecAddSecurityPolicy(
+        int32_t transformId,
+        int32_t direction,
+        const std::string& sourceAddress,
+        const std::string& destinationAddress,
+        int32_t spi,
+        int32_t markValue,
+        int32_t markMask){
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    ALOGD("ipSecAddSecurityPolicy()");
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecAddSecurityPolicy(
+                    transformId,
+                    direction,
+                    sourceAddress,
+                    destinationAddress,
+                    spi,
+                    markValue,
+                    markMask));
+}
+
+binder::Status NetdNativeService::ipSecUpdateSecurityPolicy(
+        int32_t transformId,
+        int32_t direction,
+        const std::string& sourceAddress,
+        const std::string& destinationAddress,
+        int32_t spi,
+        int32_t markValue,
+        int32_t markMask){
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    ALOGD("ipSecAddSecurityPolicy()");
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecUpdateSecurityPolicy(
+                    transformId,
+                    direction,
+                    sourceAddress,
+                    destinationAddress,
+                    spi,
+                    markValue,
+                    markMask));
+}
+
+binder::Status NetdNativeService::ipSecDeleteSecurityPolicy(
+        int32_t transformId,
+        int32_t direction,
+        const std::string& sourceAddress,
+        const std::string& destinationAddress,
+        int32_t markValue,
+        int32_t markMask){
+    // Necessary locking done in IpSecService and kernel
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    ALOGD("ipSecAddSecurityPolicy()");
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecDeleteSecurityPolicy(
+                    transformId,
+                    direction,
+                    sourceAddress,
+                    destinationAddress,
+                    markValue,
+                    markMask));
+}
+
 binder::Status NetdNativeService::setIPv6AddrGenMode(const std::string& ifName,
                                                      int32_t mode) {
     ENFORCE_PERMISSION(NETWORK_STACK);

@@ -425,6 +425,64 @@ interface INetd {
             in FileDescriptor socket);
 
    /**
+    * Adds an IPsec global policy.
+    *
+    * @param transformId a unique identifier for allocated resources
+    * @param direction DIRECTION_IN or DIRECTION_OUT
+    * @param sourceAddress InetAddress as string for the sending endpoint
+    * @param destinationAddress InetAddress as string for the receiving endpoint
+    * @param spi a 32-bit unique ID allocated to the user
+    * @param markValue a 32-bit unique ID chosen by the user
+    * @param markMask a 32-bit mask chosen by the user
+    */
+    void ipSecAddSecurityPolicy(
+            int transformId,
+            int direction,
+            in @utf8InCpp String sourceAddress,
+            in @utf8InCpp String destinationAddress,
+            int spi,
+            int markValue,
+            int markMask);
+
+   /**
+    * Updates an IPsec global policy.
+    *
+    * @param transformId a unique identifier for allocated resources
+    * @param direction DIRECTION_IN or DIRECTION_OUT
+    * @param sourceAddress InetAddress as string for the sending endpoint
+    * @param destinationAddress InetAddress as string for the receiving endpoint
+    * @param spi a 32-bit unique ID allocated to the user
+    * @param markValue a 32-bit unique ID chosen by the user
+    * @param markMask a 32-bit mask chosen by the user
+    */
+    void ipSecUpdateSecurityPolicy(
+            int transformId,
+            int direction,
+            in @utf8InCpp String sourceAddress,
+            in @utf8InCpp String destinationAddress,
+            int spi,
+            int markValue,
+            int markMask);
+
+   /**
+    * Deletes an IPsec global policy.
+    *
+    * @param transformId a unique identifier for allocated resources
+    * @param direction DIRECTION_IN or DIRECTION_OUT
+    * @param sourceAddress InetAddress as string for the sending endpoint
+    * @param destinationAddress InetAddress as string for the receiving endpoint
+    * @param markValue a 32-bit unique ID chosen by the user
+    * @param markMask a 32-bit mask chosen by the user
+    */
+    void ipSecDeleteSecurityPolicy(
+            int transformId,
+            int direction,
+            in @utf8InCpp String sourceAddress,
+            in @utf8InCpp String destinationAddress,
+            int markValue,
+            int markMask);
+
+   /**
     * Request notification of wakeup packets arriving on an interface. Notifications will be
     * delivered to INetdEventListener.onWakeupEvent().
     *
