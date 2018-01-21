@@ -206,6 +206,17 @@ void clearPrivateDnsProviders(unsigned netId) {
     privateDnsTransports.erase(netId);
 }
 
+constexpr const char* validationStatusToString(ResolverController::Validation value) {
+    switch (value) {
+        case ResolverController::Validation::in_process:     return "in_process";
+        case ResolverController::Validation::success:        return "success";
+        case ResolverController::Validation::fail:           return "fail";
+        case ResolverController::Validation::unknown_server: return "unknown_server";
+        case ResolverController::Validation::unknown_netid:  return "unknown_netid";
+        default: return "unknown_status";
+    }
+}
+
 }  // namespace
 
 int ResolverController::setDnsServers(unsigned netId, const char* searchDomains,
@@ -456,6 +467,26 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
                     static_cast<unsigned>(params.success_threshold),
                     static_cast<unsigned>(params.min_samples),
                     static_cast<unsigned>(params.max_samples));
+        }
+        {
+            std::lock_guard<std::mutex> guard(privateDnsLock);
+            const auto& netPair = privateDnsTransports.find(netId);
+            if (netPair == privateDnsTransports.end()) {
+                dw.println("No Private DNS configured");
+            } else {
+                const auto& tracker = netPair->second;
+                dw.println("Private DNS configuration (%zu entries)", tracker.size());
+                dw.incIndent();
+                for (const auto& kv : tracker) {
+                    const auto& server = kv.first;
+                    const auto status = kv.second;
+                    dw.println("%s name{%s} status{%s}",
+                            addrToString(&(server.ss)).c_str(),
+                            server.name.c_str(),
+                            validationStatusToString(status));
+                }
+                dw.decIndent();
+            }
         }
     }
     dw.decIndent();
