@@ -113,7 +113,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             int32_t mode,
             const std::string& sourceAddress,
             const std::string& destinationAddress,
-            int64_t underlyingNetworkHandle,
+            int32_t underlyingNetId,
             int32_t spi,
             int32_t markValue,
             int32_t markMask,

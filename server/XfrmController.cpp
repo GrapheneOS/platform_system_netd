@@ -414,7 +414,7 @@ netdutils::Status XfrmController::ipSecAllocateSpi(int32_t transformId,
 
 netdutils::Status XfrmController::ipSecAddSecurityAssociation(
     int32_t transformId, int32_t mode, const std::string& sourceAddress,
-    const std::string& destinationAddress, int64_t underlyingNetworkHandle, int32_t spi,
+    const std::string& destinationAddress, int32_t underlyingNetId, int32_t spi,
     int32_t markValue, int32_t markMask, const std::string& authAlgo,
     const std::vector<uint8_t>& authKey, int32_t authTruncBits, const std::string& cryptAlgo,
     const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits, const std::string& aeadAlgo,
@@ -425,7 +425,7 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
     ALOGD("mode=%d", mode);
     ALOGD("sourceAddress=%s", sourceAddress.c_str());
     ALOGD("destinationAddress=%s", destinationAddress.c_str());
-    ALOGD("underlyingNetworkHandle=%" PRIx64, underlyingNetworkHandle);
+    ALOGD("underlyingNetworkId=%d", underlyingNetId);
     ALOGD("spi=%0.8x", spi);
     ALOGD("markValue=%x", markValue);
     ALOGD("markMask=%x", markMask);
@@ -488,6 +488,8 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
         default:
             return netdutils::statusFromErrno(EINVAL, "Invalid encap type");
     }
+
+    saInfo.netId = underlyingNetId;
 
     ret = updateSecurityAssociation(saInfo, sock);
     if (!isOk(ret)) {
@@ -725,7 +727,6 @@ void XfrmController::fillXfrmSelector(const XfrmSaInfo& record, xfrm_selector* s
     selector->family = record.addrFamily;
     selector->proto = AF_UNSPEC;      // TODO: do we need to match the protocol? it's
                                       // possible via the socket
-    selector->ifindex = record.netId; // TODO : still need to sort this out
 }
 
 netdutils::Status XfrmController::updateSecurityAssociation(const XfrmSaInfo& record,
@@ -735,6 +736,7 @@ netdutils::Status XfrmController::updateSecurityAssociation(const XfrmSaInfo& re
     nlattr_algo_auth auth{};
     nlattr_algo_aead aead{};
     nlattr_xfrm_mark xfrmmark{};
+    nlattr_xfrm_output_mark xfrmoutputmark{};
     nlattr_encap_tmpl encap{};
 
     enum {
@@ -749,24 +751,28 @@ netdutils::Status XfrmController::updateSecurityAssociation(const XfrmSaInfo& re
         AEAD_PAD,
         MARK,
         MARK_PAD,
+        OUTPUT_MARK,
+        OUTPUT_MARK_PAD,
         ENCAP,
         ENCAP_PAD,
     };
 
     std::vector<iovec> iov = {
-        {NULL, 0},      // reserved for the eventual addition of a NLMSG_HDR
-        {&usersa, 0},   // main usersa_info struct
-        {kPadBytes, 0}, // up to NLMSG_ALIGNTO pad bytes of padding
-        {&crypt, 0},    // adjust size if crypt algo is present
-        {kPadBytes, 0}, // up to NLATTR_ALIGNTO pad bytes
-        {&auth, 0},     // adjust size if auth algo is present
-        {kPadBytes, 0}, // up to NLATTR_ALIGNTO pad bytes
-        {&aead, 0},     // adjust size if aead algo is present
-        {kPadBytes, 0}, // up to NLATTR_ALIGNTO pad bytes
-        {&xfrmmark, 0},   // adjust size if xfrm mark is present
-        {kPadBytes, 0},   // up to NLATTR_ALIGNTO pad bytes
-        {&encap, 0},    // adjust size if encapsulating
-        {kPadBytes, 0}, // up to NLATTR_ALIGNTO pad bytes
+        {NULL, 0},            // reserved for the eventual addition of a NLMSG_HDR
+        {&usersa, 0},         // main usersa_info struct
+        {kPadBytes, 0},       // up to NLMSG_ALIGNTO pad bytes of padding
+        {&crypt, 0},          // adjust size if crypt algo is present
+        {kPadBytes, 0},       // up to NLATTR_ALIGNTO pad bytes
+        {&auth, 0},           // adjust size if auth algo is present
+        {kPadBytes, 0},       // up to NLATTR_ALIGNTO pad bytes
+        {&aead, 0},           // adjust size if aead algo is present
+        {kPadBytes, 0},       // up to NLATTR_ALIGNTO pad bytes
+        {&xfrmmark, 0},       // adjust size if xfrm mark is present
+        {kPadBytes, 0},       // up to NLATTR_ALIGNTO pad bytes
+        {&xfrmoutputmark, 0}, // adjust size if xfrm output mark is present
+        {kPadBytes, 0},       // up to NLATTR_ALIGNTO pad bytes
+        {&encap, 0},          // adjust size if encapsulating
+        {kPadBytes, 0},       // up to NLATTR_ALIGNTO pad bytes
     };
 
     if (!record.aead.name.empty() && (!record.auth.name.empty() || !record.crypt.name.empty())) {
@@ -795,6 +801,9 @@ netdutils::Status XfrmController::updateSecurityAssociation(const XfrmSaInfo& re
 
     len = iov[MARK].iov_len = fillNlAttrXfrmMark(record, &xfrmmark);
     iov[MARK_PAD].iov_len = NLA_ALIGN(len) - len;
+
+    len = iov[OUTPUT_MARK].iov_len = fillNlAttrXfrmOutputMark(record.netId, &xfrmoutputmark);
+    iov[OUTPUT_MARK_PAD].iov_len = NLA_ALIGN(len) - len;
 
     len = iov[ENCAP].iov_len = fillNlAttrXfrmEncapTmpl(record, &encap);
     iov[ENCAP_PAD].iov_len = NLA_ALIGN(len) - len;
@@ -1098,6 +1107,19 @@ int XfrmController::fillNlAttrXfrmMark(const XfrmId& record, nlattr_xfrm_mark* m
     mark->mark.m = record.mark.m; // set to 0 if it's not used
     int len = NLA_HDRLEN + sizeof(xfrm_mark);
     fillXfrmNlaHdr(&mark->hdr, XFRMA_MARK, len);
+    return len;
+}
+
+int XfrmController::fillNlAttrXfrmOutputMark(
+    const __u32 output_mark_value, nlattr_xfrm_output_mark* output_mark) {
+    // Do not set if we were not given an output mark
+    if (output_mark_value == 0) {
+        return 0;
+    }
+
+    output_mark->outputMark = output_mark_value;
+    int len = NLA_HDRLEN + sizeof(__u32);
+    fillXfrmNlaHdr(&output_mark->hdr, XFRMA_OUTPUT_MARK, len);
     return len;
 }
 

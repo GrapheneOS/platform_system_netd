@@ -102,6 +102,7 @@ namespace net {
 static constexpr int DROID_SPI = 0xD1201D;
 static constexpr size_t KEY_LENGTH = 32;
 static constexpr int NLMSG_DEFAULTSIZE = 8192;
+static constexpr uint32_t TEST_XFRM_OUTPUT_MARK = 0x512;
 static constexpr uint32_t TEST_XFRM_MARK = 0x123;
 static constexpr uint32_t TEST_XFRM_MASK = 0xFFFFFFFF;
 
@@ -263,7 +264,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAllocateSpi) {
 }
 
 void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscalls,
-                                     const XfrmMode& mode) {
+                                     const XfrmMode& mode, __u32 underlying_netid) {
     const int family = (version == 6) ? AF_INET6 : AF_INET;
     const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
     const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
@@ -282,6 +283,10 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
         NLA_ALIGN(offsetof(XfrmController::nlattr_algo_auth, key) + KEY_LENGTH) +
         NLA_ALIGN(sizeof(XfrmController::nlattr_xfrm_mark));
 
+    if (underlying_netid) {
+        expectedMsgLength += NLA_ALIGN(sizeof(XfrmController::nlattr_xfrm_output_mark));
+    }
+
     std::vector<uint8_t> nlMsgBuf;
     EXPECT_CALL(mockSyscalls, writev(_, _))
         .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
@@ -291,10 +296,11 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
     XfrmController ctrl;
     Status res = ctrl.ipSecAddSecurityAssociation(
         1 /* resourceId */, static_cast<int>(mode), localAddr, remoteAddr,
-        0 /* underlying network */, DROID_SPI, TEST_XFRM_MARK /* mark */, TEST_XFRM_MASK /* mask */,
-        "hmac(sha256)" /* auth algo */, authKey, 128 /* auth trunc length */,
-        "cbc(aes)" /* encryption algo */, cryptKey, 0 /* crypt trunc length? */, "" /* AEAD algo */,
-        {}, 0, static_cast<int>(XfrmEncapType::NONE), 0 /* local port */, 0 /* remote port */);
+        underlying_netid /* underlying netid */, DROID_SPI, TEST_XFRM_MARK /* mark */,
+        TEST_XFRM_MASK /* mask */, "hmac(sha256)" /* auth algo */,
+        authKey, 128 /* auth trunc length */, "cbc(aes)" /* encryption algo */,
+        cryptKey, 0 /* crypt trunc length? */, "" /* AEAD algo */, {}, 0,
+        static_cast<int>(XfrmEncapType::NONE), 0 /* local port */, 0 /* remote port */);
 
     EXPECT_TRUE(isOk(res)) << res;
     EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
@@ -328,8 +334,9 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
     XfrmController::nlattr_algo_crypt encryptAlgo{};
     XfrmController::nlattr_algo_auth authAlgo{};
     XfrmController::nlattr_xfrm_mark mark{};
-    auto attrHandler = [&encryptAlgo, &authAlgo, &mark](const nlattr& attr,
-                                                        const Slice& attr_payload) {
+    XfrmController::nlattr_xfrm_output_mark outputmark{};
+    auto attrHandler = [&encryptAlgo, &authAlgo, &mark, &outputmark](const nlattr& attr,
+                                                                     const Slice& attr_payload) {
         Slice buf = attr_payload;
         if (attr.nla_type == XFRMA_ALG_CRYPT) {
             encryptAlgo.hdr = attr;
@@ -344,6 +351,9 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
         } else if (attr.nla_type == XFRMA_MARK) {
             mark.hdr = attr;
             netdutils::extract(buf, mark.mark);
+        } else if (attr.nla_type == XFRMA_OUTPUT_MARK) {
+            mark.hdr = attr;
+            netdutils::extract(buf, outputmark.outputMark);
         } else {
             FAIL() << "Unexpected nlattr type: " << attr.nla_type;
         }
@@ -357,16 +367,25 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
                         reinterpret_cast<void*>(&authAlgo.key), KEY_LENGTH));
     EXPECT_EQ(TEST_XFRM_MARK, mark.mark.v);
     EXPECT_EQ(TEST_XFRM_MASK, mark.mark.m);
+    if (underlying_netid) {
+        EXPECT_EQ(TEST_XFRM_OUTPUT_MARK, outputmark.outputMark);
+    }
 }
 
 TEST_P(XfrmControllerParameterizedTest, TestTransportModeIpSecAddSecurityAssociation) {
     const int version = GetParam();
-    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TRANSPORT);
+    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TRANSPORT, 0);
 }
 
 TEST_P(XfrmControllerParameterizedTest, TestTunnelModeIpSecAddSecurityAssociation) {
     const int version = GetParam();
-    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TUNNEL);
+    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TUNNEL, 0);
+}
+
+TEST_P(XfrmControllerParameterizedTest, TestTunnelModeIpSecAddSecurityAssociationWithOutputMark) {
+    const int version = GetParam();
+    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TUNNEL,
+                                    TEST_XFRM_OUTPUT_MARK);
 }
 
 TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv4Encap) {

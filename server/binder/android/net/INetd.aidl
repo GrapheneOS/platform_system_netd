@@ -345,7 +345,7 @@ interface INetd {
     * @param mode either Transport or Tunnel mode
     * @param sourceAddress InetAddress as string for the sending endpoint
     * @param destinationAddress InetAddress as string for the receiving endpoint
-    * @param underlyingNetworkHandle the networkHandle of the network to which the SA is applied
+    * @param underlyingNetId the netId of the network to which the SA is applied
     * @param spi a 32-bit unique ID allocated to the user
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
@@ -368,7 +368,7 @@ interface INetd {
             int mode,
             in @utf8InCpp String sourceAddress,
             in @utf8InCpp String destinationAddress,
-            long underlyingNetworkHandle,
+            int underlyingNetId,
             int spi,
             int markValue,
             int markMask,

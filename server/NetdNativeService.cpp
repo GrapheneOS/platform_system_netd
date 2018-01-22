@@ -487,7 +487,7 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
         int32_t mode,
         const std::string& sourceAddress,
         const std::string& destinationAddress,
-        int64_t underlyingNetworkHandle,
+        int32_t underlyingNetId,
         int32_t spi,
         int32_t markValue,
         int32_t markMask,
@@ -502,7 +502,7 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
     ALOGD("ipSecAddSecurityAssociation()");
     return asBinderStatus(gCtls->xfrmCtrl.ipSecAddSecurityAssociation(
               transformId, mode, sourceAddress, destinationAddress,
-              underlyingNetworkHandle,
+              underlyingNetId,
               spi, markValue, markMask,
               authAlgo, authKey, authTruncBits,
               cryptAlgo, cryptKey, cryptTruncBits,
