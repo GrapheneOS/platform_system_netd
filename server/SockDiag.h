@@ -49,8 +49,11 @@ class SockDiag {
     typedef std::function<bool(uint8_t proto, const inet_diag_msg *)> DestroyFilter;
 
     // Callback function that is called once for every socket in the sockInfo dump.
-    typedef std::function<void(Fwmark mark, const struct inet_diag_msg *, const struct tcp_info *)>
-            TcpInfoReader;
+    // 'tcp_info_length' is the length in bytes of the INET_DIAG_INFO attribute read from Netlink.
+    // Knowing this length is necessary for handling struct tcp_info serialized from different
+    // kernel versions.
+    typedef std::function<void(Fwmark mark, const struct inet_diag_msg *, const struct tcp_info *,
+            uint32_t tcp_info_length)> TcpInfoReader;
 
     struct DestroyRequest {
         nlmsghdr nlh;
