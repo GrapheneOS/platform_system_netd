@@ -136,6 +136,8 @@ class TrafficControllerTest : public ::testing::Test {
         EXPECT_EQ(0, writeToMapEntry(mFakeTagStatsMap, key, &statsMapValue, BPF_ANY));
         key->tag = 0;
         EXPECT_EQ(0, writeToMapEntry(mFakeUidStatsMap, key, &statsMapValue, BPF_ANY));
+        // put tag information back to statsKey
+        key->tag = tag;
     }
 
     void TearDown() {
@@ -253,6 +255,7 @@ TEST_F(TrafficControllerTest, TestDeleteTagData) {
     ASSERT_EQ(TEST_COUNTERSET, counterSetResult);
     StatsValue statsMapResult;
     ASSERT_EQ(-1, findMapEntry(mFakeTagStatsMap, &tagStatsMapKey, &statsMapResult));
+    tagStatsMapKey.tag = 0;
     ASSERT_EQ(0, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey, &statsMapResult));
     ASSERT_EQ((uint64_t)1, statsMapResult.rxTcpPackets);
     ASSERT_EQ((uint64_t)100, statsMapResult.rxTcpBytes);
@@ -333,7 +336,9 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoUids) {
     ASSERT_EQ(-1, findMapEntry(mFakeUidCounterSetMap, &uid2, &counterSetResult));
     StatsValue statsMapResult;
     ASSERT_EQ(-1, findMapEntry(mFakeTagStatsMap, &tagStatsMapKey2, &statsMapResult));
+    tagStatsMapKey2.tag = 0;
     ASSERT_EQ(-1, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey2, &statsMapResult));
+    tagStatsMapKey1.tag = 0;
     ASSERT_EQ(0, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey1, &statsMapResult));
     ASSERT_EQ((uint64_t)1, statsMapResult.rxTcpPackets);
     ASSERT_EQ((uint64_t)100, statsMapResult.rxTcpBytes);
