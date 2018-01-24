@@ -445,4 +445,10 @@ interface INetd {
     * @param mode SLAAC address generation mechanism to use
     */
     void setIPv6AddrGenMode(in @utf8InCpp String ifName, int mode);
+
+   /**
+    * Query the netd service to know if the eBPF traffic stats accounting service is currently
+    * running on the device.
+    */
+    boolean trafficCheckBpfStatsEnable();
 }

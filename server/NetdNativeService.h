@@ -144,6 +144,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     binder::Status ipSecRemoveTransportModeTransform(
             const android::base::unique_fd& socket);
+
+    binder::Status trafficCheckBpfStatsEnable(bool* ret) override;
 };
 
 }  // namespace net

@@ -24,31 +24,11 @@
 #include "Network.h"
 #include "android-base/unique_fd.h"
 
-#ifndef DEFAULT_OVERFLOWUID
-#define DEFAULT_OVERFLOWUID 65534
-#endif
-
-#define LOG_BUF_SIZE 65536
-
-#define BPF_PATH "/sys/fs/bpf"
-
-constexpr const char* COOKIE_UID_MAP_PATH = BPF_PATH "/traffic_cookie_uid_map";
-constexpr const char* UID_COUNTERSET_MAP_PATH = BPF_PATH "/traffic_uid_counterSet_map";
-constexpr const char* UID_STATS_MAP_PATH = BPF_PATH "/traffic_uid_stats_map";
-constexpr const char* TAG_STATS_MAP_PATH = BPF_PATH "/traffic_tag_stats_map";
-constexpr const char* BPF_EGRESS_PROG_PATH = BPF_PATH "/egress_prog";
-constexpr const char* BPF_INGRESS_PROG_PATH = BPF_PATH "/ingress_prog";
-
-constexpr const char* CGROUP_ROOT_PATH = "/dev/cg2_bpf";
-
-constexpr const int IPV6_TRANSPORT_PROTOCOL_OFFSET = 6;
-constexpr const int IPV4_TRANSPORT_PROTOCOL_OFFSET = 9;
-
 // TODO: change it to a reasonable size.
-constexpr const int COOKIE_UID_MAP_SIZE = 100;
-constexpr const int UID_COUNTERSET_MAP_SIZE = 100;
-constexpr const int UID_STATS_MAP_SIZE = 100;
-constexpr const int TAG_STATS_MAP_SIZE = 100;
+constexpr const int COOKIE_UID_MAP_SIZE = 1000;
+constexpr const int UID_COUNTERSET_MAP_SIZE = 1000;
+constexpr const int UID_STATS_MAP_SIZE = 1000;
+constexpr const int TAG_STATS_MAP_SIZE = 1000;
 
 constexpr const int COUNTERSETS_LIMIT = 2;
 
@@ -56,36 +36,6 @@ constexpr const int NONEXIST_COOKIE = 0;
 
 namespace android {
 namespace net {
-
-struct UidTag {
-    uint32_t uid;
-    uint32_t tag;
-};
-
-struct StatsKey {
-    uint32_t uid;
-    uint32_t tag;
-    uint32_t counterSet;
-    uint32_t ifaceIndex;
-};
-
-// TODO: verify if framework side still need the detail number about TCP and UDP
-// traffic. If not, remove the related tx/rx bytes and packets field to save
-// space and simplify the eBPF program.
-struct Stats {
-    uint64_t rxTcpPackets;
-    uint64_t rxTcpBytes;
-    uint64_t txTcpPackets;
-    uint64_t txTcpBytes;
-    uint64_t rxUdpPackets;
-    uint64_t rxUdpBytes;
-    uint64_t txUdpPackets;
-    uint64_t txUdpBytes;
-    uint64_t rxOtherPackets;
-    uint64_t rxOtherBytes;
-    uint64_t txOtherPackets;
-    uint64_t txOtherBytes;
-};
 
 class TrafficController {
   public:
@@ -127,10 +77,13 @@ class TrafficController {
      */
     int deleteTagData(uint32_t tag, uid_t uid);
 
-  private:
-    struct StatsKey NONEXIST_STATSKEY = {
-        .uid = DEFAULT_OVERFLOWUID, .tag = 0, .counterSet = 0, .ifaceIndex = 0};
+    /*
+     * Check if the current device have the bpf traffic stats accounting service
+     * running.
+     */
+    bool checkBpfStatsEnable();
 
+  private:
     /*
      * mCookieTagMap: Store the corresponding tag and uid for a specific socket.
      * Map Key: uint64_t socket cookie

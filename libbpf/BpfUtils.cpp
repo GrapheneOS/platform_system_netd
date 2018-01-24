@@ -21,6 +21,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <sstream>
 #include <string>
 
@@ -41,12 +42,6 @@ namespace bpf {
 
 int bpf(int cmd, Slice bpfAttr) {
     return syscall(__NR_bpf, cmd, bpfAttr.base(), bpfAttr.size());
-}
-
-bool bpfSupported() {
-    new_bpf_attr attr = {};
-    int ret = bpf(BPF_MAP_LOOKUP_ELEM, Slice(&attr, sizeof(attr)));
-    return !(ret == -1 && errno == ENOSYS);
 }
 
 int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size, uint32_t max_entries,
@@ -204,6 +199,21 @@ StatusOr<unique_fd> setUpBPFMap(uint32_t key_size, uint32_t value_size, uint32_t
         return statusFromErrno(errno, StringPrintf("pinned map not accessible: %s", path));
     }
     return map_fd;
+}
+
+bool hasBpfSupport() {
+    struct utsname buf;
+    int kernel_version_major;
+    int kernel_version_minor;
+
+    int ret = uname(&buf);
+    if (ret) {
+        return false;
+    }
+    char dummy;
+    ret = sscanf(buf.release, "%d.%d%c", &kernel_version_major, &kernel_version_minor, &dummy);
+    return (ret >= 2 && ((kernel_version_major > 4) ||
+                         (kernel_version_major == 4 && kernel_version_minor >= 9)));
 }
 
 }  // namespace bpf
