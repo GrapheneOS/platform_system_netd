@@ -218,12 +218,14 @@ int SockDiag::readDiagMsgWithTcpInfo(const TcpInfoReader& tcpInfoReader) {
     NetlinkDumpCallback callback = [tcpInfoReader] (nlmsghdr *nlh) {
         Fwmark mark;
         struct tcp_info *tcpinfo = nullptr;
+        uint32_t tcpinfoLength = 0;
         inet_diag_msg *msg = reinterpret_cast<inet_diag_msg *>(NLMSG_DATA(nlh));
         uint32_t attr_len = nlh->nlmsg_len - NLMSG_LENGTH(sizeof(*msg));
         struct rtattr *attr = reinterpret_cast<struct rtattr*>(msg+1);
         while (RTA_OK(attr, attr_len)) {
             if (attr->rta_type == INET_DIAG_INFO) {
                 tcpinfo = reinterpret_cast<struct tcp_info*>(RTA_DATA(attr));
+                tcpinfoLength = RTA_PAYLOAD(attr);
             }
             if (attr->rta_type == INET_DIAG_MARK) {
                 mark.intValue = *reinterpret_cast<uint32_t*>(RTA_DATA(attr));
@@ -231,7 +233,7 @@ int SockDiag::readDiagMsgWithTcpInfo(const TcpInfoReader& tcpInfoReader) {
             attr = RTA_NEXT(attr, attr_len);
         }
 
-        tcpInfoReader(mark, msg, tcpinfo);
+        tcpInfoReader(mark, msg, tcpinfo, tcpinfoLength);
     };
 
     return processNetlinkDump(mSock, callback);
