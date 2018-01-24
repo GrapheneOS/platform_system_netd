@@ -489,6 +489,8 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
         const std::string& destinationAddress,
         int64_t underlyingNetworkHandle,
         int32_t spi,
+        int32_t markValue,
+        int32_t markMask,
         const std::string& authAlgo, const std::vector<uint8_t>& authKey, int32_t authTruncBits,
         const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits,
         const std::string& aeadAlgo, const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits,
@@ -501,7 +503,7 @@ binder::Status NetdNativeService::ipSecAddSecurityAssociation(
     return asBinderStatus(gCtls->xfrmCtrl.ipSecAddSecurityAssociation(
               transformId, mode, sourceAddress, destinationAddress,
               underlyingNetworkHandle,
-              spi,
+              spi, markValue, markMask,
               authAlgo, authKey, authTruncBits,
               cryptAlgo, cryptKey, cryptTruncBits,
               aeadAlgo, aeadKey, aeadIcvBits,
@@ -512,7 +514,9 @@ binder::Status NetdNativeService::ipSecDeleteSecurityAssociation(
         int32_t transformId,
         const std::string& sourceAddress,
         const std::string& destinationAddress,
-        int32_t spi) {
+        int32_t spi,
+        int32_t markValue,
+        int32_t markMask) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
     ALOGD("ipSecDeleteSecurityAssociation()");
@@ -520,7 +524,9 @@ binder::Status NetdNativeService::ipSecDeleteSecurityAssociation(
                     transformId,
                     sourceAddress,
                     destinationAddress,
-                    spi));
+                    spi,
+                    markValue,
+                    markMask));
 }
 
 binder::Status NetdNativeService::ipSecApplyTransportModeTransform(
