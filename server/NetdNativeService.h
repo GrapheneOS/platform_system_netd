@@ -115,6 +115,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             const std::string& destinationAddress,
             int64_t underlyingNetworkHandle,
             int32_t spi,
+            int32_t markValue,
+            int32_t markMask,
             const std::string& authAlgo,
             const std::vector<uint8_t>& authKey,
             int32_t authTruncBits,
@@ -132,7 +134,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             int32_t transformId,
             const std::string& sourceAddress,
             const std::string& destinationAddress,
-            int32_t spi);
+            int32_t spi,
+            int32_t markValue,
+            int32_t markMask);
 
     binder::Status ipSecApplyTransportModeTransform(
             const android::base::unique_fd& socket,
