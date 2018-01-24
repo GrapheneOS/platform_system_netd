@@ -571,5 +571,11 @@ binder::Status NetdNativeService::wakeupDelInterface(const std::string& ifName,
     return toBinderStatus(gCtls->wakeupCtrl.delInterface(ifName, prefix, mark, mask));
 }
 
+binder::Status NetdNativeService::trafficCheckBpfStatsEnable(bool* ret) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    *ret = gCtls->trafficCtrl.checkBpfStatsEnable();
+    return binder::Status::ok();
+}
+
 }  // namespace net
 }  // namespace android

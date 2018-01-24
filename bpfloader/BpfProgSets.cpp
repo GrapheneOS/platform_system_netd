@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <arpa/inet.h>
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>
@@ -22,16 +23,13 @@
 #include <sys/socket.h>
 
 #include "BpfProgSets.h"
-#include "TrafficController.h"
 #include "bpf/BpfUtils.h"
 #include "netdutils/Slice.h"
 
-using namespace android::bpf;
 using android::netdutils::Slice;
 
 namespace android {
-namespace net {
-namespace bpf_prog {
+namespace bpf {
 
 int loadIngressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCounterSetMap) {
     struct bpf_insn ingressProg[] = {
@@ -97,29 +95,30 @@ int loadIngressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidC
         BPF_INS_BLK(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 23, 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxTcpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxTcpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxTcpPackets)), 0),  // 40
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxTcpPackets)), 0),  // 40
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxUdpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxUdpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxUdpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxUdpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txTcpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txTcpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txTcpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txTcpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txUdpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txUdpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txUdpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txUdpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxOtherPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxOtherPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxOtherBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxOtherBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txOtherBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txOtherBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txOtherPackets)), 0),  // 50
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txOtherPackets)),
+                    0),  // 50
         /*
          * add new map entry using BPF_FUNC_map_update_elem, it takes
          * 4 parameters (R1: map_fd, R2: &socket_cookie, R3: &stats,
@@ -165,20 +164,20 @@ int loadIngressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidC
         BPF_INS_BLK(MEM_LD(BPF_B), BPF_REG_0, BPF_REG_10, -133, 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 3, IPPROTO_TCP),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_5,
-                    static_cast<__s16>(offsetof(struct Stats, rxTcpPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, rxTcpPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, rxTcpBytes)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, rxTcpBytes)), 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JA), 0, 0, 6, 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 3, IPPROTO_UDP),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_5,
-                    static_cast<__s16>(offsetof(struct Stats, rxUdpPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, rxUdpPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, rxUdpBytes)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, rxUdpBytes)), 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JA), 0, 0, 2, 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_5,
-                    static_cast<__s16>(offsetof(struct Stats, rxOtherPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, rxOtherPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, rxOtherBytes)), 0),  // 90
+                    static_cast<__s16>(offsetof(struct StatsValue, rxOtherBytes)), 0),  // 90
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JA), 0, 0, 25, 0),
 
         BPF_INS_BLK(REG_MOV64, BPF_REG_1, BPF_REG_6, 0, 0),
@@ -225,29 +224,29 @@ int loadIngressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidC
         BPF_INS_BLK(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 24, 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxTcpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxTcpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxTcpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxTcpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxUdpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxUdpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxUdpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxUdpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txTcpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txTcpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txTcpBytes)), 0),  // 130
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txTcpBytes)), 0),  // 130
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txUdpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txUdpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txUdpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txUdpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxOtherPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxOtherPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxOtherBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxOtherBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txOtherBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txOtherBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txOtherPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txOtherPackets)), 0),
         /*
          * add new map entry using BPF_FUNC_map_update_elem, it takes
          * 4 parameters (R1: map_fd, R2: &socket_cookie, R3: &stats,
@@ -293,20 +292,20 @@ int loadIngressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidC
         BPF_INS_BLK(MEM_LD(BPF_B), BPF_REG_0, BPF_REG_10, -133, 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 3, IPPROTO_TCP),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, rxTcpPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, rxTcpPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_8,
-                    static_cast<__s16>(offsetof(struct Stats, rxTcpBytes)), 0),  // 170
+                    static_cast<__s16>(offsetof(struct StatsValue, rxTcpBytes)), 0),  // 170
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JA), 0, 0, 6, 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 3, IPPROTO_UDP),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, rxUdpPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, rxUdpPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_8,
-                    static_cast<__s16>(offsetof(struct Stats, rxUdpBytes)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, rxUdpBytes)), 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JA), 0, 0, 2, 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, rxOtherPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, rxOtherPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_8,
-                    static_cast<__s16>(offsetof(struct Stats, rxOtherBytes)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, rxOtherBytes)), 0),
         BPF_INS_BLK(VAL_MOV64, BPF_REG_0, 0, 0, 1), BPF_INS_BLK(PROG_EXIT, 0, 0, 0, 0),  // 179
     };
     Slice ingressInsn = Slice(ingressProg, sizeof(ingressProg));
@@ -380,29 +379,30 @@ int loadEgressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCo
         BPF_INS_BLK(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 23, 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxTcpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxTcpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxTcpPackets)), 0),  // 40
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxTcpPackets)), 0),  // 40
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxUdpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxUdpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxUdpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxUdpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txTcpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txTcpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txTcpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txTcpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txUdpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txUdpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txUdpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txUdpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxOtherPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxOtherPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxOtherBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxOtherBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txOtherBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txOtherBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txOtherPackets)), 0),  // 50
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txOtherPackets)),
+                    0),  // 50
         /*
          * add new map entry using BPF_FUNC_map_update_elem, it takes
          * 4 parameters (R1: map_fd, R2: &socket_cookie, R3: &stats,
@@ -448,20 +448,20 @@ int loadEgressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCo
         BPF_INS_BLK(MEM_LD(BPF_B), BPF_REG_0, BPF_REG_10, -133, 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 3, IPPROTO_TCP),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_5,
-                    static_cast<__s16>(offsetof(struct Stats, txTcpPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, txTcpPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, txTcpBytes)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, txTcpBytes)), 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JA), 0, 0, 6, 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 3, IPPROTO_UDP),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_5,
-                    static_cast<__s16>(offsetof(struct Stats, txUdpPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, txUdpPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, txUdpBytes)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, txUdpBytes)), 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JA), 0, 0, 2, 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_5,
-                    static_cast<__s16>(offsetof(struct Stats, txOtherPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, txOtherPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, txOtherBytes)), 0),  // 90
+                    static_cast<__s16>(offsetof(struct StatsValue, txOtherBytes)), 0),  // 90
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JA), 0, 0, 25, 0),
 
         BPF_INS_BLK(REG_MOV64, BPF_REG_1, BPF_REG_6, 0, 0),
@@ -508,29 +508,29 @@ int loadEgressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCo
         BPF_INS_BLK(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 24, 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxTcpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxTcpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxTcpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxTcpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxUdpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxUdpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxUdpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxUdpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txTcpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txTcpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txTcpBytes)), 0),  // 130
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txTcpBytes)), 0),  // 130
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txUdpPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txUdpPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txUdpBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txUdpBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxOtherPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxOtherPackets)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, rxOtherBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, rxOtherBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txOtherBytes)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txOtherBytes)), 0),
         BPF_INS_BLK(MEM_SET_BY_VAL(BPF_DW), BPF_REG_10, 0,
-                    -128 + static_cast<__s16>(offsetof(struct Stats, txOtherPackets)), 0),
+                    -128 + static_cast<__s16>(offsetof(struct StatsValue, txOtherPackets)), 0),
         /*
          * add new map entry using BPF_FUNC_map_update_elem, it takes
          * 4 parameters (R1: map_fd, R2: &socket_cookie, R3: &stats,
@@ -576,20 +576,20 @@ int loadEgressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCo
         BPF_INS_BLK(MEM_LD(BPF_B), BPF_REG_0, BPF_REG_10, -133, 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 3, IPPROTO_TCP),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, txTcpPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, txTcpPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_8,
-                    static_cast<__s16>(offsetof(struct Stats, txTcpBytes)), 0),  // 170
+                    static_cast<__s16>(offsetof(struct StatsValue, txTcpBytes)), 0),  // 170
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JA), 0, 0, 6, 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JNE), BPF_REG_0, 0, 3, IPPROTO_UDP),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, txUdpPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, txUdpPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_8,
-                    static_cast<__s16>(offsetof(struct Stats, txUdpBytes)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, txUdpBytes)), 0),
         BPF_INS_BLK(VAL_ALU_JMP(BPF_JA), 0, 0, 2, 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_7,
-                    static_cast<__s16>(offsetof(struct Stats, txOtherPackets)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, txOtherPackets)), 0),
         BPF_INS_BLK(REG_ATOMIC_ADD(BPF_DW), BPF_REG_9, BPF_REG_8,
-                    static_cast<__s16>(offsetof(struct Stats, txOtherBytes)), 0),
+                    static_cast<__s16>(offsetof(struct StatsValue, txOtherBytes)), 0),
         BPF_INS_BLK(VAL_MOV64, BPF_REG_0, 0, 0, 1), BPF_INS_BLK(PROG_EXIT, 0, 0, 0, 0),  // 179
     };
 
@@ -600,6 +600,5 @@ int loadEgressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCo
     return bpfProgLoad(BPF_PROG_TYPE_CGROUP_SKB, egressInsn, "Apache", 0, bpfLog);
 }
 
-}  // namespace bpf_prog
-}  // namespace net
+}  // namespace bpf
 }  // namespace android
