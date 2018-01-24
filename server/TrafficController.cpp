@@ -29,17 +29,19 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/utsname.h>
+#include <sys/wait.h>
 #include <unordered_set>
 #include <vector>
 
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
+#include <logwrap/logwrap.h>
 #include <netdutils/StatusOr.h>
 
 #include <netdutils/Misc.h>
 #include <netdutils/Syscalls.h>
-#include "BpfProgSets.h"
 #include "TrafficController.h"
 #include "bpf/BpfUtils.h"
 
@@ -47,7 +49,6 @@
 #include "qtaguid/qtaguid.h"
 
 using namespace android::bpf;
-using namespace android::net::bpf_prog;
 
 namespace android {
 namespace net {
@@ -61,44 +62,6 @@ using netdutils::Status;
 using netdutils::statusFromErrno;
 using netdutils::StatusOr;
 using netdutils::status::ok;
-
-Status TrafficController::loadAndAttachProgram(bpf_attach_type type, const char* path,
-                                               const char* name, base::unique_fd& cg_fd) {
-    base::unique_fd fd;
-    int ret = access(path, R_OK);
-    if (ret == 0) {
-        // The program already exist and we can access it.
-        return netdutils::status::ok;
-    }
-
-    if (errno != ENOENT) {
-        // The program exist but we cannot access it.
-        return statusFromErrno(errno, StringPrintf("Cannot access %s at path: %s", name, path));
-    }
-
-    // Program does not exist yet. Load, attach and pin it.
-    if (type == BPF_CGROUP_INET_EGRESS) {
-        fd.reset(loadEgressProg(mCookieTagMap.get(), mUidStatsMap.get(), mTagStatsMap.get(),
-                                mUidCounterSetMap.get()));
-    } else {
-        fd.reset(loadIngressProg(mCookieTagMap.get(), mUidStatsMap.get(), mTagStatsMap.get(),
-                                 mUidCounterSetMap.get()));
-    }
-    if (fd < 0) {
-        return statusFromErrno(errno, StringPrintf("load %s failed", name));
-    }
-
-    ret = attachProgram(type, fd, cg_fd);
-    if (ret) {
-        return statusFromErrno(errno, StringPrintf("%s attach failed", name));
-    }
-
-    ret = mapPin(fd, path);
-    if (ret) {
-        return statusFromErrno(errno, StringPrintf("Pin %s as file failed(%s)", name, path));
-    }
-    return netdutils::status::ok;
-}
 
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
@@ -127,27 +90,8 @@ StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener() {
 }
 
 Status TrafficController::start() {
-    int ret;
-    struct utsname buf;
-    int kernel_version_major;
-    int kernel_version_minor;
-
-    ret = uname(&buf);
-    if (ret) {
-        return statusFromErrno(errno, "Get system information failed");
-    }
-
-    char dummy;
-    ret = sscanf(buf.release, "%d.%d%c", &kernel_version_major, &kernel_version_minor, &dummy);
-    if (ret >= 2 &&
-        ((kernel_version_major == 4 && kernel_version_minor >= 9) || (kernel_version_major > 4))) {
-        // Turn off the eBPF feature temporarily since the selinux rules and kernel changes are not
-        // landed yet.
-        // TODO: turn back on when all the other dependencies are ready.
-        ebpfSupported = false;
-        return netdutils::status::ok;
-    } else {
-        ebpfSupported = false;
+    ebpfSupported = hasBpfSupport();
+    if (!ebpfSupported) {
         return netdutils::status::ok;
     }
 
@@ -160,10 +104,6 @@ Status TrafficController::start() {
      */
 
     ALOGI("START to load TrafficController");
-    base::unique_fd cg_fd(open(CGROUP_ROOT_PATH, O_DIRECTORY | O_RDONLY | O_CLOEXEC));
-    if (cg_fd < 0) {
-        return statusFromErrno(errno, "Failed to open the cgroup directory");
-    }
 
     ASSIGN_OR_RETURN(mCookieTagMap,
                      setUpBPFMap(sizeof(uint64_t), sizeof(struct UidTag), COOKIE_UID_MAP_SIZE,
@@ -173,7 +113,7 @@ Status TrafficController::start() {
     // net_bw_acct does not grant all process in that group the permission to access bpf maps. They
     // still need correct sepolicy to read/write the map. And only system_server and netd have that
     // permission for now.
-    ret = chown(COOKIE_UID_MAP_PATH, AID_ROOT, AID_NET_BW_ACCT);
+    int ret = chown(COOKIE_UID_MAP_PATH, AID_ROOT, AID_NET_BW_ACCT);
     if (ret) {
         return statusFromErrno(errno, "change cookieTagMap group failed.");
     }
@@ -192,8 +132,8 @@ Status TrafficController::start() {
     }
 
     ASSIGN_OR_RETURN(mUidStatsMap,
-                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct Stats), UID_STATS_MAP_SIZE,
-                                 UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct StatsValue),
+                                 UID_STATS_MAP_SIZE, UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
     // Change the file mode of pinned map so both netd and system server can get the map fd
     // from it.
     ret = chown(UID_STATS_MAP_PATH, AID_ROOT, AID_NET_BW_ACCT);
@@ -206,8 +146,8 @@ Status TrafficController::start() {
     }
 
     ASSIGN_OR_RETURN(mTagStatsMap,
-                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct Stats), TAG_STATS_MAP_SIZE,
-                                 TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct StatsValue),
+                                 TAG_STATS_MAP_SIZE, TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
     // Change the file mode of pinned map so both netd and system server can get the map fd
     // from the path.
     ret = chown(TAG_STATS_MAP_PATH, AID_ROOT, AID_NET_BW_STATS);
@@ -248,9 +188,33 @@ Status TrafficController::start() {
     };
     expectOk(mSkDestroyListener->subscribe(kSockDiagDoneMsgType, rxDoneHandler));
 
-    RETURN_IF_NOT_OK(loadAndAttachProgram(BPF_CGROUP_INET_INGRESS, BPF_INGRESS_PROG_PATH,
-                                          "Ingress_prog", cg_fd));
-    return loadAndAttachProgram(BPF_CGROUP_INET_EGRESS, BPF_EGRESS_PROG_PATH, "egress_prog", cg_fd);
+    int* status = nullptr;
+
+    std::vector<const char*> prog_args{
+        "/system/bin/bpfloader",
+    };
+    ret = access(BPF_INGRESS_PROG_PATH, R_OK);
+    if (ret != 0 && errno == ENOENT) {
+        prog_args.push_back((char*)"-i");
+    }
+    ret = access(BPF_EGRESS_PROG_PATH, R_OK);
+    if (ret != 0 && errno == ENOENT) {
+        prog_args.push_back((char*)"-e");
+    }
+
+    if (prog_args.size() == 1) {
+        // both program are loaded already.
+        return netdutils::status::ok;
+    }
+
+    prog_args.push_back(nullptr);
+    ret = android_fork_execvp(prog_args.size(), (char**)prog_args.data(), status, false, true);
+    if (ret) {
+        ret = errno;
+        ALOGE("failed to execute %s: %s", prog_args[0], strerror(errno));
+        return statusFromErrno(ret, "run bpf loader failed");
+    }
+    return netdutils::status::ok;
 }
 
 int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
@@ -358,7 +322,7 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     // set to the nonexist_statskey because it will never be in the map, and thus getNextMapKey will
     // return 0 and set nextKey to the first key in the map.
     struct StatsKey curKey, nextKey;
-    curKey = NONEXIST_STATSKEY;
+    curKey = android::bpf::NONEXISTENT_STATSKEY;
     while (getNextMapKey(mTagStatsMap, &curKey, &nextKey) != -1) {
         if (nextKey.uid == uid && (nextKey.tag == tag || tag == 0)) {
             res = deleteMapEntry(mTagStatsMap, &nextKey);
@@ -386,16 +350,16 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     // removed uid entry. The removed uid is stored in uid 0, tag 0 and
     // counterSet as COUNTERSETS_LIMIT.
     StatsKey removedStatsKey = {0, 0, COUNTERSETS_LIMIT, 0};
-    Stats removedStatsTotal = {};
+    StatsValue removedStatsTotal = {};
     res = findMapEntry(mUidStatsMap, &removedStatsKey, &removedStatsTotal);
     if (res < 0 && errno != ENOENT) {
         ALOGE("Failed to get stats of removed uid: %s", strerror(errno));
     }
 
-    curKey = NONEXIST_STATSKEY;
+    curKey = android::bpf::NONEXISTENT_STATSKEY;
     while (getNextMapKey(mUidStatsMap, &curKey, &nextKey) != -1) {
         if (nextKey.uid == uid) {
-            Stats old_stats = {};
+            StatsValue old_stats = {};
             res = findMapEntry(mUidStatsMap, &nextKey, &old_stats);
             if (res < 0) {
                 if (errno != ENOENT) {
@@ -435,6 +399,10 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
         ALOGE("Failed to add deleting stats to removed uid: %s", strerror(errno));
     }
     return res;
+}
+
+bool TrafficController::checkBpfStatsEnable() {
+    return ebpfSupported;
 }
 
 }  // namespace net

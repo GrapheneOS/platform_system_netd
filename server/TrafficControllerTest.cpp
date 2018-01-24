@@ -57,7 +57,10 @@ constexpr uint32_t TEST_TAG = 42;
 constexpr int TEST_COUNTERSET = 1;
 constexpr int DEFAULT_COUNTERSET = 0;
 
-#define SKIP_IF_BPF_NOT_SUPPORTED do { if (!bpfSupported()) return; } while(0);
+#define SKIP_IF_BPF_NOT_SUPPORTED     \
+    do {                              \
+        if (!hasBpfSupport()) return; \
+    } while (0);
 
 class TrafficControllerTest : public ::testing::Test {
   protected:
@@ -80,11 +83,11 @@ class TrafficControllerTest : public ::testing::Test {
         ASSERT_LE(0, mFakeUidCounterSetMap);
 
         mFakeUidStatsMap = unique_fd(createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey),
-                                               sizeof(struct Stats), TEST_MAP_SIZE, 0));
+                                               sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakeUidStatsMap);
 
         mFakeTagStatsMap = unique_fd(createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey),
-                                               sizeof(struct Stats), TEST_MAP_SIZE, 0));
+                                               sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakeTagStatsMap);
 
         // Make sure trafficController use the eBPF code path.
@@ -127,12 +130,14 @@ class TrafficControllerTest : public ::testing::Test {
         UidTag cookieMapkey = {.uid = (uint32_t)uid, .tag = tag};
         EXPECT_EQ(0, writeToMapEntry(mFakeCookieTagMap, &cookie, &cookieMapkey, BPF_ANY));
         *key = {.uid = uid, .tag = tag, .counterSet = TEST_COUNTERSET, .ifaceIndex = 1};
-        Stats statsMapValue = {.rxTcpPackets = 1, .rxTcpBytes = 100};
+        StatsValue statsMapValue = {.rxTcpPackets = 1, .rxTcpBytes = 100};
         int counterSet = TEST_COUNTERSET;
         EXPECT_EQ(0, writeToMapEntry(mFakeUidCounterSetMap, &uid, &counterSet, BPF_ANY));
         EXPECT_EQ(0, writeToMapEntry(mFakeTagStatsMap, key, &statsMapValue, BPF_ANY));
         key->tag = 0;
         EXPECT_EQ(0, writeToMapEntry(mFakeUidStatsMap, key, &statsMapValue, BPF_ANY));
+        // put tag information back to statsKey
+        key->tag = tag;
     }
 
     void TearDown() {
@@ -248,8 +253,9 @@ TEST_F(TrafficControllerTest, TestDeleteTagData) {
     int counterSetResult;
     ASSERT_EQ(0, findMapEntry(mFakeUidCounterSetMap, &uid, &counterSetResult));
     ASSERT_EQ(TEST_COUNTERSET, counterSetResult);
-    Stats statsMapResult;
+    StatsValue statsMapResult;
     ASSERT_EQ(-1, findMapEntry(mFakeTagStatsMap, &tagStatsMapKey, &statsMapResult));
+    tagStatsMapKey.tag = 0;
     ASSERT_EQ(0, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey, &statsMapResult));
     ASSERT_EQ((uint64_t)1, statsMapResult.rxTcpPackets);
     ASSERT_EQ((uint64_t)100, statsMapResult.rxTcpBytes);
@@ -268,7 +274,7 @@ TEST_F(TrafficControllerTest, TestDeleteAllUidData) {
     ASSERT_EQ(-1, findMapEntry(mFakeCookieTagMap, &cookie, &cookieMapkey));
     int counterSetResult;
     ASSERT_EQ(-1, findMapEntry(mFakeUidCounterSetMap, &uid, &counterSetResult));
-    Stats statsMapResult;
+    StatsValue statsMapResult;
     ASSERT_EQ(-1, findMapEntry(mFakeTagStatsMap, &tagStatsMapKey, &statsMapResult));
     ASSERT_EQ(-1, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey, &statsMapResult));
     StatsKey removedStatsKey= {.uid = 0, .tag = 0, .counterSet = COUNTERSETS_LIMIT,
@@ -299,7 +305,7 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoTags) {
     int counterSetResult;
     ASSERT_EQ(0, findMapEntry(mFakeUidCounterSetMap, &uid, &counterSetResult));
     ASSERT_EQ(TEST_COUNTERSET, counterSetResult);
-    Stats statsMapResult;
+    StatsValue statsMapResult;
     ASSERT_EQ(-1, findMapEntry(mFakeTagStatsMap, &tagStatsMapKey1, &statsMapResult));
     ASSERT_EQ(0, findMapEntry(mFakeTagStatsMap, &tagStatsMapKey2, &statsMapResult));
     ASSERT_EQ((uint64_t)1, statsMapResult.rxTcpPackets);
@@ -328,9 +334,11 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoUids) {
     ASSERT_EQ(0, findMapEntry(mFakeUidCounterSetMap, &uid1, &counterSetResult));
     ASSERT_EQ(TEST_COUNTERSET, counterSetResult);
     ASSERT_EQ(-1, findMapEntry(mFakeUidCounterSetMap, &uid2, &counterSetResult));
-    Stats statsMapResult;
+    StatsValue statsMapResult;
     ASSERT_EQ(-1, findMapEntry(mFakeTagStatsMap, &tagStatsMapKey2, &statsMapResult));
+    tagStatsMapKey2.tag = 0;
     ASSERT_EQ(-1, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey2, &statsMapResult));
+    tagStatsMapKey1.tag = 0;
     ASSERT_EQ(0, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey1, &statsMapResult));
     ASSERT_EQ((uint64_t)1, statsMapResult.rxTcpPackets);
     ASSERT_EQ((uint64_t)100, statsMapResult.rxTcpBytes);
