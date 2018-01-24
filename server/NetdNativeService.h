@@ -113,7 +113,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             int32_t mode,
             const std::string& sourceAddress,
             const std::string& destinationAddress,
-            int64_t underlyingNetworkHandle,
+            int32_t underlyingNetId,
             int32_t spi,
             int32_t markValue,
             int32_t markMask,
@@ -149,7 +149,49 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status ipSecRemoveTransportModeTransform(
             const android::base::unique_fd& socket);
 
+    binder::Status ipSecAddSecurityPolicy(
+            int32_t transformId,
+            int32_t direction,
+            const std::string& sourceAddress,
+            const std::string& destinationAddress,
+            int32_t spi,
+            int32_t markValue,
+            int32_t markMask);
+
+    binder::Status ipSecUpdateSecurityPolicy(
+            int32_t transformId,
+            int32_t direction,
+            const std::string& sourceAddress,
+            const std::string& destinationAddress,
+            int32_t spi,
+            int32_t markValue,
+            int32_t markMask);
+
+    binder::Status ipSecDeleteSecurityPolicy(
+            int32_t transformId,
+            int32_t direction,
+            const std::string& sourceAddress,
+            const std::string& destinationAddress,
+            int32_t markValue,
+            int32_t markMask);
+
     binder::Status trafficCheckBpfStatsEnable(bool* ret) override;
+
+    binder::Status addVirtualTunnelInterface(
+            const std::string& deviceName,
+            const std::string& localAddress,
+            const std::string& remoteAddress,
+            int32_t iKey,
+            int32_t oKey);
+
+    binder::Status updateVirtualTunnelInterface(
+            const std::string& deviceName,
+            const std::string& localAddress,
+            const std::string& remoteAddress,
+            int32_t iKey,
+            int32_t oKey);
+
+    binder::Status removeVirtualTunnelInterface(const std::string& deviceName);
 };
 
 }  // namespace net

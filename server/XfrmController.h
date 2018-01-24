@@ -22,12 +22,15 @@
 #include <string>
 #include <utility> // for pair
 
+#include <linux/if_link.h>
+#include <linux/if_tunnel.h>
 #include <linux/netlink.h>
 #include <linux/udp.h>
 #include <linux/xfrm.h>
 #include <sysutils/SocketClient.h>
 
 #include "NetdConstants.h"
+#include "netdutils/Slice.h"
 #include "netdutils/Status.h"
 
 namespace android {
@@ -131,7 +134,7 @@ public:
 
     netdutils::Status ipSecAddSecurityAssociation(
         int32_t transformId, int32_t mode, const std::string& sourceAddress,
-        const std::string& destinationAddress, int64_t underlyingNetworkHandle, int32_t spi,
+        const std::string& destinationAddress, int32_t underlyingNetId, int32_t spi,
         int32_t markValue, int32_t markMask, const std::string& authAlgo,
         const std::vector<uint8_t>& authKey, int32_t authTruncBits, const std::string& cryptAlgo,
         const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits, const std::string& aeadAlgo,
@@ -166,6 +169,13 @@ public:
                                                 const std::string& sourceAddress,
                                                 const std::string& destinationAddress,
                                                 int32_t markValue, int32_t markMask);
+
+    int addVirtualTunnelInterface(const std::string& deviceName,
+                                  const std::string& localAddress,
+                                  const std::string& remoteAddress,
+                                  int32_t ikey, int32_t okey, bool isUpdate);
+
+    int removeVirtualTunnelInterface(const std::string& deviceName);
 
     // Some XFRM netlink attributes comprise a header, a struct, and some data
     // after the struct. We wrap all of those in one struct for easier
@@ -218,6 +228,13 @@ public:
     struct nlattr_xfrm_mark {
         nlattr hdr;
         xfrm_mark mark;
+    };
+
+    // Container for the content of an XFRMA_OUTPUT_MARK netlink attribute.
+    // Exposed for testing
+    struct nlattr_xfrm_output_mark {
+        nlattr hdr;
+        __u32 outputMark;
     };
 
 private:
@@ -298,6 +315,8 @@ private:
     static int fillUserPolicyId(const XfrmSaInfo& record, XfrmDirection direction,
                                 xfrm_userpolicy_id* policy_id);
     static int fillNlAttrXfrmMark(const XfrmId& record, nlattr_xfrm_mark* mark);
+    static int fillNlAttrXfrmOutputMark(const __u32 output_mark_value,
+                                        nlattr_xfrm_output_mark* output_mark);
 
     static netdutils::Status allocateSpi(const XfrmSaInfo& record, uint32_t minSpi, uint32_t maxSpi,
                                          uint32_t* outSpi, const XfrmSocket& sock);
@@ -314,7 +333,6 @@ private:
     static netdutils::Status deleteTunnelModeSecurityPolicy(const XfrmSaInfo& record,
                                                             const XfrmSocket& sock,
                                                             XfrmDirection direction);
-
     // END TODO(messagerefactor)
 };
 
