@@ -15,12 +15,15 @@
  */
 
 namespace android {
-namespace net {
-namespace bpf_prog {
+namespace bpf {
+
+#define LOG_BUF_SIZE 65536
+
+constexpr const int IPV6_TRANSPORT_PROTOCOL_OFFSET = 6;
+constexpr const int IPV4_TRANSPORT_PROTOCOL_OFFSET = 9;
 
 int loadIngressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCounterSetMap);
 int loadEgressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCounterSetMap);
 
-}  // namespace bpf_prog
-}  // namespace net
+}  // namespace bpf
 }  // namespace android
