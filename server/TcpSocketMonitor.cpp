@@ -64,8 +64,13 @@ constexpr const char* getTcpStateName(int t) {
     }
 }
 
+// Helper macro for reading fields into struct tcp_info and handling different struct tcp_info
+// versions in the kernel.
+#define tcpinfo_get(ptr, fld, len, zero) \
+    (((ptr) != nullptr && offsetof(struct tcp_info, fld) < len) ? (ptr)->fld : zero)
+
 static void tcpInfoPrint(DumpWriter &dw, Fwmark mark, const struct inet_diag_msg *sockinfo,
-                         const struct tcp_info *tcpinfo) {
+                         const struct tcp_info *tcpinfo, uint32_t tcpinfoLen) {
     char saddr[INET6_ADDRSTRLEN] = {};
     char daddr[INET6_ADDRSTRLEN] = {};
     inet_ntop(sockinfo->idiag_family, &(sockinfo->id.idiag_src), saddr, sizeof(saddr));
@@ -73,7 +78,7 @@ static void tcpInfoPrint(DumpWriter &dw, Fwmark mark, const struct inet_diag_msg
 
     dw.println(
             "netId=%d uid=%u mark=0x%x saddr=%s daddr=%s sport=%u dport=%u tcp_state=%s(%u) "
-            "rqueue=%u wqueue=%u  rtt=%gms var_rtt=%gms rcv_rtt=%gms unacked=%u snd_cwnd=%u",
+            "rqueue=%u wqueue=%u rtt=%gms var_rtt=%gms rcv_rtt=%gms unacked=%u snd_cwnd=%u",
             mark.netId,
             sockinfo->idiag_uid,
             mark.intValue,
@@ -84,11 +89,11 @@ static void tcpInfoPrint(DumpWriter &dw, Fwmark mark, const struct inet_diag_msg
             getTcpStateName(sockinfo->idiag_state), sockinfo->idiag_state,
             sockinfo->idiag_rqueue,
             sockinfo->idiag_wqueue,
-            tcpinfo != nullptr ? tcpinfo->tcpi_rtt/1000.0 : 0,
-            tcpinfo != nullptr ? tcpinfo->tcpi_rttvar/1000.0 : 0,
-            tcpinfo != nullptr ? tcpinfo->tcpi_rcv_rtt/1000.0 : 0,
-            tcpinfo != nullptr ? tcpinfo->tcpi_unacked : 0,
-            tcpinfo != nullptr ? tcpinfo->tcpi_snd_cwnd : 0);
+            tcpinfo_get(tcpinfo, tcpi_rtt, tcpinfoLen, 0) / 1000.0,
+            tcpinfo_get(tcpinfo, tcpi_rttvar, tcpinfoLen, 0) / 1000.0,
+            tcpinfo_get(tcpinfo, tcpi_rcv_rtt, tcpinfoLen, 0) / 1000.0,
+            tcpinfo_get(tcpinfo, tcpi_unacked, tcpinfoLen, 0),
+            tcpinfo_get(tcpinfo, tcpi_data_segs_out, tcpinfoLen, 0));
 }
 
 const String16 TcpSocketMonitor::DUMP_KEYWORD = String16("tcp_socket_info");
@@ -111,8 +116,8 @@ void TcpSocketMonitor::dump(DumpWriter& dw) {
     }
 
     const auto tcpInfoReader = [&dw](Fwmark mark, const struct inet_diag_msg *sockinfo,
-                                     const struct tcp_info *tcpinfo) {
-        tcpInfoPrint(dw, mark, sockinfo, tcpinfo);
+                                     const struct tcp_info *tcpinfo, uint32_t tcpinfoLen) {
+        tcpInfoPrint(dw, mark, sockinfo, tcpinfo, tcpinfoLen);
     };
 
     if (int ret = sd.getLiveTcpInfos(tcpInfoReader)) {
@@ -173,8 +178,8 @@ void TcpSocketMonitor::poll() {
     }
 
     const auto tcpInfoReader = [](Fwmark mark, const struct inet_diag_msg *sockinfo,
-                                const struct tcp_info *tcpinfo) {
-        if (sockinfo == nullptr || tcpinfo == nullptr || mark.intValue == 0) {
+                                const struct tcp_info *tcpinfo, uint32_t tcpinfoLen) {
+        if (sockinfo == nullptr || tcpinfo == nullptr || tcpinfoLen == 0 || mark.intValue == 0) {
             return;
         }
 
