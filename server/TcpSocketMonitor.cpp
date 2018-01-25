@@ -24,6 +24,7 @@
 #include <netinet/tcp.h>
 #include <linux/tcp.h>
 
+#include "Controllers.h"
 #include "DumpWriter.h"
 #include "SockDiag.h"
 #include "TcpSocketMonitor.h"
@@ -223,6 +224,28 @@ void TcpSocketMonitor::poll() {
             it++;
         }
     }
+
+    const auto listener = gCtls->eventReporter.getNetdEventListener();
+    if (listener != nullptr) {
+        std::vector<int> netIds;
+        std::vector<int> sentPackets;
+        std::vector<int> lostPackets;
+        std::vector<int> rtts;
+        std::vector<int> sentAckDiffs;
+        for (auto const& stats : mNetworkStats) {
+            int32_t nSockets = stats.second.nSockets;
+            if (nSockets == 0) {
+                continue;
+            }
+            netIds.push_back(stats.first);
+            sentPackets.push_back(stats.second.sent);
+            lostPackets.push_back(stats.second.lost);
+            rtts.push_back(stats.second.rttUs / nSockets);
+            sentAckDiffs.push_back(stats.second.sentAckDiffMs / nSockets);
+        }
+        listener->onTcpSocketStatsEvent(netIds, sentPackets, lostPackets, rtts, sentAckDiffs);
+    }
+
     mLastPoll = now;
 }
 

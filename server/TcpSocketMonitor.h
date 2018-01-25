@@ -20,12 +20,16 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 
 #include <android-base/thread_annotations.h>
 #include "utils/String16.h"
 
 #include "Fwmark.h"
+
+struct inet_diag_msg;
+struct tcp_info;
 
 namespace android {
 namespace net {
