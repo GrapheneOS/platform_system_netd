@@ -35,8 +35,15 @@ struct DnsTlsServer {
     // Allow sockaddr_storage to be promoted to DnsTlsServer automatically.
     DnsTlsServer(const sockaddr_storage& ss) : ss(ss) {}
 
+    enum class Response : uint8_t { success, network_error, limit_error, internal_error };
+
+    struct Result {
+        Response code;
+        std::vector<uint8_t> response;
+    };
+
     // The server location, including IP and port.
-    sockaddr_storage ss;
+    sockaddr_storage ss = {};
 
     // A set of SHA256 public key fingerprints.  If this set is nonempty, the server
     // must present a self-consistent certificate chain that contains a certificate

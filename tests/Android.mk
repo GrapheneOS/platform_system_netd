@@ -38,11 +38,18 @@ LOCAL_C_INCLUDES += system/netd/include system/netd/binder/include \
 # runtest -x system/netd/tests/netd_integration_test.cpp
 LOCAL_SRC_FILES := binder_test.cpp \
                    dns_responder/dns_responder.cpp \
+                   dns_tls_test.cpp \
                    netd_integration_test.cpp \
                    netd_test.cpp \
                    tun_interface.cpp \
                    ../server/NetdConstants.cpp \
-                   ../server/binder/android/net/metrics/INetdEventListener.aidl
+                   ../server/binder/android/net/metrics/INetdEventListener.aidl \
+                   ../server/dns/DnsTlsDispatcher.cpp \
+                   ../server/dns/DnsTlsTransport.cpp \
+                   ../server/dns/DnsTlsServer.cpp \
+                   ../server/dns/DnsTlsSessionCache.cpp \
+                   ../server/dns/DnsTlsSocket.cpp \
+
 LOCAL_MODULE_TAGS := eng tests
 include $(BUILD_NATIVE_TEST)
 
