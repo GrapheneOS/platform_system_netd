@@ -102,6 +102,9 @@ namespace net {
 static constexpr int DROID_SPI = 0xD1201D;
 static constexpr size_t KEY_LENGTH = 32;
 static constexpr int NLMSG_DEFAULTSIZE = 8192;
+static constexpr uint32_t TEST_XFRM_OUTPUT_MARK = 0x512;
+static constexpr uint32_t TEST_XFRM_MARK = 0x123;
+static constexpr uint32_t TEST_XFRM_MASK = 0xFFFFFFFF;
 
 static constexpr char LOCALHOST_V4[] = "127.0.0.1";
 static constexpr char LOCALHOST_V6[] = "::1";
@@ -261,7 +264,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAllocateSpi) {
 }
 
 void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscalls,
-                                     const XfrmMode& mode) {
+                                     const XfrmMode& mode, __u32 underlying_netid) {
     const int family = (version == 6) ? AF_INET6 : AF_INET;
     const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
     const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
@@ -277,7 +280,12 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
     size_t expectedMsgLength =
         NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_usersa_info)) +
         NLA_ALIGN(offsetof(XfrmController::nlattr_algo_crypt, key) + KEY_LENGTH) +
-        NLA_ALIGN(offsetof(XfrmController::nlattr_algo_auth, key) + KEY_LENGTH);
+        NLA_ALIGN(offsetof(XfrmController::nlattr_algo_auth, key) + KEY_LENGTH) +
+        NLA_ALIGN(sizeof(XfrmController::nlattr_xfrm_mark));
+
+    if (underlying_netid) {
+        expectedMsgLength += NLA_ALIGN(sizeof(XfrmController::nlattr_xfrm_output_mark));
+    }
 
     std::vector<uint8_t> nlMsgBuf;
     EXPECT_CALL(mockSyscalls, writev(_, _))
@@ -288,9 +296,10 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
     XfrmController ctrl;
     Status res = ctrl.ipSecAddSecurityAssociation(
         1 /* resourceId */, static_cast<int>(mode), localAddr, remoteAddr,
-        0 /* underlying network */, DROID_SPI, "hmac(sha256)" /* auth algo */,
-        authKey, 128 /* auth trunc length */, "cbc(aes)" /* encryption algo */, cryptKey,
-        0 /* crypt trunc length? */, "" /* AEAD algo */, {}, 0,
+        underlying_netid /* underlying netid */, DROID_SPI, TEST_XFRM_MARK /* mark */,
+        TEST_XFRM_MASK /* mask */, "hmac(sha256)" /* auth algo */,
+        authKey, 128 /* auth trunc length */, "cbc(aes)" /* encryption algo */,
+        cryptKey, 0 /* crypt trunc length? */, "" /* AEAD algo */, {}, 0,
         static_cast<int>(XfrmEncapType::NONE), 0 /* local port */, 0 /* remote port */);
 
     EXPECT_TRUE(isOk(res)) << res;
@@ -324,7 +333,10 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
     // Extract and check the encryption/authentication algorithm
     XfrmController::nlattr_algo_crypt encryptAlgo{};
     XfrmController::nlattr_algo_auth authAlgo{};
-    auto attrHandler = [&encryptAlgo, &authAlgo](const nlattr& attr, const Slice& attr_payload) {
+    XfrmController::nlattr_xfrm_mark mark{};
+    XfrmController::nlattr_xfrm_output_mark outputmark{};
+    auto attrHandler = [&encryptAlgo, &authAlgo, &mark, &outputmark](const nlattr& attr,
+                                                                     const Slice& attr_payload) {
         Slice buf = attr_payload;
         if (attr.nla_type == XFRMA_ALG_CRYPT) {
             encryptAlgo.hdr = attr;
@@ -336,6 +348,12 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
             netdutils::extract(buf, authAlgo.auth);
             buf = drop(buf, sizeof(xfrm_algo_auth));
             netdutils::extract(buf, authAlgo.key);
+        } else if (attr.nla_type == XFRMA_MARK) {
+            mark.hdr = attr;
+            netdutils::extract(buf, mark.mark);
+        } else if (attr.nla_type == XFRMA_OUTPUT_MARK) {
+            mark.hdr = attr;
+            netdutils::extract(buf, outputmark.outputMark);
         } else {
             FAIL() << "Unexpected nlattr type: " << attr.nla_type;
         }
@@ -347,16 +365,27 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
                         reinterpret_cast<void*>(&encryptAlgo.key), KEY_LENGTH));
     EXPECT_EQ(0, memcmp(reinterpret_cast<void*>(authKey.data()),
                         reinterpret_cast<void*>(&authAlgo.key), KEY_LENGTH));
+    EXPECT_EQ(TEST_XFRM_MARK, mark.mark.v);
+    EXPECT_EQ(TEST_XFRM_MASK, mark.mark.m);
+    if (underlying_netid) {
+        EXPECT_EQ(TEST_XFRM_OUTPUT_MARK, outputmark.outputMark);
+    }
 }
 
 TEST_P(XfrmControllerParameterizedTest, TestTransportModeIpSecAddSecurityAssociation) {
     const int version = GetParam();
-    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TRANSPORT);
+    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TRANSPORT, 0);
 }
 
 TEST_P(XfrmControllerParameterizedTest, TestTunnelModeIpSecAddSecurityAssociation) {
     const int version = GetParam();
-    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TUNNEL);
+    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TUNNEL, 0);
+}
+
+TEST_P(XfrmControllerParameterizedTest, TestTunnelModeIpSecAddSecurityAssociationWithOutputMark) {
+    const int version = GetParam();
+    testIpSecAddSecurityAssociation(version, mockSyscalls, XfrmMode::TUNNEL,
+                                    TEST_XFRM_OUTPUT_MARK);
 }
 
 TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv4Encap) {
@@ -371,7 +400,7 @@ TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv6Encap) {
     XfrmController ctrl;
     Status res = ctrl.ipSecAddSecurityAssociation(
         1, static_cast<int>(XfrmMode::TRANSPORT),
-        LOCALHOST_V6, TEST_ADDR_V6, 0, DROID_SPI, "hmac(sha256)", {}, 128, "cbc(aes)",
+        LOCALHOST_V6, TEST_ADDR_V6, 0, DROID_SPI, 0, 0, "hmac(sha256)", {}, 128, "cbc(aes)",
         {}, 0, "", {}, 0, static_cast<int>(XfrmEncapType::ESPINUDP_NON_IKE), 0, 0);
 
     EXPECT_FALSE(isOk(res)) << "IPv6 UDP encap not rejected";
@@ -471,10 +500,11 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityAssociation) {
     const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
 
     NetlinkResponse response{};
-    response.hdr.nlmsg_type = XFRM_MSG_ALLOCSPI;
+    response.hdr.nlmsg_type = XFRM_MSG_DELSA;
     Slice responseSlice = netdutils::makeSlice(response);
 
-    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_usersa_id));
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_usersa_id)) +
+                               NLA_ALIGN(sizeof(XfrmController::nlattr_xfrm_mark));
 
     std::vector<uint8_t> nlMsgBuf;
     EXPECT_CALL(mockSyscalls, writev(_, _))
@@ -483,8 +513,8 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityAssociation) {
         .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
 
     XfrmController ctrl;
-    Status res = ctrl.ipSecDeleteSecurityAssociation(
-        1 /* resourceId */, localAddr, remoteAddr, DROID_SPI);
+    Status res = ctrl.ipSecDeleteSecurityAssociation(1 /* resourceId */, localAddr, remoteAddr,
+                                                     DROID_SPI, TEST_XFRM_MARK, TEST_XFRM_MASK);
 
     EXPECT_TRUE(isOk(res)) << res;
     EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
@@ -498,6 +528,150 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityAssociation) {
     EXPECT_EQ(htonl(DROID_SPI), said.spi);
     expectAddressEquals(family, remoteAddr, said.daddr);
 }
+
+TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityPolicy) {
+    const int version = GetParam();
+    const int family = (version == 6) ? AF_INET6 : AF_INET;
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
+    NetlinkResponse response{};
+    response.hdr.nlmsg_type = XFRM_MSG_NEWPOLICY;
+    Slice responseSlice = netdutils::makeSlice(response);
+
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userpolicy_info)) +
+                               NLMSG_ALIGN(sizeof(XfrmController::nlattr_user_tmpl)) +
+                               NLMSG_ALIGN(sizeof(XfrmController::nlattr_xfrm_mark));
+
+    std::vector<uint8_t> nlMsgBuf;
+    EXPECT_CALL(mockSyscalls, writev(_, _))
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
+    EXPECT_CALL(mockSyscalls, read(_, _))
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
+
+    XfrmController ctrl;
+    Status res = ctrl.ipSecAddSecurityPolicy(
+        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr,
+        0 /* SPI */, TEST_XFRM_MARK, TEST_XFRM_MASK);
+
+    EXPECT_TRUE(isOk(res)) << res;
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
+
+    Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
+    nlmsghdr hdr;
+    netdutils::extract(nlMsgSlice, hdr);
+    EXPECT_EQ(XFRM_MSG_NEWPOLICY, hdr.nlmsg_type);
+
+    nlMsgSlice = netdutils::drop(nlMsgSlice, NLMSG_HDRLEN);
+    xfrm_userpolicy_info userpolicy{};
+    netdutils::extract(nlMsgSlice, userpolicy);
+
+    EXPECT_EQ(static_cast<uint8_t>(XfrmDirection::OUT), userpolicy.dir);
+
+    // Drop the user policy info.
+    Slice attr_buf = drop(nlMsgSlice, NLA_ALIGN(sizeof(xfrm_userpolicy_info)));
+
+    // Extract and check the user tmpl and mark.
+    XfrmController::nlattr_user_tmpl usertmpl{};
+    XfrmController::nlattr_xfrm_mark mark{};
+    auto attrHandler = [&usertmpl, &mark](const nlattr& attr, const Slice& attr_payload) {
+        Slice buf = attr_payload;
+        if (attr.nla_type == XFRMA_TMPL) {
+            usertmpl.hdr = attr;
+            netdutils::extract(buf, usertmpl.tmpl);
+        } else if (attr.nla_type == XFRMA_MARK) {
+            mark.hdr = attr;
+            netdutils::extract(buf, mark.mark);
+        } else {
+            FAIL() << "Unexpected nlattr type: " << attr.nla_type;
+        }
+    };
+    forEachNetlinkAttribute(attr_buf, attrHandler);
+
+    expectAddressEquals(family, remoteAddr, usertmpl.tmpl.id.daddr);
+    EXPECT_EQ(TEST_XFRM_MARK, mark.mark.v);
+    EXPECT_EQ(TEST_XFRM_MASK, mark.mark.m);
+
+}
+
+TEST_P(XfrmControllerParameterizedTest, TestIpSecUpdateSecurityPolicy) {
+    const int version = GetParam();
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
+    NetlinkResponse response{};
+    response.hdr.nlmsg_type = XFRM_MSG_UPDPOLICY;
+    Slice responseSlice = netdutils::makeSlice(response);
+
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userpolicy_info)) +
+                               NLMSG_ALIGN(sizeof(XfrmController::nlattr_user_tmpl)) +
+                               NLMSG_ALIGN(sizeof(XfrmController::nlattr_xfrm_mark));
+
+    std::vector<uint8_t> nlMsgBuf;
+    EXPECT_CALL(mockSyscalls, writev(_, _))
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
+    EXPECT_CALL(mockSyscalls, read(_, _))
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
+
+    XfrmController ctrl;
+    Status res = ctrl.ipSecUpdateSecurityPolicy(
+        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr,
+        0 /* SPI */, 0 /* Mark */, 0 /* Mask */);
+
+    EXPECT_TRUE(isOk(res)) << res;
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
+
+    Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
+    nlmsghdr hdr;
+    netdutils::extract(nlMsgSlice, hdr);
+    EXPECT_EQ(XFRM_MSG_UPDPOLICY, hdr.nlmsg_type);
+}
+
+TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityPolicy) {
+    const int version = GetParam();
+    const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
+    const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
+
+    NetlinkResponse response{};
+    response.hdr.nlmsg_type = XFRM_MSG_DELPOLICY;
+    Slice responseSlice = netdutils::makeSlice(response);
+
+    size_t expectedMsgLength = NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_userpolicy_id)) +
+                               NLMSG_ALIGN(sizeof(XfrmController::nlattr_xfrm_mark));
+
+    std::vector<uint8_t> nlMsgBuf;
+    EXPECT_CALL(mockSyscalls, writev(_, _))
+        .WillOnce(DoAll(SaveFlattenedIovecs<1>(&nlMsgBuf), Return(expectedMsgLength)));
+    EXPECT_CALL(mockSyscalls, read(_, _))
+        .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
+
+    XfrmController ctrl;
+    Status res = ctrl.ipSecDeleteSecurityPolicy(
+        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr,
+        TEST_XFRM_MARK, TEST_XFRM_MASK);
+
+    EXPECT_TRUE(isOk(res)) << res;
+    EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
+
+    Slice nlMsgSlice = netdutils::makeSlice(nlMsgBuf);
+    nlMsgSlice = netdutils::drop(nlMsgSlice, NLMSG_HDRLEN);
+
+    xfrm_userpolicy_id policyid{};
+    netdutils::extract(nlMsgSlice, policyid);
+
+    EXPECT_EQ(static_cast<uint8_t>(XfrmDirection::OUT), policyid.dir);
+
+    // Drop the user policy id.
+    nlMsgSlice = drop(nlMsgSlice, NLA_ALIGN(sizeof(xfrm_userpolicy_id)));
+    // Extract and check the mark.
+    XfrmController::nlattr_xfrm_mark mark{};
+    netdutils::extract(nlMsgSlice, mark);
+    EXPECT_EQ(TEST_XFRM_MARK, mark.mark.v);
+    EXPECT_EQ(TEST_XFRM_MASK, mark.mark.m);
+
+}
+
+// TODO: Add tests for VTIs, ensuring that we are sending the correct data over netlink.
 
 } // namespace net
 } // namespace android

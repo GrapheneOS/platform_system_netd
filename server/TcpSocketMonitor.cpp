@@ -18,13 +18,13 @@
 
 #include <iomanip>
 #include <thread>
+#include <vector>
 
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <linux/tcp.h>
 
 #include "DumpWriter.h"
-#include "Fwmark.h"
 #include "SockDiag.h"
 #include "TcpSocketMonitor.h"
 
@@ -32,7 +32,6 @@ namespace android {
 namespace net {
 
 using std::chrono::duration_cast;
-using std::chrono::milliseconds;
 using std::chrono::steady_clock;
 
 constexpr const char* getTcpStateName(int t) {
@@ -64,8 +63,13 @@ constexpr const char* getTcpStateName(int t) {
     }
 }
 
+// Helper macro for reading fields into struct tcp_info and handling different struct tcp_info
+// versions in the kernel.
+#define tcpinfo_get(ptr, fld, len, zero) \
+    (((ptr) != nullptr && offsetof(struct tcp_info, fld) < len) ? (ptr)->fld : zero)
+
 static void tcpInfoPrint(DumpWriter &dw, Fwmark mark, const struct inet_diag_msg *sockinfo,
-                         const struct tcp_info *tcpinfo) {
+                         const struct tcp_info *tcpinfo, uint32_t tcpinfoLen) {
     char saddr[INET6_ADDRSTRLEN] = {};
     char daddr[INET6_ADDRSTRLEN] = {};
     inet_ntop(sockinfo->idiag_family, &(sockinfo->id.idiag_src), saddr, sizeof(saddr));
@@ -73,7 +77,7 @@ static void tcpInfoPrint(DumpWriter &dw, Fwmark mark, const struct inet_diag_msg
 
     dw.println(
             "netId=%d uid=%u mark=0x%x saddr=%s daddr=%s sport=%u dport=%u tcp_state=%s(%u) "
-            "rqueue=%u wqueue=%u  rtt=%gms var_rtt=%gms rcv_rtt=%gms unacked=%u snd_cwnd=%u",
+            "rtt=%gms sent=%u lost=%u",
             mark.netId,
             sockinfo->idiag_uid,
             mark.intValue,
@@ -82,13 +86,9 @@ static void tcpInfoPrint(DumpWriter &dw, Fwmark mark, const struct inet_diag_msg
             ntohs(sockinfo->id.idiag_sport),
             ntohs(sockinfo->id.idiag_dport),
             getTcpStateName(sockinfo->idiag_state), sockinfo->idiag_state,
-            sockinfo->idiag_rqueue,
-            sockinfo->idiag_wqueue,
-            tcpinfo != nullptr ? tcpinfo->tcpi_rtt/1000.0 : 0,
-            tcpinfo != nullptr ? tcpinfo->tcpi_rttvar/1000.0 : 0,
-            tcpinfo != nullptr ? tcpinfo->tcpi_rcv_rtt/1000.0 : 0,
-            tcpinfo != nullptr ? tcpinfo->tcpi_unacked : 0,
-            tcpinfo != nullptr ? tcpinfo->tcpi_snd_cwnd : 0);
+            tcpinfo_get(tcpinfo, tcpi_rtt, tcpinfoLen, 0) / 1000.0,
+            tcpinfo_get(tcpinfo, tcpi_data_segs_out, tcpinfoLen, 0),
+            tcpinfo_get(tcpinfo, tcpi_lost, tcpinfoLen, 0));
 }
 
 const String16 TcpSocketMonitor::DUMP_KEYWORD = String16("tcp_socket_info");
@@ -102,22 +102,48 @@ void TcpSocketMonitor::dump(DumpWriter& dw) {
 
     const auto now = steady_clock::now();
     const auto d = duration_cast<milliseconds>(now - mLastPoll);
-    dw.println("last poll %lld ms ago", d.count());
+    dw.println("running=%d, suspended=%d, last poll %lld ms ago",
+            mIsRunning, mIsSuspended, d.count());
 
-    SockDiag sd;
-    if (!sd.open()) {
-        ALOGE("Error opening sock diag for dumping TCP socket info");
-        return;
+    if (!mNetworkStats.empty()) {
+        dw.blankline();
+        dw.println("Network stats:");
+        for (auto const& stats : mNetworkStats) {
+            if (stats.second.nSockets == 0) {
+                continue;
+            }
+            dw.println("netId=%d sent=%d lost=%d rttMs=%gms sentAckDiff=%gms",
+                    stats.first,
+                    stats.second.sent,
+                    stats.second.lost,
+                    stats.second.rttUs / 1000.0 / stats.second.nSockets,
+                    stats.second.sentAckDiffMs / stats.second.nSockets);
+        }
     }
 
-    const auto tcpInfoReader = [&dw](Fwmark mark, const struct inet_diag_msg *sockinfo,
-                                     const struct tcp_info *tcpinfo) {
-        tcpInfoPrint(dw, mark, sockinfo, tcpinfo);
-    };
+    if (!mSocketEntries.empty()) {
+        dw.blankline();
+        dw.println("Socket entries:");
+        for (auto const& stats : mSocketEntries) {
+            dw.println("netId=%u uid=%u cookie=%ld",
+                    stats.second.mark.netId, stats.second.uid, stats.first);
+        }
+    }
 
-    if (int ret = sd.getLiveTcpInfos(tcpInfoReader)) {
-        ALOGE("Failed to dump TCP socket info: %s", strerror(-ret));
-        return;
+    SockDiag sd;
+    if (sd.open()) {
+        dw.blankline();
+        dw.println("Current socket dump:");
+        const auto tcpInfoReader = [&dw](Fwmark mark, const struct inet_diag_msg *sockinfo,
+                                         const struct tcp_info *tcpinfo, uint32_t tcpinfoLen) {
+            tcpInfoPrint(dw, mark, sockinfo, tcpinfo, tcpinfoLen);
+        };
+
+        if (int ret = sd.getLiveTcpInfos(tcpInfoReader)) {
+            ALOGE("Failed to dump TCP socket info: %s", strerror(-ret));
+        }
+    } else {
+        ALOGE("Error opening sock diag for dumping TCP socket info");
     }
 
     dw.decIndent();
@@ -132,28 +158,29 @@ void TcpSocketMonitor::setPollingInterval(milliseconds nextSleepDurationMs) {
 }
 
 void TcpSocketMonitor::resumePolling() {
+    bool wasSuspended;
     {
         std::lock_guard<std::mutex> guard(mLock);
 
-        if (!mIsSuspended) {
-            return;
-        }
-
+        wasSuspended = mIsSuspended;
         mIsSuspended = false;
-
-        ALOGD("resuming tcpinfo polling with polling interval set to %lld ms",
-                mNextSleepDurationMs.count());
+        ALOGD("resuming tcpinfo polling (interval=%lldms)", mNextSleepDurationMs.count());
     }
 
-    mCv.notify_all();
+    if (wasSuspended) {
+        mCv.notify_all();
+    }
 }
 
 void TcpSocketMonitor::suspendPolling() {
     std::lock_guard<std::mutex> guard(mLock);
 
-    if (!mIsSuspended) {
-        ALOGD("suspending tcpinfo polling");
-        mIsSuspended = true;
+    bool wasSuspended = mIsSuspended;
+    mIsSuspended = true;
+    ALOGD("suspending tcpinfo polling");
+
+    if (!wasSuspended) {
+        mSocketEntries.clear();
     }
 }
 
@@ -164,28 +191,38 @@ void TcpSocketMonitor::poll() {
         return;
     }
 
-    const auto now = steady_clock::now();
-
     SockDiag sd;
     if (!sd.open()) {
         ALOGE("Error opening sock diag for polling TCP socket info");
         return;
     }
 
-    const auto tcpInfoReader = [](Fwmark mark, const struct inet_diag_msg *sockinfo,
-                                const struct tcp_info *tcpinfo) {
-        if (sockinfo == nullptr || tcpinfo == nullptr || mark.intValue == 0) {
+    const auto now = steady_clock::now();
+    const auto tcpInfoReader = [this, now](Fwmark mark, const struct inet_diag_msg *sockinfo,
+                                           const struct tcp_info *tcpinfo,
+                                           uint32_t tcpinfoLen) NO_THREAD_SAFETY_ANALYSIS {
+        if (sockinfo == nullptr || tcpinfo == nullptr || tcpinfoLen == 0 || mark.intValue == 0) {
             return;
         }
-
-        // TODO: process socket stats
+        updateSocketStats(now, mark, sockinfo, tcpinfo, tcpinfoLen);
     };
+
+    // Reset mNetworkStats
+    mNetworkStats.clear();
 
     if (int ret = sd.getLiveTcpInfos(tcpInfoReader)) {
         ALOGE("Failed to poll TCP socket info: %s", strerror(-ret));
         return;
     }
 
+    // Remove any SocketEntry not updated
+    for (auto it = mSocketEntries.cbegin(); it != mSocketEntries.cend();) {
+        if (it->second.lastUpdate < now) {
+            it = mSocketEntries.erase(it);
+        } else {
+            it++;
+        }
+    }
     mLastPoll = now;
 }
 
@@ -211,12 +248,54 @@ bool TcpSocketMonitor::isRunning() {
     return mIsRunning;
 }
 
+void TcpSocketMonitor::updateSocketStats(time_point now, Fwmark mark,
+                                         const struct inet_diag_msg *sockinfo,
+                                         const struct tcp_info *tcpinfo,
+                                         uint32_t tcpinfoLen) NO_THREAD_SAFETY_ANALYSIS {
+    int32_t lastAck = tcpinfo_get(tcpinfo, tcpi_last_ack_recv, tcpinfoLen, 0);
+    int32_t lastSent = tcpinfo_get(tcpinfo, tcpi_last_data_sent, tcpinfoLen, 0);
+    TcpStats diff = {
+        .sent = tcpinfo_get(tcpinfo, tcpi_data_segs_out, tcpinfoLen, 0),
+        .lost = tcpinfo_get(tcpinfo, tcpi_lost, tcpinfoLen, 0),
+        .rttUs = tcpinfo_get(tcpinfo, tcpi_rtt, tcpinfoLen, 0),
+        .sentAckDiffMs = lastAck - lastSent,
+        .nSockets = 1,
+    };
+
+    {
+        // Update socket stats with the newest entry, computing the diff w.r.t the previous entry.
+        const uint64_t cookie = (static_cast<uint64_t>(sockinfo->id.idiag_cookie[0]) << 32)
+                | static_cast<uint64_t>(sockinfo->id.idiag_cookie[1]);
+        const SocketEntry previous = mSocketEntries[cookie];
+        mSocketEntries[cookie] = {
+            .sent = diff.sent,
+            .lost = diff.lost,
+            .lastUpdate = now,
+            .mark = mark,
+            .uid = sockinfo->idiag_uid,
+        };
+
+        diff.sent -= previous.sent;
+        diff.lost -= previous.lost;
+    }
+
+    {
+        // Aggregate the diff per network id.
+        auto& stats = mNetworkStats[mark.netId];
+        stats.sent += diff.sent;
+        stats.lost += diff.lost;
+        stats.rttUs += diff.rttUs;
+        stats.sentAckDiffMs += diff.sentAckDiffMs;
+        stats.nSockets += diff.nSockets;
+    }
+}
+
 TcpSocketMonitor::TcpSocketMonitor() {
     std::lock_guard<std::mutex> guard(mLock);
 
     mNextSleepDurationMs = kDefaultPollingInterval;
-    mIsSuspended = true;
     mIsRunning = true;
+    mIsSuspended = true;
     mPollingThread = std::thread([this] {
         while (isRunning()) {
             poll();
