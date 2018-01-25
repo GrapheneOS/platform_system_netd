@@ -89,7 +89,6 @@ namespace android {
 namespace net {
 
 // This comparison ignores ports and fingerprints.
-// TODO: respect IPv6 scope id (e.g. link-local addresses).
 bool AddressComparator::operator() (const DnsTlsServer& x, const DnsTlsServer& y) const {
     if (x.ss.ss_family != y.ss.ss_family) {
         return x.ss.ss_family < y.ss.ss_family;
@@ -102,7 +101,8 @@ bool AddressComparator::operator() (const DnsTlsServer& x, const DnsTlsServer& y
     } else if (x.ss.ss_family == AF_INET6) {
         const sockaddr_in6& x_sin6 = reinterpret_cast<const sockaddr_in6&>(x.ss);
         const sockaddr_in6& y_sin6 = reinterpret_cast<const sockaddr_in6&>(y.ss);
-        return x_sin6.sin6_addr < y_sin6.sin6_addr;
+        return std::tie(x_sin6.sin6_addr, x_sin6.sin6_scope_id) <
+                std::tie(y_sin6.sin6_addr, y_sin6.sin6_scope_id);
     }
     return false;  // Unknown address type.  This is an error.
 }
