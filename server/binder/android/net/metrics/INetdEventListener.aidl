@@ -78,4 +78,24 @@ oneway interface INetdEventListener {
      */
     void onWakeupEvent(String prefix, int uid, int ethertype, int ipNextHeader, in byte[] dstHw,
             String srcIp, String dstIp, int srcPort, int dstPort, long timestampNs);
+
+    /**
+     * An event sent after every Netlink sock_diag poll performed by Netd. This reported batch
+     * groups TCP socket stats aggregated by network id. Per-network data are stored in a
+     * structure-of-arrays style where networkIds, sentPackets, lostPackets, rttUs, and
+     * sentAckDiffMs have the same length. Stats for the i-th network is spread across all these
+     * arrays at index i.
+     * @param networkIds an array of network ids for which there was tcp socket stats to collect in
+     *        the last sock_diag poll.
+     * @param sentPackets an array of packet sent across all TCP sockets still alive and new
+              TCP sockets since the last sock_diag poll, summed per network id.
+     * @param lostPackets, an array of packet lost across all TCP sockets still alive and new
+              TCP sockets since the last sock_diag poll, summed per network id.
+     * @param rttUs an array of smoothed round trip times in microseconds, averaged across all TCP
+              sockets since the last sock_diag poll for a given network id.
+     * @param sentAckDiffMs an array of milliseconds duration between the last packet sent and the
+              last ack received for a socket, averaged across all TCP sockets for a network id.
+     */
+    void onTcpSocketStatsEvent(in int[] networkIds, in int[] sentPackets,
+            in int[] lostPackets, in int[] rttUs, in int[] sentAckDiffMs);
 }
