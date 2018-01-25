@@ -37,6 +37,7 @@
 #include <vector>
 
 #include <cutils/log.h>
+#include <netdutils/Slice.h>
 #include <utils/String16.h>
 #include <sysutils/SocketClient.h>
 
@@ -81,6 +82,8 @@ void tryThreadOrError(SocketClient* cli, T* handler) {
 }
 
 thread_local android_net_context thread_netcontext = {};
+
+DnsTlsDispatcher dnsTlsDispatcher;
 
 res_sendhookact qhook(sockaddr* const * nsap, const u_char** buf, int* buflen,
                       u_char* ans, int anssiz, int* resplen) {
@@ -128,8 +131,10 @@ res_sendhookact qhook(sockaddr* const * nsap, const u_char** buf, int* buflen,
         if (DBG) {
             ALOGD("Performing query over TLS");
         }
-        auto response = DnsTlsDispatcher::query(tlsServer, thread_netcontext.dns_mark,
-                *buf, *buflen, ans, anssiz, resplen);
+        Slice query = netdutils::Slice(const_cast<u_char*>(*buf), *buflen);
+        Slice answer = netdutils::Slice(const_cast<u_char*>(ans), anssiz);
+        auto response = dnsTlsDispatcher.query(tlsServer, thread_netcontext.dns_mark,
+                query, answer, resplen);
         if (response == DnsTlsTransport::Response::success) {
             if (DBG) {
                 ALOGD("qhook success");

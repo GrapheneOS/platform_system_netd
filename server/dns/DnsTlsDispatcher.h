@@ -23,54 +23,79 @@
 
 #include <android-base/thread_annotations.h>
 
+#include <netdutils/Slice.h>
+
 #include "dns/DnsTlsServer.h"
+#include "dns/DnsTlsSocket.h"
+#include "dns/DnsTlsSocketFactory.h"
+#include "dns/IDnsTlsSocketFactory.h"
 #include "dns/DnsTlsTransport.h"
 
 namespace android {
 namespace net {
 
-// This is a totally static class that manages the collection of active DnsTlsTransports.
+using netdutils::Slice;
+
+// This is a singleton class that manages the collection of active DnsTlsTransports.
 // Queries made here are dispatched to an existing or newly constructed DnsTlsTransport.
 class DnsTlsDispatcher {
 public:
-    // Given a |query| of length |qlen|, sends it to the server on the network indicated by |mark|,
-    // and writes the response into |ans|, which can accept up to |anssiz| bytes.  Indicates
-    // the number of bytes written in |resplen|.  If |resplen| is zero, an
-    // error has occurred.
-    static DnsTlsTransport::Response query(const DnsTlsServer& server, unsigned mark,
-            const uint8_t *query, size_t qlen, uint8_t *ans, size_t anssiz, int *resplen);
+    // Default constructor.
+    DnsTlsDispatcher() {
+        mFactory.reset(new DnsTlsSocketFactory());
+    }
+    // Constructor with dependency injection for testing.
+    DnsTlsDispatcher(std::unique_ptr<IDnsTlsSocketFactory> factory) :
+            mFactory(std::move(factory)) {}
+
+    // Given a |query|, sends it to the server on the network indicated by |mark|,
+    // and writes the response into |ans|,  and indicates
+    // the number of bytes written in |resplen|.  Returns a success or error code.
+    DnsTlsTransport::Response query(const DnsTlsServer& server, unsigned mark,
+                                    const Slice query, const Slice ans, int * _Nonnull resplen);
 
 private:
+    // This lock is static so that it can be used to annotate the Transport struct.
+    // DnsTlsDispatcher is a singleton in practice, so making this static does not change
+    // the locking behavior.
     static std::mutex sLock;
 
+    // Key = <mark, server>
     typedef std::pair<unsigned, const DnsTlsServer> Key;
 
     // Transport is a thin wrapper around DnsTlsTransport, adding reference counting and
-    // idle monitoring so we can expire unused sessions from the cache.
+    // usage monitoring so we can expire idle sessions from the cache.
     struct Transport {
-        Transport(const DnsTlsServer& server, unsigned mark) : transport(server, mark) {}
-        // DnsTlsSession is thread-safe (internally locked), so it doesn't need to be guarded.
+        Transport(const DnsTlsServer& server, unsigned mark,
+                  IDnsTlsSocketFactory* _Nonnull factory) :
+                transport(server, mark, factory) {}
+        // DnsTlsTransport is thread-safe, so it doesn't need to be guarded.
         DnsTlsTransport transport;
         // This use counter and timestamp are used to ensure that only idle sessions are
         // destroyed.
         int useCount GUARDED_BY(sLock) = 0;
+        // lastUsed is only guaranteed to be meaningful after useCount is decremented to zero.
         std::chrono::time_point<std::chrono::steady_clock> lastUsed GUARDED_BY(sLock);
     };
 
     // Cache of reusable DnsTlsTransports.  Transports stay in cache as long as
     // they are in use and for a few minutes after.
     // The key is a (netid, server) pair.  The netid is first for lexicographic comparison speed.
-    static std::map<Key, std::unique_ptr<Transport>> sStore GUARDED_BY(sLock);
+    std::map<Key, std::unique_ptr<Transport>> mStore GUARDED_BY(sLock);
 
     // The last time we did a cleanup.  For efficiency, we only perform a cleanup once every
     // few minutes.
-    static std::chrono::time_point<std::chrono::steady_clock> sLastCleanup GUARDED_BY(sLock);
+    std::chrono::time_point<std::chrono::steady_clock> mLastCleanup GUARDED_BY(sLock);
 
     // Drop any cache entries whose useCount is zero and which have not been used recently.
-    static void cleanup(std::chrono::time_point<std::chrono::steady_clock> now) REQUIRES(sLock);
+    // This function performs a linear scan of mStore.
+    void cleanup(std::chrono::time_point<std::chrono::steady_clock> now) REQUIRES(sLock);
+
+    // Trivial factory for DnsTlsSockets.  Dependency injection is only used for testing.
+    std::unique_ptr<IDnsTlsSocketFactory> mFactory;
 };
 
-}  // namespace net
-}  // namespace android
+}  // end of namespace net
+}  // end of namespace android
 
 #endif  // _DNS_DNSTLSDISPATCHER_H

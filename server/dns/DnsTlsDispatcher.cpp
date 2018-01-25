@@ -14,34 +14,53 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "DnsTlsDispatcher"
+//#define LOG_NDEBUG 0
+
 #include "dns/DnsTlsDispatcher.h"
+
+#include "log/log.h"
 
 namespace android {
 namespace net {
 
+using netdutils::Slice;
+
 // static
 std::mutex DnsTlsDispatcher::sLock;
-std::map<DnsTlsDispatcher::Key, std::unique_ptr<DnsTlsDispatcher::Transport>> DnsTlsDispatcher::sStore;
 DnsTlsTransport::Response DnsTlsDispatcher::query(const DnsTlsServer& server, unsigned mark,
-        const uint8_t *query, size_t qlen, uint8_t *response, size_t limit, int *resplen) {
+                                                  const Slice query,
+                                                  const Slice ans, int *resplen) {
     const Key key = std::make_pair(mark, server);
     Transport* xport;
     {
         std::lock_guard<std::mutex> guard(sLock);
-        auto it = sStore.find(key);
-        if (it == sStore.end()) {
-            xport = new Transport(server, mark);
-            if (!xport->transport.initialize()) {
-                return DnsTlsTransport::Response::internal_error;
-            }
-            sStore[key].reset(xport);
+        auto it = mStore.find(key);
+        if (it == mStore.end()) {
+            xport = new Transport(server, mark, mFactory.get());
+            mStore[key].reset(xport);
         } else {
             xport = it->second.get();
         }
         ++xport->useCount;
     }
 
-    DnsTlsTransport::Response res = xport->transport.query(query, qlen, response, limit, resplen);
+    ALOGV("Sending query of length %zu", query.size());
+    auto result = xport->transport.query(query);
+    DnsTlsTransport::Response code = result.code;
+    if (code == DnsTlsTransport::Response::success) {
+        if (result.response.size() > ans.size()) {
+            ALOGV("Response too large: %zu > %zu", result.response.size(), ans.size());
+            code = DnsTlsTransport::Response::limit_error;
+        } else {
+            ALOGV("Got response successfully");
+            *resplen = result.response.size();
+            netdutils::copy(ans, netdutils::makeSlice(result.response));
+        }
+    } else {
+        ALOGV("Query failed: %u", (unsigned int)code);
+    }
+
     auto now = std::chrono::steady_clock::now();
     {
         std::lock_guard<std::mutex> guard(sLock);
@@ -49,25 +68,27 @@ DnsTlsTransport::Response DnsTlsDispatcher::query(const DnsTlsServer& server, un
         xport->lastUsed = now;
         cleanup(now);
     }
-    return res;
+    return code;
 }
 
+// This timeout effectively controls how long to keep SSL session tickets.
 static constexpr std::chrono::minutes IDLE_TIMEOUT(5);
-std::chrono::time_point<std::chrono::steady_clock> DnsTlsDispatcher::sLastCleanup;
 void DnsTlsDispatcher::cleanup(std::chrono::time_point<std::chrono::steady_clock> now) {
-    if (now - sLastCleanup < IDLE_TIMEOUT) {
+    // To avoid scanning mStore after every query, return early if a cleanup has been
+    // performed recently.
+    if (now - mLastCleanup < IDLE_TIMEOUT) {
         return;
     }
-    for (auto it = sStore.begin(); it != sStore.end(); ) {
+    for (auto it = mStore.begin(); it != mStore.end();) {
         auto& s = it->second;
         if (s->useCount == 0 && now - s->lastUsed > IDLE_TIMEOUT) {
-            it = sStore.erase(it);
+            it = mStore.erase(it);
         } else {
             ++it;
         }
     }
-    sLastCleanup = now;
+    mLastCleanup = now;
 }
 
-}  // namespace net
-}  // namespace android
+}  // end of namespace net
+}  // end of namespace android
