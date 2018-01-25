@@ -60,8 +60,10 @@ static void parseServer(const char* server, in_port_t port, sockaddr_storage* pa
 }
 
 bytevec FINGERPRINT1 = { 1 };
+bytevec FINGERPRINT2 = { 2 };
 
 std::string SERVERNAME1 = "dns.example.com";
+std::string SERVERNAME2 = "dns.example.org";
 
 // BaseTest just provides constants that are useful for the tests.
 class BaseTest : public ::testing::Test {
@@ -69,6 +71,8 @@ protected:
     BaseTest() {
         parseServer("192.0.2.1", 853, &V4ADDR1);
         parseServer("192.0.2.2", 853, &V4ADDR2);
+        parseServer("2001:db8::1", 853, &V6ADDR1);
+        parseServer("2001:db8::2", 853, &V6ADDR2);
 
         SERVER1 = DnsTlsServer(V4ADDR1);
         SERVER1.fingerprints.insert(FINGERPRINT1);
@@ -77,6 +81,8 @@ protected:
 
     sockaddr_storage V4ADDR1;
     sockaddr_storage V4ADDR2;
+    sockaddr_storage V6ADDR1;
+    sockaddr_storage V6ADDR2;
 
     DnsTlsServer SERVER1;
 };
@@ -259,6 +265,107 @@ TEST_F(DispatcherTest, Dispatching) {
     for (auto& key : keys) {
         EXPECT_EQ(1U, weak_factory->keys.count(key));
     }
+}
+
+// Check DnsTlsServer's comparison logic.
+AddressComparator ADDRESS_COMPARATOR;
+bool isAddressEqual(const DnsTlsServer& s1, const DnsTlsServer& s2) {
+    bool cmp1 = ADDRESS_COMPARATOR(s1, s2);
+    bool cmp2 = ADDRESS_COMPARATOR(s2, s1);
+    EXPECT_FALSE(cmp1 && cmp2);
+    return !cmp1 && !cmp2;
+}
+
+void checkUnequal(const DnsTlsServer& s1, const DnsTlsServer& s2) {
+    EXPECT_TRUE(s1 == s1);
+    EXPECT_TRUE(s2 == s2);
+    EXPECT_TRUE(isAddressEqual(s1, s1));
+    EXPECT_TRUE(isAddressEqual(s2, s2));
+
+    EXPECT_TRUE(s1 < s2 ^ s2 < s1);
+    EXPECT_FALSE(s1 == s2);
+    EXPECT_FALSE(s2 == s1);
+}
+
+class ServerTest : public BaseTest {};
+
+TEST_F(ServerTest, IPv4) {
+    checkUnequal(V4ADDR1, V4ADDR2);
+    EXPECT_FALSE(isAddressEqual(V4ADDR1, V4ADDR2));
+}
+
+TEST_F(ServerTest, IPv6) {
+    checkUnequal(V6ADDR1, V6ADDR2);
+    EXPECT_FALSE(isAddressEqual(V6ADDR1, V6ADDR2));
+}
+
+TEST_F(ServerTest, MixedAddressFamily) {
+    checkUnequal(V6ADDR1, V4ADDR1);
+    EXPECT_FALSE(isAddressEqual(V6ADDR1, V4ADDR1));
+}
+
+TEST_F(ServerTest, IPv6ScopeId) {
+    DnsTlsServer s1(V6ADDR1), s2(V6ADDR1);
+    sockaddr_in6* addr1 = reinterpret_cast<sockaddr_in6*>(&s1.ss);
+    addr1->sin6_scope_id = 1;
+    sockaddr_in6* addr2 = reinterpret_cast<sockaddr_in6*>(&s2.ss);
+    addr2->sin6_scope_id = 2;
+    checkUnequal(s1, s2);
+    EXPECT_FALSE(isAddressEqual(s1, s2));
+}
+
+TEST_F(ServerTest, IPv6FlowInfo) {
+    DnsTlsServer s1(V6ADDR1), s2(V6ADDR1);
+    sockaddr_in6* addr1 = reinterpret_cast<sockaddr_in6*>(&s1.ss);
+    addr1->sin6_flowinfo = 1;
+    sockaddr_in6* addr2 = reinterpret_cast<sockaddr_in6*>(&s2.ss);
+    addr2->sin6_flowinfo = 2;
+    // All comparisons ignore flowinfo.
+    EXPECT_EQ(s1, s2);
+    EXPECT_TRUE(isAddressEqual(s1, s2));
+}
+
+TEST_F(ServerTest, Port) {
+    DnsTlsServer s1, s2;
+    parseServer("192.0.2.1", 853, &s1.ss);
+    parseServer("192.0.2.1", 854, &s2.ss);
+    checkUnequal(s1, s2);
+    EXPECT_TRUE(isAddressEqual(s1, s2));
+
+    DnsTlsServer s3, s4;
+    parseServer("2001:db8::1", 853, &s3.ss);
+    parseServer("2001:db8::1", 852, &s4.ss);
+    checkUnequal(s3, s4);
+    EXPECT_TRUE(isAddressEqual(s3, s4));
+}
+
+TEST_F(ServerTest, Name) {
+    DnsTlsServer s1(V4ADDR1), s2(V4ADDR1);
+    s1.name = SERVERNAME1;
+    checkUnequal(s1, s2);
+    s2.name = SERVERNAME2;
+    checkUnequal(s1, s2);
+    EXPECT_TRUE(isAddressEqual(s1, s2));
+}
+
+TEST_F(ServerTest, Fingerprint) {
+    DnsTlsServer s1(V4ADDR1), s2(V4ADDR1);
+
+    s1.fingerprints.insert(FINGERPRINT1);
+    checkUnequal(s1, s2);
+    EXPECT_TRUE(isAddressEqual(s1, s2));
+
+    s2.fingerprints.insert(FINGERPRINT2);
+    checkUnequal(s1, s2);
+    EXPECT_TRUE(isAddressEqual(s1, s2));
+
+    s2.fingerprints.insert(FINGERPRINT1);
+    checkUnequal(s1, s2);
+    EXPECT_TRUE(isAddressEqual(s1, s2));
+
+    s1.fingerprints.insert(FINGERPRINT2);
+    EXPECT_EQ(s1, s2);
+    EXPECT_TRUE(isAddressEqual(s1, s2));
 }
 
 } // end of namespace net
