@@ -317,9 +317,14 @@ bool DnsTlsFrontend::handleOneRequest(SSL* ssl) {
     }
     const uint16_t qlen = (queryHeader[0] << 8) | queryHeader[1];
     uint8_t query[qlen];
-    if (SSL_read(ssl, &query, qlen) != qlen) {
-        ALOGI("Not enough query bytes");
-        return false;
+    size_t qbytes = 0;
+    while (qbytes < qlen) {
+        int ret = SSL_read(ssl, query + qbytes, qlen - qbytes);
+        if (ret <= 0) {
+            ALOGI("Error while reading query");
+            return false;
+        }
+        qbytes += ret;
     }
     int sent = send(backend_socket_, query, qlen, 0);
     if (sent != qlen) {
