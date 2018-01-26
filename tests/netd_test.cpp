@@ -469,6 +469,55 @@ TEST_F(ResolverTest, GetAddrInfoV4) {
     }
 }
 
+TEST_F(ResolverTest, GetHostByNameBrokenEdns) {
+    const char* listen_addr = "127.0.0.3";
+    const char* listen_srv = "53";
+    const char* host_name = "edns.example.com.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail, 1.0);
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
+    dns.setFailOnEdns(true);  // This is the only change from the basic test.
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = { listen_addr };
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+
+    const hostent* result;
+
+    dns.clearQueries();
+    result = gethostbyname("edns");
+    EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, host_name));
+    ASSERT_FALSE(result == nullptr);
+    ASSERT_EQ(4, result->h_length);
+    ASSERT_FALSE(result->h_addr_list[0] == nullptr);
+    EXPECT_EQ("1.2.3.3", ToString(result));
+    EXPECT_TRUE(result->h_addr_list[1] == nullptr);
+}
+
+TEST_F(ResolverTest, GetAddrInfoBrokenEdns) {
+    addrinfo* result = nullptr;
+
+    const char* listen_addr = "127.0.0.5";
+    const char* listen_srv = "53";
+    const char* host_name = "edns2.example.com.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250,
+                           ns_rcode::ns_r_servfail, 1.0);
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.5");
+    dns.setFailOnEdns(true);  // This is the only change from the basic test.
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = { listen_addr };
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    EXPECT_EQ(0, getaddrinfo("edns2", nullptr, &hints, &result));
+    EXPECT_EQ(1U, GetNumQueries(dns, host_name));
+    EXPECT_EQ("1.2.3.5", ToString(result));
+    if (result) {
+        freeaddrinfo(result);
+        result = nullptr;
+    }
+}
+
 TEST_F(ResolverTest, MultidomainResolution) {
     std::vector<std::string> searchDomains = { "example1.com", "example2.com", "example3.com" };
     const char* listen_addr = "127.0.0.6";

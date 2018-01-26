@@ -49,6 +49,7 @@ public:
     void addMapping(const char* name, ns_type type, const char* addr);
     void removeMapping(const char* name, ns_type type);
     void setResponseProbability(double response_probability);
+    void setFailOnEdns(bool fail) { fail_on_edns_ = fail; }
     bool running() const;
     bool startServer();
     bool stopServer();
@@ -111,6 +112,10 @@ private:
     // Probability that a valid response is being sent instead of being sent
     // instead of returning error_rcode_.
     std::atomic<double> response_probability_;
+
+    // If true, behave like an old DNS server that doesn't support EDNS.
+    // Default false.
+    std::atomic<bool> fail_on_edns_;
 
     // Mappings from (name, type) to registered response and the
     // mutex protecting them.
