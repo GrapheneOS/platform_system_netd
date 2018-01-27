@@ -6,6 +6,7 @@ cc_library {
         "Netlink.cpp",
         "Slice.cpp",
         "Socket.cpp",
+        "SocketOption.cpp",
         "Status.cpp",
         "Syscalls.cpp",
         "UniqueFd.cpp",
