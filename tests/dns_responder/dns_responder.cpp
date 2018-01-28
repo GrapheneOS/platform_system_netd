@@ -370,6 +370,7 @@ struct DNSHeader {
     bool aa;
     bool tr;
     bool rd;
+    bool ad;
     std::vector<DNSQuestion> questions;
     std::vector<DNSRecord> answers;
     std::vector<DNSRecord> authorities;
@@ -459,7 +460,10 @@ char* DNSHeader::write(char* buffer, const char* buffer_end) const {
     // byte 2: 7:qr, 3-6:opcode, 2:aa, 1:tr, 0:rd
     header.flags0 = (qr << 7) | (opcode << 3) | (aa << 2) | (tr << 1) | rd;
     // byte 3: 7:ra, 6:zero, 5:ad, 4:cd, 0-3:rcode
-    header.flags1 = rcode;
+    // Fake behavior: if the query set the "ad" bit, set it in the response too.
+    // In a real server, this should be set only if the data is authentic and the
+    // query contained an "ad" bit or DNSSEC extensions.
+    header.flags1 = (ad << 5) | rcode;
     // rest of header
     header.qdcount = htons(questions.size());
     header.ancount = htons(answers.size());
@@ -506,6 +510,7 @@ const char* DNSHeader::readHeader(const char* buffer, const char* buffer_end,
     rd = header.flags0 & 1;
     // byte 3: 7:ra, 6:zero, 5:ad, 4:cd, 0-3:rcode
     ra = header.flags1 >> 7;
+    ad = (header.flags1 >> 5) & 1;
     rcode = header.flags1 & 0xF;
     // rest of header
     *qdcount = ntohs(header.qdcount);
@@ -523,6 +528,7 @@ DNSResponder::DNSResponder(std::string listen_address,
     listen_address_(std::move(listen_address)), listen_service_(std::move(listen_service)),
     poll_timeout_ms_(poll_timeout_ms), error_rcode_(error_rcode),
     response_probability_(response_probability),
+    fail_on_edns_(false),
     socket_(-1), epoll_fd_(-1), terminate_(false) { }
 
 DNSResponder::~DNSResponder() {
@@ -749,6 +755,12 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
     }
     if (!header.answers.empty()) {
         ALOGI("already %zu answers present in query", header.answers.size());
+        return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response,
+                                 response_len);
+    }
+    if (!header.additionals.empty() && fail_on_edns_) {
+        ALOGI("DNS request has an additional section (assumed EDNS). "
+              "Simulating an ancient (pre-EDNS) server.");
         return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response,
                                  response_len);
     }
