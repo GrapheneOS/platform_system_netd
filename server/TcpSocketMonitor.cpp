@@ -66,8 +66,9 @@ constexpr const char* getTcpStateName(int t) {
 
 // Helper macro for reading fields into struct tcp_info and handling different struct tcp_info
 // versions in the kernel.
-#define tcpinfo_get(ptr, fld, len, zero) \
-    (((ptr) != nullptr && offsetof(struct tcp_info, fld) < len) ? (ptr)->fld : zero)
+#define TCPINFO_GET(ptr, fld, len, zero) \
+        (((ptr) != nullptr && (offsetof(struct tcp_info, fld) + sizeof((ptr)->fld)) < len) ? \
+        (ptr)->fld : zero)
 
 static void tcpInfoPrint(DumpWriter &dw, Fwmark mark, const struct inet_diag_msg *sockinfo,
                          const struct tcp_info *tcpinfo, uint32_t tcpinfoLen) {
@@ -87,9 +88,9 @@ static void tcpInfoPrint(DumpWriter &dw, Fwmark mark, const struct inet_diag_msg
             ntohs(sockinfo->id.idiag_sport),
             ntohs(sockinfo->id.idiag_dport),
             getTcpStateName(sockinfo->idiag_state), sockinfo->idiag_state,
-            tcpinfo_get(tcpinfo, tcpi_rtt, tcpinfoLen, 0) / 1000.0,
-            tcpinfo_get(tcpinfo, tcpi_data_segs_out, tcpinfoLen, 0),
-            tcpinfo_get(tcpinfo, tcpi_lost, tcpinfoLen, 0));
+            TCPINFO_GET(tcpinfo, tcpi_rtt, tcpinfoLen, 0) / 1000.0,
+            TCPINFO_GET(tcpinfo, tcpi_segs_out, tcpinfoLen, 0),
+            TCPINFO_GET(tcpinfo, tcpi_lost, tcpinfoLen, 0));
 }
 
 const String16 TcpSocketMonitor::DUMP_KEYWORD = String16("tcp_socket_info");
@@ -275,12 +276,12 @@ void TcpSocketMonitor::updateSocketStats(time_point now, Fwmark mark,
                                          const struct inet_diag_msg *sockinfo,
                                          const struct tcp_info *tcpinfo,
                                          uint32_t tcpinfoLen) NO_THREAD_SAFETY_ANALYSIS {
-    int32_t lastAck = tcpinfo_get(tcpinfo, tcpi_last_ack_recv, tcpinfoLen, 0);
-    int32_t lastSent = tcpinfo_get(tcpinfo, tcpi_last_data_sent, tcpinfoLen, 0);
+    int32_t lastAck = TCPINFO_GET(tcpinfo, tcpi_last_ack_recv, tcpinfoLen, 0);
+    int32_t lastSent = TCPINFO_GET(tcpinfo, tcpi_last_data_sent, tcpinfoLen, 0);
     TcpStats diff = {
-        .sent = tcpinfo_get(tcpinfo, tcpi_data_segs_out, tcpinfoLen, 0),
-        .lost = tcpinfo_get(tcpinfo, tcpi_lost, tcpinfoLen, 0),
-        .rttUs = tcpinfo_get(tcpinfo, tcpi_rtt, tcpinfoLen, 0),
+        .sent = TCPINFO_GET(tcpinfo, tcpi_segs_out, tcpinfoLen, 0),
+        .lost = TCPINFO_GET(tcpinfo, tcpi_lost, tcpinfoLen, 0),
+        .rttUs = TCPINFO_GET(tcpinfo, tcpi_rtt, tcpinfoLen, 0),
         .sentAckDiffMs = lastAck - lastSent,
         .nSockets = 1,
     };
