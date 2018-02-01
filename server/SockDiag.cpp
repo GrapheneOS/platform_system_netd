@@ -216,6 +216,10 @@ int SockDiag::readDiagMsg(uint8_t proto, const SockDiag::DestroyFilter& shouldDe
 
 int SockDiag::readDiagMsgWithTcpInfo(const TcpInfoReader& tcpInfoReader) {
     NetlinkDumpCallback callback = [tcpInfoReader] (nlmsghdr *nlh) {
+        if (nlh->nlmsg_type != SOCK_DIAG_BY_FAMILY) {
+            ALOGE("expected nlmsg_type=SOCK_DIAG_BY_FAMILY, got nlmsg_type=%d", nlh->nlmsg_type);
+            return;
+        }
         Fwmark mark;
         struct tcp_info *tcpinfo = nullptr;
         uint32_t tcpinfoLength = 0;
