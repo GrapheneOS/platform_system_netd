@@ -24,11 +24,20 @@
 #include "Network.h"
 #include "android-base/unique_fd.h"
 
-// TODO: change it to a reasonable size.
-constexpr const int COOKIE_UID_MAP_SIZE = 1000;
-constexpr const int UID_COUNTERSET_MAP_SIZE = 1000;
-constexpr const int UID_STATS_MAP_SIZE = 1000;
-constexpr const int TAG_STATS_MAP_SIZE = 1000;
+// Since we cannot garbage collect the stats map since device boot, we need to make these maps as
+// large as possible. The current rlimit of MEM_LOCK allows at most 10000 map entries for each
+// stats map. In the old qtaguid module, we don't have a total limit for data entries but only have
+// limitation of tags each uid can have. (default is 1024 in kernel);
+// cookie_uid_map:      key:  8 bytes, value:  8 bytes, total:10000*8*2 bytes         =  160Kbytes
+// uid_counter_set_map: key:  4 bytes, value:  4 bytes, total:10000*4*2 bytes         =   80Kbytes
+// uid_stats_map:       key: 16 bytes, value: 32 bytes, total:10000*16+10000*32 bytes =  480Kbytes
+// tag_stats_map:       key: 16 bytes, value: 32 bytes, total:10000*16+10000*32 bytes =  480Kbytes
+// total:                                                                               1200Kbytes
+constexpr const int COOKIE_UID_MAP_SIZE = 10000;
+constexpr const int UID_COUNTERSET_MAP_SIZE = 10000;
+constexpr const int UID_STATS_MAP_SIZE = 10000;
+constexpr const int TAG_STATS_MAP_SIZE = 10000;
+constexpr const int UID_OWNER_MAP_SIZE = 10000;
 
 constexpr const int COUNTERSETS_LIMIT = 2;
 

@@ -376,18 +376,10 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
                 curKey = nextKey;
                 continue;
             }
-            removedStatsTotal.rxTcpPackets += old_stats.rxTcpPackets;
-            removedStatsTotal.rxTcpBytes += old_stats.rxTcpBytes;
-            removedStatsTotal.txTcpPackets += old_stats.txTcpPackets;
-            removedStatsTotal.txTcpBytes += old_stats.txTcpBytes;
-            removedStatsTotal.rxUdpPackets += old_stats.rxUdpPackets;
-            removedStatsTotal.rxUdpBytes += old_stats.rxUdpBytes;
-            removedStatsTotal.txUdpPackets += old_stats.txUdpPackets;
-            removedStatsTotal.txUdpBytes += old_stats.txUdpBytes;
-            removedStatsTotal.rxOtherPackets += old_stats.rxOtherPackets;
-            removedStatsTotal.rxOtherBytes += old_stats.rxOtherBytes;
-            removedStatsTotal.txOtherPackets += old_stats.txOtherPackets;
-            removedStatsTotal.txOtherBytes += old_stats.txOtherBytes;
+            removedStatsTotal.rxPackets += old_stats.rxPackets;
+            removedStatsTotal.rxBytes += old_stats.rxBytes;
+            removedStatsTotal.txPackets += old_stats.txPackets;
+            removedStatsTotal.txBytes += old_stats.txBytes;
         } else {
             curKey = nextKey;
         }
