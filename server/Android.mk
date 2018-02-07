@@ -72,6 +72,7 @@ LOCAL_INIT_RC := netd.rc
 
 LOCAL_SHARED_LIBRARIES := \
         android.system.net.netd@1.0 \
+        android.system.net.netd@1.1 \
         libbinder \
         libbpf    \
         libcrypto \
