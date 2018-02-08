@@ -67,7 +67,6 @@ Return<void> NetdHwService::createOemNetwork(createOemNetwork_cb _hidl_cb) {
     unsigned netId;
     Permission permission = PERMISSION_SYSTEM;
 
-    android::RWLock::AutoWLock _lock(gBigNetdLock);
     int ret = gCtls->netCtrl.createPhysicalOemNetwork(permission, &netId);
 
     Fwmark fwmark;
@@ -86,8 +85,6 @@ Return<INetd::StatusCode> NetdHwService::destroyOemNetwork(uint64_t netHandle) {
             (netId > NetworkController::MAX_OEM_ID)) {
         return INetd::StatusCode::INVALID_ARGUMENTS;
     }
-
-    android::RWLock::AutoWLock _lock(gBigNetdLock);
 
     return toHalStatus(gCtls->netCtrl.destroyNetwork(netId));
 }
