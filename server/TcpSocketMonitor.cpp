@@ -322,12 +322,10 @@ TcpSocketMonitor::TcpSocketMonitor() {
     mIsSuspended = true;
     mPollingThread = std::thread([this] {
         (void) this;
-#if 0  // Disable due to crashes in updateSocketStats. b/72512637
         while (isRunning()) {
             poll();
             waitForNextPoll();
         }
-#endif
     });
 }
 
