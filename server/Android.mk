@@ -20,7 +20,6 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_CFLAGS := -Wall -Werror -Wthread-safety
-LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := libnetdaidl_static
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
@@ -37,7 +36,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_CFLAGS := -Wall -Werror -Wthread-safety
-LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := libnetdaidl
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
@@ -59,7 +57,6 @@ LOCAL_C_INCLUDES := \
         system/netd/include \
 
 LOCAL_CPPFLAGS := -Wall -Werror -Wthread-safety -Wnullable-to-nonnull-conversion
-LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_MODULE := netd
 
 # Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
