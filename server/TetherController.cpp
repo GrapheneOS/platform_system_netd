@@ -18,7 +18,6 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <netdb.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <sys/socket.h>
@@ -28,6 +27,11 @@
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
+
+#include <array>
+#include <cstdlib>
+#include <string>
+#include <vector>
 
 #define LOG_TAG "TetherController"
 #include <android-base/strings.h>
@@ -57,6 +61,9 @@ const char IPV4_FORWARDING_PROC_FILE[] = "/proc/sys/net/ipv4/ip_forward";
 const char IPV6_FORWARDING_PROC_FILE[] = "/proc/sys/net/ipv6/conf/all/forwarding";
 const char SEPARATOR[] = "|";
 constexpr const char kTcpBeLiberal[] = "/proc/sys/net/netfilter/nf_conntrack_tcp_be_liberal";
+
+// Chosen to match AID_DNS_TETHER, as made "friendly" by fs_config_generator.py.
+constexpr const char kDnsmasqUsername[] = "dns_tether";
 
 bool writeToFile(const char* filename, const char* value) {
     int fd = open(filename, O_WRONLY | O_CLOEXEC);
@@ -160,8 +167,6 @@ size_t TetherController::forwardingRequestCount() {
     return mForwardingRequests.size();
 }
 
-#define TETHER_START_CONST_ARG        10
-
 int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
     if (mDaemonPid != 0) {
         ALOGE("Tethering already started");
@@ -208,29 +213,32 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
         char markStr[UINT32_HEX_STRLEN];
         snprintf(markStr, sizeof(markStr), "0x%x", fwmark.intValue);
 
-        int num_processed_args = TETHER_START_CONST_ARG + (num_addrs/2) + 1;
-        char **args = (char **)malloc(sizeof(char *) * num_processed_args);
-        args[num_processed_args - 1] = NULL;
-        args[0] = (char *)"/system/bin/dnsmasq";
-        args[1] = (char *)"--keep-in-foreground";
-        args[2] = (char *)"--no-resolv";
-        args[3] = (char *)"--no-poll";
-        args[4] = (char *)"--dhcp-authoritative";
-        // TODO: pipe through metered status from ConnService
-        args[5] = (char *)"--dhcp-option-force=43,ANDROID_METERED";
-        args[6] = (char *)"--pid-file";
-        args[7] = (char *)"--listen-mark";
-        args[8] = (char *)markStr;
-        args[9] = (char *)"";
+        std::vector<const std::string> argVector = {
+            "/system/bin/dnsmasq",
+            "--keep-in-foreground",
+            "--no-resolv",
+            "--no-poll",
+            "--dhcp-authoritative",
+            // TODO: pipe through metered status from ConnService
+            "--dhcp-option-force=43,ANDROID_METERED",
+            "--pid-file",
+            "--listen-mark", markStr,
+            "--user", kDnsmasqUsername,
+        };
 
-        int nextArg = TETHER_START_CONST_ARG;
         for (int addrIndex = 0; addrIndex < num_addrs; addrIndex += 2) {
-            asprintf(&(args[nextArg++]),"--dhcp-range=%s,%s,1h",
-                     dhcp_ranges[addrIndex], dhcp_ranges[addrIndex+1]);
+            argVector.push_back(
+                    StringPrintf("--dhcp-range=%s,%s,1h",
+                                 dhcp_ranges[addrIndex], dhcp_ranges[addrIndex+1]));
+        }
+
+        auto args = (char**)std::calloc(argVector.size() + 1, sizeof(char*));
+        for (unsigned i = 0; i < argVector.size(); i++) {
+            args[i] = (char*)argVector[i].c_str();
         }
 
         if (execv(args[0], args)) {
-            ALOGE("execl failed (%s)", strerror(errno));
+            ALOGE("execv failed (%s)", strerror(errno));
         }
         ALOGE("Should never get here!");
         _exit(-1);
