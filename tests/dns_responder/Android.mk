@@ -23,7 +23,14 @@ LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter -Wthread-safety
 LOCAL_CFLAGS += -Wno-varargs
 
 EXTRA_LDLIBS := -lpthread
-LOCAL_SHARED_LIBRARIES += libbase libbinder libcrypto liblog libnetd_client libssl
+LOCAL_SHARED_LIBRARIES += \
+    libbase \
+    libbinder \
+    libcrypto \
+    liblog \
+    libnetd_client \
+    libssl \
+    libnetdutils
 LOCAL_STATIC_LIBRARIES += libutils
 
 LOCAL_AIDL_INCLUDES += \

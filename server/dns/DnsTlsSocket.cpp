@@ -22,6 +22,7 @@
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <errno.h>
+#include <linux/tcp.h>
 #include <openssl/err.h>
 #include <sys/select.h>
 
@@ -30,6 +31,7 @@
 //#define LOG_NDEBUG 0
 
 #include "log/log.h"
+#include "netdutils/SocketOption.h"
 #include "Fwmark.h"
 #undef ADD  // already defined in nameser.h
 #include "NetdConstants.h"
@@ -37,10 +39,13 @@
 
 
 namespace android {
-namespace net {
 
+using netdutils::enableSockopt;
+using netdutils::enableTcpKeepAlives;
+using netdutils::isOk;
 using netdutils::Status;
 
+namespace net {
 namespace {
 
 constexpr const char kCaCertDir[] = "/system/etc/security/cacerts";
@@ -88,6 +93,15 @@ Status DnsTlsSocket::tcpConnect() {
         mSslFd.reset();
         return Status(errno);
     }
+
+    const Status tfo = enableSockopt(mSslFd.get(), SOL_TCP, TCP_FASTOPEN_CONNECT);
+    if (!isOk(tfo) && tfo.code() != ENOPROTOOPT) {
+        ALOGI("Failed to enable TFO: %s", tfo.msg().c_str());
+    }
+
+    // Send 5 keepalives, 3 seconds apart, after 15 seconds of inactivity.
+    enableTcpKeepAlives(mSslFd.get(), 15U, 5U, 3U);
+
     if (connect(mSslFd.get(), reinterpret_cast<const struct sockaddr *>(&mServer.ss),
                 sizeof(mServer.ss)) != 0 &&
             errno != EINPROGRESS) {
