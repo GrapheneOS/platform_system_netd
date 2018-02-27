@@ -54,11 +54,13 @@
 #include "android/net/INetd.h"
 #include "android/net/metrics/INetdEventListener.h"
 #include "binder/IServiceManager.h"
+#include "netdutils/SocketOption.h"
 
 using android::base::StringPrintf;
 using android::base::StringAppendF;
 using android::net::ResolverStats;
 using android::net::metrics::INetdEventListener;
+using android::netdutils::enableSockopt;
 
 // Emulates the behavior of UnorderedElementsAreArray, which currently cannot be used.
 // TODO: Use UnorderedElementsAreArray, which depends on being able to compile libgmock_host,
@@ -788,9 +790,8 @@ TEST_F(ResolverTest, GetHostByName_TlsBroken) {
         .sin_port = htons(853),
     };
     ASSERT_TRUE(inet_pton(AF_INET, listen_addr, &tlsServer.sin_addr));
-    const int one = 1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &one, sizeof(one));
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    enableSockopt(s, SOL_SOCKET, SO_REUSEPORT);
+    enableSockopt(s, SOL_SOCKET, SO_REUSEADDR);
     ASSERT_FALSE(bind(s, reinterpret_cast<struct sockaddr*>(&tlsServer), sizeof(tlsServer)));
     ASSERT_FALSE(listen(s, 1));
 

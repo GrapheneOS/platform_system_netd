@@ -33,6 +33,9 @@
 
 #define LOG_TAG "DNSResponder"
 #include <log/log.h>
+#include <netdutils/SocketOption.h>
+
+using android::netdutils::enableSockopt;
 
 namespace test {
 
@@ -592,9 +595,8 @@ bool DNSResponder::startServer() {
     for (const addrinfo* ai = ai_res ; ai ; ai = ai->ai_next) {
         s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (s < 0) continue;
-        const int one = 1;
-        setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &one, sizeof(one));
-        setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+        enableSockopt(s, SOL_SOCKET, SO_REUSEPORT);
+        enableSockopt(s, SOL_SOCKET, SO_REUSEADDR);
         if (bind(s, ai->ai_addr, ai->ai_addrlen)) {
             APLOGI("bind failed for socket %d", s);
             close(s);
