@@ -43,14 +43,10 @@ int bpfGetUidStatsInternal(uid_t uid, Stats* stats, const base::unique_fd& map_f
             if (bpf::findMapEntry(map_fd, &curKey, &statsEntry) < 0) {
                 return -errno;
             }
-            stats->rxPackets +=
-                statsEntry.rxTcpPackets + statsEntry.rxUdpPackets + statsEntry.rxOtherPackets;
-            stats->txPackets +=
-                statsEntry.txTcpPackets + statsEntry.txUdpPackets + statsEntry.txOtherPackets;
-            stats->rxBytes +=
-                statsEntry.rxTcpBytes + statsEntry.rxUdpBytes + statsEntry.rxOtherBytes;
-            stats->txBytes +=
-                statsEntry.txTcpBytes + statsEntry.txUdpBytes + statsEntry.txOtherBytes;
+            stats->rxPackets += statsEntry.rxPackets;
+            stats->txPackets += statsEntry.txPackets;
+            stats->rxBytes += statsEntry.rxBytes;
+            stats->txBytes += statsEntry.txBytes;
         }
     }
     // Return errno if getNextMapKey return error before hit to the end of the map.
@@ -118,12 +114,10 @@ stats_line populateStatsEntry(const StatsKey& statsKey, const StatsValue& statsE
     newLine.uid = statsKey.uid;
     newLine.set = statsKey.counterSet;
     newLine.tag = statsKey.tag;
-    newLine.rxPackets =
-        statsEntry.rxTcpPackets + statsEntry.rxUdpPackets + statsEntry.rxOtherPackets;
-    newLine.txPackets =
-        statsEntry.txTcpPackets + statsEntry.txUdpPackets + statsEntry.txOtherPackets;
-    newLine.rxBytes = statsEntry.rxTcpBytes + statsEntry.rxUdpBytes + statsEntry.rxOtherBytes;
-    newLine.txBytes = statsEntry.txTcpBytes + statsEntry.txUdpBytes + statsEntry.txOtherBytes;
+    newLine.rxPackets = statsEntry.rxPackets;
+    newLine.txPackets = statsEntry.txPackets;
+    newLine.rxBytes = statsEntry.rxBytes;
+    newLine.txBytes = statsEntry.txBytes;
     return newLine;
 }
 
