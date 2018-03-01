@@ -34,6 +34,8 @@
 #define LOG_TAG "CommandListener"
 
 #include <cutils/log.h>
+#include <netdutils/Status.h>
+#include <netdutils/StatusOr.h>
 #include <netutils/ifc.h>
 #include <sysutils/SocketClient.h>
 
@@ -132,20 +134,16 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
     }
 
     if (!strcmp(argv[1], "list")) {
-        DIR *d;
-        struct dirent *de;
-
-        if (!(d = opendir("/sys/class/net"))) {
-            cli->sendMsg(ResponseCode::OperationFailed, "Failed to open sysfs dir", true);
+        const auto ifacePairs =
+            InterfaceController::getIfaceList();
+        if (ifacePairs.status() != netdutils::status::ok) {
+            cli->sendMsg(ResponseCode::OperationFailed, "Failed to get interface list", true);
             return 0;
         }
-
-        while((de = readdir(d))) {
-            if (de->d_name[0] == '.')
-                continue;
-            cli->sendMsg(ResponseCode::InterfaceListResult, de->d_name, false);
+        for (const auto& ifacePair : ifacePairs.value()) {
+            cli->sendMsg(ResponseCode::InterfaceListResult, ifacePair.first.c_str(), false);
         }
-        closedir(d);
+
         cli->sendMsg(ResponseCode::CommandOkay, "Interface list completed", false);
         return 0;
     } else {
