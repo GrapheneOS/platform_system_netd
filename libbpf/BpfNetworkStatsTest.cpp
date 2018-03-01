@@ -143,18 +143,10 @@ TEST_F(BpfNetworkStatsHelperTest, TestIterateMapWithDeletion) {
 }
 
 TEST_F(BpfNetworkStatsHelperTest, TestGetUidStatsTotal) {
-    StatsValue value1 = {.rxTcpBytes = TEST_BYTES0,
-                         .rxTcpPackets = TEST_PACKET0,
-                         .txTcpBytes = TEST_BYTES1,
-                         .txTcpPackets = TEST_PACKET1,
-                         .rxUdpPackets = 0,
-                         .rxUdpBytes = 0,
-                         .txUdpPackets = 0,
-                         .txUdpBytes = 0,
-                         .rxOtherBytes = TEST_BYTES2,
-                         .rxOtherPackets = TEST_PACKET2,
-                         .txOtherBytes = TEST_BYTES3,
-                         .txOtherPackets = TEST_PACKET3};
+    StatsValue value1 = {.rxBytes = TEST_BYTES0,
+                         .rxPackets = TEST_PACKET0,
+                         .txBytes = TEST_BYTES1,
+                         .txPackets = TEST_PACKET1,};
     populateFakeStats(TEST_UID1, 0, IFACE0, TEST_COUNTERSET0, &value1, mFakeUidStatsMap);
     populateFakeStats(TEST_UID1, 0, IFACE0, TEST_COUNTERSET1, &value1, mFakeUidStatsMap);
     populateFakeStats(TEST_UID2, 0, IFACE0, TEST_COUNTERSET1, &value1, mFakeUidStatsMap);
@@ -220,18 +212,10 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsDetail) {
     const char* iface = "lo";
     int ifaceIndex = if_nametoindex(iface);
     ASSERT_LT(0, ifaceIndex);
-    StatsValue value1 = {.rxTcpBytes = TEST_BYTES0,
-                         .rxTcpPackets = TEST_PACKET0,
-                         .txTcpBytes = TEST_BYTES1,
-                         .txTcpPackets = TEST_PACKET1,
-                         .rxUdpPackets = 0,
-                         .rxUdpBytes = 0,
-                         .txUdpPackets = 0,
-                         .txUdpBytes = 0,
-                         .rxOtherBytes = TEST_BYTES2,
-                         .rxOtherPackets = TEST_PACKET2,
-                         .txOtherBytes = TEST_BYTES3,
-                         .txOtherPackets = TEST_PACKET3};
+    StatsValue value1 = {.rxBytes = TEST_BYTES0,
+                         .rxPackets = TEST_PACKET0,
+                         .txBytes = TEST_BYTES1,
+                         .txPackets = TEST_PACKET1,};
     populateFakeStats(0, 0, 0, COUNTERSETS_LIMIT, &value1, mFakeTagStatsMap);
     populateFakeStats(TEST_UID1, TEST_TAG, ifaceIndex, TEST_COUNTERSET0, &value1, mFakeTagStatsMap);
     populateFakeStats(TEST_UID1, TEST_TAG, ifaceIndex + 1, TEST_COUNTERSET0, &value1,
@@ -259,18 +243,10 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsWithSkippedIface) {
     const char* iface = "lo";
     int ifaceIndex = if_nametoindex(iface);
     ASSERT_LT(0, ifaceIndex);
-    StatsValue value1 = {.rxTcpBytes = TEST_BYTES0,
-                         .rxTcpPackets = TEST_PACKET0,
-                         .txTcpBytes = TEST_BYTES1,
-                         .txTcpPackets = TEST_PACKET1,
-                         .rxUdpPackets = 0,
-                         .rxUdpBytes = 0,
-                         .txUdpPackets = 0,
-                         .txUdpBytes = 0,
-                         .rxOtherBytes = TEST_BYTES2,
-                         .rxOtherPackets = TEST_PACKET2,
-                         .txOtherBytes = TEST_BYTES3,
-                         .txOtherPackets = TEST_PACKET3};
+    StatsValue value1 = {.rxBytes = TEST_BYTES0,
+                         .rxPackets = TEST_PACKET0,
+                         .txBytes = TEST_BYTES1,
+                         .txPackets = TEST_PACKET1,};
     populateFakeStats(0, 0, 0, COUNTERSETS_LIMIT, &value1, mFakeUidStatsMap);
     populateFakeStats(TEST_UID1, 0, ifaceIndex, TEST_COUNTERSET0, &value1, mFakeUidStatsMap);
     populateFakeStats(TEST_UID1, 0, ifaceIndex + 1, TEST_COUNTERSET0, &value1, mFakeUidStatsMap);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,16 +14,11 @@
  * limitations under the License.
  */
 
-namespace android {
-namespace bpf {
+// const values shared by both kernel program and userspace bpfloader
 
-#define LOG_BUF_SIZE 65536
+#define BPF_PROG_SEC_NAME "kern_prog"
 
-constexpr const int IPV6_TRANSPORT_PROTOCOL_OFFSET = 6;
-constexpr const int IPV4_TRANSPORT_PROTOCOL_OFFSET = 9;
-
-int loadIngressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCounterSetMap);
-int loadEgressProg(int cookieTagMap, int uidStatsMap, int tagStatsMap, int uidCounterSetMap);
-
-}  // namespace bpf
-}  // namespace android
+#define COOKIE_TAG_MAP 0xbfceaaffffffffff
+#define UID_COUNTERSET_MAP 0xbfdceeafffffffff
+#define UID_STATS_MAP 0xbfdaafffffffffff
+#define TAG_STATS_MAP 0xbfaaafffffffffff
