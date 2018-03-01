@@ -14,25 +14,192 @@
  * limitations under the License.
  */
 
+#include <arpa/inet.h>
+#include <elf.h>
 #include <error.h>
+#include <fcntl.h>
+#include <inttypes.h>
 #include <linux/bpf.h>
 #include <linux/unistd.h>
 #include <net/if.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
 
 #include <netdutils/Misc.h>
-#include "BpfProgSets.h"
+#include <netdutils/Slice.h>
 #include "bpf/BpfUtils.h"
 
+#include "bpf_shared.h"
+
 using android::base::unique_fd;
+using android::netdutils::Slice;
+
+#define INGRESS_PROG "/system/bin/cgroup_bpf_ingress_prog"
+#define EGRESS_PROG "/system/bin/cgroup_bpf_egress_prog"
+#define MAP_LD_CMD_HEAD 0x18
+
+#define FAIL(str)      \
+    do {               \
+        perror((str)); \
+        return -1;     \
+    } while (0)
+
+// The BPF instruction bytes that we need to replace. x is a placeholder (e.g., COOKIE_TAG_MAP).
+#define MAP_SEARCH_PATTERN(x)             \
+    {                                     \
+        0x18, 0x01, 0x00, 0x00,           \
+        (x)[0], (x)[1], (x)[2], (x)[3],   \
+        0x00, 0x00, 0x00, 0x00,           \
+        (x)[4], (x)[5], (x)[6], (x)[7]    \
+    }
+
+// The bytes we'll replace them with. x is the actual fd number for the map at runtime.
+// The second byte is changed from 0x01 to 0x11 since 0x11 is the special command used
+// for bpf map fd loading. The original 0x01 is only a normal load command.
+#define MAP_REPLACE_PATTERN(x)            \
+    {                                     \
+        0x18, 0x11, 0x00, 0x00,           \
+        (x)[0], (x)[1], (x)[2], (x)[3],   \
+        0x00, 0x00, 0x00, 0x00,           \
+        (x)[4], (x)[5], (x)[6], (x)[7]    \
+    }
+
+#define MAP_CMD_SIZE 16
+#define LOG_BUF_SIZE 65536
 
 namespace android {
 namespace bpf {
+
+void makeFdReplacePattern(uint64_t code, uint64_t mapFd, char* pattern, char* cmd) {
+    char mapCode[sizeof(uint64_t)];
+    char mapCmd[sizeof(uint64_t)];
+    // The byte order is little endian for arm devices.
+    for (uint32_t i = 0; i < sizeof(uint64_t); i++) {
+        mapCode[i] = (code >> (i * 8)) & 0xFF;
+        mapCmd[i] = (mapFd >> (i * 8)) & 0xFF;
+    }
+
+    char tmpPattern[] = MAP_SEARCH_PATTERN(mapCode);
+    memcpy(pattern, tmpPattern, MAP_CMD_SIZE);
+    char tmpCmd[] = MAP_REPLACE_PATTERN(mapCmd);
+    memcpy(cmd, tmpCmd, MAP_CMD_SIZE);
+}
+
+int loadProg(const char* path, int cookieTagMap, int uidStatsMap, int tagStatsMap,
+             int uidCounterSetMap) {
+    int fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        fprintf(stderr, "Failed to open %s program: %s", path, strerror(errno));
+        return -1;
+    }
+
+    struct stat stat;
+    if (fstat(fd, &stat)) FAIL("Fail to get file size");
+
+    off_t fileLen = stat.st_size;
+    char* baseAddr = (char*)mmap(NULL, fileLen, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (baseAddr == MAP_FAILED) FAIL("Failed to map the program into memory");
+
+    if ((uint32_t)fileLen < sizeof(Elf64_Ehdr)) FAIL("file size too small for Elf64_Ehdr");
+
+    Elf64_Ehdr* elf = (Elf64_Ehdr*)baseAddr;
+
+    // Find section names string table. This is the section whose index is e_shstrndx.
+    if (elf->e_shstrndx == SHN_UNDEF ||
+        elf->e_shoff + (elf->e_shstrndx + 1) * sizeof(Elf64_Shdr) > (uint32_t)fileLen) {
+        FAIL("cannot locate namesSection\n");
+    }
+
+    Elf64_Shdr* sections = (Elf64_Shdr*)(baseAddr + elf->e_shoff);
+
+    Elf64_Shdr* namesSection = sections + elf->e_shstrndx;
+
+    if (namesSection->sh_offset + namesSection->sh_size > (uint32_t)fileLen)
+        FAIL("namesSection out of bound\n");
+
+    const char* strTab = baseAddr + namesSection->sh_offset;
+    void* progSection = nullptr;
+    uint64_t progSize = 0;
+    for (int i = 0; i < elf->e_shnum; i++) {
+        Elf64_Shdr* section = sections + i;
+        if (((char*)section - baseAddr) + sizeof(Elf64_Shdr) > (uint32_t)fileLen) {
+            FAIL("next section is out of bound\n");
+        }
+
+        if (!strcmp(strTab + section->sh_name, BPF_PROG_SEC_NAME)) {
+            progSection = baseAddr + section->sh_offset;
+            progSize = (uint64_t)section->sh_size;
+            break;
+        }
+    }
+
+    if (!progSection) FAIL("program section not found");
+    if ((char*)progSection - baseAddr + progSize > (uint32_t)fileLen)
+        FAIL("programSection out of bound\n");
+
+    char* prog = new char[progSize]();
+    memcpy(prog, progSection, progSize);
+
+    char cookieTagMapFdPattern[MAP_CMD_SIZE];
+    char cookieTagMapFdLoadByte[MAP_CMD_SIZE];
+    makeFdReplacePattern(COOKIE_TAG_MAP, cookieTagMap, cookieTagMapFdPattern,
+                         cookieTagMapFdLoadByte);
+
+    char uidCounterSetMapFdPattern[MAP_CMD_SIZE];
+    char uidCounterSetMapFdLoadByte[MAP_CMD_SIZE];
+    makeFdReplacePattern(UID_COUNTERSET_MAP, uidCounterSetMap, uidCounterSetMapFdPattern,
+                         uidCounterSetMapFdLoadByte);
+
+    char tagStatsMapFdPattern[MAP_CMD_SIZE];
+    char tagStatsMapFdLoadByte[MAP_CMD_SIZE];
+    makeFdReplacePattern(TAG_STATS_MAP, tagStatsMap, tagStatsMapFdPattern, tagStatsMapFdLoadByte);
+
+    char uidStatsMapFdPattern[MAP_CMD_SIZE];
+    char uidStatsMapFdLoadByte[MAP_CMD_SIZE];
+    makeFdReplacePattern(UID_STATS_MAP, uidStatsMap, uidStatsMapFdPattern, uidStatsMapFdLoadByte);
+
+    char* mapHead = prog;
+    while ((uint64_t)(mapHead - prog + MAP_CMD_SIZE) < progSize) {
+        // Scan the program, examining all possible places that might be the start of a map load
+        // operation (i.e., all byes of value MAP_LD_CMD_HEAD).
+        //
+        // In each of these places, check whether it is the start of one of the patterns we want to
+        // replace, and if so, replace it.
+        mapHead = (char*)memchr(mapHead, MAP_LD_CMD_HEAD, progSize);
+        if (!mapHead) break;
+        if ((uint64_t)(mapHead - prog + MAP_CMD_SIZE) < progSize) {
+            if (!memcmp(mapHead, cookieTagMapFdPattern, MAP_CMD_SIZE)) {
+                memcpy(mapHead, cookieTagMapFdLoadByte, MAP_CMD_SIZE);
+                mapHead += MAP_CMD_SIZE;
+            } else if (!memcmp(mapHead, uidCounterSetMapFdPattern, MAP_CMD_SIZE)) {
+                memcpy(mapHead, uidCounterSetMapFdLoadByte, MAP_CMD_SIZE);
+                mapHead += MAP_CMD_SIZE;
+            } else if (!memcmp(mapHead, tagStatsMapFdPattern, MAP_CMD_SIZE)) {
+                memcpy(mapHead, tagStatsMapFdLoadByte, MAP_CMD_SIZE);
+                mapHead += MAP_CMD_SIZE;
+            } else if (!memcmp(mapHead, uidStatsMapFdPattern, MAP_CMD_SIZE)) {
+                memcpy(mapHead, uidStatsMapFdLoadByte, MAP_CMD_SIZE);
+                mapHead += MAP_CMD_SIZE;
+            }
+        }
+        mapHead++;
+    }
+    Slice insns = Slice(prog, progSize);
+    char bpf_log_buf[LOG_BUF_SIZE];
+    Slice bpfLog = Slice(bpf_log_buf, sizeof(bpf_log_buf));
+    return bpfProgLoad(BPF_PROG_TYPE_CGROUP_SKB, insns, "Apache 2.0", 0, bpfLog);
+}
 
 int loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
                          const unique_fd& cookieTagMap, const unique_fd& uidCounterSetMap,
@@ -45,11 +212,11 @@ int loadAndAttachProgram(bpf_attach_type type, const char* path, const char* nam
 
     unique_fd fd;
     if (type == BPF_CGROUP_INET_EGRESS) {
-        fd.reset(loadEgressProg(cookieTagMap.get(), uidStatsMap.get(), tagStatsMap.get(),
-                                uidCounterSetMap.get()));
+        fd.reset(loadProg(INGRESS_PROG, cookieTagMap.get(), uidStatsMap.get(), tagStatsMap.get(),
+                          uidCounterSetMap.get()));
     } else {
-        fd.reset(loadIngressProg(cookieTagMap.get(), uidStatsMap.get(), tagStatsMap.get(),
-                                 uidCounterSetMap.get()));
+        fd.reset(loadProg(EGRESS_PROG, cookieTagMap.get(), uidStatsMap.get(), tagStatsMap.get(),
+                          uidCounterSetMap.get()));
     }
 
     if (fd < 0) {
