@@ -37,8 +37,21 @@ cc_binary {
     ],
     srcs: [
         "BpfLoader.cpp",
-        "BpfProgSets.cpp",
     ],
 
+    required: [
+        "cgroup_bpf_ingress_prog",
+        "cgroup_bpf_egress_prog",
+    ],
+}
+
+cc_prebuilt_binary {
+    name: "cgroup_bpf_ingress_prog",
+    srcs: [ "bpf_ingress.o" ],
+}
+
+cc_prebuilt_binary {
+    name: "cgroup_bpf_egress_prog",
+    srcs: [ "bpf_egress.o" ],
 }
 
