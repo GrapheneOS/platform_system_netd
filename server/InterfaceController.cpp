@@ -17,6 +17,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <malloc.h>
+#include <net/if.h>
 #include <sys/socket.h>
 
 #include <functional>
@@ -385,4 +386,23 @@ void InterfaceController::setBaseReachableTimeMs(unsigned int millis) {
 void InterfaceController::setIPv6OptimisticMode(const char *value) {
     setOnAllInterfaces(ipv6_proc_path, "optimistic_dad", value);
     setOnAllInterfaces(ipv6_proc_path, "use_optimistic", value);
+}
+
+StatusOr<std::map<std::string, uint32_t>> InterfaceController::getIfaceList() {
+    std::map<std::string, uint32_t> ifacePairs;
+    DIR* d;
+    struct dirent* de;
+
+    if (!(d = opendir("/sys/class/net"))) {
+        return statusFromErrno(errno, "Cannot open iface directory");
+    }
+    while ((de = readdir(d))) {
+        if (de->d_name[0] == '.') continue;
+        uint32_t ifaceIndex = if_nametoindex(de->d_name);
+        if (ifaceIndex) {
+          ifacePairs.insert(std::pair<std::string, uint32_t>(de->d_name, ifaceIndex));
+        } 
+    }
+    closedir(d);
+    return ifacePairs;
 }

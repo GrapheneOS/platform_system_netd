@@ -21,6 +21,7 @@
 #include <string>
 
 #include <netdutils/Status.h>
+#include <netdutils/StatusOr.h>
 
 // TODO: move InterfaceController into android::net namespace.
 namespace android {
@@ -51,6 +52,8 @@ public:
     static int setParameter(
             const char *family, const char *which, const char *interface, const char *parameter,
             const char *value);
+
+    static android::netdutils::StatusOr<std::map<std::string, uint32_t>> getIfaceList();
 
 private:
   friend class android::net::StablePrivacyTest;

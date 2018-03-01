@@ -30,6 +30,7 @@
 #include "NetlinkManager.h"
 #include "ResponseCode.h"
 #include "SockDiag.h"
+#include "Controllers.h"
 
 static const char *kUpdated = "updated";
 static const char *kRemoved = "removed";
@@ -64,6 +65,17 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
     if (!strcmp(subsys, "net")) {
         NetlinkEvent::Action action = evt->getAction();
         const char *iface = evt->findParam("INTERFACE");
+        const char *ifIndex = evt->findParam("IFINDEX");
+        if (ifIndex) {
+            char *endptr;
+            long ifaceIndex = strtol(ifIndex, &endptr, 10);
+            if ((errno == ERANGE && (ifaceIndex == LONG_MAX || ifaceIndex == LONG_MIN))
+                || (errno != 0 && ifaceIndex == 0) || endptr == ifIndex) {
+                ALOGE("invalid interface index: %s(%s)", iface, ifIndex);
+           } else {
+                gCtls->trafficCtrl.addInterface(iface, ifaceIndex);
+           }
+        }
 
         if (action == NetlinkEvent::Action::kAdd) {
             notifyInterfaceAdded(iface);
