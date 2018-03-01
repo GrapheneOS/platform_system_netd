@@ -209,11 +209,10 @@ Status WakeupController::execIptables(const std::string& action, const std::stri
     constexpr int kRateLimit = 10;
     const char kFormat[] =
         "*mangle\n%s %s -i %s -j NFLOG --nflog-prefix %s --nflog-group %d --nflog-threshold %d"
-        " --nflog-range %d -m mark --mark 0x%08x/0x%08x -m limit --limit %d/s\nCOMMIT\n";
+        " -m mark --mark 0x%08x/0x%08x -m limit --limit %d/s\nCOMMIT\n";
     const auto cmd = StringPrintf(
             kFormat, action.c_str(), WakeupController::LOCAL_MANGLE_INPUT, ifName.c_str(),
-            prefix.c_str(), NetlinkManager::NFLOG_WAKEUP_GROUP, kBatch,
-            WakeupController::kDefaultPacketCopyRange, mark, mask, kRateLimit);
+            prefix.c_str(), NetlinkManager::NFLOG_WAKEUP_GROUP, kBatch, mark, mask, kRateLimit);
 
     std::string out;
     auto rv = mIptables->execute(V4V6, cmd, &out);
