@@ -289,7 +289,7 @@ TEST_F(WakeupControllerTest, addInterface) {
     const char kExpected[] =
         "*mangle\n-A wakeupctrl_mangle_INPUT -i test:prefix"
         " -j NFLOG --nflog-prefix wlan8 --nflog-group 3 --nflog-threshold 8"
-        " --nflog-range 60 -m mark --mark 0x12345678/0x0f0f0f0f -m limit --limit 10/s\nCOMMIT\n";
+        " -m mark --mark 0x12345678/0x0f0f0f0f -m limit --limit 10/s\nCOMMIT\n";
     EXPECT_CALL(mIptables, execute(V4V6, kExpected, _)).WillOnce(Return(0));
     mController.addInterface(kPrefix, kIfName, kMark, kMask);
 }
@@ -302,7 +302,7 @@ TEST_F(WakeupControllerTest, delInterface) {
     const char kExpected[] =
         "*mangle\n-D wakeupctrl_mangle_INPUT -i test:prefix"
         " -j NFLOG --nflog-prefix wlan8 --nflog-group 3 --nflog-threshold 8"
-        " --nflog-range 60 -m mark --mark 0x12345678/0xf0f0f0f0 -m limit --limit 10/s\nCOMMIT\n";
+        " -m mark --mark 0x12345678/0xf0f0f0f0 -m limit --limit 10/s\nCOMMIT\n";
     EXPECT_CALL(mIptables, execute(V4V6, kExpected, _)).WillOnce(Return(0));
     mController.delInterface(kPrefix, kIfName, kMark, kMask);
 }

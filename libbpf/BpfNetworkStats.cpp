@@ -28,10 +28,19 @@
 #include "bpf/BpfNetworkStats.h"
 #include "bpf/BpfUtils.h"
 
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
+
+#define LOG_TAG "BpfNetworkStats"
+
 namespace android {
 namespace bpf {
 
 static const char* BPF_IFACE_STATS = "/proc/net/dev";
+
+// TODO: change this to BPF_F_RDONLY as soon as device kernels have been updated.
+static constexpr uint32_t BPF_OPEN_FLAGS = 0;
 
 int bpfGetUidStatsInternal(uid_t uid, Stats* stats, const base::unique_fd& map_fd) {
     struct StatsKey curKey, nextKey;
@@ -43,14 +52,10 @@ int bpfGetUidStatsInternal(uid_t uid, Stats* stats, const base::unique_fd& map_f
             if (bpf::findMapEntry(map_fd, &curKey, &statsEntry) < 0) {
                 return -errno;
             }
-            stats->rxPackets +=
-                statsEntry.rxTcpPackets + statsEntry.rxUdpPackets + statsEntry.rxOtherPackets;
-            stats->txPackets +=
-                statsEntry.txTcpPackets + statsEntry.txUdpPackets + statsEntry.txOtherPackets;
-            stats->rxBytes +=
-                statsEntry.rxTcpBytes + statsEntry.rxUdpBytes + statsEntry.rxOtherBytes;
-            stats->txBytes +=
-                statsEntry.txTcpBytes + statsEntry.txUdpBytes + statsEntry.txOtherBytes;
+            stats->rxPackets += statsEntry.rxPackets;
+            stats->txPackets += statsEntry.txPackets;
+            stats->rxBytes += statsEntry.rxBytes;
+            stats->txBytes += statsEntry.txBytes;
         }
     }
     // Return errno if getNextMapKey return error before hit to the end of the map.
@@ -59,10 +64,10 @@ int bpfGetUidStatsInternal(uid_t uid, Stats* stats, const base::unique_fd& map_f
 }
 
 int bpfGetUidStats(uid_t uid, Stats* stats) {
-    base::unique_fd uidStatsMap(bpf::mapRetrieve(UID_STATS_MAP_PATH, BPF_F_RDONLY));
+    base::unique_fd uidStatsMap(bpf::mapRetrieve(UID_STATS_MAP_PATH, BPF_OPEN_FLAGS));
     if (uidStatsMap < 0) {
         int ret = -errno;
-        ALOGE("get map fd failed from %s: %s", UID_STATS_MAP_PATH, strerror(errno));
+        ALOGE("Opening map fd from %s failed: %s", UID_STATS_MAP_PATH, strerror(errno));
         return ret;
     }
     return bpfGetUidStatsInternal(uid, stats, uidStatsMap);
@@ -118,12 +123,10 @@ stats_line populateStatsEntry(const StatsKey& statsKey, const StatsValue& statsE
     newLine.uid = statsKey.uid;
     newLine.set = statsKey.counterSet;
     newLine.tag = statsKey.tag;
-    newLine.rxPackets =
-        statsEntry.rxTcpPackets + statsEntry.rxUdpPackets + statsEntry.rxOtherPackets;
-    newLine.txPackets =
-        statsEntry.txTcpPackets + statsEntry.txUdpPackets + statsEntry.txOtherPackets;
-    newLine.rxBytes = statsEntry.rxTcpBytes + statsEntry.rxUdpBytes + statsEntry.rxOtherBytes;
-    newLine.txBytes = statsEntry.txTcpBytes + statsEntry.txUdpBytes + statsEntry.txOtherBytes;
+    newLine.rxPackets = statsEntry.rxPackets;
+    newLine.txPackets = statsEntry.txPackets;
+    newLine.rxBytes = statsEntry.rxBytes;
+    newLine.txBytes = statsEntry.txBytes;
     return newLine;
 }
 
@@ -190,7 +193,7 @@ int parseBpfTagStatsDetail(std::vector<stats_line>* lines,
 int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
                                const std::vector<std::string>& limitIfaces, int limitTag,
                                int limitUid) {
-    base::unique_fd tagStatsMap(bpf::mapRetrieve(TAG_STATS_MAP_PATH, 0));
+    base::unique_fd tagStatsMap(bpf::mapRetrieve(TAG_STATS_MAP_PATH, BPF_OPEN_FLAGS));
     int ret = 0;
     if (tagStatsMap < 0) {
         ret = -errno;
@@ -201,10 +204,10 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
     if (ret) return ret;
 
     if (limitTag == TAG_ALL) {
-        base::unique_fd uidStatsMap(bpf::mapRetrieve(UID_STATS_MAP_PATH, BPF_F_RDONLY));
+        base::unique_fd uidStatsMap(bpf::mapRetrieve(UID_STATS_MAP_PATH, BPF_OPEN_FLAGS));
         if (uidStatsMap < 0) {
             ret = -errno;
-            ALOGE("get map fd failed: %s", strerror(errno));
+            ALOGE("Opening map fd from %s failed: %s", UID_STATS_MAP_PATH, strerror(errno));
             return ret;
         }
         ret = parseBpfUidStatsDetail(lines, limitIfaces, limitUid, uidStatsMap);
@@ -269,7 +272,7 @@ int cleanStatsMapInternal(const base::unique_fd& cookieTagMap, const base::uniqu
 }
 
 int cleanStatsMap() {
-    base::unique_fd cookieTagMap(bpf::mapRetrieve(COOKIE_UID_MAP_PATH, BPF_F_RDONLY));
+    base::unique_fd cookieTagMap(bpf::mapRetrieve(COOKIE_UID_MAP_PATH, BPF_OPEN_FLAGS));
     int ret = 0;
     if (cookieTagMap < 0) {
         ret = -errno;
@@ -277,7 +280,7 @@ int cleanStatsMap() {
         return ret;
     }
 
-    base::unique_fd tagStatsMap(bpf::mapRetrieve(TAG_STATS_MAP_PATH, 0));
+    base::unique_fd tagStatsMap(bpf::mapRetrieve(TAG_STATS_MAP_PATH, BPF_OPEN_FLAGS));
     if (tagStatsMap < 0) {
         ret = -errno;
         ALOGE("get tagStats map fd failed: %s", strerror(errno));

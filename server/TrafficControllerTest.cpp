@@ -130,7 +130,7 @@ class TrafficControllerTest : public ::testing::Test {
         UidTag cookieMapkey = {.uid = (uint32_t)uid, .tag = tag};
         EXPECT_EQ(0, writeToMapEntry(mFakeCookieTagMap, &cookie, &cookieMapkey, BPF_ANY));
         *key = {.uid = uid, .tag = tag, .counterSet = TEST_COUNTERSET, .ifaceIndex = 1};
-        StatsValue statsMapValue = {.rxTcpPackets = 1, .rxTcpBytes = 100};
+        StatsValue statsMapValue = {.rxPackets = 1, .rxBytes = 100};
         int counterSet = TEST_COUNTERSET;
         EXPECT_EQ(0, writeToMapEntry(mFakeUidCounterSetMap, &uid, &counterSet, BPF_ANY));
         EXPECT_EQ(0, writeToMapEntry(mFakeTagStatsMap, key, &statsMapValue, BPF_ANY));
@@ -257,8 +257,8 @@ TEST_F(TrafficControllerTest, TestDeleteTagData) {
     ASSERT_EQ(-1, findMapEntry(mFakeTagStatsMap, &tagStatsMapKey, &statsMapResult));
     tagStatsMapKey.tag = 0;
     ASSERT_EQ(0, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey, &statsMapResult));
-    ASSERT_EQ((uint64_t)1, statsMapResult.rxTcpPackets);
-    ASSERT_EQ((uint64_t)100, statsMapResult.rxTcpBytes);
+    ASSERT_EQ((uint64_t)1, statsMapResult.rxPackets);
+    ASSERT_EQ((uint64_t)100, statsMapResult.rxBytes);
 }
 
 TEST_F(TrafficControllerTest, TestDeleteAllUidData) {
@@ -280,8 +280,8 @@ TEST_F(TrafficControllerTest, TestDeleteAllUidData) {
     StatsKey removedStatsKey= {.uid = 0, .tag = 0, .counterSet = COUNTERSETS_LIMIT,
       .ifaceIndex = 0};
     ASSERT_EQ(0, findMapEntry(mFakeUidStatsMap, &removedStatsKey, &statsMapResult));
-    ASSERT_EQ((uint64_t)1, statsMapResult.rxTcpPackets);
-    ASSERT_EQ((uint64_t)100, statsMapResult.rxTcpBytes);
+    ASSERT_EQ((uint64_t)1, statsMapResult.rxPackets);
+    ASSERT_EQ((uint64_t)100, statsMapResult.rxBytes);
 }
 
 TEST_F(TrafficControllerTest, TestDeleteDataWithTwoTags) {
@@ -308,8 +308,8 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoTags) {
     StatsValue statsMapResult;
     ASSERT_EQ(-1, findMapEntry(mFakeTagStatsMap, &tagStatsMapKey1, &statsMapResult));
     ASSERT_EQ(0, findMapEntry(mFakeTagStatsMap, &tagStatsMapKey2, &statsMapResult));
-    ASSERT_EQ((uint64_t)1, statsMapResult.rxTcpPackets);
-    ASSERT_EQ((uint64_t)100, statsMapResult.rxTcpBytes);
+    ASSERT_EQ((uint64_t)1, statsMapResult.rxPackets);
+    ASSERT_EQ((uint64_t)100, statsMapResult.rxBytes);
 }
 
 TEST_F(TrafficControllerTest, TestDeleteDataWithTwoUids) {
@@ -340,21 +340,21 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoUids) {
     ASSERT_EQ(-1, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey2, &statsMapResult));
     tagStatsMapKey1.tag = 0;
     ASSERT_EQ(0, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey1, &statsMapResult));
-    ASSERT_EQ((uint64_t)1, statsMapResult.rxTcpPackets);
-    ASSERT_EQ((uint64_t)100, statsMapResult.rxTcpBytes);
+    ASSERT_EQ((uint64_t)1, statsMapResult.rxPackets);
+    ASSERT_EQ((uint64_t)100, statsMapResult.rxBytes);
     StatsKey removedStatsKey= {.uid = 0, .tag = 0, .counterSet = COUNTERSETS_LIMIT,
       .ifaceIndex = 0};
     ASSERT_EQ(0, findMapEntry(mFakeUidStatsMap, &removedStatsKey, &statsMapResult));
-    ASSERT_EQ((uint64_t)1, statsMapResult.rxTcpPackets);
-    ASSERT_EQ((uint64_t)100, statsMapResult.rxTcpBytes);
+    ASSERT_EQ((uint64_t)1, statsMapResult.rxPackets);
+    ASSERT_EQ((uint64_t)100, statsMapResult.rxBytes);
 
     // Delete the stats of the other uid. Check if it is properly added on the
     // previous removedStats data.
     ASSERT_EQ(0, mTc.deleteTagData(0, uid1));
     ASSERT_EQ(-1, findMapEntry(mFakeUidStatsMap, &tagStatsMapKey1, &statsMapResult));
     ASSERT_EQ(0, findMapEntry(mFakeUidStatsMap, &removedStatsKey, &statsMapResult));
-    ASSERT_EQ((uint64_t)2, statsMapResult.rxTcpPackets);
-    ASSERT_EQ((uint64_t)200, statsMapResult.rxTcpBytes);
+    ASSERT_EQ((uint64_t)2, statsMapResult.rxPackets);
+    ASSERT_EQ((uint64_t)200, statsMapResult.rxBytes);
 }
 
 }  // namespace net
