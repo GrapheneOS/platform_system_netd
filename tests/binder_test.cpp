@@ -751,6 +751,7 @@ static std::string base64Encode(const std::vector<uint8_t>& input) {
 }
 
 TEST_F(BinderTest, TestSetResolverConfiguration_Tls) {
+    const std::vector<std::string> LOCALLY_ASSIGNED_DNS{"8.8.8.8", "2001:4860:4860::8888"};
     std::vector<uint8_t> fp(SHA256_SIZE);
     std::vector<uint8_t> short_fp(1);
     std::vector<uint8_t> long_fp(SHA256_SIZE + 1);
@@ -762,13 +763,14 @@ TEST_F(BinderTest, TestSetResolverConfiguration_Tls) {
         const std::string tlsName;
         const std::vector<std::vector<uint8_t>> tlsFingerprints;
         const int expectedReturnCode;
-    } kTestData[] = {
+    } kTlsTestData[] = {
         { {"192.0.2.1"}, "", {}, 0 },
         { {"2001:db8::2"}, "host.name", {}, 0 },
         { {"192.0.2.3"}, "@@@@", { fp }, 0 },
         { {"2001:db8::4"}, "", { fp }, 0 },
-        { {"192.0.*.5"}, "", {}, EINVAL },
+        { {}, "", {}, 0 },
         { {""}, "", {}, EINVAL },
+        { {"192.0.*.5"}, "", {}, EINVAL },
         { {"2001:dg8::6"}, "", {}, EINVAL },
         { {"2001:db8::c"}, "", { short_fp }, EINVAL },
         { {"192.0.2.12"}, "", { long_fp }, EINVAL },
@@ -776,16 +778,16 @@ TEST_F(BinderTest, TestSetResolverConfiguration_Tls) {
         { {"192.0.2.14"}, "", { fp, short_fp }, EINVAL },
     };
 
-    for (unsigned int i = 0; i < arraysize(kTestData); i++) {
-        const auto &td = kTestData[i];
+    for (unsigned int i = 0; i < arraysize(kTlsTestData); i++) {
+        const auto &td = kTlsTestData[i];
 
         std::vector<std::string> fingerprints;
         for (const auto& fingerprint : td.tlsFingerprints) {
             fingerprints.push_back(base64Encode(fingerprint));
         }
         binder::Status status = mNetd->setResolverConfiguration(
-                test_netid, td.servers, test_domains, test_params,
-                true, td.tlsName, fingerprints);
+                test_netid, LOCALLY_ASSIGNED_DNS, test_domains, test_params,
+                td.tlsName, td.servers, fingerprints);
 
         if (td.expectedReturnCode == 0) {
             SCOPED_TRACE(String8::format("test case %d should have passed", i));
@@ -799,8 +801,8 @@ TEST_F(BinderTest, TestSetResolverConfiguration_Tls) {
     }
     // Ensure TLS is disabled before the start of the next test.
     mNetd->setResolverConfiguration(
-        test_netid, kTestData[0].servers, test_domains, test_params,
-        false, "", {});
+        test_netid, kTlsTestData[0].servers, test_domains, test_params,
+        "", {}, {});
 }
 
 void expectNoTestCounterRules() {

@@ -91,10 +91,10 @@ std::map<unsigned, PrivateDnsTracker> privateDnsTransports GUARDED_BY(privateDns
 EventReporter eventReporter;
 android::sp<android::net::metrics::INetdEventListener> netdEventListener;
 
-void checkPrivateDnsProvider(const DnsTlsServer& server,
+void validatePrivateDnsProvider(const DnsTlsServer& server,
         PrivateDnsTracker& tracker, unsigned netId) REQUIRES(privateDnsLock) {
     if (DBG) {
-        ALOGD("checkPrivateDnsProvider(%s, %u)", addrToString(&(server.ss)).c_str(), netId);
+        ALOGD("validatePrivateDnsProvider(%s, %u)", addrToString(&(server.ss)).c_str(), netId);
     }
 
     tracker[server] = ResolverController::Validation::in_process;
@@ -213,7 +213,7 @@ int setPrivateDnsProviders(int32_t netId,
         // Don't probe a server more than once.  This means that the only way to
         // re-check a failed server is to remove it and re-add it from the netId.
         if (tracker.count(server) == 0) {
-            checkPrivateDnsProvider(server, tracker, netId);
+            validatePrivateDnsProvider(server, tracker, netId);
         }
     }
     return 0;
@@ -374,7 +374,8 @@ int ResolverController::getDnsInfo(unsigned netId, std::vector<std::string>* ser
 
 int ResolverController::setResolverConfiguration(int32_t netId,
         const std::vector<std::string>& servers, const std::vector<std::string>& domains,
-        const std::vector<int32_t>& params, bool useTls, const std::string& tlsName,
+        const std::vector<int32_t>& params, const std::string& tlsName,
+        const std::vector<std::string>& tlsServers,
         const std::set<std::vector<uint8_t>>& tlsFingerprints) {
     using android::net::INetd;
     if (params.size() != INetd::RESOLVER_PARAMS_COUNT) {
@@ -382,8 +383,8 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         return -EINVAL;
     }
 
-    if (useTls) {
-        int err = setPrivateDnsProviders(netId, servers, tlsName, tlsFingerprints);
+    if (!tlsServers.empty()) {
+        const int err = setPrivateDnsProviders(netId, tlsServers, tlsName, tlsFingerprints);
         if (err != 0) {
             return err;
         }
@@ -391,11 +392,21 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         clearPrivateDnsProviders(netId);
     }
 
+    // TODO: separate out configuring TLS servers and locally-assigned servers.
+    // We should always program bionic with locally-assigned servers, so we can
+    // make TLS-bypass simple by not setting .qhook in the right circumstances.
+    // Relatedly, shunting queries to DNS-over-TLS should not be based on
+    // matching resolver IPs in the qhook but rather purely a function of the
+    // current state of DNS-over-TLS as known only within the dispatcher.
+    const std::vector<std::string>& nameservers = (!tlsServers.empty())
+            ? tlsServers  // Strict mode or Opportunistic
+            : servers;    // off
+
     // Convert server list to bionic's format.
-    auto server_count = std::min<size_t>(MAXNS, servers.size());
+    auto server_count = std::min<size_t>(MAXNS, nameservers.size());
     std::vector<const char*> server_ptrs;
     for (size_t i = 0 ; i < server_count ; ++i) {
-        server_ptrs.push_back(servers[i].c_str());
+        server_ptrs.push_back(nameservers[i].c_str());
     }
 
     std::string domains_str;
