@@ -45,8 +45,8 @@ void DnsResponderClient::SetupMappings(unsigned num_hosts, const std::vector<std
 
 bool DnsResponderClient::SetResolversForNetwork(const std::vector<std::string>& servers,
         const std::vector<std::string>& domains, const std::vector<int>& params) {
-    auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
-            false, "", {});
+    const auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
+            "", {}, {});
     return rv.isOk();
 }
 
@@ -54,8 +54,10 @@ bool DnsResponderClient::SetResolversWithTls(const std::vector<std::string>& ser
         const std::vector<std::string>& domains, const std::vector<int>& params,
         const std::string& name,
         const std::vector<std::string>& fingerprints) {
-    auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
-            true, name, fingerprints);
+    // Pass servers as both network-assigned and TLS servers.  Tests can
+    // determine on which server and by which protocol queries arrived.
+    const auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
+            name, servers, fingerprints);
     return rv.isOk();
 }
 
