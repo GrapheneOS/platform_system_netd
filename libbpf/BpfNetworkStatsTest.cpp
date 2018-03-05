@@ -58,18 +58,12 @@ constexpr uid_t TEST_UID2 = 12345;
 constexpr uint32_t TEST_TAG = 42;
 constexpr int TEST_COUNTERSET0 = 0;
 constexpr int TEST_COUNTERSET1 = 1;
-constexpr int DEFAULT_COUNTERSET = 0;
 constexpr const int COUNTERSETS_LIMIT = 2;
 constexpr uint64_t TEST_BYTES0 = 1000;
 constexpr uint64_t TEST_BYTES1 = 2000;
-constexpr uint64_t TEST_BYTES2 = 3000;
-constexpr uint64_t TEST_BYTES3 = 4000;
 constexpr uint64_t TEST_PACKET0 = 100;
 constexpr uint64_t TEST_PACKET1 = 200;
-constexpr uint64_t TEST_PACKET2 = 200;
-constexpr uint64_t TEST_PACKET3 = 400;
 constexpr uint32_t IFACE0 = 1;
-constexpr uint32_t IFACE1 = 2;
 
 class BpfNetworkStatsHelperTest : public testing::Test {
   protected:
@@ -152,16 +146,16 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetUidStatsTotal) {
     populateFakeStats(TEST_UID2, 0, IFACE0, TEST_COUNTERSET1, &value1, mFakeUidStatsMap);
     Stats result1 = {};
     ASSERT_EQ(0, bpfGetUidStatsInternal(TEST_UID1, &result1, mFakeUidStatsMap));
-    ASSERT_EQ((TEST_PACKET0 + TEST_PACKET2) * 2, result1.rxPackets);
-    ASSERT_EQ((TEST_BYTES0 + TEST_BYTES2) * 2, result1.rxBytes);
-    ASSERT_EQ((TEST_PACKET1 + TEST_PACKET3) * 2, result1.txPackets);
-    ASSERT_EQ((TEST_BYTES1 + TEST_BYTES3) * 2, result1.txBytes);
+    ASSERT_EQ(TEST_PACKET0 * 2, result1.rxPackets);
+    ASSERT_EQ(TEST_BYTES0 * 2, result1.rxBytes);
+    ASSERT_EQ(TEST_PACKET1 * 2, result1.txPackets);
+    ASSERT_EQ(TEST_BYTES1 * 2, result1.txBytes);
     Stats result2 = {};
     ASSERT_EQ(0, bpfGetUidStatsInternal(TEST_UID2, &result2, mFakeUidStatsMap));
-    ASSERT_EQ((TEST_PACKET0 + TEST_PACKET2), result2.rxPackets);
-    ASSERT_EQ((TEST_BYTES0 + TEST_BYTES2), result2.rxBytes);
-    ASSERT_EQ((TEST_PACKET1 + TEST_PACKET3), result2.txPackets);
-    ASSERT_EQ((TEST_BYTES1 + TEST_BYTES3), result2.txBytes);
+    ASSERT_EQ(TEST_PACKET0, result2.rxPackets);
+    ASSERT_EQ(TEST_BYTES0, result2.rxBytes);
+    ASSERT_EQ(TEST_PACKET1, result2.txPackets);
+    ASSERT_EQ(TEST_BYTES1, result2.txBytes);
     std::vector<stats_line> lines;
     std::vector<std::string> ifaces;
     ASSERT_EQ(0, parseBpfUidStatsDetail(&lines, ifaces, TEST_UID1, mFakeUidStatsMap));
