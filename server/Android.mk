@@ -15,37 +15,6 @@
 LOCAL_PATH := $(call my-dir)
 
 ###
-### netd service AIDL interface.
-###
-include $(CLEAR_VARS)
-
-LOCAL_CFLAGS := -Wall -Werror -Wthread-safety
-LOCAL_MODULE := libnetdaidl_static
-LOCAL_SHARED_LIBRARIES := \
-        libbinder \
-        libutils
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/binder
-LOCAL_AIDL_INCLUDES := $(LOCAL_PATH)/binder frameworks/native/aidl/binder
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/binder
-LOCAL_SRC_FILES := \
-        binder/android/net/INetd.aidl \
-        binder/android/net/UidRange.cpp
-
-include $(BUILD_STATIC_LIBRARY)
-
-include $(CLEAR_VARS)
-
-LOCAL_CFLAGS := -Wall -Werror -Wthread-safety
-LOCAL_MODULE := libnetdaidl
-LOCAL_SHARED_LIBRARIES := \
-        libbinder \
-        libutils
-LOCAL_WHOLE_STATIC_LIBRARIES := libnetdaidl_static
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/binder
-
-include $(BUILD_SHARED_LIBRARY)
-
-###
 ### netd daemon.
 ###
 include $(CLEAR_VARS)

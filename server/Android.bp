@@ -9,3 +9,30 @@ filegroup {
     name: "netd_metrics_aidl",
     srcs: ["binder/android/net/metrics/INetdEventListener.aidl"],
 }
+
+cc_library {
+    name: "libnetdaidl",
+
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wthread-safety",
+    ],
+
+    shared_libs: [
+        "libbinder",
+        "libutils",
+    ],
+
+    aidl: {
+        export_aidl_headers: true,
+        local_include_dirs: ["binder"],
+        include_dirs: ["frameworks/native/aidl/binder"],
+    },
+    srcs: [
+        "binder/android/net/INetd.aidl",
+        "binder/android/net/UidRange.cpp",
+    ],
+
+    export_include_dirs: ["binder"],
+}
