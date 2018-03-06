@@ -26,7 +26,7 @@ LOCAL_CFLAGS += -Wno-varargs
 EXTRA_LDLIBS := -lpthread
 LOCAL_SHARED_LIBRARIES += libbase libbinder libcrypto libcutils liblog \
                           libnetd_client libnetutils libssl libutils
-LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder liblogwrap libnetdaidl_static \
+LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder liblogwrap libnetdaidl \
                           libnetdutils libnetd_test_tun_interface
 LOCAL_AIDL_INCLUDES := system/netd/server/binder
 LOCAL_C_INCLUDES += system/netd/include system/netd/binder/include \
