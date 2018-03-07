@@ -61,6 +61,8 @@ struct DnsTlsServer {
     // Exact comparison of DnsTlsServer objects
     bool operator <(const DnsTlsServer& other) const;
     bool operator ==(const DnsTlsServer& other) const;
+
+    bool wasExplicitlyConfigured() const;
 };
 
 // This comparison only checks the IP address.  It ignores ports, names, and fingerprints.

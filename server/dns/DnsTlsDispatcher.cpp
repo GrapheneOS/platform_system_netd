@@ -28,6 +28,85 @@ using netdutils::Slice;
 
 // static
 std::mutex DnsTlsDispatcher::sLock;
+
+std::list<DnsTlsServer> DnsTlsDispatcher::getOrderedServerList(
+        const std::list<DnsTlsServer> &tlsServers, unsigned mark) const {
+    // Our preferred DnsTlsServer order is:
+    //     1) reuse existing IPv6 connections
+    //     2) reuse existing IPv4 connections
+    //     3) establish new IPv6 connections
+    //     4) establish new IPv4 connections
+    std::list<DnsTlsServer> existing6;
+    std::list<DnsTlsServer> existing4;
+    std::list<DnsTlsServer> new6;
+    std::list<DnsTlsServer> new4;
+
+    // Pull out any servers for which we might have existing connections and
+    // place them at the from the list of servers to try.
+    {
+        std::lock_guard<std::mutex> guard(sLock);
+
+        for (const auto& tlsServer : tlsServers) {
+            const Key key = std::make_pair(mark, tlsServer);
+            if (mStore.find(key) != mStore.end()) {
+                switch (tlsServer.ss.ss_family) {
+                    case AF_INET:
+                        existing4.push_back(tlsServer);
+                        break;
+                    case AF_INET6:
+                        existing6.push_back(tlsServer);
+                        break;
+                }
+            } else {
+                switch (tlsServer.ss.ss_family) {
+                    case AF_INET:
+                        new4.push_back(tlsServer);
+                        break;
+                    case AF_INET6:
+                        new6.push_back(tlsServer);
+                        break;
+                }
+            }
+        }
+    }
+
+    auto& out = existing6;
+    out.splice(out.cend(), existing4);
+    out.splice(out.cend(), new6);
+    out.splice(out.cend(), new4);
+    return out;
+}
+
+DnsTlsTransport::Response DnsTlsDispatcher::query(
+        const std::list<DnsTlsServer> &tlsServers, unsigned mark,
+        const Slice query, const Slice ans, int *resplen) {
+    const std::list<DnsTlsServer> orderedServers(getOrderedServerList(tlsServers, mark));
+
+    if (orderedServers.empty()) ALOGW("Empty DnsTlsServer list");
+
+    DnsTlsTransport::Response code = DnsTlsTransport::Response::internal_error;
+    for (const auto& server : orderedServers) {
+        code = this->query(server, mark, query, ans, resplen);
+        switch (code) {
+            // These response codes are valid responses and not expected to
+            // change if another server is queried.
+            case DnsTlsTransport::Response::success:
+            case DnsTlsTransport::Response::limit_error:
+                return code;
+                break;
+            // These response codes might differ when trying other servers, so
+            // keep iterating to see if we can get a different (better) result.
+            case DnsTlsTransport::Response::network_error:
+            case DnsTlsTransport::Response::internal_error:
+                continue;
+                break;
+            // No "default" statement.
+        }
+    }
+
+    return code;
+}
+
 DnsTlsTransport::Response DnsTlsDispatcher::query(const DnsTlsServer& server, unsigned mark,
                                                   const Slice query,
                                                   const Slice ans, int *resplen) {
@@ -60,7 +139,7 @@ DnsTlsTransport::Response DnsTlsDispatcher::query(const DnsTlsServer& server, un
             netdutils::copy(ans, netdutils::makeSlice(result.response));
         }
     } else {
-        ALOGV("Query failed: %u", (unsigned int)code);
+        ALOGV("Query failed: %u", (unsigned int) code);
     }
 
     auto now = std::chrono::steady_clock::now();

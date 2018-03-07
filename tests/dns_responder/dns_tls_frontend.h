@@ -32,6 +32,8 @@
 
 namespace test {
 
+constexpr int SHA256_SIZE = 32;
+
 /*
  * Simple DNS over TLS reverse proxy that forwards to a UDP backend.
  * Only handles a single request at a time.
