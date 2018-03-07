@@ -39,8 +39,7 @@ namespace bpf {
 
 static const char* BPF_IFACE_STATS = "/proc/net/dev";
 
-// TODO: change this to BPF_F_RDONLY as soon as device kernels have been updated.
-static constexpr uint32_t BPF_OPEN_FLAGS = 0;
+static constexpr uint32_t BPF_OPEN_FLAGS = BPF_F_RDONLY;
 
 int bpfGetUidStatsInternal(uid_t uid, Stats* stats, const base::unique_fd& map_fd) {
     struct StatsKey curKey, nextKey;
