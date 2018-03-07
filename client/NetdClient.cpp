@@ -122,6 +122,10 @@ unsigned getNetworkForResolv(unsigned netId) {
     if (netId != NETID_UNSET) {
         return netId;
     }
+    // Special case for DNS-over-TLS bypass; b/72345192 .
+    if ((netIdForResolv & ~NETID_USE_LOCAL_NAMESERVERS) != NETID_UNSET) {
+        return netIdForResolv;
+    }
     netId = netIdForProcess;
     if (netId != NETID_UNSET) {
         return netId;
@@ -130,6 +134,9 @@ unsigned getNetworkForResolv(unsigned netId) {
 }
 
 int setNetworkForTarget(unsigned netId, std::atomic_uint* target) {
+    const unsigned requestedNetId = netId;
+    netId &= ~NETID_USE_LOCAL_NAMESERVERS;
+
     if (netId == NETID_UNSET) {
         *target = netId;
         return 0;
@@ -148,7 +155,7 @@ int setNetworkForTarget(unsigned netId, std::atomic_uint* target) {
     }
     int error = setNetworkForSocket(netId, socketFd);
     if (!error) {
-        *target = netId;
+        *target = (target == &netIdForResolv) ? requestedNetId : netId;
     }
     close(socketFd);
     return error;

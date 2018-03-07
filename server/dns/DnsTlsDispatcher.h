@@ -17,6 +17,7 @@
 #ifndef _DNS_DNSTLSDISPATCHER_H
 #define _DNS_DNSTLSDISPATCHER_H
 
+#include <list>
 #include <memory>
 #include <map>
 #include <mutex>
@@ -47,6 +48,14 @@ public:
     // Constructor with dependency injection for testing.
     DnsTlsDispatcher(std::unique_ptr<IDnsTlsSocketFactory> factory) :
             mFactory(std::move(factory)) {}
+
+    // Enqueues |query| for resolution via the given |tlsServers| on the
+    // network indicated by |mark|; writes the response into |ans|, and stores
+    // the count of bytes written in |resplen|. Returns a success or error code.
+    // The order in which servers from |tlsServers| are queried may not be the
+    // order passed in by the caller.
+    DnsTlsTransport::Response query(const std::list<DnsTlsServer> &tlsServers, unsigned mark,
+                                    const Slice query, const Slice ans, int * _Nonnull resplen);
 
     // Given a |query|, sends it to the server on the network indicated by |mark|,
     // and writes the response into |ans|,  and indicates
@@ -90,6 +99,10 @@ private:
     // Drop any cache entries whose useCount is zero and which have not been used recently.
     // This function performs a linear scan of mStore.
     void cleanup(std::chrono::time_point<std::chrono::steady_clock> now) REQUIRES(sLock);
+
+    // Return a sorted list of DnsTlsServers in preference order.
+    std::list<DnsTlsServer> getOrderedServerList(
+            const std::list<DnsTlsServer> &tlsServers, unsigned mark) const;
 
     // Trivial factory for DnsTlsSockets.  Dependency injection is only used for testing.
     std::unique_ptr<IDnsTlsSocketFactory> mFactory;
