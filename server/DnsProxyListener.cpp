@@ -62,6 +62,12 @@ namespace net {
 
 namespace {
 
+void logArguments(int argc, char** argv) {
+    for (int i = 0; i < argc; i++) {
+        ALOGD("argv[%i]=%s", i, argv[i]);
+    }
+}
+
 template<typename T>
 void tryThreadOrError(SocketClient* cli, T* handler) {
     cli->incRef();
@@ -345,11 +351,8 @@ DnsProxyListener::GetAddrInfoCmd::GetAddrInfoCmd(DnsProxyListener* dnsProxyListe
 
 int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
                                             int argc, char **argv) {
-    if (DBG) {
-        for (int i = 0; i < argc; i++) {
-            ALOGD("argv[%i]=%s", i, argv[i]);
-        }
-    }
+    if (DBG) logArguments(argc, argv);
+
     if (argc != 8) {
         char* msg = NULL;
         asprintf( &msg, "Invalid number of arguments to getaddrinfo: %i", argc);
@@ -422,11 +425,8 @@ DnsProxyListener::GetHostByNameCmd::GetHostByNameCmd(DnsProxyListener* dnsProxyL
 
 int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
                                             int argc, char **argv) {
-    if (DBG) {
-        for (int i = 0; i < argc; i++) {
-            ALOGD("argv[%i]=%s", i, argv[i]);
-        }
-    }
+    if (DBG) logArguments(argc, argv);
+
     if (argc != 4) {
         char* msg = NULL;
         asprintf(&msg, "Invalid number of arguments to gethostbyname: %i", argc);
@@ -558,11 +558,8 @@ DnsProxyListener::GetHostByAddrCmd::GetHostByAddrCmd(const DnsProxyListener* dns
 
 int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
                                             int argc, char **argv) {
-    if (DBG) {
-        for (int i = 0; i < argc; i++) {
-            ALOGD("argv[%i]=%s", i, argv[i]);
-        }
-    }
+    if (DBG) logArguments(argc, argv);
+
     if (argc != 5) {
         char* msg = NULL;
         asprintf(&msg, "Invalid number of arguments to gethostbyaddr: %i", argc);
