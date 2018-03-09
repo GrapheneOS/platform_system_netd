@@ -40,18 +40,8 @@ cc_binary {
     ],
 
     required: [
-        "cgroup_bpf_ingress_prog",
-        "cgroup_bpf_egress_prog",
+        "cgroup_bpf_ingress_prog.o",
+        "cgroup_bpf_egress_prog.o",
     ],
-}
 
-cc_prebuilt_binary {
-    name: "cgroup_bpf_ingress_prog",
-    srcs: [ "bpf_ingress.o" ],
 }
-
-cc_prebuilt_binary {
-    name: "cgroup_bpf_egress_prog",
-    srcs: [ "bpf_egress.o" ],
-}
-
