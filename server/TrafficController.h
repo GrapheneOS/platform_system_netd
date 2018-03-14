@@ -32,11 +32,13 @@
 // uid_counter_set_map: key:  4 bytes, value:  4 bytes, total:10000*4*2 bytes         =   80Kbytes
 // uid_stats_map:       key: 16 bytes, value: 32 bytes, total:10000*16+10000*32 bytes =  480Kbytes
 // tag_stats_map:       key: 16 bytes, value: 32 bytes, total:10000*16+10000*32 bytes =  480Kbytes
-// total:                                                                               1200Kbytes
+// iface_index_name_map:key:  4 bytes, value: 32 bytes, total:10000*36 bytes          =  360Kbytes
+// total:                                                                               1560Kbytes
 constexpr const int COOKIE_UID_MAP_SIZE = 10000;
 constexpr const int UID_COUNTERSET_MAP_SIZE = 10000;
 constexpr const int UID_STATS_MAP_SIZE = 10000;
 constexpr const int TAG_STATS_MAP_SIZE = 10000;
+constexpr const int IFACE_INDEX_NAME_MAP_SIZE = 10000;
 constexpr const int UID_OWNER_MAP_SIZE = 10000;
 
 constexpr const int COUNTERSETS_LIMIT = 2;
@@ -92,6 +94,11 @@ class TrafficController {
      */
     bool checkBpfStatsEnable();
 
+    /*
+     * Add the interface name and index pair into the eBPF map.
+     */
+    int addInterface(const char* name, uint32_t ifaceIndex);
+
   private:
     /*
      * mCookieTagMap: Store the corresponding tag and uid for a specific socket.
@@ -130,6 +137,13 @@ class TrafficController {
      * transport protocol on egress and ingress direction.
      */
     base::unique_fd mTagStatsMap;
+
+    /*
+     * mIfaceIndexNameMap: Store the index name pair of each interface show up
+     * on the device since boot. The interface index is used by the eBPF program
+     * to correctly match the iface name when receiving a packet.
+     */
+    base::unique_fd mIfaceIndexNameMap;
 
     std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
 

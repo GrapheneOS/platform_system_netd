@@ -42,8 +42,10 @@
 #include <android-base/strings.h>
 #include <android-base/thread_annotations.h>
 #include <android/net/INetd.h>
+#include <android/net/metrics/INetdEventListener.h>
 
 #include "DumpWriter.h"
+#include "EventReporter.h"
 #include "NetdConstants.h"
 #include "ResolverController.h"
 #include "ResolverStats.h"
@@ -55,7 +57,6 @@ namespace net {
 
 namespace {
 
-// Only used for debug logging
 std::string addrToString(const sockaddr_storage* addr) {
     char out[INET6_ADDRSTRLEN] = {0};
     getnameinfo((const sockaddr*)addr, sizeof(sockaddr_storage), out,
@@ -87,6 +88,8 @@ typedef std::map<DnsTlsServer, ResolverController::Validation,
         AddressComparator> PrivateDnsTracker;
 std::mutex privateDnsLock;
 std::map<unsigned, PrivateDnsTracker> privateDnsTransports GUARDED_BY(privateDnsLock);
+EventReporter eventReporter;
+android::sp<android::net::metrics::INetdEventListener> netdEventListener;
 
 void checkPrivateDnsProvider(const DnsTlsServer& server,
         PrivateDnsTracker& tracker, unsigned netId) REQUIRES(privateDnsLock) {
@@ -125,6 +128,24 @@ void checkPrivateDnsProvider(const DnsTlsServer& server,
                     addrToString(&(server.ss)).c_str());
             success = false;
         }
+
+        // Send a validation event to NetdEventListenerService.
+        if (netdEventListener == nullptr) {
+            netdEventListener = eventReporter.getNetdEventListener();
+        }
+        if (netdEventListener != nullptr) {
+            const String16 ipLiteral(addrToString(&(server.ss)).c_str());
+            const String16 hostname(server.name.empty() ? "" : server.name.c_str());
+            netdEventListener->onPrivateDnsValidationEvent(netId, ipLiteral, hostname, success);
+            if (DBG) {
+                ALOGD("Sending validation %s event on netId %u for %s with hostname %s",
+                        success ? "success" : "failure", netId,
+                        addrToString(&(server.ss)).c_str(), server.name.c_str());
+            }
+        } else {
+            ALOGE("Validation event not sent since NetdEventListenerService is unavailable.");
+        }
+
         if (success) {
             tracker[server] = ResolverController::Validation::success;
             if (DBG) {
@@ -135,10 +156,10 @@ void checkPrivateDnsProvider(const DnsTlsServer& server,
             // Validation failure is expected if a user is on a captive portal.
             // TODO: Trigger a second validation attempt after captive portal login
             // succeeds.
+            tracker[server] = ResolverController::Validation::fail;
             if (DBG) {
                 ALOGD("Validation failed for %s!", addrToString(&(server.ss)).c_str());
             }
-            tracker[server] = ResolverController::Validation::fail;
         }
     });
     validate_thread.detach();
