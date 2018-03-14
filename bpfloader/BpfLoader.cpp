@@ -45,8 +45,10 @@
 using android::base::unique_fd;
 using android::netdutils::Slice;
 
-#define INGRESS_PROG "/system/bin/cgroup_bpf_ingress_prog"
-#define EGRESS_PROG "/system/bin/cgroup_bpf_egress_prog"
+#define BPF_PROG_PATH "/system/etc/bpf"
+
+#define INGRESS_PROG BPF_PROG_PATH"/cgroup_bpf_ingress_prog.o"
+#define EGRESS_PROG BPF_PROG_PATH"/cgroup_bpf_egress_prog.o"
 #define MAP_LD_CMD_HEAD 0x18
 
 #define FAIL(str)      \
