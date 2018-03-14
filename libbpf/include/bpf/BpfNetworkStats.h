@@ -42,13 +42,16 @@ int bpfGetIfaceStatsInternal(const char* iface, struct Stats* stats, const char*
 // For test only
 int parseBpfUidStatsDetail(std::vector<stats_line>* lines,
                            const std::vector<std::string>& limitIfaces, int limitUid,
-                           const base::unique_fd& map_fd);
+                           const base::unique_fd& statsMapFd, const base::unique_fd& ifaceMapFd);
 // For test only
 int parseBpfTagStatsDetail(std::vector<stats_line>* lines,
                            const std::vector<std::string>& limitIfaces, int limitTag, int limitUid,
-                           const base::unique_fd& map_fd);
+                           const base::unique_fd& statsMapFd, const base::unique_fd& ifaceMapFd);
 // For test only
 int cleanStatsMapInternal(const base::unique_fd& cookieTagMap, const base::unique_fd& tagStatsMap);
+// For test only
+int getIfaceNameFromMap(const base::unique_fd& ifaceMapFd, const base::unique_fd& statsMapFd,
+                        char *ifname, struct StatsKey &curKey, uint64_t *unknownIfaceBytesTotal);
 
 int bpfGetUidStats(uid_t uid, struct Stats* stats);
 int bpfGetIfaceStats(const char* iface, struct Stats* stats);
