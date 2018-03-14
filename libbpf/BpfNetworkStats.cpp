@@ -39,6 +39,9 @@ namespace bpf {
 
 static const char* BPF_IFACE_STATS = "/proc/net/dev";
 
+// The limit for stats received by a unknown interface;
+static const uint64_t MAX_UNKNOWN_IFACE_BYTES = 100*1000;
+
 static constexpr uint32_t BPF_OPEN_FLAGS = BPF_F_RDONLY;
 
 int bpfGetUidStatsInternal(uid_t uid, Stats* stats, const base::unique_fd& map_fd) {
@@ -129,21 +132,36 @@ stats_line populateStatsEntry(const StatsKey& statsKey, const StatsValue& statsE
     return newLine;
 }
 
+int getIfaceNameFromMap(const base::unique_fd& ifaceMapFd, const base::unique_fd& statsMapFd,
+                        char *ifname, StatsKey &curKey, uint64_t *unknownIfaceBytesTotal) {
+    if (bpf::findMapEntry(ifaceMapFd, &curKey.ifaceIndex, ifname) < 0) {
+        StatsValue statsEntry;
+        if (bpf::findMapEntry(statsMapFd, &curKey, &statsEntry) < 0) return -errno;
+        *unknownIfaceBytesTotal += (statsEntry.rxBytes + statsEntry.txBytes);
+        if (*unknownIfaceBytesTotal >= MAX_UNKNOWN_IFACE_BYTES) {
+            ALOGE("Unknown name for ifindex %d with more than %" PRIu64 " bytes of traffic",
+                  curKey.ifaceIndex, *unknownIfaceBytesTotal);
+        }
+        return -ENODEV;
+    }
+    return 0;
+}
+
 int parseBpfUidStatsDetail(std::vector<stats_line>* lines,
                            const std::vector<std::string>& limitIfaces, int limitUid,
-                           const base::unique_fd& map_fd) {
+                           const base::unique_fd& statsMapFd, const base::unique_fd& ifaceMapFd) {
     struct StatsKey curKey, nextKey;
     curKey = NONEXISTENT_STATSKEY;
-    while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1) {
+    uint64_t unknownIfaceBytesTotal = 0;
+    while (bpf::getNextMapKey(statsMapFd, &curKey, &nextKey) != -1) {
         curKey = nextKey;
         char ifname[IFNAMSIZ];
         // The data entry in uid map that stores removed uid stats use 0 as the
         // iface. Just skip when seen.
-        if (curKey.ifaceIndex == 0) continue;
-        // this is relatively expensive, involving a context switch and probably contention on the
-        // RTNL lock.
-        // TODO: store iface name in map directly instead of ifindex.
-        if_indextoname(curKey.ifaceIndex, ifname);
+        if (curKey.ifaceIndex == 0 ||
+            getIfaceNameFromMap(ifaceMapFd, statsMapFd, ifname, curKey, &unknownIfaceBytesTotal)) {
+            continue;
+        }
         std::string ifnameStr(ifname);
         if (limitIfaces.size() > 0 &&
             std::find(limitIfaces.begin(), limitIfaces.end(), ifnameStr) == limitIfaces.end()) {
@@ -152,7 +170,7 @@ int parseBpfUidStatsDetail(std::vector<stats_line>* lines,
         }
         if (limitUid != UID_ALL && limitUid != int(curKey.uid)) continue;
         StatsValue statsEntry;
-        if (bpf::findMapEntry(map_fd, &curKey, &statsEntry) < 0) {
+        if (bpf::findMapEntry(statsMapFd, &curKey, &statsEntry) < 0) {
             int ret = -errno;
             ALOGE("get map statsEntry failed: %s", strerror(errno));
             return ret;
@@ -164,14 +182,16 @@ int parseBpfUidStatsDetail(std::vector<stats_line>* lines,
 
 int parseBpfTagStatsDetail(std::vector<stats_line>* lines,
                            const std::vector<std::string>& limitIfaces, int limitTag, int limitUid,
-                           const base::unique_fd& map_fd) {
+                           const base::unique_fd& statsMapFd, const base::unique_fd& ifaceMapFd) {
     struct StatsKey curKey, nextKey;
     curKey = NONEXISTENT_STATSKEY;
-    while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1) {
+    uint64_t unknownIfaceBytesTotal = 0;
+    while (bpf::getNextMapKey(statsMapFd, &curKey, &nextKey) != -1) {
         curKey = nextKey;
-        char ifname[32];
-        if (curKey.ifaceIndex == 0) continue;
-        if_indextoname(curKey.ifaceIndex, ifname);
+        char ifname[IFNAMSIZ];
+        if (getIfaceNameFromMap(ifaceMapFd, statsMapFd, ifname, curKey, &unknownIfaceBytesTotal)) {
+            continue;
+        }
         std::string ifnameStr(ifname);
         if (limitIfaces.size() > 0 &&
             std::find(limitIfaces.begin(), limitIfaces.end(), ifnameStr) == limitIfaces.end()) {
@@ -182,7 +202,7 @@ int parseBpfTagStatsDetail(std::vector<stats_line>* lines,
             (limitUid != UID_ALL && uint32_t(limitUid) != curKey.uid))
             continue;
         StatsValue statsEntry;
-        if (bpf::findMapEntry(map_fd, &curKey, &statsEntry) < 0) return -errno;
+        if (bpf::findMapEntry(statsMapFd, &curKey, &statsEntry) < 0) return -errno;
         lines->push_back(populateStatsEntry(curKey, statsEntry, ifname));
     }
     if (errno != ENOENT) return -errno;
@@ -199,7 +219,14 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
         ALOGE("get tagStats map fd failed: %s", strerror(errno));
         return ret;
     }
-    ret = parseBpfTagStatsDetail(lines, limitIfaces, limitTag, limitUid, tagStatsMap);
+    base::unique_fd ifaceIndexNameMap(bpf::mapRetrieve(IFACE_INDEX_NAME_MAP_PATH, BPF_OPEN_FLAGS));
+    if (ifaceIndexNameMap < 0) {
+        ret = -errno;
+        ALOGE("get ifaceIndexName map fd failed: %s", strerror(errno));
+        return ret;
+    }
+    ret = parseBpfTagStatsDetail(lines, limitIfaces, limitTag, limitUid, tagStatsMap,
+                                 ifaceIndexNameMap);
     if (ret) return ret;
 
     if (limitTag == TAG_ALL) {
@@ -209,7 +236,7 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
             ALOGE("Opening map fd from %s failed: %s", UID_STATS_MAP_PATH, strerror(errno));
             return ret;
         }
-        ret = parseBpfUidStatsDetail(lines, limitIfaces, limitUid, uidStatsMap);
+        ret = parseBpfUidStatsDetail(lines, limitIfaces, limitUid, uidStatsMap, ifaceIndexNameMap);
     }
     return ret;
 }
