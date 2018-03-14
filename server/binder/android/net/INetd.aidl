@@ -39,7 +39,9 @@ interface INetd {
      * @param uids The list of UIDs to allow/deny.
      * @return true if the chain was successfully replaced, false otherwise.
      */
-    boolean firewallReplaceUidChain(String chainName, boolean isWhitelist, in int[] uids);
+    boolean firewallReplaceUidChain(in @utf8InCpp String chainName,
+                                    boolean isWhitelist,
+                                    in int[] uids);
 
     /**
      * Enables or disables data saver mode on costly network interfaces.
@@ -73,7 +75,7 @@ interface INetd {
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
      */
-    void networkCreatePhysical(int netId, @utf8InCpp String permission);
+    void networkCreatePhysical(int netId, in @utf8InCpp String permission);
 
     /**
      * Creates a VPN network.
