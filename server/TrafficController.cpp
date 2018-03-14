@@ -181,6 +181,20 @@ Status TrafficController::start() {
         addInterface(ifacePair.first.c_str(), ifacePair.second);
     }
 
+    ASSIGN_OR_RETURN(mIfaceStatsMap,
+                     setUpBPFMap(sizeof(uint32_t), sizeof(struct StatsValue), IFACE_STATS_MAP_SIZE,
+                                 IFACE_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    // Change the file mode of pinned map so both netd and system server can get the map fd
+    // from the path.
+    ret = chown(IFACE_STATS_MAP_PATH, AID_ROOT, AID_NET_BW_STATS);
+    if (ret) {
+        return statusFromErrno(errno, "change ifaceStatsMap group failed.");
+    }
+    ret = chmod(IFACE_STATS_MAP_PATH, S_IRWXU | S_IRGRP);
+    if (ret) {
+        return statusFromErrno(errno, "change ifaceStatsMap mode failed.");
+    }
+
     auto result = makeSkDestroyListener();
     if (!isOk(result)) {
         ALOGE("Unable to create SkDestroyListener: %s", toString(result).c_str());
@@ -223,9 +237,17 @@ Status TrafficController::start() {
     if (ret != 0 && errno == ENOENT) {
         prog_args.push_back((char*)"-e");
     }
+    ret = access(XT_BPF_INGRESS_PROG_PATH, R_OK);
+    if (ret != 0 && errno == ENOENT) {
+        prog_args.push_back((char*)"-p");
+    }
+    ret = access(XT_BPF_EGRESS_PROG_PATH, R_OK);
+    if (ret != 0 && errno == ENOENT) {
+        prog_args.push_back((char*)"-m");
+    }
 
     if (prog_args.size() == 1) {
-        // both program are loaded already.
+        // all program are loaded already.
         return netdutils::status::ok;
     }
 
