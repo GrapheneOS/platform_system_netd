@@ -15,7 +15,6 @@
  */
 
 #define LOG_TAG "TrafficController"
-
 #include <inttypes.h>
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
@@ -45,6 +44,7 @@
 #include "TrafficController.h"
 #include "bpf/BpfUtils.h"
 
+#include "InterfaceController.h"
 #include "NetlinkListener.h"
 #include "qtaguid/qtaguid.h"
 
@@ -157,6 +157,28 @@ Status TrafficController::start() {
     ret = chmod(TAG_STATS_MAP_PATH, S_IRWXU | S_IRGRP | S_IWGRP);
     if (ret) {
         return statusFromErrno(errno, "change tagStatsMap mode failed.");
+    }
+
+    ASSIGN_OR_RETURN(mIfaceIndexNameMap,
+                     setUpBPFMap(sizeof(uint32_t), IFNAMSIZ, IFACE_INDEX_NAME_MAP_SIZE,
+                                 IFACE_INDEX_NAME_MAP_PATH, BPF_MAP_TYPE_HASH));
+    // Change the file mode of pinned map so both netd and system server can get the map fd
+    // from the path.
+    ret = chown(IFACE_INDEX_NAME_MAP_PATH, AID_ROOT, AID_NET_BW_STATS);
+    if (ret) {
+        return statusFromErrno(errno, "change ifaceIndexNameMap group failed.");
+    }
+    ret = chmod(IFACE_INDEX_NAME_MAP_PATH, S_IRWXU | S_IRGRP | S_IWGRP);
+    if (ret) {
+        return statusFromErrno(errno, "change ifaceIndexNameMap mode failed.");
+    }
+
+    // Fetch the list of currently-existing interfaces. At this point NetlinkHandler is
+    // already running, so it will call addInterface() when any new interface appears.
+    std::map<std::string, uint32_t> ifacePairs;
+    ASSIGN_OR_RETURN(ifacePairs, InterfaceController::getIfaceList());
+    for (const auto& ifacePair:ifacePairs) {
+        addInterface(ifacePair.first.c_str(), ifacePair.second);
     }
 
     auto result = makeSkDestroyListener();
@@ -389,6 +411,25 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     if (res) {
         res = -errno;
         ALOGE("Failed to add deleting stats to removed uid: %s", strerror(errno));
+    }
+    return res;
+}
+
+int TrafficController::addInterface(const char* name, uint32_t ifaceIndex) {
+    int res = 0;
+    if (!ebpfSupported) return res;
+
+    char ifaceName[IFNAMSIZ];
+    if (ifaceIndex == 0) {
+        ALOGE("Unknow interface %s(%d)", name, ifaceIndex);
+        return -1;
+    }
+
+    strlcpy(ifaceName, name, sizeof(ifaceName));
+    res = writeToMapEntry(mIfaceIndexNameMap, &ifaceIndex, ifaceName, BPF_ANY);
+    if (res) {
+        res = -errno;
+        ALOGE("Failed to add iface %s(%d): %s", name, ifaceIndex, strerror(errno));
     }
     return res;
 }
