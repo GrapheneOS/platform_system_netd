@@ -134,9 +134,9 @@ void checkPrivateDnsProvider(const DnsTlsServer& server,
             netdEventListener = eventReporter.getNetdEventListener();
         }
         if (netdEventListener != nullptr) {
-            netdEventListener->onPrivateDnsValidationEvent(netId,
-                    String16(addrToString(&(server.ss)).c_str()),
-                    String16(server.name.c_str()), success);
+            const String16 ipLiteral(addrToString(&(server.ss)).c_str());
+            const String16 hostname(server.name.empty() ? "" : server.name.c_str());
+            netdEventListener->onPrivateDnsValidationEvent(netId, ipLiteral, hostname, success);
             if (DBG) {
                 ALOGD("Sending validation %s event on netId %u for %s with hostname %s",
                         success ? "success" : "failure", netId,
