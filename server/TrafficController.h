@@ -38,7 +38,8 @@ constexpr const int COOKIE_UID_MAP_SIZE = 10000;
 constexpr const int UID_COUNTERSET_MAP_SIZE = 10000;
 constexpr const int UID_STATS_MAP_SIZE = 10000;
 constexpr const int TAG_STATS_MAP_SIZE = 10000;
-constexpr const int IFACE_INDEX_NAME_MAP_SIZE = 10000;
+constexpr const int IFACE_INDEX_NAME_MAP_SIZE = 1000;
+constexpr const int IFACE_STATS_MAP_SIZE = 1000;
 constexpr const int UID_OWNER_MAP_SIZE = 10000;
 
 constexpr const int COUNTERSETS_LIMIT = 2;
@@ -144,6 +145,12 @@ class TrafficController {
      * to correctly match the iface name when receiving a packet.
      */
     base::unique_fd mIfaceIndexNameMap;
+
+    /*
+     * mIfaceStataMap: Store per iface traffic stats gathered from xt_bpf
+     * filter.
+     */
+    base::unique_fd mIfaceStatsMap;
 
     std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
 
