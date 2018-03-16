@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+#ifndef LOG_TAG
+#define LOG_TAG "bpfloader"
+#endif
+
 #include <arpa/inet.h>
 #include <elf.h>
 #include <error.h>
@@ -35,6 +39,7 @@
 
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
+#include <cutils/log.h>
 
 #include <netdutils/Misc.h>
 #include <netdutils/Slice.h>
@@ -49,12 +54,14 @@ using android::netdutils::Slice;
 
 #define INGRESS_PROG BPF_PROG_PATH"/cgroup_bpf_ingress_prog.o"
 #define EGRESS_PROG BPF_PROG_PATH"/cgroup_bpf_egress_prog.o"
+#define XT_BPF_INGRESS_PROG BPF_PROG_PATH "/xt_bpf_ingress_prog.o"
+#define XT_BPF_EGRESS_PROG BPF_PROG_PATH "/xt_bpf_egress_prog.o"
 #define MAP_LD_CMD_HEAD 0x18
 
-#define FAIL(str)      \
+#define FAIL(...)      \
     do {               \
-        perror((str)); \
-        return -1;     \
+        ((void)ALOG(LOG_ERROR, LOG_TAG, __VA_ARGS__)); \
+        exit(-1);     \
     } while (0)
 
 // The BPF instruction bytes that we need to replace. x is a placeholder (e.g., COOKIE_TAG_MAP).
@@ -99,11 +106,10 @@ void makeFdReplacePattern(uint64_t code, uint64_t mapFd, char* pattern, char* cm
 }
 
 int loadProg(const char* path, int cookieTagMap, int uidStatsMap, int tagStatsMap,
-             int uidCounterSetMap) {
+             int uidCounterSetMap, int ifaceStatsMap) {
     int fd = open(path, O_RDONLY);
     if (fd == -1) {
-        fprintf(stderr, "Failed to open %s program: %s", path, strerror(errno));
-        return -1;
+        FAIL("Failed to open %s program: %s", path, strerror(errno));
     }
 
     struct stat stat;
@@ -171,6 +177,11 @@ int loadProg(const char* path, int cookieTagMap, int uidStatsMap, int tagStatsMa
     char uidStatsMapFdLoadByte[MAP_CMD_SIZE];
     makeFdReplacePattern(UID_STATS_MAP, uidStatsMap, uidStatsMapFdPattern, uidStatsMapFdLoadByte);
 
+    char ifaceStatsMapFdPattern[MAP_CMD_SIZE];
+    char ifaceStatsMapFdLoadByte[MAP_CMD_SIZE];
+    makeFdReplacePattern(IFACE_STATS_MAP, ifaceStatsMap, ifaceStatsMapFdPattern,
+                         ifaceStatsMapFdLoadByte);
+
     char* mapHead = prog;
     while ((uint64_t)(mapHead - prog + MAP_CMD_SIZE) < progSize) {
         // Scan the program, examining all possible places that might be the start of a map load
@@ -193,6 +204,9 @@ int loadProg(const char* path, int cookieTagMap, int uidStatsMap, int tagStatsMa
             } else if (!memcmp(mapHead, uidStatsMapFdPattern, MAP_CMD_SIZE)) {
                 memcpy(mapHead, uidStatsMapFdLoadByte, MAP_CMD_SIZE);
                 mapHead += MAP_CMD_SIZE;
+            } else if (!memcmp(mapHead, ifaceStatsMapFdPattern, MAP_CMD_SIZE)) {
+                memcpy(mapHead, ifaceStatsMapFdLoadByte, MAP_CMD_SIZE);
+                mapHead += MAP_CMD_SIZE;
             }
         }
         mapHead++;
@@ -200,42 +214,52 @@ int loadProg(const char* path, int cookieTagMap, int uidStatsMap, int tagStatsMa
     Slice insns = Slice(prog, progSize);
     char bpf_log_buf[LOG_BUF_SIZE];
     Slice bpfLog = Slice(bpf_log_buf, sizeof(bpf_log_buf));
-    return bpfProgLoad(BPF_PROG_TYPE_CGROUP_SKB, insns, "Apache 2.0", 0, bpfLog);
+    if (strcmp(path, XT_BPF_INGRESS_PROG) && strcmp(path, XT_BPF_EGRESS_PROG)) {
+        return bpfProgLoad(BPF_PROG_TYPE_CGROUP_SKB, insns, "Apache 2.0", 0, bpfLog);
+    }
+    return bpfProgLoad(BPF_PROG_TYPE_SOCKET_FILTER, insns, "Apache 2.0", 0, bpfLog);
 }
 
 int loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
                          const unique_fd& cookieTagMap, const unique_fd& uidCounterSetMap,
-                         const unique_fd& uidStatsMap, const unique_fd& tagStatsMap) {
+                         const unique_fd& uidStatsMap, const unique_fd& tagStatsMap,
+                         const unique_fd& ifaceStatsMap) {
     unique_fd cg_fd(open(CGROUP_ROOT_PATH, O_DIRECTORY | O_RDONLY | O_CLOEXEC));
     if (cg_fd < 0) {
-        perror("Failed to open the cgroup directory");
-        return -1;
+        FAIL("Failed to open the cgroup directory");
     }
 
     unique_fd fd;
     if (type == BPF_CGROUP_INET_EGRESS) {
         fd.reset(loadProg(INGRESS_PROG, cookieTagMap.get(), uidStatsMap.get(), tagStatsMap.get(),
-                          uidCounterSetMap.get()));
-    } else {
+                          uidCounterSetMap.get(), ifaceStatsMap.get()));
+    } else if (type == BPF_CGROUP_INET_INGRESS) {
         fd.reset(loadProg(EGRESS_PROG, cookieTagMap.get(), uidStatsMap.get(), tagStatsMap.get(),
-                          uidCounterSetMap.get()));
+                          uidCounterSetMap.get(), ifaceStatsMap.get()));
+    } else if (!strcmp(name, "xt_bpf_ingress_prog")) {
+        fd.reset(loadProg(XT_BPF_INGRESS_PROG, cookieTagMap.get(), uidStatsMap.get(),
+                          tagStatsMap.get(), uidCounterSetMap.get(), ifaceStatsMap.get()));
+    } else if (!strcmp(name, "xt_bpf_egress_prog")) {
+        fd.reset(loadProg(XT_BPF_EGRESS_PROG, cookieTagMap.get(), uidStatsMap.get(),
+                          tagStatsMap.get(), uidCounterSetMap.get(), ifaceStatsMap.get()));
+    } else {
+        FAIL("Unrecognized program type: %s", name);
     }
 
     if (fd < 0) {
-        fprintf(stderr, "load %s failed: %s", name, strerror(errno));
-        return -1;
+        FAIL("load %s failed: %s", name, strerror(errno));
     }
-
-    int ret = attachProgram(type, fd, cg_fd);
-    if (ret) {
-        fprintf(stderr, "%s attach failed: %s", name, strerror(errno));
-        return -1;
+    int ret = 0;
+    if (type == BPF_CGROUP_INET_EGRESS || type == BPF_CGROUP_INET_INGRESS) {
+        ret = attachProgram(type, fd, cg_fd);
+        if (ret) {
+            FAIL("%s attach failed: %s", name, strerror(errno));
+        }
     }
 
     ret = mapPin(fd, path);
     if (ret) {
-        fprintf(stderr, "Pin %s as file %s failed: %s", name, path, strerror(errno));
-        return -1;
+        FAIL("Pin %s as file %s failed: %s", name, path, strerror(errno));
     }
     return 0;
 }
@@ -246,45 +270,51 @@ int loadAndAttachProgram(bpf_attach_type type, const char* path, const char* nam
 using android::bpf::BPF_EGRESS_PROG_PATH;
 using android::bpf::BPF_INGRESS_PROG_PATH;
 using android::bpf::COOKIE_UID_MAP_PATH;
+using android::bpf::IFACE_STATS_MAP_PATH;
 using android::bpf::TAG_STATS_MAP_PATH;
 using android::bpf::UID_COUNTERSET_MAP_PATH;
 using android::bpf::UID_STATS_MAP_PATH;
+using android::bpf::XT_BPF_EGRESS_PROG_PATH;
+using android::bpf::XT_BPF_INGRESS_PROG_PATH;
 
 static void usage(void) {
-    fprintf(stderr,
-            "Usage: ./bpfloader [-i] [-e]\n"
-            "   -i load ingress bpf program\n"
-            "   -e load egress bpf program\n");
+    ALOGE( "Usage: ./bpfloader [-i] [-e]\n"
+           "   -i load ingress bpf program\n"
+           "   -e load egress bpf program\n"
+           "   -p load prerouting xt_bpf program\n"
+           "   -m load mangle xt_bpf program\n");
 }
 
 int main(int argc, char** argv) {
     int ret = 0;
     unique_fd cookieTagMap(android::bpf::mapRetrieve(COOKIE_UID_MAP_PATH, 0));
     if (cookieTagMap < 0) {
-        perror("Failed to get cookieTagMap");
-        exit(-1);
+        FAIL("Failed to get cookieTagMap");
     }
 
     unique_fd uidCounterSetMap(android::bpf::mapRetrieve(UID_COUNTERSET_MAP_PATH, 0));
     if (uidCounterSetMap < 0) {
-        perror("Failed to get uidCounterSetMap");
-        exit(-1);
+        FAIL("Failed to get uidCounterSetMap");
     }
 
     unique_fd uidStatsMap(android::bpf::mapRetrieve(UID_STATS_MAP_PATH, 0));
     if (uidStatsMap < 0) {
-        perror("Failed to get uidStatsMap");
-        exit(-1);
+        FAIL("Failed to get uidStatsMap");
     }
 
     unique_fd tagStatsMap(android::bpf::mapRetrieve(TAG_STATS_MAP_PATH, 0));
     if (tagStatsMap < 0) {
-        perror("Failed to get tagStatsMap");
-        exit(-1);
+        FAIL("Failed to get tagStatsMap");
     }
+
+    unique_fd ifaceStatsMap(android::bpf::mapRetrieve(IFACE_STATS_MAP_PATH, 0));
+    if (ifaceStatsMap < 0) {
+        FAIL("Failed to get ifaceStatsMap");
+    }
+
     int opt;
-    bool doIngress = false, doEgress = false;
-    while ((opt = getopt(argc, argv, "ie")) != -1) {
+    bool doIngress = false, doEgress = false, doPrerouting = false, doMangle = false;
+    while ((opt = getopt(argc, argv, "iepm")) != -1) {
         switch (opt) {
             case 'i':
                 doIngress = true;
@@ -292,28 +322,47 @@ int main(int argc, char** argv) {
             case 'e':
                 doEgress = true;
                 break;
+            case 'p':
+                doPrerouting = true;
+                break;
+            case 'm':
+                doMangle = true;
+                break;
             default:
-                fprintf(stderr, "unknown argument %c", opt);
                 usage();
-                exit(-1);
+                FAIL("unknown argument %c", opt);
         }
     }
     if (doIngress) {
         ret = android::bpf::loadAndAttachProgram(BPF_CGROUP_INET_INGRESS, BPF_INGRESS_PROG_PATH,
                                                  "ingress_prog", cookieTagMap, uidCounterSetMap,
-                                                 uidStatsMap, tagStatsMap);
+                                                 uidStatsMap, tagStatsMap, ifaceStatsMap);
         if (ret) {
-            fprintf(stderr, "Failed to set up ingress program");
-            return ret;
+            FAIL("Failed to set up ingress program");
         }
     }
     if (doEgress) {
         ret = android::bpf::loadAndAttachProgram(BPF_CGROUP_INET_EGRESS, BPF_EGRESS_PROG_PATH,
                                                  "egress_prog", cookieTagMap, uidCounterSetMap,
-                                                 uidStatsMap, tagStatsMap);
+                                                 uidStatsMap, tagStatsMap, ifaceStatsMap);
         if (ret) {
-            fprintf(stderr, "Failed to set up ingress program");
-            return ret;
+            FAIL("Failed to set up ingress program");
+        }
+    }
+    if (doPrerouting) {
+        ret = android::bpf::loadAndAttachProgram(
+            MAX_BPF_ATTACH_TYPE, XT_BPF_INGRESS_PROG_PATH, "xt_bpf_ingress_prog", cookieTagMap,
+            uidCounterSetMap, uidStatsMap, tagStatsMap, ifaceStatsMap);
+        if (ret) {
+            FAIL("Failed to set up xt_bpf program");
+        }
+    }
+    if (doMangle) {
+        ret = android::bpf::loadAndAttachProgram(
+            MAX_BPF_ATTACH_TYPE, XT_BPF_EGRESS_PROG_PATH, "xt_bpf_egress_prog", cookieTagMap,
+            uidCounterSetMap, uidStatsMap, tagStatsMap, ifaceStatsMap);
+        if (ret) {
+            FAIL("Failed to set up xt_bpf program");
         }
     }
     return ret;
