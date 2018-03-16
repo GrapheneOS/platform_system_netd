@@ -16,6 +16,7 @@
 
 #include <linux/bpf.h>
 #include <stdint.h>
+#include "bpf_shared.h"
 
 #define ELF_SEC(NAME) __attribute__((section(NAME), used))
 
@@ -50,3 +51,27 @@ static int (*bpf_skb_load_bytes)(struct __sk_buff* skb, int off, void* to,
 
 #define BPF_PASS 1
 #define BPF_DROP 0
+#define BPF_EGRESS 0
+#define BPF_INGRESS 1
+
+static __always_inline int xt_bpf_count(struct __sk_buff* skb, int type) {
+    uint32_t key = skb->ifindex;
+    struct stats_value* value;
+
+    value = find_map_entry(IFACE_STATS_MAP, &key);
+    if (!value) {
+        struct stats_value newValue = {};
+        write_to_map_entry(IFACE_STATS_MAP, &key, &newValue, BPF_NOEXIST);
+        value = find_map_entry(IFACE_STATS_MAP, &key);
+    }
+    if (value) {
+        if (type == BPF_EGRESS) {
+            __sync_fetch_and_add(&value->txPackets, 1);
+            __sync_fetch_and_add(&value->txBytes, skb->len);
+        } else if (type == BPF_INGRESS) {
+            __sync_fetch_and_add(&value->rxPackets, 1);
+            __sync_fetch_and_add(&value->rxBytes, skb->len);
+        }
+    }
+    return BPF_PASS;
+}

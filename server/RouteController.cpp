@@ -525,7 +525,7 @@ WARN_UNUSED_RESULT int modifyExplicitNetworkRule(unsigned netId, uint32_t table,
     mask.permission = permission;
 
     return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_EXPLICIT_NETWORK, table,
-                        fwmark.intValue, mask.intValue, IIF_NONE, OIF_NONE, uidStart, uidEnd);
+                        fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE, uidStart, uidEnd);
 }
 
 // A rule to route traffic based on a chosen outgoing interface.
@@ -542,17 +542,18 @@ WARN_UNUSED_RESULT int modifyOutputInterfaceRules(const char* interface, uint32_
     mask.permission = permission;
 
     // If this rule does not specify a UID range, then also add a corresponding high-priority rule
-    // for root. This covers forwarded packets and system daemons such as the tethering DHCP server.
+    // for root. This covers kernel-originated packets, TEEd packets and any local daemons that open
+    // sockets as root.
     if (uidStart == INVALID_UID && uidEnd == INVALID_UID) {
         if (int ret = modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_VPN_OVERRIDE_OIF,
-                                   table, FWMARK_NONE, MASK_NONE, IIF_NONE, interface,
+                                   table, FWMARK_NONE, MASK_NONE, IIF_LOOPBACK, interface,
                                    UID_ROOT, UID_ROOT)) {
             return ret;
         }
     }
 
     return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_OUTPUT_INTERFACE, table,
-                        fwmark.intValue, mask.intValue, IIF_NONE, interface, uidStart, uidEnd);
+                        fwmark.intValue, mask.intValue, IIF_LOOPBACK, interface, uidStart, uidEnd);
 }
 
 // A rule to route traffic based on the chosen network.
@@ -574,7 +575,8 @@ WARN_UNUSED_RESULT int modifyImplicitNetworkRule(unsigned netId, uint32_t table,
     mask.permission = PERMISSION_NONE;
 
     return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_IMPLICIT_NETWORK, table,
-                        fwmark.intValue, mask.intValue);
+                        fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE, INVALID_UID,
+                        INVALID_UID);
 }
 
 // A rule to enable split tunnel VPNs.
@@ -821,7 +823,7 @@ WARN_UNUSED_RESULT int RouteController::modifyDefaultNetwork(uint16_t action, co
     mask.permission = permission;
 
     return modifyIpRule(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark.intValue,
-                        mask.intValue);
+                        mask.intValue, IIF_LOOPBACK, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
 WARN_UNUSED_RESULT int RouteController::modifyTetheredNetwork(uint16_t action,

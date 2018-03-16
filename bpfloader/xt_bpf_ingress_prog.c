@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-// const values shared by both kernel program and userspace bpfloader
+#include <linux/bpf.h>
+#include <linux/if_ether.h>
+#include <linux/if_packet.h>
+#include <linux/ip.h>
+#include "bpf_kern.h"
+#include "bpf_shared.h"
 
-#define BPF_PROG_SEC_NAME "kern_prog"
-
-#define COOKIE_TAG_MAP 0xbfceaaffffffffff
-#define UID_COUNTERSET_MAP 0xbfdceeafffffffff
-#define UID_STATS_MAP 0xbfdaafffffffffff
-#define TAG_STATS_MAP 0xbfaaafffffffffff
-#define IFACE_STATS_MAP 0xbf1faceaafffffff
+ELF_SEC(BPF_PROG_SEC_NAME)
+int xt_bpf_ingress_prog(struct __sk_buff* skb) {
+    return xt_bpf_count(skb, BPF_INGRESS);
+}
