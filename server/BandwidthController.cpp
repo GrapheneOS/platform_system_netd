@@ -52,9 +52,11 @@
 
 #include <netdutils/Syscalls.h>
 #include "BandwidthController.h"
+#include "Controllers.h"
 #include "FirewallController.h" /* For makeCriticalCommands */
 #include "Fwmark.h"
 #include "NetdConstants.h"
+#include "bpf/BpfUtils.h"
 
 /* Alphabetical */
 #define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %" PRId64" --name %s\n"
@@ -69,6 +71,8 @@ auto BandwidthController::iptablesRestoreFunction = execIptablesRestoreWithOutpu
 using android::base::Join;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
+using android::bpf::XT_BPF_EGRESS_PROG_PATH;
+using android::bpf::XT_BPF_INGRESS_PROG_PATH;
 using android::netdutils::StatusOr;
 using android::netdutils::UniqueFile;
 
@@ -201,46 +205,59 @@ static const uint32_t uidBillingMask = Fwmark::getUidBillingMask();
  *
  * See go/ipsec-data-accounting for more information.
  */
-static const std::vector<std::string> IPT_BASIC_ACCOUNTING_COMMANDS = {
-    "*filter",
-    // Prevents IPSec double counting (ESP and UDP-encap-ESP respectively)
-    "-A bw_INPUT -p esp -j RETURN",
-    StringPrintf("-A bw_INPUT -m mark --mark 0x%x/0x%x -j RETURN",
-                 uidBillingMask, uidBillingMask),
-    "-A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
-    StringPrintf("-A bw_INPUT -j MARK --or-mark 0x%x", uidBillingMask),
 
-    // Prevents IPSec double counting (Tunnel mode and Transport mode,
-    // respectively)
-    "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
-    "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
-    "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
+const std::vector<std::string> getBasicAccountingCommands() {
+    bool useBpf = android::net::gCtls->trafficCtrl.checkBpfStatsEnable();
+    //TODO: remove this when xt_bpf kernel support is ready
+    useBpf = false;
 
-    "-A bw_costly_shared --jump bw_penalty_box",
-    "-A bw_penalty_box --jump bw_happy_box",
-    "-A bw_happy_box --jump bw_data_saver",
-    "-A bw_data_saver -j RETURN",
-    HAPPY_BOX_WHITELIST_COMMAND,
-    "COMMIT",
+    const std::vector<std::string> ipt_basic_accounting_commands = {
+        "*filter",
+        // Prevents IPSec double counting (ESP and UDP-encap-ESP respectively)
+        "-A bw_INPUT -p esp -j RETURN",
+        StringPrintf("-A bw_INPUT -m mark --mark 0x%x/0x%x -j RETURN",
+                     uidBillingMask, uidBillingMask),
+        "-A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
+        StringPrintf("-A bw_INPUT -j MARK --or-mark 0x%x", uidBillingMask),
 
-    "*raw",
-    // Prevents IPSec double counting (Tunnel mode and Transport mode,
-    // respectively)
-    "-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN",
-    "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN",
-    "-A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
-    "COMMIT",
+        // Prevents IPSec double counting (Tunnel mode and Transport mode,
+        // respectively)
+        "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
+        "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
+        "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
-    "*mangle",
-    // Prevents IPSec double counting (Tunnel mode and Transport mode,
-    // respectively)
-    "-A bw_mangle_POSTROUTING -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
-    "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN",
-    "-A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
-    StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x",
-                 uidBillingMask), // Clear the mark before sending this packet
-    COMMIT_AND_CLOSE
-};
+        "-A bw_costly_shared --jump bw_penalty_box",
+        "-A bw_penalty_box --jump bw_happy_box",
+        "-A bw_happy_box --jump bw_data_saver",
+        "-A bw_data_saver -j RETURN",
+        HAPPY_BOX_WHITELIST_COMMAND,
+        "COMMIT",
+
+        "*raw",
+        // Prevents IPSec double counting (Tunnel mode and Transport mode,
+        // respectively)
+        "-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN",
+        "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN",
+        "-A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
+        useBpf ? StringPrintf("-A bw_raw_PREROUTING -m bpf --object-pinned %s",
+                              XT_BPF_INGRESS_PROG_PATH):"",
+        "COMMIT",
+
+        "*mangle",
+        // Prevents IPSec double counting (Tunnel mode and Transport mode,
+        // respectively)
+        "-A bw_mangle_POSTROUTING -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
+        "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN",
+        "-A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
+        StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x",
+                     uidBillingMask), // Clear the mark before sending this packet
+        useBpf ? StringPrintf("-A bw_mangle_POSTROUTING -m bpf --object-pinned %s",
+                              XT_BPF_EGRESS_PROG_PATH):"",
+        COMMIT_AND_CLOSE
+    };
+    return ipt_basic_accounting_commands;
+}
+
 
 std::vector<std::string> toStrVec(int num, char* strs[]) {
     std::vector<std::string> tmp;
@@ -286,7 +303,8 @@ int BandwidthController::enableBandwidthControl(bool force) {
     mSharedQuotaBytes = mSharedAlertBytes = 0;
 
     flushCleanTables(false);
-    std::string commands = Join(IPT_BASIC_ACCOUNTING_COMMANDS, '\n');
+
+    std::string commands = Join(getBasicAccountingCommands(), '\n');
     return iptablesRestoreFunction(V4V6, commands, nullptr);
 }
 
