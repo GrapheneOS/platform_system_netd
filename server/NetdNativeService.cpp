@@ -54,13 +54,6 @@ const char CONNECTIVITY_INTERNAL[] = "android.permission.CONNECTIVITY_INTERNAL";
 const char NETWORK_STACK[] = "android.permission.NETWORK_STACK";
 const char DUMP[] = "android.permission.DUMP";
 
-binder::Status toBinderStatus(const netdutils::Status s) {
-    if (isOk(s)) {
-        return binder::Status::ok();
-    }
-    return binder::Status::fromServiceSpecificError(s.code(), s.msg().c_str());
-}
-
 binder::Status checkPermission(const char *permission) {
     pid_t pid;
     uid_t uid;
@@ -359,7 +352,7 @@ binder::Status NetdNativeService::tetherGetStats(PersistableBundle *bundle) {
 
     const auto& statsList = gCtls->tetherCtrl.getTetherStats();
     if (!isOk(statsList)) {
-        return toBinderStatus(statsList);
+        return asBinderStatus(statsList);
     }
 
     for (const auto& stats : statsList.value()) {
@@ -676,21 +669,21 @@ binder::Status NetdNativeService::removeVirtualTunnelInterface(const std::string
 binder::Status NetdNativeService::setIPv6AddrGenMode(const std::string& ifName,
                                                      int32_t mode) {
     ENFORCE_PERMISSION(NETWORK_STACK);
-    return toBinderStatus(InterfaceController::setIPv6AddrGenMode(ifName, mode));
+    return asBinderStatus(InterfaceController::setIPv6AddrGenMode(ifName, mode));
 }
 
 binder::Status NetdNativeService::wakeupAddInterface(const std::string& ifName,
                                                      const std::string& prefix, int32_t mark,
                                                      int32_t mask) {
     ENFORCE_PERMISSION(NETWORK_STACK);
-    return toBinderStatus(gCtls->wakeupCtrl.addInterface(ifName, prefix, mark, mask));
+    return asBinderStatus(gCtls->wakeupCtrl.addInterface(ifName, prefix, mark, mask));
 }
 
 binder::Status NetdNativeService::wakeupDelInterface(const std::string& ifName,
                                                      const std::string& prefix, int32_t mark,
                                                      int32_t mask) {
     ENFORCE_PERMISSION(NETWORK_STACK);
-    return toBinderStatus(gCtls->wakeupCtrl.delInterface(ifName, prefix, mark, mask));
+    return asBinderStatus(gCtls->wakeupCtrl.delInterface(ifName, prefix, mark, mask));
 }
 
 binder::Status NetdNativeService::trafficCheckBpfStatsEnable(bool* ret) {
