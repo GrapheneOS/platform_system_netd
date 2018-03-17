@@ -39,7 +39,9 @@ struct stats_line {
 // For test only
 int bpfGetUidStatsInternal(uid_t uid, struct Stats* stats, const base::unique_fd& map_fd);
 // For test only
-int bpfGetIfaceStatsInternal(const char* iface, struct Stats* stats, const char* file);
+int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
+                             const base::unique_fd& ifaceStatsMapFd,
+                             const base::unique_fd& ifaceNameMapFd);
 // For test only
 int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
                                        const std::vector<std::string>& limitIfaces, int limitTag,
@@ -49,7 +51,8 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
 int cleanStatsMapInternal(const base::unique_fd& cookieTagMap, const base::unique_fd& tagStatsMap);
 // For test only
 int getIfaceNameFromMap(const base::unique_fd& ifaceMapFd, const base::unique_fd& statsMapFd,
-                        char *ifname, struct StatsKey &curKey, uint64_t *unknownIfaceBytesTotal);
+                        uint32_t ifaceIndex, char* ifname, void* curKey,
+                        int64_t* unknownIfaceBytesTotal);
 
 int bpfGetUidStats(uid_t uid, struct Stats* stats);
 int bpfGetIfaceStats(const char* iface, struct Stats* stats);
