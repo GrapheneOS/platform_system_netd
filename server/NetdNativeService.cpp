@@ -153,12 +153,11 @@ binder::Status NetdNativeService::isAlive(bool *alive) {
     return binder::Status::ok();
 }
 
-binder::Status NetdNativeService::firewallReplaceUidChain(const android::String16& chainName,
+binder::Status NetdNativeService::firewallReplaceUidChain(const std::string& chainName,
         bool isWhitelist, const std::vector<int32_t>& uids, bool *ret) {
     NETD_LOCKING_RPC(CONNECTIVITY_INTERNAL, gCtls->firewallCtrl.lock);
 
-    android::String8 name = android::String8(chainName);
-    int err = gCtls->firewallCtrl.replaceUidChain(name.string(), isWhitelist, uids);
+    int err = gCtls->firewallCtrl.replaceUidChain(chainName, isWhitelist, uids);
     *ret = (err == 0);
     return binder::Status::ok();
 }
