@@ -37,7 +37,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     // Firewall commands.
     binder::Status firewallReplaceUidChain(
-            const String16& chainName, bool isWhitelist,
+            const std::string& chainName, bool isWhitelist,
             const std::vector<int32_t>& uids, bool *ret) override;
 
     // Bandwidth control commands.

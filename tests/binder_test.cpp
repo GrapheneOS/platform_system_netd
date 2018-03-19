@@ -204,7 +204,7 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
     bool ret;
     {
         TimedOperation op(StringPrintf("Programming %d-UID whitelist chain", kNumUids));
-        mNetd->firewallReplaceUidChain(String16(chainName.c_str()), true, uids, &ret);
+        mNetd->firewallReplaceUidChain(chainName, true, uids, &ret);
     }
     EXPECT_EQ(true, ret);
     EXPECT_EQ((int) uids.size() + 9, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
@@ -213,7 +213,7 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
     EXPECT_EQ(true, iptablesEspAllowRuleExists(chainName.c_str()));
     {
         TimedOperation op("Clearing whitelist chain");
-        mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, noUids, &ret);
+        mNetd->firewallReplaceUidChain(chainName, false, noUids, &ret);
     }
     EXPECT_EQ(true, ret);
     EXPECT_EQ(5, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
@@ -221,7 +221,7 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
 
     {
         TimedOperation op(StringPrintf("Programming %d-UID blacklist chain", kNumUids));
-        mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, uids, &ret);
+        mNetd->firewallReplaceUidChain(chainName, false, uids, &ret);
     }
     EXPECT_EQ(true, ret);
     EXPECT_EQ((int) uids.size() + 5, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
@@ -231,7 +231,7 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
 
     {
         TimedOperation op("Clearing blacklist chain");
-        mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, noUids, &ret);
+        mNetd->firewallReplaceUidChain(chainName, false, noUids, &ret);
     }
     EXPECT_EQ(true, ret);
     EXPECT_EQ(5, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
@@ -239,7 +239,7 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
 
     // Check that the call fails if iptables returns an error.
     std::string veryLongStringName = "netd_binder_test_UnacceptablyLongIptablesChainName";
-    mNetd->firewallReplaceUidChain(String16(veryLongStringName.c_str()), true, noUids, &ret);
+    mNetd->firewallReplaceUidChain(veryLongStringName, true, noUids, &ret);
     EXPECT_EQ(false, ret);
 }
 
