@@ -308,8 +308,8 @@ std::string FirewallController::makeUidRules(IptablesTarget target, const char *
 }
 
 int FirewallController::replaceUidChain(
-        const char *name, bool isWhitelist, const std::vector<int32_t>& uids) {
-   std::string commands4 = makeUidRules(V4, name, isWhitelist, uids);
-   std::string commands6 = makeUidRules(V6, name, isWhitelist, uids);
+        const std::string &name, bool isWhitelist, const std::vector<int32_t>& uids) {
+   std::string commands4 = makeUidRules(V4, name.c_str(), isWhitelist, uids);
+   std::string commands6 = makeUidRules(V6, name.c_str(), isWhitelist, uids);
    return execIptablesRestore(V4, commands4.c_str()) | execIptablesRestore(V6, commands6.c_str());
 }
