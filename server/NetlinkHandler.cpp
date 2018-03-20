@@ -65,16 +65,20 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
     if (!strcmp(subsys, "net")) {
         NetlinkEvent::Action action = evt->getAction();
         const char *iface = evt->findParam("INTERFACE");
-        const char *ifIndex = evt->findParam("IFINDEX");
-        if (ifIndex) {
-            char *endptr;
-            long ifaceIndex = strtol(ifIndex, &endptr, 10);
-            if ((errno == ERANGE && (ifaceIndex == LONG_MAX || ifaceIndex == LONG_MIN))
-                || (errno != 0 && ifaceIndex == 0) || endptr == ifIndex) {
-                ALOGE("invalid interface index: %s(%s)", iface, ifIndex);
-           } else {
-                gCtls->trafficCtrl.addInterface(iface, ifaceIndex);
-           }
+        if ((action == NetlinkEvent::Action::kAdd) ||
+            (action == NetlinkEvent::Action::kLinkUp) ||
+            (action == NetlinkEvent::Action::kLinkDown)) {
+            const char *ifIndex = evt->findParam("IFINDEX");
+            if (ifIndex) {
+                // strtol returns 0 on error, which is fine because 0 is not a valid ifindex.
+                long ifaceIndex = strtol(ifIndex, NULL, 10);
+                if (ifaceIndex == 0 ||
+                    (errno == ERANGE && (ifaceIndex == LONG_MAX || ifaceIndex == LONG_MIN))) {
+                    ALOGE("invalid interface index: %s(%s)", iface, ifIndex);
+                } else {
+                    gCtls->trafficCtrl.addInterface(iface, ifaceIndex);
+                }
+            }
         }
 
         if (action == NetlinkEvent::Action::kAdd) {
