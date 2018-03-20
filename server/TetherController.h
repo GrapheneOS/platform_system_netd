@@ -33,7 +33,16 @@ using android::netdutils::StatusOr;
 
 class TetherController {
 private:
+    struct ForwardingDownstream {
+        std::string iface;
+        bool active;
+    };
+
     std::list<std::string> mInterfaces;
+
+    // Map upstream iface -> downstream iface. A pair is in the map if forwarding was enabled at
+    // some point since the controller was initialized.
+    std::multimap<std::string, ForwardingDownstream> mFwdIfaces;
 
     // NetId to use for forwarded DNS queries. This may not be the default
     // network, e.g., in the case where we are tethering to a DUN APN.
@@ -47,10 +56,6 @@ public:
 
     TetherController();
     virtual ~TetherController();
-
-    // List of strings of interface pairs. Public because it's used by CommandListener.
-    // TODO: merge with mInterfaces, and make private.
-    std::list<std::string> ifacePairList;
 
     bool enableForwarding(const char* requester);
     bool disableForwarding(const char* requester);
@@ -126,10 +131,17 @@ public:
 private:
     bool setIpFwdEnabled();
 
-    int natCount;
-
+    int setupIPv6CountersChain();
     static std::string makeTetherCountingRule(const char *if1, const char *if2);
-    bool checkTetherCountingRuleExist(const std::string& pair_name);
+    ForwardingDownstream* findForwardingDownstream(const std::string& intIface,
+        const std::string& extIface);
+    void addForwardingPair(const std::string& intIface, const std::string& extIface);
+    void markForwardingPairDisabled(const std::string& intIface, const std::string& extIface);
+
+    bool isForwardingPairEnabled(const std::string& intIface, const std::string& extIface);
+    bool isAnyForwardingEnabledOnUpstream(const std::string& extIface);
+    bool isAnyForwardingPairEnabled();
+    bool tetherCountingRuleExists(const std::string& iface1, const std::string& iface2);
 
     int setDefaults();
     int setForwardRules(bool set, const char *intIface, const char *extIface);
