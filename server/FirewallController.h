@@ -34,9 +34,6 @@ enum FirewallType { WHITELIST, BLACKLIST };
 
 enum ChildChain { NONE, DOZABLE, STANDBY, POWERSAVE, INVALID_CHAIN };
 
-#define PROTOCOL_TCP 6
-#define PROTOCOL_UDP 17
-
 /*
  * Simple firewall that drops all packets except those matching explicitly
  * defined ALLOW rules.
@@ -62,7 +59,7 @@ public:
 
     int enableChildChains(ChildChain, bool);
 
-    int replaceUidChain(const char*, bool, const std::vector<int32_t>&);
+    int replaceUidChain(const std::string&, bool, const std::vector<int32_t>&);
 
     static std::string makeCriticalCommands(IptablesTarget target, const char* chainName);
 
