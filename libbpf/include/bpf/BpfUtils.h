@@ -101,6 +101,8 @@ struct Stats {
 
 constexpr const char* BPF_EGRESS_PROG_PATH = BPF_PATH "/egress_prog";
 constexpr const char* BPF_INGRESS_PROG_PATH = BPF_PATH "/ingress_prog";
+constexpr const char* XT_BPF_INGRESS_PROG_PATH = BPF_PATH "/xt_bpf_ingress_prog";
+constexpr const char* XT_BPF_EGRESS_PROG_PATH = BPF_PATH "/xt_bpf_egress_prog";
 
 constexpr const char* CGROUP_ROOT_PATH = "/dev/cg2_bpf";
 
@@ -108,6 +110,8 @@ constexpr const char* COOKIE_UID_MAP_PATH = BPF_PATH "/traffic_cookie_uid_map";
 constexpr const char* UID_COUNTERSET_MAP_PATH = BPF_PATH "/traffic_uid_counterSet_map";
 constexpr const char* UID_STATS_MAP_PATH = BPF_PATH "/traffic_uid_stats_map";
 constexpr const char* TAG_STATS_MAP_PATH = BPF_PATH "/traffic_tag_stats_map";
+constexpr const char* IFACE_INDEX_NAME_MAP_PATH = BPF_PATH "/traffic_iface_index_name_map";
+constexpr const char* IFACE_STATS_MAP_PATH = BPF_PATH "/traffic_iface_stats_map";
 
 const StatsKey NONEXISTENT_STATSKEY = {
     .uid = DEFAULT_OVERFLOWUID,
