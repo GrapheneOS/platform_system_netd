@@ -1,6 +1,4 @@
 # DNS-over-TLS query forwarder design
-# NOTE: This design is not yet implemented in this change.
-
 
 ## Overview
 

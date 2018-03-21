@@ -19,12 +19,14 @@
 #include <gtest/gtest.h>
 
 #include "dns/DnsTlsDispatcher.h"
+#include "dns/DnsTlsQueryMap.h"
 #include "dns/DnsTlsServer.h"
 #include "dns/DnsTlsSessionCache.h"
 #include "dns/DnsTlsSocket.h"
 #include "dns/DnsTlsTransport.h"
 #include "dns/IDnsTlsSocket.h"
 #include "dns/IDnsTlsSocketFactory.h"
+#include "dns/IDnsTlsSocketObserver.h"
 
 #include <chrono>
 #include <arpa/inet.h>
@@ -111,8 +113,9 @@ public:
     std::unique_ptr<IDnsTlsSocket> createDnsTlsSocket(
             const DnsTlsServer& server ATTRIBUTE_UNUSED,
             unsigned mark ATTRIBUTE_UNUSED,
+            IDnsTlsSocketObserver* observer,
             DnsTlsSessionCache* cache ATTRIBUTE_UNUSED) override {
-        return std::make_unique<T>();
+        return std::make_unique<T>(observer);
     }
 };
 
@@ -128,11 +131,14 @@ bytevec make_echo(uint16_t id, const Slice query) {
 // Simplest possible fake server.  This just echoes the query as the response.
 class FakeSocketEcho : public IDnsTlsSocket {
 public:
-    FakeSocketEcho() {}
-    DnsTlsServer::Result query(uint16_t id, const Slice query) override {
-        // Return the response immediately.
-        return { .code = DnsTlsServer::Response::success, .response = make_echo(id, query) };
+    FakeSocketEcho(IDnsTlsSocketObserver* observer) : mObserver(observer) {}
+    bool query(uint16_t id, const Slice query) override {
+        // Return the response immediately (asynchronously).
+        std::thread(&IDnsTlsSocketObserver::onResponse, mObserver, make_echo(id, query)).detach();
+	return true;
     }
+private:
+    IDnsTlsSocketObserver* const mObserver;
 };
 
 class TransportTest : public BaseTest {};
@@ -140,21 +146,220 @@ class TransportTest : public BaseTest {};
 TEST_F(TransportTest, Query) {
     FakeSocketFactory<FakeSocketEcho> factory;
     DnsTlsTransport transport(SERVER1, MARK, &factory);
-    auto r = transport.query(makeSlice(QUERY));
+    auto r = transport.query(makeSlice(QUERY)).get();
 
     EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
     EXPECT_EQ(QUERY, r.response);
 }
 
-TEST_F(TransportTest, SerialQueries) {
+TEST_F(TransportTest, SerialQueries_100000) {
     FakeSocketFactory<FakeSocketEcho> factory;
     DnsTlsTransport transport(SERVER1, MARK, &factory);
     // Send more than 65536 queries serially.
     for (int i = 0; i < 100000; ++i) {
-        auto r = transport.query(makeSlice(QUERY));
+        auto r = transport.query(makeSlice(QUERY)).get();
 
         EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
         EXPECT_EQ(QUERY, r.response);
+    }
+}
+
+// These queries might be handled in serial or parallel as they race the
+// responses.
+TEST_F(TransportTest, RacingQueries_10000) {
+    FakeSocketFactory<FakeSocketEcho> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+    std::vector<std::future<DnsTlsTransport::Result>> results;
+    // Fewer than 65536 queries to avoid ID exhaustion.
+    for (int i = 0; i < 10000; ++i) {
+        results.push_back(transport.query(makeSlice(QUERY)));
+    }
+    for (auto& result : results) {
+        auto r = result.get();
+        EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
+        EXPECT_EQ(QUERY, r.response);
+    }
+}
+
+// A server that waits until sDelay queries are queued before responding.
+class FakeSocketDelay : public IDnsTlsSocket {
+public:
+    FakeSocketDelay(IDnsTlsSocketObserver* observer) : mObserver(observer) {}
+    ~FakeSocketDelay() { std::lock_guard<std::mutex> guard(mLock); }
+    static size_t sDelay;
+    static bool sReverse;
+
+    bool query(uint16_t id, const Slice query) override {
+        ALOGD("FakeSocketDelay got query with ID %d", int(id));
+        std::lock_guard<std::mutex> guard(mLock);
+        // Check for duplicate IDs.
+        EXPECT_EQ(0U, mIds.count(id));
+        mIds.insert(id);
+
+        // Store response.
+        mResponses.push_back(make_echo(id, query));
+
+        ALOGD("Up to %zu out of %zu queries", mResponses.size(), sDelay);
+        if (mResponses.size() == sDelay) {
+            std::thread(&FakeSocketDelay::sendResponses, this).detach();
+        }
+        return true;
+    }
+private:
+    void sendResponses() {
+        std::lock_guard<std::mutex> guard(mLock);
+        if (sReverse) {
+            std::reverse(std::begin(mResponses), std::end(mResponses));
+        }
+        for (auto& response : mResponses) {
+            mObserver->onResponse(response);
+        }
+        mIds.clear();
+        mResponses.clear();
+    }
+
+    std::mutex mLock;
+    IDnsTlsSocketObserver* const mObserver;
+    std::set<uint16_t> mIds GUARDED_BY(mLock);
+    std::vector<bytevec> mResponses GUARDED_BY(mLock);
+};
+
+size_t FakeSocketDelay::sDelay;
+bool FakeSocketDelay::sReverse;
+
+TEST_F(TransportTest, ParallelColliding) {
+    FakeSocketDelay::sDelay = 10;
+    FakeSocketDelay::sReverse = false;
+    FakeSocketFactory<FakeSocketDelay> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+    std::vector<std::future<DnsTlsTransport::Result>> results;
+    // Fewer than 65536 queries to avoid ID exhaustion.
+    for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
+        results.push_back(transport.query(makeSlice(QUERY)));
+    }
+    for (auto& result : results) {
+        auto r = result.get();
+        EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
+        EXPECT_EQ(QUERY, r.response);
+    }
+}
+
+TEST_F(TransportTest, ParallelColliding_Max) {
+    FakeSocketDelay::sDelay = 65536;
+    FakeSocketDelay::sReverse = false;
+    FakeSocketFactory<FakeSocketDelay> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+    std::vector<std::future<DnsTlsTransport::Result>> results;
+    // Exactly 65536 queries should still be possible in parallel,
+    // even if they all have the same original ID.
+    for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
+        results.push_back(transport.query(makeSlice(QUERY)));
+    }
+    for (auto& result : results) {
+        auto r = result.get();
+        EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
+        EXPECT_EQ(QUERY, r.response);
+    }
+}
+
+TEST_F(TransportTest, ParallelUnique) {
+    FakeSocketDelay::sDelay = 10;
+    FakeSocketDelay::sReverse = false;
+    FakeSocketFactory<FakeSocketDelay> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+    std::vector<bytevec> queries(FakeSocketDelay::sDelay);
+    std::vector<std::future<DnsTlsTransport::Result>> results;
+    for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
+        queries[i] = make_query(i, SIZE);
+        results.push_back(transport.query(makeSlice(queries[i])));
+    }
+    for (size_t i = 0 ; i < FakeSocketDelay::sDelay; ++i) {
+        auto r = results[i].get();
+        EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
+        EXPECT_EQ(queries[i], r.response);
+    }
+}
+
+TEST_F(TransportTest, ParallelUnique_Max) {
+    FakeSocketDelay::sDelay = 65536;
+    FakeSocketDelay::sReverse = false;
+    FakeSocketFactory<FakeSocketDelay> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+    std::vector<bytevec> queries(FakeSocketDelay::sDelay);
+    std::vector<std::future<DnsTlsTransport::Result>> results;
+    // Exactly 65536 queries should still be possible in parallel,
+    // and they should all be mapped correctly back to the original ID.
+    for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
+        queries[i] = make_query(i, SIZE);
+        results.push_back(transport.query(makeSlice(queries[i])));
+    }
+    for (size_t i = 0 ; i < FakeSocketDelay::sDelay; ++i) {
+        auto r = results[i].get();
+        EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
+        EXPECT_EQ(queries[i], r.response);
+    }
+}
+
+TEST_F(TransportTest, IdExhaustion) {
+    // A delay of 65537 is unreachable, because the maximum number
+    // of outstanding queries is 65536.
+    FakeSocketDelay::sDelay = 65537;
+    FakeSocketDelay::sReverse = false;
+    FakeSocketFactory<FakeSocketDelay> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+    std::vector<std::future<DnsTlsTransport::Result>> results;
+    // Issue the maximum number of queries.
+    for (int i = 0; i < 65536; ++i) {
+        results.push_back(transport.query(makeSlice(QUERY)));
+    }
+
+    // The ID space is now full, so subsequent queries should fail immediately.
+    auto r = transport.query(makeSlice(QUERY)).get();
+    EXPECT_EQ(DnsTlsTransport::Response::internal_error, r.code);
+    EXPECT_TRUE(r.response.empty());
+
+    for (auto& result : results) {
+        // All other queries should remain outstanding.
+        EXPECT_EQ(std::future_status::timeout,
+                result.wait_for(std::chrono::duration<int>::zero()));
+    }
+}
+
+// Responses can come back from the server in any order.  This should have no
+// effect on Transport's observed behavior.
+TEST_F(TransportTest, ReverseOrder) {
+    FakeSocketDelay::sDelay = 10;
+    FakeSocketDelay::sReverse = true;
+    FakeSocketFactory<FakeSocketDelay> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+    std::vector<bytevec> queries(FakeSocketDelay::sDelay);
+    std::vector<std::future<DnsTlsTransport::Result>> results;
+    for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
+        queries[i] = make_query(i, SIZE);
+        results.push_back(transport.query(makeSlice(queries[i])));
+    }
+    for (size_t i = 0 ; i < FakeSocketDelay::sDelay; ++i) {
+        auto r = results[i].get();
+        EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
+        EXPECT_EQ(queries[i], r.response);
+    }
+}
+
+TEST_F(TransportTest, ReverseOrder_Max) {
+    FakeSocketDelay::sDelay = 65536;
+    FakeSocketDelay::sReverse = true;
+    FakeSocketFactory<FakeSocketDelay> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+    std::vector<bytevec> queries(FakeSocketDelay::sDelay);
+    std::vector<std::future<DnsTlsTransport::Result>> results;
+    for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
+        queries[i] = make_query(i, SIZE);
+        results.push_back(transport.query(makeSlice(queries[i])));
+    }
+    for (size_t i = 0 ; i < FakeSocketDelay::sDelay; ++i) {
+        auto r = results[i].get();
+        EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
+        EXPECT_EQ(queries[i], r.response);
     }
 }
 
@@ -165,6 +370,7 @@ public:
     std::unique_ptr<IDnsTlsSocket> createDnsTlsSocket(
             const DnsTlsServer& server ATTRIBUTE_UNUSED,
             unsigned mark ATTRIBUTE_UNUSED,
+            IDnsTlsSocketObserver* observer ATTRIBUTE_UNUSED,
             DnsTlsSessionCache* cache ATTRIBUTE_UNUSED) override {
         return nullptr;
     }
@@ -173,10 +379,189 @@ public:
 TEST_F(TransportTest, ConnectFail) {
     NullSocketFactory factory;
     DnsTlsTransport transport(SERVER1, MARK, &factory);
-    auto r = transport.query(makeSlice(QUERY));
+    auto r = transport.query(makeSlice(QUERY)).get();
 
     EXPECT_EQ(DnsTlsTransport::Response::network_error, r.code);
     EXPECT_TRUE(r.response.empty());
+}
+
+// Simulate a socket that connects but then immediately receives a server
+// close notification.
+class FakeSocketClose : public IDnsTlsSocket {
+public:
+    FakeSocketClose(IDnsTlsSocketObserver* observer) :
+            mCloser(&IDnsTlsSocketObserver::onClosed, observer) {}
+    ~FakeSocketClose() { mCloser.join(); }
+    bool query(uint16_t id ATTRIBUTE_UNUSED,
+               const Slice query ATTRIBUTE_UNUSED) override {
+        return true;
+    }
+private:
+    std::thread mCloser;
+};
+
+TEST_F(TransportTest, CloseRetryFail) {
+    FakeSocketFactory<FakeSocketClose> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+    auto r = transport.query(makeSlice(QUERY)).get();
+
+    EXPECT_EQ(DnsTlsTransport::Response::network_error, r.code);
+    EXPECT_TRUE(r.response.empty());
+}
+
+// Simulate a server that occasionally closes the connection and silently
+// drops some queries.
+class FakeSocketLimited : public IDnsTlsSocket {
+public:
+    static int sLimit;  // Number of queries to answer per socket.
+    static size_t sMaxSize;  // Silently discard queries greater than this size.
+    FakeSocketLimited(IDnsTlsSocketObserver* observer) :
+            mObserver(observer), mQueries(0) {}
+    ~FakeSocketLimited() {
+        {
+            ALOGD("~FakeSocketLimited acquiring mLock");
+            std::lock_guard<std::mutex> guard(mLock);
+            ALOGD("~FakeSocketLimited acquired mLock");
+            for (auto& thread : mThreads) {
+                ALOGD("~FakeSocketLimited joining response thread");
+                thread.join();
+                ALOGD("~FakeSocketLimited joined response thread");
+            }
+            mThreads.clear();
+        }
+
+        if (mCloser) {
+            ALOGD("~FakeSocketLimited joining closer thread");
+            mCloser->join();
+            ALOGD("~FakeSocketLimited joined closer thread");
+        }
+    }
+    bool query(uint16_t id, const Slice query) override {
+        ALOGD("FakeSocketLimited::query acquiring mLock");
+        std::lock_guard<std::mutex> guard(mLock);
+        ALOGD("FakeSocketLimited::query acquired mLock");
+        ++mQueries;
+
+        if (mQueries <= sLimit) {
+            ALOGD("size %zu vs. limit of %zu", query.size(), sMaxSize);
+            if (query.size() <= sMaxSize) {
+                // Return the response immediately (asynchronously).
+                mThreads.emplace_back(&IDnsTlsSocketObserver::onResponse, mObserver, make_echo(id, query));
+            }
+        }
+        if (mQueries == sLimit) {
+            mCloser = std::make_unique<std::thread>(&FakeSocketLimited::sendClose, this);
+        }
+        return mQueries <= sLimit;
+    }
+private:
+    void sendClose() {
+        {
+            ALOGD("FakeSocketLimited::sendClose acquiring mLock");
+            std::lock_guard<std::mutex> guard(mLock);
+            ALOGD("FakeSocketLimited::sendClose acquired mLock");
+            for (auto& thread : mThreads) {
+                ALOGD("FakeSocketLimited::sendClose joining response thread");
+                thread.join();
+                ALOGD("FakeSocketLimited::sendClose joined response thread");
+            }
+            mThreads.clear();
+        }
+        mObserver->onClosed();
+    }
+    std::mutex mLock;
+    IDnsTlsSocketObserver* const mObserver;
+    int mQueries GUARDED_BY(mLock);
+    std::vector<std::thread> mThreads GUARDED_BY(mLock);
+    std::unique_ptr<std::thread> mCloser GUARDED_BY(mLock);
+};
+
+int FakeSocketLimited::sLimit;
+size_t FakeSocketLimited::sMaxSize;
+
+TEST_F(TransportTest, SilentDrop) {
+    FakeSocketLimited::sLimit = 10;  // Close the socket after 10 queries.
+    FakeSocketLimited::sMaxSize = 0;  // Silently drop all queries
+    FakeSocketFactory<FakeSocketLimited> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+
+    // Queue up 10 queries.  They will all be ignored, and after the 10th,
+    // the socket will close.  Transport will retry them all, until they
+    // all hit the retry limit and expire.
+    std::vector<std::future<DnsTlsTransport::Result>> results;
+    for (int i = 0; i < FakeSocketLimited::sLimit; ++i) {
+        results.push_back(transport.query(makeSlice(QUERY)));
+    }
+    for (auto& result : results) {
+        auto r = result.get();
+        EXPECT_EQ(DnsTlsTransport::Response::network_error, r.code);
+        EXPECT_TRUE(r.response.empty());
+    }
+}
+
+TEST_F(TransportTest, PartialDrop) {
+    FakeSocketLimited::sLimit = 10;  // Close the socket after 10 queries.
+    FakeSocketLimited::sMaxSize = SIZE - 2;  // Silently drop "long" queries
+    FakeSocketFactory<FakeSocketLimited> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+
+    // Queue up 100 queries, alternating "short" which will be served and "long"
+    // which will be dropped.
+    int num_queries = 10 * FakeSocketLimited::sLimit;
+    std::vector<bytevec> queries(num_queries);
+    std::vector<std::future<DnsTlsTransport::Result>> results;
+    for (int i = 0; i < num_queries; ++i) {
+        queries[i] = make_query(i, SIZE + (i % 2));
+        results.push_back(transport.query(makeSlice(queries[i])));
+    }
+    // Just check the short queries, which are at the even indices.
+    for (int i = 0; i < num_queries; i += 2) {
+        auto r = results[i].get();
+        EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
+        EXPECT_EQ(queries[i], r.response);
+    }
+}
+
+// Simulate a malfunctioning server that injects extra miscellaneous
+// responses to queries that were not asked.  This will cause wrong answers but
+// must not crash the Transport.
+class FakeSocketGarbage : public IDnsTlsSocket {
+public:
+    FakeSocketGarbage(IDnsTlsSocketObserver* observer) : mObserver(observer) {
+        // Inject a garbage event.
+        mThreads.emplace_back(&IDnsTlsSocketObserver::onResponse, mObserver, make_query(ID + 1, SIZE));
+    }
+    ~FakeSocketGarbage() {
+        std::lock_guard<std::mutex> guard(mLock);
+        for (auto& thread : mThreads) {
+            thread.join();
+        }
+    }
+    bool query(uint16_t id, const Slice query) override {
+        std::lock_guard<std::mutex> guard(mLock);
+        // Return the response twice.
+        auto echo = make_echo(id, query);
+        mThreads.emplace_back(&IDnsTlsSocketObserver::onResponse, mObserver, echo);
+        mThreads.emplace_back(&IDnsTlsSocketObserver::onResponse, mObserver, echo);
+        // Also return some other garbage
+        mThreads.emplace_back(&IDnsTlsSocketObserver::onResponse, mObserver, make_query(id + 1, query.size() + 2));
+        return true;
+    }
+private:
+    std::mutex mLock;
+    std::vector<std::thread> mThreads GUARDED_BY(mLock);
+    IDnsTlsSocketObserver* const mObserver;
+};
+
+TEST_F(TransportTest, IgnoringGarbage) {
+    FakeSocketFactory<FakeSocketGarbage> factory;
+    DnsTlsTransport transport(SERVER1, MARK, &factory);
+    for (int i = 0; i < 10; ++i) {
+        auto r = transport.query(makeSlice(QUERY)).get();
+
+        EXPECT_EQ(DnsTlsTransport::Response::success, r.code);
+        // Don't check the response because this server is malfunctioning.
+    }
 }
 
 // Dispatcher tests
@@ -216,10 +601,11 @@ public:
     std::unique_ptr<IDnsTlsSocket> createDnsTlsSocket(
             const DnsTlsServer& server,
             unsigned mark,
+            IDnsTlsSocketObserver* observer,
             DnsTlsSessionCache* cache ATTRIBUTE_UNUSED) override {
         std::lock_guard<std::mutex> guard(mLock);
         keys.emplace(mark, server);
-        return std::make_unique<T>();
+        return std::make_unique<T>(observer);
     }
     std::multiset<std::pair<unsigned, DnsTlsServer>> keys;
 private:
@@ -227,7 +613,9 @@ private:
 };
 
 TEST_F(DispatcherTest, Dispatching) {
-    auto factory = std::make_unique<TrackingFakeSocketFactory<FakeSocketEcho>>();
+    FakeSocketDelay::sDelay = 5;
+    FakeSocketDelay::sReverse = true;
+    auto factory = std::make_unique<TrackingFakeSocketFactory<FakeSocketDelay>>();
     auto* weak_factory = factory.get();  // Valid as long as dispatcher is in scope.
     DnsTlsDispatcher dispatcher(std::move(factory));
 
@@ -239,9 +627,9 @@ TEST_F(DispatcherTest, Dispatching) {
     keys.emplace_back(MARK, V4ADDR2);
     keys.emplace_back(MARK + 1, V4ADDR2);
 
-    // Do one query on each server.  They should all succeed.
+    // Do several queries on each server.  They should all succeed.
     std::vector<std::thread> threads;
-    for (size_t i = 0; i < keys.size(); ++i) {
+    for (size_t i = 0; i < FakeSocketDelay::sDelay * keys.size(); ++i) {
         auto key = keys[i % keys.size()];
         threads.emplace_back([key, i] (DnsTlsDispatcher* dispatcher) {
             auto q = make_query(i, SIZE);
@@ -366,6 +754,106 @@ TEST_F(ServerTest, Fingerprint) {
     s1.fingerprints.insert(FINGERPRINT2);
     EXPECT_EQ(s1, s2);
     EXPECT_TRUE(isAddressEqual(s1, s2));
+}
+
+TEST(QueryMapTest, Basic) {
+    DnsTlsQueryMap map;
+
+    EXPECT_TRUE(map.empty());
+
+    bytevec q0 = make_query(999, SIZE);
+    bytevec q1 = make_query(888, SIZE);
+    bytevec q2 = make_query(777, SIZE);
+
+    auto f0 = map.recordQuery(makeSlice(q0));
+    auto f1 = map.recordQuery(makeSlice(q1));
+    auto f2 = map.recordQuery(makeSlice(q2));
+
+    // Check return values of recordQuery
+    EXPECT_EQ(0, f0->query.newId);
+    EXPECT_EQ(1, f1->query.newId);
+    EXPECT_EQ(2, f2->query.newId);
+
+    // Check side effects of recordQuery
+    EXPECT_FALSE(map.empty());
+
+    auto all = map.getAll();
+    EXPECT_EQ(3U, all.size());
+
+    EXPECT_EQ(0, all[0].newId);
+    EXPECT_EQ(1, all[1].newId);
+    EXPECT_EQ(2, all[2].newId);
+
+    EXPECT_EQ(makeSlice(q0), all[0].query);
+    EXPECT_EQ(makeSlice(q1), all[1].query);
+    EXPECT_EQ(makeSlice(q2), all[2].query);
+
+    bytevec a0 = make_query(0, SIZE);
+    bytevec a1 = make_query(1, SIZE);
+    bytevec a2 = make_query(2, SIZE);
+
+    // Return responses out of order
+    map.onResponse(a2);
+    map.onResponse(a0);
+    map.onResponse(a1);
+
+    EXPECT_TRUE(map.empty());
+
+    auto r0 = f0->result.get();
+    auto r1 = f1->result.get();
+    auto r2 = f2->result.get();
+
+    EXPECT_EQ(DnsTlsQueryMap::Response::success, r0.code);
+    EXPECT_EQ(DnsTlsQueryMap::Response::success, r1.code);
+    EXPECT_EQ(DnsTlsQueryMap::Response::success, r2.code);
+
+    const bytevec& d0 = r0.response;
+    const bytevec& d1 = r1.response;
+    const bytevec& d2 = r2.response;
+
+    // The ID should match the query
+    EXPECT_EQ(999, d0[0] << 8 | d0[1]);
+    EXPECT_EQ(888, d1[0] << 8 | d1[1]);
+    EXPECT_EQ(777, d2[0] << 8 | d2[1]);
+    // The body should match the answer
+    EXPECT_EQ(bytevec(a0.begin() + 2, a0.end()), bytevec(d0.begin() + 2, d0.end()));
+    EXPECT_EQ(bytevec(a1.begin() + 2, a1.end()), bytevec(d1.begin() + 2, d1.end()));
+    EXPECT_EQ(bytevec(a2.begin() + 2, a2.end()), bytevec(d2.begin() + 2, d2.end()));
+}
+
+TEST(QueryMapTest, FillHole) {
+    DnsTlsQueryMap map;
+    std::vector<std::unique_ptr<DnsTlsQueryMap::QueryFuture>> futures(UINT16_MAX + 1);
+    for (uint32_t i = 0; i <= UINT16_MAX; ++i) {
+        futures[i] = map.recordQuery(makeSlice(QUERY));
+        ASSERT_TRUE(futures[i]);  // answers[i] should be nonnull.
+        EXPECT_EQ(i, futures[i]->query.newId);
+    }
+
+    // The map should now be full.
+    EXPECT_EQ(size_t(UINT16_MAX + 1), map.getAll().size());
+
+    // Trying to add another query should fail because the map is full.
+    EXPECT_FALSE(map.recordQuery(makeSlice(QUERY)));
+
+    // Send an answer to query 40000
+    auto answer = make_query(40000, SIZE);
+    map.onResponse(answer);
+    auto result = futures[40000]->result.get();
+    EXPECT_EQ(DnsTlsQueryMap::Response::success, result.code);
+    EXPECT_EQ(ID, result.response[0] << 8 | result.response[1]);
+    EXPECT_EQ(bytevec(answer.begin() + 2, answer.end()),
+              bytevec(result.response.begin() + 2, result.response.end()));
+
+    // There should now be room in the map.
+    EXPECT_EQ(size_t(UINT16_MAX), map.getAll().size());
+    auto f = map.recordQuery(makeSlice(QUERY));
+    ASSERT_TRUE(f);
+    EXPECT_EQ(40000, f->query.newId);
+
+    // The map should now be full again.
+    EXPECT_EQ(size_t(UINT16_MAX + 1), map.getAll().size());
+    EXPECT_FALSE(map.recordQuery(makeSlice(QUERY)));
 }
 
 } // end of namespace net

@@ -22,8 +22,6 @@
 
 #include <netdutils/Slice.h>
 
-#include "dns/DnsTlsServer.h"
-
 namespace android {
 namespace net {
 
@@ -32,12 +30,16 @@ class DnsTlsSessionCache;
 
 // A class for managing a TLS socket that sends and receives messages in
 // [length][value] format, with a 2-byte length (i.e. DNS-over-TCP format).
+// This interface is not aware of query-response pairing or anything else about DNS.
 class IDnsTlsSocket {
 public:
     virtual ~IDnsTlsSocket() {};
     // Send a query on the provided SSL socket.  |query| contains
-    // the body of a query, not including the ID bytes.  Returns the server's response.
-    virtual DnsTlsServer::Result query(uint16_t id, const netdutils::Slice query) = 0;
+    // the body of a query, not including the ID bytes.  This function will typically return before
+    // the query is actually sent.  If this function fails, the observer will be
+    // notified that the socket is closed.
+    // Note that a true return value indicates successful sending, not receipt of a response.
+    virtual bool query(uint16_t id, const netdutils::Slice query) = 0;
 };
 
 }  // end of namespace net

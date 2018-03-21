@@ -46,7 +46,9 @@ DnsTlsTransport::Response DnsTlsDispatcher::query(const DnsTlsServer& server, un
     }
 
     ALOGV("Sending query of length %zu", query.size());
-    auto result = xport->transport.query(query);
+    auto res = xport->transport.query(query);
+    ALOGV("Awaiting response");
+    const auto& result = res.get();
     DnsTlsTransport::Response code = result.code;
     if (code == DnsTlsTransport::Response::success) {
         if (result.response.size() > ans.size()) {
