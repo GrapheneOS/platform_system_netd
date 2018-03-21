@@ -297,7 +297,7 @@ int cleanStatsMapInternal(const base::unique_fd& cookieTagMap, const base::uniqu
 }
 
 int cleanStatsMap() {
-    base::unique_fd cookieTagMap(bpf::mapRetrieve(COOKIE_UID_MAP_PATH, BPF_OPEN_FLAGS));
+    base::unique_fd cookieTagMap(bpf::mapRetrieve(COOKIE_TAG_MAP_PATH, BPF_OPEN_FLAGS));
     int ret = 0;
     if (cookieTagMap < 0) {
         ret = -errno;
