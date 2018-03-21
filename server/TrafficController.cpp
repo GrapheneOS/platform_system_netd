@@ -31,6 +31,7 @@
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <sys/wait.h>
+#include <mutex>
 #include <unordered_set>
 #include <vector>
 
@@ -43,7 +44,9 @@
 #include <netdutils/Syscalls.h>
 #include "TrafficController.h"
 #include "bpf/BpfUtils.h"
+#include "bpf/bpf_shared.h"
 
+#include "FirewallController.h"
 #include "InterfaceController.h"
 #include "NetlinkListener.h"
 #include "qtaguid/qtaguid.h"
@@ -89,8 +92,100 @@ StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener() {
     return listener;
 }
 
-Status TrafficController::start() {
+Status changeOwnerAndMode(const char* path, gid_t group, const char* debugName, bool netdOnly) {
+    int ret = chown(path, AID_ROOT, group);
+    if (ret != 0) return statusFromErrno(errno, StringPrintf("change %s group failed", debugName));
+
+    if (netdOnly) {
+        ret = chmod(path, S_IRWXU);
+    } else {
+        // Allow both netd and system server to obtain map fd from the path.
+        // chmod doesn't grant permission to all processes in that group to
+        // read/write the bpf map. They still need correct sepolicy to
+        // read/write the map.
+        ret = chmod(path, S_IRWXU | S_IRGRP);
+    }
+    if (ret != 0) return statusFromErrno(errno, StringPrintf("change %s mode failed", debugName));
+    return netdutils::status::ok;
+}
+
+TrafficController::TrafficController() {
     ebpfSupported = hasBpfSupport();
+}
+
+Status initialOwnerMap(const unique_fd& map_fd, const std::string mapName) {
+    uint32_t mapSettingKey = UID_MAP_ENABLED;
+    uint32_t defaultMapState = 0;
+    int ret = writeToMapEntry(map_fd, &mapSettingKey, &defaultMapState, BPF_NOEXIST);
+    // If it is already exist, it might be a runtime restart and we just keep
+    // the old state.
+    if (ret && errno != EEXIST) {
+        return statusFromErrno(errno, "Fail to set the initial state of " + mapName);
+    }
+    return netdutils::status::ok;
+}
+
+Status TrafficController::initMaps() {
+    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    ASSIGN_OR_RETURN(mCookieTagMap,
+                     setUpBPFMap(sizeof(uint64_t), sizeof(struct UidTag), COOKIE_UID_MAP_SIZE,
+                                 COOKIE_TAG_MAP_PATH, BPF_MAP_TYPE_HASH));
+
+    RETURN_IF_NOT_OK(changeOwnerAndMode(COOKIE_TAG_MAP_PATH, AID_NET_BW_ACCT, "CookieTagMap",
+                                        false));
+
+    ASSIGN_OR_RETURN(mUidCounterSetMap,
+                     setUpBPFMap(sizeof(uint32_t), sizeof(uint32_t), UID_COUNTERSET_MAP_SIZE,
+                                 UID_COUNTERSET_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(UID_COUNTERSET_MAP_PATH, AID_NET_BW_ACCT,
+                                        "UidCounterSetMap", false));
+
+    ASSIGN_OR_RETURN(mUidStatsMap,
+                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct StatsValue),
+                                 UID_STATS_MAP_SIZE, UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(UID_STATS_MAP_PATH, AID_NET_BW_STATS, "UidStatsMap",
+                                        false));
+
+    ASSIGN_OR_RETURN(mTagStatsMap,
+                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct StatsValue),
+                                 TAG_STATS_MAP_SIZE, TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(TAG_STATS_MAP_PATH, AID_NET_BW_STATS, "TagStatsMap",
+                                        false));
+
+    ASSIGN_OR_RETURN(mIfaceIndexNameMap,
+                     setUpBPFMap(sizeof(uint32_t), IFNAMSIZ, IFACE_INDEX_NAME_MAP_SIZE,
+                                 IFACE_INDEX_NAME_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(IFACE_INDEX_NAME_MAP_PATH, AID_NET_BW_STATS,
+                                        "IfaceIndexNameMap", false));
+
+    ASSIGN_OR_RETURN(mDozableUidMap,
+                     setUpBPFMap(sizeof(uint32_t), sizeof(uint8_t), UID_OWNER_MAP_SIZE,
+                                 DOZABLE_UID_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(DOZABLE_UID_MAP_PATH, AID_ROOT, "DozableUidMap", true));
+    RETURN_IF_NOT_OK(initialOwnerMap(mDozableUidMap, "DozableUidMap"));
+
+    ASSIGN_OR_RETURN(mStandbyUidMap,
+                     setUpBPFMap(sizeof(uint32_t), sizeof(uint8_t), UID_OWNER_MAP_SIZE,
+                                 STANDBY_UID_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(STANDBY_UID_MAP_PATH, AID_ROOT, "StandbyUidMap", true));
+    RETURN_IF_NOT_OK(initialOwnerMap(mStandbyUidMap, "StandbyUidMap"));
+
+    ASSIGN_OR_RETURN(mPowerSaveUidMap,
+                     setUpBPFMap(sizeof(uint32_t), sizeof(uint8_t), UID_OWNER_MAP_SIZE,
+                                 POWERSAVE_UID_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(POWERSAVE_UID_MAP_PATH, AID_ROOT, "PowerSaveUidMap", true));
+    RETURN_IF_NOT_OK(initialOwnerMap(mPowerSaveUidMap, "PowerSaveUidMap"));
+
+    ASSIGN_OR_RETURN(mIfaceStatsMap,
+                     setUpBPFMap(sizeof(uint32_t), sizeof(struct StatsValue), IFACE_STATS_MAP_SIZE,
+                                 IFACE_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(IFACE_STATS_MAP_PATH, AID_NET_BW_STATS, "IfaceStatsMap",
+                                        false));
+    return netdutils::status::ok;
+}
+
+Status TrafficController::start() {
+
     if (!ebpfSupported) {
         return netdutils::status::ok;
     }
@@ -103,75 +198,7 @@ Status TrafficController::start() {
      * if the socket no longer exist
      */
 
-    ALOGI("START to load TrafficController");
-
-    ASSIGN_OR_RETURN(mCookieTagMap,
-                     setUpBPFMap(sizeof(uint64_t), sizeof(struct UidTag), COOKIE_UID_MAP_SIZE,
-                                 COOKIE_UID_MAP_PATH, BPF_MAP_TYPE_HASH));
-
-    // Allow both netd and system server to obtain map fd from the path. Chown the group to
-    // net_bw_acct does not grant all process in that group the permission to access bpf maps. They
-    // still need correct sepolicy to read/write the map. And only system_server and netd have that
-    // permission for now.
-    int ret = chown(COOKIE_UID_MAP_PATH, AID_ROOT, AID_NET_BW_ACCT);
-    if (ret) {
-        return statusFromErrno(errno, "change cookieTagMap group failed.");
-    }
-    ret = chmod(COOKIE_UID_MAP_PATH, S_IRWXU | S_IRGRP | S_IWGRP);
-    if (ret) {
-        return statusFromErrno(errno, "change cookieTagMap mode failed.");
-    }
-
-    ASSIGN_OR_RETURN(mUidCounterSetMap,
-                     setUpBPFMap(sizeof(uint32_t), sizeof(uint32_t), UID_COUNTERSET_MAP_SIZE,
-                                 UID_COUNTERSET_MAP_PATH, BPF_MAP_TYPE_HASH));
-    // Only netd can access the file.
-    ret = chmod(UID_COUNTERSET_MAP_PATH, S_IRWXU);
-    if (ret) {
-        return statusFromErrno(errno, "change uidCounterSetMap mode failed.");
-    }
-
-    ASSIGN_OR_RETURN(mUidStatsMap,
-                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct StatsValue),
-                                 UID_STATS_MAP_SIZE, UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
-    // Change the file mode of pinned map so both netd and system server can get the map fd
-    // from it.
-    ret = chown(UID_STATS_MAP_PATH, AID_ROOT, AID_NET_BW_ACCT);
-    if (ret) {
-        return statusFromErrno(errno, "change uidStatsMap group failed.");
-    }
-    ret = chmod(UID_STATS_MAP_PATH, S_IRWXU | S_IRGRP | S_IWGRP);
-    if (ret) {
-        return statusFromErrno(errno, "change uidStatsMap mode failed.");
-    }
-
-    ASSIGN_OR_RETURN(mTagStatsMap,
-                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct StatsValue),
-                                 TAG_STATS_MAP_SIZE, TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
-    // Change the file mode of pinned map so both netd and system server can get the map fd
-    // from the path.
-    ret = chown(TAG_STATS_MAP_PATH, AID_ROOT, AID_NET_BW_STATS);
-    if (ret) {
-        return statusFromErrno(errno, "change tagStatsMap group failed.");
-    }
-    ret = chmod(TAG_STATS_MAP_PATH, S_IRWXU | S_IRGRP | S_IWGRP);
-    if (ret) {
-        return statusFromErrno(errno, "change tagStatsMap mode failed.");
-    }
-
-    ASSIGN_OR_RETURN(mIfaceIndexNameMap,
-                     setUpBPFMap(sizeof(uint32_t), IFNAMSIZ, IFACE_INDEX_NAME_MAP_SIZE,
-                                 IFACE_INDEX_NAME_MAP_PATH, BPF_MAP_TYPE_HASH));
-    // Change the file mode of pinned map so both netd and system server can get the map fd
-    // from the path.
-    ret = chown(IFACE_INDEX_NAME_MAP_PATH, AID_ROOT, AID_NET_BW_STATS);
-    if (ret) {
-        return statusFromErrno(errno, "change ifaceIndexNameMap group failed.");
-    }
-    ret = chmod(IFACE_INDEX_NAME_MAP_PATH, S_IRWXU | S_IRGRP | S_IWGRP);
-    if (ret) {
-        return statusFromErrno(errno, "change ifaceIndexNameMap mode failed.");
-    }
+    RETURN_IF_NOT_OK(initMaps());
 
     // Fetch the list of currently-existing interfaces. At this point NetlinkHandler is
     // already running, so it will call addInterface() when any new interface appears.
@@ -181,19 +208,6 @@ Status TrafficController::start() {
         addInterface(ifacePair.first.c_str(), ifacePair.second);
     }
 
-    ASSIGN_OR_RETURN(mIfaceStatsMap,
-                     setUpBPFMap(sizeof(uint32_t), sizeof(struct StatsValue), IFACE_STATS_MAP_SIZE,
-                                 IFACE_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
-    // Change the file mode of pinned map so both netd and system server can get the map fd
-    // from the path.
-    ret = chown(IFACE_STATS_MAP_PATH, AID_ROOT, AID_NET_BW_STATS);
-    if (ret) {
-        return statusFromErrno(errno, "change ifaceStatsMap group failed.");
-    }
-    ret = chmod(IFACE_STATS_MAP_PATH, S_IRWXU | S_IRGRP);
-    if (ret) {
-        return statusFromErrno(errno, "change ifaceStatsMap mode failed.");
-    }
 
     auto result = makeSkDestroyListener();
     if (!isOk(result)) {
@@ -229,7 +243,7 @@ Status TrafficController::start() {
     std::vector<const char*> prog_args{
         "/system/bin/bpfloader",
     };
-    ret = access(BPF_INGRESS_PROG_PATH, R_OK);
+    int ret = access(BPF_INGRESS_PROG_PATH, R_OK);
     if (ret != 0 && errno == ENOENT) {
         prog_args.push_back((char*)"-i");
     }
@@ -454,6 +468,151 @@ int TrafficController::addInterface(const char* name, uint32_t ifaceIndex) {
         ALOGE("Failed to add iface %s(%d): %s", name, ifaceIndex, strerror(errno));
     }
     return res;
+}
+
+int TrafficController::updateOwnerMapEntry(const base::unique_fd& map_fd, uid_t uid,
+                                           FirewallRule rule, FirewallType type) {
+    int res = 0;
+    if (uid == NONEXISTENT_UID) {
+        ALOGE("This uid should never exist in maps: %u", uid);
+        return -EINVAL;
+    }
+
+    if (uid == UID_MAP_ENABLED) {
+        ALOGE("This uid is reserved for map state");
+        return -EINVAL;
+    }
+
+    if ((rule == ALLOW && type == WHITELIST) || (rule == DENY && type == BLACKLIST)) {
+        uint8_t flag = (type == WHITELIST) ? BPF_PASS : BPF_DROP;
+        res = writeToMapEntry(map_fd, &uid, &flag, BPF_ANY);
+        if (res) {
+            res = -errno;
+            ALOGE("Failed to add owner rule(uid: %u): %s", uid, strerror(errno));
+        }
+    } else if ((rule == ALLOW && type == BLACKLIST) || (rule == DENY && type == WHITELIST)) {
+        res = deleteMapEntry(map_fd, &uid);
+        if (res) {
+            res = -errno;
+            ALOGE("Failed to delete owner rule(uid: %u): %s", uid, strerror(errno));
+        }
+    } else {
+        //Cannot happen.
+        return -EINVAL;
+    }
+    return res;
+}
+
+int TrafficController::changeUidOwnerRule(ChildChain chain, uid_t uid, FirewallRule rule,
+                                          FirewallType type) {
+    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    if (!ebpfSupported) {
+        ALOGE("bpf is not set up, should use iptables rule");
+        return -ENOSYS;
+    }
+    switch (chain) {
+        case DOZABLE:
+            return updateOwnerMapEntry(mDozableUidMap, uid, rule, type);
+        case STANDBY:
+            return updateOwnerMapEntry(mStandbyUidMap, uid, rule, type);
+        case POWERSAVE:
+            return updateOwnerMapEntry(mPowerSaveUidMap, uid, rule, type);
+        case NONE:
+        default:
+            return -EINVAL;
+    }
+}
+
+int TrafficController::replaceUidsInMap(const base::unique_fd& map_fd,
+                                        const std::vector<int32_t> &uids,
+                                        FirewallRule rule, FirewallType type) {
+    std::set<int32_t> uidSet(uids.begin(), uids.end());
+    std::vector<uint32_t> uidsToDelete;
+    auto getUidsToDelete = [&uidsToDelete, &uidSet](void *key, const base::unique_fd&) {
+        uint32_t uid = *(uint32_t *)key;
+        if (uid != UID_MAP_ENABLED && uidSet.find((int32_t)uid) == uidSet.end()) {
+            uidsToDelete.push_back(uid);
+        }
+        return 0;
+    };
+    uint32_t nonExistentKey = NONEXISTENT_UID;
+    uint8_t dummyValue;
+    int ret = bpfIterateMap(nonExistentKey, dummyValue, map_fd, getUidsToDelete);
+
+    if (ret)  return ret;
+
+    for(auto uid : uidsToDelete) {
+        if(deleteMapEntry(map_fd, &uid)) {
+            ret = -errno;
+            ALOGE("Delete uid(%u) from owner Map %d failed: %s", uid, map_fd.get(),
+                  strerror(errno));
+            return -errno;
+        }
+    }
+
+    for (auto uid : uids) {
+        ret = updateOwnerMapEntry(map_fd, uid, rule, type);
+        if (ret) {
+            ALOGE("Failed to add owner rule(uid: %u, map: %d)", uid, map_fd.get());
+            return ret;
+        }
+    }
+    return 0;
+}
+
+int TrafficController::replaceUidOwnerMap(const std::string& name, bool isWhitelist,
+                                          const std::vector<int32_t>& uids) {
+    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    FirewallRule rule;
+    FirewallType type;
+    if (isWhitelist) {
+        type = WHITELIST;
+        rule = ALLOW;
+    } else {
+        type = BLACKLIST;
+        rule = DENY;
+    }
+    int ret;
+    if (!name.compare(FirewallController::LOCAL_DOZABLE)) {
+        ret = replaceUidsInMap(mDozableUidMap, uids, rule, type);
+    } else if (!name.compare(FirewallController::LOCAL_STANDBY)) {
+        ret = replaceUidsInMap(mStandbyUidMap, uids, rule, type);
+    } else if (!name.compare(FirewallController::LOCAL_POWERSAVE)) {
+        ret = replaceUidsInMap(mPowerSaveUidMap, uids, rule, type);
+    } else {
+        ALOGE("unknown chain name: %s", name.c_str());
+        return -EINVAL;
+    }
+    if (ret) {
+        ALOGE("Failed to clean up chain: %s: %s", name.c_str(), strerror(ret));
+        return ret;
+    }
+    return 0;
+}
+
+int TrafficController::toggleUidOwnerMap(ChildChain chain, bool enable) {
+    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    uint32_t keyUid = UID_MAP_ENABLED;
+    uint8_t mapState = enable ? 1 : 0;
+    int ret;
+    switch (chain) {
+        case DOZABLE:
+            ret = writeToMapEntry(mDozableUidMap, &keyUid, &mapState, BPF_EXIST);
+            break;
+        case STANDBY:
+            ret = writeToMapEntry(mStandbyUidMap, &keyUid, &mapState, BPF_EXIST);
+            break;
+        case POWERSAVE:
+            ret = writeToMapEntry(mPowerSaveUidMap, &keyUid, &mapState, BPF_EXIST);
+            break;
+        default:
+            return -EINVAL;
+    }
+    if (ret) {
+        ret = -errno;
+        ALOGE("Failed to toggleUidOwnerMap(%d): %s", chain, strerror(errno));
+    }
+    return ret;
 }
 
 bool TrafficController::checkBpfStatsEnable() {
