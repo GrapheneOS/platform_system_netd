@@ -34,6 +34,7 @@
 #include "BandwidthController.h"
 #include "Fwmark.h"
 #include "IptablesBaseTest.h"
+#include "bpf/BpfUtils.h"
 #include "tun_interface.h"
 
 using ::testing::ByMove;
@@ -45,6 +46,8 @@ using ::testing::_;
 
 using android::base::Join;
 using android::base::StringPrintf;
+using android::bpf::XT_BPF_EGRESS_PROG_PATH;
+using android::bpf::XT_BPF_INGRESS_PROG_PATH;
 using android::net::TunInterface;
 using android::netdutils::status::ok;
 using android::netdutils::UniqueFile;
@@ -177,6 +180,7 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
     std::string expectedClean = "";
 
     uint32_t uidBillingMask = Fwmark::getUidBillingMask();
+    bool useBpf = BandwidthController::getBpfStatsStatus();
     std::string expectedAccounting =
         "*filter\n"
         "-A bw_INPUT -p esp -j RETURN\n" +
@@ -196,15 +200,27 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
         "*raw\n"
         "-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN\n"
         "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN\n"
-        "-A bw_raw_PREROUTING -m owner --socket-exists\n"
+        "-A bw_raw_PREROUTING -m owner --socket-exists\n";
+    if (useBpf) {
+        expectedAccounting += StringPrintf("-A bw_raw_PREROUTING -m bpf --object-pinned %s\n",
+                                           XT_BPF_INGRESS_PROG_PATH);
+    } else {
+        expectedAccounting += "\n";
+    }
+    expectedAccounting +=
         "COMMIT\n"
         "*mangle\n"
         "-A bw_mangle_POSTROUTING -o " IPSEC_IFACE_PREFIX "+ -j RETURN\n"
         "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN\n"
         "-A bw_mangle_POSTROUTING -m owner --socket-exists\n" +
-        StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x\n", uidBillingMask) +
-        "COMMIT\n";
-
+        StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x\n", uidBillingMask);
+    if (useBpf) {
+        expectedAccounting += StringPrintf("-A bw_mangle_POSTROUTING -m bpf --object-pinned %s\n",
+                                           XT_BPF_EGRESS_PROG_PATH);
+    } else {
+        expectedAccounting += "\n";
+    }
+    expectedAccounting += "COMMIT\n";
     mBw.enableBandwidthControl(false);
     expectSetupCommands(expectedClean, expectedAccounting);
 }

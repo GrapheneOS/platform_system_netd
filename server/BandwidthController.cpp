@@ -207,10 +207,7 @@ static const uint32_t uidBillingMask = Fwmark::getUidBillingMask();
  */
 
 const std::vector<std::string> getBasicAccountingCommands() {
-    bool useBpf = android::net::gCtls->trafficCtrl.checkBpfStatsEnable();
-    //TODO: remove this when xt_bpf kernel support is ready
-    useBpf = false;
-
+    bool useBpf = BandwidthController::getBpfStatsStatus();
     const std::vector<std::string> ipt_basic_accounting_commands = {
         "*filter",
         // Prevents IPSec double counting (ESP and UDP-encap-ESP respectively)
@@ -268,6 +265,14 @@ std::vector<std::string> toStrVec(int num, char* strs[]) {
 }
 
 }  // namespace
+
+bool BandwidthController::getBpfStatsStatus() {
+    bool useBpf = (access(XT_BPF_INGRESS_PROG_PATH, F_OK) != -1) &&
+                  (access(XT_BPF_EGRESS_PROG_PATH, F_OK) != -1);
+    // TODO: remove this when xt_bpf kernel support is ready
+    useBpf = false;
+    return useBpf;
+}
 
 BandwidthController::BandwidthController() {
 }
