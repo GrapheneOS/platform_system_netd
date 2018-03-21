@@ -108,6 +108,7 @@ LOCAL_SRC_FILES := \
         binder/android/net/UidRange.cpp \
         binder/android/net/metrics/INetdEventListener.aidl \
         dns/DnsTlsDispatcher.cpp \
+        dns/DnsTlsQueryMap.cpp \
         dns/DnsTlsTransport.cpp \
         dns/DnsTlsServer.cpp \
         dns/DnsTlsSessionCache.cpp \
