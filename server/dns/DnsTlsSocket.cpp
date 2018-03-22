@@ -213,7 +213,10 @@ bssl::UniquePtr<SSL> DnsTlsSocket::sslConnect(int fd) {
             return nullptr;
         }
         X509_VERIFY_PARAM* param = SSL_get0_param(ssl.get());
-        X509_VERIFY_PARAM_set1_host(param, mServer.name.c_str(), 0);
+        if (X509_VERIFY_PARAM_set1_host(param, mServer.name.data(), mServer.name.size()) != 1) {
+            ALOGE("Failed to set verify host param to %s", mServer.name.c_str());
+            return nullptr;
+        }
         // This will cause the handshake to fail if certificate verification fails.
         SSL_set_verify(ssl.get(), SSL_VERIFY_PEER, nullptr);
     }
