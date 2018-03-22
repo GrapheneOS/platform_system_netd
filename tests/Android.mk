@@ -44,6 +44,7 @@ LOCAL_SRC_FILES := binder_test.cpp \
                    ../server/NetdConstants.cpp \
                    ../server/binder/android/net/metrics/INetdEventListener.aidl \
                    ../server/dns/DnsTlsDispatcher.cpp \
+                   ../server/dns/DnsTlsQueryMap.cpp \
                    ../server/dns/DnsTlsTransport.cpp \
                    ../server/dns/DnsTlsServer.cpp \
                    ../server/dns/DnsTlsSessionCache.cpp \
