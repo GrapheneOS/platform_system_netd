@@ -15,6 +15,7 @@
  */
 
 #define LOG_TAG "DnsTlsSocket"
+//#define LOG_NDEBUG 0
 
 #include "dns/DnsTlsSocket.h"
 
@@ -27,8 +28,7 @@
 #include <sys/select.h>
 
 #include "dns/DnsTlsSessionCache.h"
-
-//#define LOG_NDEBUG 0
+#include "dns/IDnsTlsSocketObserver.h"
 
 #include "log/log.h"
 #include "netdutils/SocketOption.h"
@@ -172,6 +172,17 @@ bool DnsTlsSocket::initialize() {
     if (!mSsl) {
         return false;
     }
+    int sv[2];
+    if (socketpair(AF_LOCAL, SOCK_SEQPACKET, 0, sv)) {
+        return false;
+    }
+    // The two sockets are perfectly symmetrical, so the choice of which one is
+    // "in" and which one is "out" is arbitrary.
+    mIpcInFd.reset(sv[0]);
+    mIpcOutFd.reset(sv[1]);
+
+    // Start the I/O loop.
+    mLoopThread.reset(new std::thread(&DnsTlsSocket::loop, this));
 
     return true;
 }
@@ -202,7 +213,10 @@ bssl::UniquePtr<SSL> DnsTlsSocket::sslConnect(int fd) {
             return nullptr;
         }
         X509_VERIFY_PARAM* param = SSL_get0_param(ssl.get());
-        X509_VERIFY_PARAM_set1_host(param, mServer.name.c_str(), 0);
+        if (X509_VERIFY_PARAM_set1_host(param, mServer.name.data(), mServer.name.size()) != 1) {
+            ALOGE("Failed to set verify host param to %s", mServer.name.c_str());
+            return nullptr;
+        }
         // This will cause the handshake to fail if certificate verification fails.
         SSL_set_verify(ssl.get(), SSL_VERIFY_PEER, nullptr);
     }
@@ -331,47 +345,132 @@ bool DnsTlsSocket::sslWrite(const Slice buffer) {
     return true;
 }
 
-DnsTlsSocket::~DnsTlsSocket() {
-    sslDisconnect();
-}
-
-DnsTlsServer::Result DnsTlsSocket::query(uint16_t id, const Slice query) {
+void DnsTlsSocket::loop() {
     std::lock_guard<std::mutex> guard(mLock);
-    const Query q = { .id = id, .query = query };
-    if (!sendQuery(q)) {
-        return { .code = DnsTlsServer::Response::network_error };
+    // Buffer at most one query.
+    Query q;
+
+    fd_set readFds, writeFds;
+    FD_ZERO(&readFds);
+    FD_ZERO(&writeFds);
+    const int maxFd = std::max(mSslFd.get(), mIpcOutFd.get());
+    while (true) {
+        timeval timeout = { .tv_sec = DnsTlsSocket::kIdleTimeout.count() };
+        // Always listen for a response from server.
+        FD_SET(mSslFd.get(), &readFds);
+        // If we have a pending query, also wait for space
+        // to write it, otherwise listen for a new query.
+        if (!q.query.empty()) {
+            FD_SET(mSslFd.get(), &writeFds);
+            FD_CLR(mIpcOutFd.get(), &readFds);
+        } else {
+            FD_CLR(mSslFd.get(), &writeFds);
+            FD_SET(mIpcOutFd.get(), &readFds);
+        }
+        // Deviating from POSIX, Linux will decrement the timeout on each retry.
+        // Either behavior is OK here.
+        const int s = TEMP_FAILURE_RETRY(select(maxFd + 1, &readFds, &writeFds, nullptr, &timeout));
+        if (s == 0) {
+            ALOGV("Idle timeout");
+            break;
+        }
+        if (s < 0) {
+            ALOGV("Select failed: %d", errno);
+            break;
+        }
+        if (FD_ISSET(mSslFd.get(), &readFds)) {
+            if (!readResponse()) {
+                ALOGV("SSL remote close or read error.");
+                break;
+            }
+        }
+        if (FD_ISSET(mIpcOutFd.get(), &readFds)) {
+            int res = read(mIpcOutFd.get(), &q, sizeof(q));
+            if (res < 0) {
+                ALOGW("Error during IPC read");
+                break;
+            } else if (res == 0) {
+                ALOGV("IPC channel closed; disconnecting");
+                break;
+            } else if (res != sizeof(q)) {
+                ALOGE("Struct size mismatch: %d != %zu", res, sizeof(q));
+                break;
+            }
+        } else if (FD_ISSET(mSslFd.get(), &writeFds)) {
+            // query cannot be null here.
+            if (!sendQuery(q)) {
+                break;
+            }
+            q = Query();  // Reset q to empty
+        }
     }
-    return readResponse();
+    ALOGV("Closing IPC read FD");
+    mIpcOutFd.reset();
+    ALOGV("Disconnecting");
+    sslDisconnect();
+    ALOGV("Calling onClosed");
+    mObserver->onClosed();
+    ALOGV("Ending loop");
 }
 
-// Read exactly len bytes into buffer or fail
-bool DnsTlsSocket::sslRead(const Slice buffer) {
+DnsTlsSocket::~DnsTlsSocket() {
+    ALOGV("Destructor");
+    // This will trigger an orderly shutdown in loop().
+    mIpcInFd.reset();
+    {
+        // Wait for the orderly shutdown to complete.
+        std::lock_guard<std::mutex> guard(mLock);
+        if (mLoopThread && std::this_thread::get_id() == mLoopThread->get_id()) {
+            ALOGE("Violation of re-entrance precondition");
+            return;
+        }
+    }
+    if (mLoopThread) {
+        ALOGV("Waiting for loop thread to terminate");
+        mLoopThread->join();
+        mLoopThread.reset();
+    }
+    ALOGV("Destructor completed");
+}
+
+bool DnsTlsSocket::query(uint16_t id, const Slice query) {
+    const Query q = { .id = id, .query = query };
+    if (!mIpcInFd) {
+        return false;
+    }
+    int written = write(mIpcInFd.get(), &q, sizeof(q));
+    return written == sizeof(q);
+}
+
+// Read exactly len bytes into buffer or fail with an SSL error code
+int DnsTlsSocket::sslRead(const Slice buffer, bool wait) {
     size_t remaining = buffer.size();
     while (remaining > 0) {
         int ret = SSL_read(mSsl.get(), buffer.limit() - remaining, remaining);
         if (ret == 0) {
             ALOGW_IF(remaining < buffer.size(), "SSL closed with %zu of %zu bytes remaining",
                      remaining, buffer.size());
-            return false;
+            return SSL_ERROR_ZERO_RETURN;
         }
 
         if (ret < 0) {
             const int ssl_err = SSL_get_error(mSsl.get(), ret);
-            if (ssl_err == SSL_ERROR_WANT_READ) {
+            if (wait && ssl_err == SSL_ERROR_WANT_READ) {
                 if (waitForReading(mSslFd.get()) != 1) {
-                    ALOGV("SSL_read error");
-                    return false;
+                    ALOGV("Select failed in sslRead");
+                    return SSL_ERROR_SYSCALL;
                 }
                 continue;
             } else {
                 ALOGV("SSL_read error %d", ssl_err);
-                return false;
+                return ssl_err;
             }
         }
 
         remaining -= ret;
+        wait = true;  // Once a read is started, try to finish.
     }
-    return true;
+    return SSL_ERROR_NONE;
 }
 
 bool DnsTlsSocket::sendQuery(const Query& q) {
@@ -395,12 +494,16 @@ bool DnsTlsSocket::sendQuery(const Query& q) {
     return true;
 }
 
-DnsTlsServer::Result DnsTlsSocket::readResponse() {
+bool DnsTlsSocket::readResponse() {
     ALOGV("reading response");
     uint8_t responseHeader[2];
-    const DnsTlsServer::Result failed = { .code = DnsTlsServer::Response::network_error };
-    if (!sslRead(Slice(responseHeader, 2))) {
-        return failed;
+    int err = sslRead(Slice(responseHeader, 2), false);
+    if (err == SSL_ERROR_WANT_READ) {
+        ALOGV("Ignoring spurious wakeup from server");
+        return true;
+    }
+    if (err != SSL_ERROR_NONE) {
+        return false;
     }
     // Truncate responses larger than MAX_SIZE.  This is safe because a DNS packet is
     // always invalid when truncated, so the response will be treated as an error.
@@ -408,23 +511,24 @@ DnsTlsServer::Result DnsTlsSocket::readResponse() {
     const uint16_t responseSize = (responseHeader[0] << 8) | responseHeader[1];
     ALOGV("%u Expecting response of size %i", mMark, responseSize);
     std::vector<uint8_t> response(std::min(responseSize, MAX_SIZE));
-    if (!sslRead(netdutils::makeSlice(response))) {
+    if (sslRead(netdutils::makeSlice(response), true) != SSL_ERROR_NONE) {
         ALOGV("%u Failed to read %zu bytes", mMark, response.size());
-        return failed;
+        return false;
     }
     uint16_t remainingBytes = responseSize - response.size();
     while (remainingBytes > 0) {
         constexpr uint16_t CHUNK_SIZE = 2048;
         std::vector<uint8_t> discard(std::min(remainingBytes, CHUNK_SIZE));
-        if (!sslRead(netdutils::makeSlice(discard))) {
+        if (sslRead(netdutils::makeSlice(discard), true) != SSL_ERROR_NONE) {
             ALOGV("%u Failed to discard %zu bytes", mMark, discard.size());
-            return failed;
+            return false;
         }
         remainingBytes -= discard.size();
     }
     ALOGV("%u SSL_read complete", mMark);
 
-    return { .code = DnsTlsServer::Response::success, .response = response };
+    mObserver->onResponse(std::move(response));
+    return true;
 }
 
 }  // end of namespace net
