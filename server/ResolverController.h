@@ -61,7 +61,7 @@ public:
     // actual data structures, and call setDnsServer() / getDnsInfo() for the actual processing.
     int setResolverConfiguration(int32_t netId, const std::vector<std::string>& servers,
             const std::vector<std::string>& domains, const std::vector<int32_t>& params,
-            bool useTls, const std::string& tlsName,
+            const std::string& tlsName, const std::vector<std::string>& tlsServers,
             const std::set<std::vector<uint8_t>>& tlsFingerprints);
 
     int getResolverInfo(int32_t netId, std::vector<std::string>* servers,
