@@ -194,16 +194,17 @@ interface INetd {
      * @param params the params to set. This array contains RESOLVER_PARAMS_COUNT integers that
      *   encode the contents of Bionic's __res_params struct, i.e. sample_validity is stored at
      *   position RESOLVER_PARAMS_SAMPLE_VALIDITY, etc.
-     * @param useTls If true, try to contact servers over TLS on port 853.
      * @param tlsName The TLS subject name to require for all servers, or empty if there is none.
+     * @param tlsServers the DNS servers to configure for strict mode Private DNS.
      * @param tlsFingerprints An array containing TLS public key fingerprints (pins) of which each
      *   server must match at least one, or empty if there are no pinned keys.
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
      */
     void setResolverConfiguration(int netId, in @utf8InCpp String[] servers,
-            in @utf8InCpp String[] domains, in int[] params, boolean useTls,
-            in @utf8InCpp String tlsName, in @utf8InCpp String[] tlsFingerprints);
+            in @utf8InCpp String[] domains, in int[] params,
+            in @utf8InCpp String tlsName, in @utf8InCpp String[] tlsServers,
+            in @utf8InCpp String[] tlsFingerprints);
 
     // Array indices for resolver stats.
     const int RESOLVER_STATS_SUCCESSES = 0;
