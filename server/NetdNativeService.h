@@ -66,7 +66,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     // Resolver commands.
     binder::Status setResolverConfiguration(int32_t netId, const std::vector<std::string>& servers,
             const std::vector<std::string>& domains, const std::vector<int32_t>& params,
-            bool useTls, const std::string& tlsName,
+            const std::string& tlsName,
+            const std::vector<std::string>& tlsServers,
             const std::vector<std::string>& tlsFingerprints) override;
     binder::Status getResolverInfo(int32_t netId, std::vector<std::string>* servers,
             std::vector<std::string>* domains, std::vector<int32_t>* params,
