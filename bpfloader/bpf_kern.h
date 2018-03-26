@@ -75,3 +75,51 @@ static __always_inline int xt_bpf_count(struct __sk_buff* skb, int type) {
     }
     return BPF_PASS;
 }
+
+static __always_inline inline void bpf_update_stats(struct __sk_buff* skb, uint64_t map,
+                                                    int direction, struct stats_key key) {
+    struct stats_value* value;
+    value = find_map_entry(map, &key);
+    if (!value) {
+        struct stats_value newValue = {};
+        write_to_map_entry(map, &key, &newValue, BPF_NOEXIST);
+        value = find_map_entry(map, &key);
+    }
+    if (value) {
+      if (direction == BPF_INGRESS) {
+        __sync_fetch_and_add(&value->rxPackets, 1);
+        __sync_fetch_and_add(&value->rxBytes, skb->len);
+      } else {
+        __sync_fetch_and_add(&value->txPackets, 1);
+        __sync_fetch_and_add(&value->txBytes, skb->len);
+      }
+    }
+}
+
+static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int direction) {
+    uint64_t cookie = get_socket_cookie(skb);
+    struct uid_tag* utag = find_map_entry(COOKIE_TAG_MAP, &cookie);
+    uint32_t uid, tag;
+    if (utag) {
+        uid = utag->uid;
+        tag = utag->tag;
+    } else {
+        uid = get_socket_uid(skb);
+        tag = 0;
+    }
+
+    struct stats_key key = {.uid = uid, .tag = tag, .counterSet = 0, .ifaceIndex = skb->ifindex};
+
+    uint32_t* counterSet;
+    counterSet = find_map_entry(UID_COUNTERSET_MAP, &uid);
+    if (counterSet) key.counterSet = *counterSet;
+
+    int ret;
+    if (tag) {
+        bpf_update_stats(skb, TAG_STATS_MAP, direction, key);
+    }
+
+    key.tag = 0;
+    bpf_update_stats(skb, UID_STATS_MAP, direction, key);
+    return BPF_PASS;
+}

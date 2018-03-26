@@ -23,49 +23,5 @@
 
 ELF_SEC(BPF_PROG_SEC_NAME)
 int bpf_cgroup_ingress(struct __sk_buff* skb) {
-    uint64_t cookie = get_socket_cookie(skb);
-    struct uid_tag* utag = find_map_entry(COOKIE_TAG_MAP, &cookie);
-    uint32_t uid, tag;
-    if (utag) {
-        uid = utag->uid;
-        tag = utag->tag;
-    } else {
-        uid = get_socket_uid(skb);
-        tag = 0;
-    }
-
-    struct stats_key key = {.uid = uid, .tag = tag, .counterSet = 0, .ifaceIndex = skb->ifindex};
-
-    uint32_t* counterSet;
-    counterSet = find_map_entry(UID_COUNTERSET_MAP, &uid);
-    if (counterSet) key.counterSet = *counterSet;
-
-    int ret;
-    if (tag) {
-        struct stats_value* tagValue;
-        tagValue = find_map_entry(TAG_STATS_MAP, &key);
-        if (!tagValue) {
-            struct stats_value newValue = {};
-            write_to_map_entry(TAG_STATS_MAP, &key, &newValue, BPF_NOEXIST);
-            tagValue = find_map_entry(TAG_STATS_MAP, &key);
-        }
-        if (tagValue) {
-            __sync_fetch_and_add(&tagValue->rxPackets, 1);
-            __sync_fetch_and_add(&tagValue->rxBytes, skb->len);
-        }
-    }
-
-    key.tag = 0;
-    struct stats_value* value;
-    value = find_map_entry(UID_STATS_MAP, &key);
-    if (!value) {
-        struct stats_value newValue = {};
-        write_to_map_entry(UID_STATS_MAP, &key, &newValue, BPF_NOEXIST);
-        value = find_map_entry(UID_STATS_MAP, &key);
-    }
-    if (value) {
-        __sync_fetch_and_add(&value->rxPackets, 1);
-        __sync_fetch_and_add(&value->rxBytes, skb->len);
-    }
-    return BPF_PASS;
+    return bpf_traffic_account(skb, BPF_INGRESS);
 }
