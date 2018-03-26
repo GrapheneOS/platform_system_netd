@@ -143,6 +143,7 @@ netdutils::StatusOr<base::unique_fd> setUpBPFMap(uint32_t key_size, uint32_t val
                                                  uint32_t map_size, const char* path,
                                                  bpf_map_type map_type);
 bool hasBpfSupport();
+
 typedef std::function<int(void* key, const base::unique_fd& map_fd)> BpfMapEntryFilter;
 template <class Key, class Value>
 int bpfIterateMap(const Key& nonExistentKey, const Value& /* dummy */,
@@ -158,6 +159,37 @@ int bpfIterateMap(const Key& nonExistentKey, const Value& /* dummy */,
     while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1) {
         curKey = nextKey;
         if ((ret = filter(&curKey, map_fd))) return ret;
+    }
+    // Return errno if getNextMapKey return error before hit to the end of the map.
+    if (errno != ENOENT) {
+        ret = errno;
+        ALOGE("bpfIterateMap failed on MAP_FD: %d, error: %s", map_fd.get(), strerror(errno));
+        return -ret;
+    }
+    return 0;
+}
+
+typedef std::function<int(void* key, void* value)> BpfMapEntryFilterWithValue;
+template <class Key, class Value>
+int bpfIterateMapWithValue(const Key& nonExistentKey, const Value& /* dummy */,
+                           const base::unique_fd& map_fd,
+                           const BpfMapEntryFilterWithValue& filter) {
+    Key curKey = nonExistentKey;
+    Key nextKey;
+    int ret = 0;
+    Value curValue;
+    if (bpf::findMapEntry(map_fd, &curKey, &curValue) == 0) {
+        ALOGE("This entry should never exist in map!");
+        return -EUCLEAN;
+    }
+    while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1) {
+        curKey = nextKey;
+        ret = bpf::findMapEntry(map_fd, &curKey, &curValue);
+        if (ret) {
+            ALOGE("Get current value failed");
+            return ret;
+        }
+        if ((ret = filter(&curKey, &curValue))) return ret;
     }
     // Return errno if getNextMapKey return error before hit to the end of the map.
     if (errno != ENOENT) {
