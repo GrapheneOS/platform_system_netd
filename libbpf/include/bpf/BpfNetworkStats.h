@@ -21,6 +21,7 @@ namespace bpf {
 constexpr int TAG_STATS_MAP_SOFT_LIMIT = 3;
 constexpr int UID_ALL = -1;
 constexpr int TAG_ALL = -1;
+constexpr int TAG_NONE = 0;
 constexpr int SET_ALL = -1;
 constexpr int SET_DEFAULT = 0;
 constexpr int SET_FOREGROUND = 1;
@@ -40,13 +41,10 @@ int bpfGetUidStatsInternal(uid_t uid, struct Stats* stats, const base::unique_fd
 // For test only
 int bpfGetIfaceStatsInternal(const char* iface, struct Stats* stats, const char* file);
 // For test only
-int parseBpfUidStatsDetail(std::vector<stats_line>* lines,
-                           const std::vector<std::string>& limitIfaces, int limitUid,
-                           const base::unique_fd& statsMapFd, const base::unique_fd& ifaceMapFd);
-// For test only
-int parseBpfTagStatsDetail(std::vector<stats_line>* lines,
-                           const std::vector<std::string>& limitIfaces, int limitTag, int limitUid,
-                           const base::unique_fd& statsMapFd, const base::unique_fd& ifaceMapFd);
+int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
+                                       const std::vector<std::string>& limitIfaces, int limitTag,
+                                       int limitUid, const base::unique_fd& statsMapFd,
+                                       const base::unique_fd& ifaceMapFd);
 // For test only
 int cleanStatsMapInternal(const base::unique_fd& cookieTagMap, const base::unique_fd& tagStatsMap);
 // For test only
