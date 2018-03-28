@@ -78,7 +78,7 @@ constexpr uint8_t REPLAY_WINDOW_SIZE = 4;
 
 namespace {
 
-constexpr uint32_t RAND_SPI_MIN = 1;
+constexpr uint32_t RAND_SPI_MIN = 256;
 constexpr uint32_t RAND_SPI_MAX = 0xFFFFFFFE;
 
 constexpr uint32_t INVALID_SPI = 0;
