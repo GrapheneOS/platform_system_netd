@@ -37,10 +37,9 @@
 namespace android {
 namespace bpf {
 
-static const char* BPF_IFACE_STATS = "/proc/net/dev";
 
 // The limit for stats received by a unknown interface;
-static const uint64_t MAX_UNKNOWN_IFACE_BYTES = 100*1000;
+static const int64_t MAX_UNKNOWN_IFACE_BYTES = 100*1000;
 
 static constexpr uint32_t BPF_OPEN_FLAGS = BPF_F_RDONLY;
 
@@ -73,47 +72,51 @@ int bpfGetUidStats(uid_t uid, Stats* stats) {
     return bpfGetUidStatsInternal(uid, stats, uidStatsMap);
 }
 
-// TODO: The iface stats read from proc/net/dev contains additional L2 header.
-// Need to adjust the byte length read depend on the packets number before
-// return.
-// Bug: b/72111305
-int bpfGetIfaceStatsInternal(const char* iface, Stats* stats, const char* file) {
-    std::string content;
-    if (!android::base::ReadFileToString(file, &content)) {
-        ALOGE("Cannot read iface stats from: %s", file);
-        return -errno;
-    }
-    std::istringstream stream(content);
-    for (std::string ifaceLine; std::getline(stream, ifaceLine);) {
-        const char* buffer = android::base::Trim(ifaceLine).c_str();
-        char cur_iface[IFNAMSIZ];
-        uint64_t rxBytes, rxPackets, txBytes, txPackets;
-        // Typical iface stats read to parse:
-        // interface rxbytes rxpackets errs drop fifo frame compressed multicast txbytes txpackets \
-        // errs drop fifo colls carrier compressed
-        // lo: 13470483181 57249790 0 0 0 0 0 0 13470483181 57249790 0 0 0 0 0 0
-        int matched = sscanf(buffer,
-                             "%[^ :]: %" SCNu64 " %" SCNu64
-                             " %*lu %*lu %*lu %*lu %*lu %*lu "
-                             "%" SCNu64 " %" SCNu64 "",
-                             cur_iface, &rxBytes, &rxPackets, &txBytes, &txPackets);
-        if (matched >= 5) {
-            if (!iface || !strcmp(iface, cur_iface)) {
-                stats->rxBytes += rxBytes;
-                stats->rxPackets += rxPackets;
-                stats->txBytes += txBytes;
-                stats->txPackets += txPackets;
-            }
-        }
-    }
+int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
+                             const base::unique_fd& ifaceStatsMapFd,
+                             const base::unique_fd& ifaceNameMapFd) {
+    uint32_t nonExistentKey = NONEXISTENT_IFACE_STATS_KEY;
+    struct StatsValue dummyValue;
+    int64_t unknownIfaceBytesTotal = 0;
     stats->tcpRxPackets = -1;
     stats->tcpTxPackets = -1;
-
-    return 0;
+    auto processIfaceStats = [iface, stats, &ifaceNameMapFd, &unknownIfaceBytesTotal](
+                              void* key, const base::unique_fd& ifaceStatsMapFd) {
+        char ifname[IFNAMSIZ];
+        int ifIndex = *(int *)key;
+        if (getIfaceNameFromMap(ifaceNameMapFd, ifaceStatsMapFd, ifIndex, ifname, &ifIndex,
+                                &unknownIfaceBytesTotal)) {
+            return 0;
+        }
+        if (!iface || !strcmp(iface, ifname)) {
+            StatsValue statsEntry;
+            int ret = bpf::findMapEntry(ifaceStatsMapFd, &ifIndex, &statsEntry);
+            if (ret) return -errno;
+            stats->rxPackets += statsEntry.rxPackets;
+            stats->txPackets += statsEntry.txPackets;
+            stats->rxBytes += statsEntry.rxBytes;
+            stats->txBytes += statsEntry.txBytes;
+        }
+        return 0;
+    };
+    return bpfIterateMap(nonExistentKey, dummyValue, ifaceStatsMapFd, processIfaceStats);
 }
 
 int bpfGetIfaceStats(const char* iface, Stats* stats) {
-    return bpfGetIfaceStatsInternal(iface, stats, BPF_IFACE_STATS);
+    base::unique_fd ifaceStatsMap(bpf::mapRetrieve(IFACE_STATS_MAP_PATH, BPF_OPEN_FLAGS));
+    int ret;
+    if (ifaceStatsMap < 0) {
+        ret = -errno;
+        ALOGE("get ifaceStats map fd failed: %s", strerror(errno));
+        return ret;
+    }
+    base::unique_fd ifaceIndexNameMap(bpf::mapRetrieve(IFACE_INDEX_NAME_MAP_PATH, BPF_OPEN_FLAGS));
+    if (ifaceIndexNameMap < 0) {
+        ret = -errno;
+        ALOGE("get ifaceIndexName map fd failed: %s", strerror(errno));
+        return ret;
+    }
+    return bpfGetIfaceStatsInternal(iface, stats, ifaceStatsMap, ifaceIndexNameMap);
 }
 
 stats_line populateStatsEntry(const StatsKey& statsKey, const StatsValue& statsEntry,
@@ -130,16 +133,33 @@ stats_line populateStatsEntry(const StatsKey& statsKey, const StatsValue& statsE
     return newLine;
 }
 
+void maybeLogUnknownIface(int ifaceIndex, const base::unique_fd& statsMapFd, void* curKey,
+                          int64_t* unknownIfaceBytesTotal) {
+    // Have we already logged an error?
+    if (*unknownIfaceBytesTotal == -1) {
+        return;
+    }
+
+    // Are we undercounting enough data to be worth logging?
+    StatsValue statsEntry;
+    if (bpf::findMapEntry(statsMapFd, curKey, &statsEntry) < 0) {
+        // No data is being undercounted.
+        return;
+    }
+
+    *unknownIfaceBytesTotal += (statsEntry.rxBytes + statsEntry.txBytes);
+    if (*unknownIfaceBytesTotal >= MAX_UNKNOWN_IFACE_BYTES) {
+            ALOGE("Unknown name for ifindex %d with more than %" PRId64 " bytes of traffic",
+                  ifaceIndex, *unknownIfaceBytesTotal);
+            *unknownIfaceBytesTotal = -1;
+    }
+}
+
 int getIfaceNameFromMap(const base::unique_fd& ifaceMapFd, const base::unique_fd& statsMapFd,
-                        char *ifname, StatsKey &curKey, uint64_t *unknownIfaceBytesTotal) {
-    if (bpf::findMapEntry(ifaceMapFd, &curKey.ifaceIndex, ifname) < 0) {
-        StatsValue statsEntry;
-        if (bpf::findMapEntry(statsMapFd, &curKey, &statsEntry) < 0) return -errno;
-        *unknownIfaceBytesTotal += (statsEntry.rxBytes + statsEntry.txBytes);
-        if (*unknownIfaceBytesTotal >= MAX_UNKNOWN_IFACE_BYTES) {
-            ALOGE("Unknown name for ifindex %d with more than %" PRIu64 " bytes of traffic",
-                  curKey.ifaceIndex, *unknownIfaceBytesTotal);
-        }
+                        uint32_t ifaceIndex, char* ifname, void* curKey,
+                        int64_t* unknownIfaceBytesTotal) {
+    if (bpf::findMapEntry(ifaceMapFd, &ifaceIndex, ifname) < 0) {
+        maybeLogUnknownIface(ifaceIndex, statsMapFd, curKey, unknownIfaceBytesTotal);
         return -ENODEV;
     }
     return 0;
@@ -149,7 +169,7 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
                                        const std::vector<std::string>& limitIfaces, int limitTag,
                                        int limitUid, const base::unique_fd& statsMapFd,
                                        const base::unique_fd& ifaceMapFd) {
-    uint64_t unknownIfaceBytesTotal = 0;
+    int64_t unknownIfaceBytesTotal = 0;
     struct StatsKey nonExistentKey = NONEXISTENT_STATSKEY;
     struct StatsValue dummyValue;
     auto processDetailUidStats = [lines, &limitIfaces, limitTag, limitUid,
@@ -157,7 +177,8 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
                                   (void* key, const base::unique_fd& statsMapFd) {
         struct StatsKey curKey = * (struct StatsKey*)key;
         char ifname[IFNAMSIZ];
-        if (getIfaceNameFromMap(ifaceMapFd, statsMapFd, ifname, curKey, &unknownIfaceBytesTotal)) {
+        if (getIfaceNameFromMap(ifaceMapFd, statsMapFd, curKey.ifaceIndex, ifname, &curKey,
+                                &unknownIfaceBytesTotal)) {
             return 0;
         }
         std::string ifnameStr(ifname);
