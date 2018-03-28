@@ -267,11 +267,8 @@ std::vector<std::string> toStrVec(int num, char* strs[]) {
 }  // namespace
 
 bool BandwidthController::getBpfStatsStatus() {
-    bool useBpf = (access(XT_BPF_INGRESS_PROG_PATH, F_OK) != -1) &&
-                  (access(XT_BPF_EGRESS_PROG_PATH, F_OK) != -1);
-    // TODO: remove this when xt_bpf kernel support is ready
-    useBpf = false;
-    return useBpf;
+    return (access(XT_BPF_INGRESS_PROG_PATH, F_OK) != -1) &&
+           (access(XT_BPF_EGRESS_PROG_PATH, F_OK) != -1);
 }
 
 BandwidthController::BandwidthController() {
