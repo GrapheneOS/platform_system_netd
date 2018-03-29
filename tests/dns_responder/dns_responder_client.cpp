@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "dns_responder_client"
 #include "dns_responder_client.h"
 
 #include <android-base/stringprintf.h>
+#include <utils/Log.h>
 
 // TODO: make this dynamic and stop depending on implementation details.
 #define TEST_OEM_NETWORK "oem29"
@@ -52,12 +54,11 @@ bool DnsResponderClient::SetResolversForNetwork(const std::vector<std::string>& 
 
 bool DnsResponderClient::SetResolversWithTls(const std::vector<std::string>& servers,
         const std::vector<std::string>& domains, const std::vector<int>& params,
-        const std::string& name,
-        const std::vector<std::string>& fingerprints) {
-    // Pass servers as both network-assigned and TLS servers.  Tests can
-    // determine on which server and by which protocol queries arrived.
+        const std::vector<std::string>& tlsServers,
+        const std::string& name, const std::vector<std::string>& fingerprints) {
     const auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
-            name, servers, fingerprints);
+            name, tlsServers, fingerprints);
+    if (!rv.isOk()) ALOGI("SetResolversWithTls() -> %s", rv.toString8().c_str());
     return rv.isOk();
 }
 
