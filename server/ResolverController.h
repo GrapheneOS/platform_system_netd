@@ -17,6 +17,7 @@
 #ifndef _RESOLVER_CONTROLLER_H_
 #define _RESOLVER_CONTROLLER_H_
 
+#include <list>
 #include <vector>
 
 struct __res_params;
@@ -28,6 +29,13 @@ namespace net {
 struct DnsTlsServer;
 class DumpWriter;
 struct ResolverStats;
+
+enum class PrivateDnsMode {
+    OFF,
+    OPPORTUNISTIC,
+    STRICT,
+};
+
 
 class ResolverController {
 public:
@@ -42,12 +50,16 @@ public:
     // Validation status of a DNS over TLS server (on a specific netId).
     enum class Validation : uint8_t { in_process, success, fail, unknown_server, unknown_netid };
 
-    // Given a netId and the address of an insecure (i.e. normal) DNS server, this method checks
-    // if there is a known secure DNS server with the same IP address that has been validated as
-    // accessible on this netId.  It returns the validation status, and provides the secure server
-    // (including port, name, and fingerprints) in the output parameter.
-    Validation getTlsStatus(unsigned netId, const sockaddr_storage& insecureServer,
-            DnsTlsServer* secureServer);
+    struct PrivateDnsStatus {
+        PrivateDnsMode mode;
+        std::list<DnsTlsServer> validatedServers;
+    };
+
+    // Retrieve the Private DNS status for the given |netid|.
+    //
+    // If the requested |netid| is not known, the PrivateDnsStatus's mode has a
+    // default value of PrivateDnsMode::OFF, and validatedServers is empty.
+    PrivateDnsStatus getPrivateDnsStatus(unsigned netid) const;
 
     int clearDnsServers(unsigned netid);
 

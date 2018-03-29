@@ -33,7 +33,9 @@
 #define DBG 0
 #define VDBG 0
 
+#include <algorithm>
 #include <chrono>
+#include <list>
 #include <vector>
 
 #include <cutils/log.h>
@@ -47,6 +49,7 @@
 #include "dns/DnsTlsDispatcher.h"
 #include "dns/DnsTlsTransport.h"
 #include "dns/DnsTlsServer.h"
+#include "NetdClient.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
 #include "ResponseCode.h"
@@ -87,76 +90,131 @@ void tryThreadOrError(SocketClient* cli, T* handler) {
     cli->decRef();
 }
 
+bool checkAndClearUseLocalNameserversFlag(unsigned* netid) {
+    if (netid == nullptr || ((*netid) & NETID_USE_LOCAL_NAMESERVERS) == 0) {
+        return false;
+    }
+    *netid = (*netid) & ~NETID_USE_LOCAL_NAMESERVERS;
+    return true;
+}
+
 thread_local android_net_context thread_netcontext = {};
 
 DnsTlsDispatcher dnsTlsDispatcher;
 
-res_sendhookact qhook(sockaddr* const * nsap, const u_char** buf, int* buflen,
+void catnap() {
+    using namespace std::chrono_literals;
+    std::this_thread::sleep_for(100ms);
+}
+
+res_sendhookact qhook(sockaddr* const * /*ns*/, const u_char** buf, int* buflen,
                       u_char* ans, int anssiz, int* resplen) {
     if (!thread_netcontext.qhook) {
         ALOGE("qhook abort: thread qhook is null");
+        return res_goahead;
+    }
+    if (thread_netcontext.flags & NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS) {
         return res_goahead;
     }
     if (!net::gCtls) {
         ALOGE("qhook abort: gCtls is null");
         return res_goahead;
     }
-    // Safely read the data from nsap without violating strict-aliasing.
-    sockaddr_storage insecureResolver;
-    if ((*nsap)->sa_family == AF_INET) {
-        std::memcpy(&insecureResolver, *nsap, sizeof(sockaddr_in));
-    } else if ((*nsap)->sa_family == AF_INET6) {
-        std::memcpy(&insecureResolver, *nsap, sizeof(sockaddr_in6));
-    } else {
-        ALOGE("qhook abort: unknown address family");
-        return res_goahead;
+
+    const auto privateDnsStatus =
+            net::gCtls->resolverCtrl.getPrivateDnsStatus(thread_netcontext.dns_netid);
+
+    if (privateDnsStatus.mode == PrivateDnsMode::OFF) return res_goahead;
+
+    if (privateDnsStatus.validatedServers.empty()) {
+        if (privateDnsStatus.mode == PrivateDnsMode::OPPORTUNISTIC) {
+            return res_goahead;
+        } else {
+            // Sleep and iterate some small number of times checking for the
+            // arrival of resolved and validated server IP addresses, instead
+            // of returning an immediate error.
+            catnap();
+            return res_modified;
+        }
     }
-    DnsTlsServer tlsServer;
-    auto tlsStatus = net::gCtls->resolverCtrl.getTlsStatus(thread_netcontext.dns_netid,
-            insecureResolver, &tlsServer);
-    if (tlsStatus == ResolverController::Validation::unknown_netid) {
-        if (DBG) {
-            ALOGD("No TLS for netid %u", thread_netcontext.dns_netid);
-        }
-        return res_goahead;
-    } else if (tlsStatus == ResolverController::Validation::unknown_server) {
-        if (DBG) {
-            ALOGW("Skipping unexpected server in TLS mode");
-        }
-        return res_nextns;
-    } else {
-        if (tlsStatus != ResolverController::Validation::success) {
-            if (DBG) {
-                ALOGD("Server is not ready");
-            }
-            // TLS validation has not completed.  In opportunistic mode, fall back to UDP.
-            // In strict mode, try a different server.
-            bool opportunistic = tlsServer.name.empty() && tlsServer.fingerprints.empty();
-            return opportunistic ? res_goahead : res_nextns;
-        }
-        if (DBG) {
-            ALOGD("Performing query over TLS");
-        }
-        Slice query = netdutils::Slice(const_cast<u_char*>(*buf), *buflen);
-        Slice answer = netdutils::Slice(const_cast<u_char*>(ans), anssiz);
-        auto response = dnsTlsDispatcher.query(tlsServer, thread_netcontext.dns_mark,
-                query, answer, resplen);
-        if (response == DnsTlsTransport::Response::success) {
-            if (DBG) {
-                ALOGD("qhook success");
-            }
-            return res_done;
-        }
-        if (DBG) {
-            ALOGW("qhook abort: doQuery failed: %d", (int)response);
-        }
-        // If there was a network error on a validated server, try a different name server.
-        if (response == DnsTlsTransport::Response::network_error) {
-            return res_nextns;
-        }
-        // There was an internal error.  Fail hard.
-        return res_error;
+
+    if (DBG) ALOGD("Performing query over TLS");
+
+    Slice query = netdutils::Slice(const_cast<u_char*>(*buf), *buflen);
+    Slice answer = netdutils::Slice(const_cast<u_char*>(ans), anssiz);
+    const auto response = dnsTlsDispatcher.query(
+            privateDnsStatus.validatedServers, thread_netcontext.dns_mark,
+            query, answer, resplen);
+    if (response == DnsTlsTransport::Response::success) {
+        if (DBG) ALOGD("qhook success");
+        return res_done;
     }
+
+    if (DBG) {
+        ALOGW("qhook abort: TLS query failed: %d", (int)response);
+    }
+
+    if (privateDnsStatus.mode == PrivateDnsMode::OPPORTUNISTIC) {
+        // In opportunistic mode, handle falling back to cleartext in some
+        // cases (DNS shouldn't fail if a validated opportunistic mode server
+        // becomes unreachable for some reason).
+        switch (response) {
+            case DnsTlsTransport::Response::network_error:
+            case DnsTlsTransport::Response::internal_error:
+                // Note: this will cause cleartext queries to be emitted, with
+                // all of the EDNS0 goodness enabled. Fingers crossed.  :-/
+                return res_goahead;
+            default:
+                break;
+        }
+    }
+
+    // There was an internal error.  Fail hard.
+    return res_error;
+}
+
+constexpr bool requestingUseLocalNameservers(unsigned flags) {
+    return (flags & NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS) != 0;
+}
+
+inline bool queryingViaTls(unsigned dns_netid) {
+    const auto privateDnsStatus = net::gCtls->resolverCtrl.getPrivateDnsStatus(dns_netid);
+    switch (privateDnsStatus.mode) {
+        case PrivateDnsMode::OPPORTUNISTIC:
+           return !privateDnsStatus.validatedServers.empty();
+        case PrivateDnsMode::STRICT:
+            return true;
+        default:
+            return false;
+    }
+}
+
+void maybeFixupNetContext(android_net_context* ctx) {
+    if (requestingUseLocalNameservers(ctx->flags)) {
+        if (net::gCtls->netCtrl.getPermissionForUser(ctx->uid) != Permission::PERMISSION_SYSTEM) {
+            // Not permitted; clear the flag.
+            ctx->flags &= ~NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
+        }
+    }
+
+    if (!requestingUseLocalNameservers(ctx->flags)) {
+        // If we're not explicitly bypassing DNS-over-TLS servers, check whether
+        // DNS-over-TLS is in use as an indicator for when to use more modern
+        // DNS resolution mechanics.
+        if (queryingViaTls(ctx->dns_netid)) {
+            ctx->flags |= NET_CONTEXT_FLAG_USE_EDNS;
+        }
+    }
+
+    // Always set the qhook. An opportunistic mode server might have finished
+    // validating by the time the qhook runs. Note that this races with the
+    // queryingViaTls() check above, resulting in possibly sending queries over
+    // TLS without taking advantage of features like EDNS; c'est la guerre.
+    ctx->qhook = &qhook;
+
+    // Store the android_net_context instance in a thread_local variable
+    // so that the static qhook can access other fields of the struct.
+    thread_netcontext = *ctx;
 }
 
 }  // namespace
@@ -264,15 +322,15 @@ static bool sendaddrinfo(SocketClient* c, struct addrinfo* ai) {
 
 void DnsProxyListener::GetAddrInfoHandler::run() {
     if (DBG) {
-        ALOGD("GetAddrInfoHandler, now for %s / %s / {%u,%u,%u,%u,%u}", mHost, mService,
+        ALOGD("GetAddrInfoHandler, now for %s / %s / {%u,%u,%u,%u,%u,%u}", mHost, mService,
                 mNetContext.app_netid, mNetContext.app_mark,
                 mNetContext.dns_netid, mNetContext.dns_mark,
-                mNetContext.uid);
+                mNetContext.uid, mNetContext.flags);
     }
 
     struct addrinfo* result = NULL;
     Stopwatch s;
-    thread_netcontext = mNetContext;
+    maybeFixupNetContext(&mNetContext);
     uint32_t rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, &result);
     const int latencyMs = lround(s.timeTaken());
 
@@ -382,11 +440,14 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     int ai_socktype = atoi(argv[5]);
     int ai_protocol = atoi(argv[6]);
     unsigned netId = strtoul(argv[7], NULL, 10);
+    const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
     uid_t uid = cli->getUid();
 
     android_net_context netcontext;
     mDnsProxyListener->mNetCtrl->getNetworkContext(netId, uid, &netcontext);
-    netcontext.qhook = &qhook;
+    if (useLocalNameservers) {
+        netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
+    }
 
     if (ai_flags != -1 || ai_family != -1 ||
         ai_socktype != -1 || ai_protocol != -1) {
@@ -438,6 +499,7 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
 
     uid_t uid = cli->getUid();
     unsigned netId = strtoul(argv[1], NULL, 10);
+    const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
     char* name = argv[2];
     int af = atoi(argv[3]);
 
@@ -449,7 +511,9 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
 
     android_net_context netcontext;
     mDnsProxyListener->mNetCtrl->getNetworkContext(netId, uid, &netcontext);
-    netcontext.qhook = &qhook;
+    if (useLocalNameservers) {
+        netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
+    }
 
     const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
 
@@ -481,7 +545,7 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     }
 
     Stopwatch s;
-    thread_netcontext = mNetContext;
+    maybeFixupNetContext(&mNetContext);
     struct hostent* hp = android_gethostbynamefornetcontext(mName, mAf, &mNetContext);
     const int latencyMs = lround(s.timeTaken());
 
@@ -574,6 +638,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     int addrFamily = atoi(argv[3]);
     uid_t uid = cli->getUid();
     unsigned netId = strtoul(argv[4], NULL, 10);
+    const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
 
     void* addr = malloc(sizeof(struct in6_addr));
     errno = 0;
@@ -590,7 +655,9 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
 
     android_net_context netcontext;
     mDnsProxyListener->mNetCtrl->getNetworkContext(netId, uid, &netcontext);
-    netcontext.qhook = &qhook;
+    if (useLocalNameservers) {
+        netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
+    }
 
     DnsProxyListener::GetHostByAddrHandler* handler =
             new DnsProxyListener::GetHostByAddrHandler(cli, addr, addrLen, addrFamily, netcontext);
@@ -619,12 +686,11 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     if (DBG) {
         ALOGD("DnsProxyListener::GetHostByAddrHandler::run\n");
     }
-    struct hostent* hp;
 
     // NOTE gethostbyaddr should take a void* but bionic thinks it should be char*
-    thread_netcontext = mNetContext;
-    hp = android_gethostbyaddrfornetcontext(
-            (char*)mAddress, mAddressLen, mAddressFamily, &mNetContext);
+    maybeFixupNetContext(&mNetContext);
+    struct hostent* hp = android_gethostbyaddrfornetcontext(
+            (char*) mAddress, mAddressLen, mAddressFamily, &mNetContext);
 
     if (DBG) {
         ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %zu\n",
