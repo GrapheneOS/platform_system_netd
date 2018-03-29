@@ -23,7 +23,7 @@ public:
 
     virtual ~DnsResponderClient() = default;
 
-    void SetupMappings(unsigned num_hosts, const std::vector<std::string>& domains,
+    static void SetupMappings(unsigned num_hosts, const std::vector<std::string>& domains,
             std::vector<Mapping>* mappings);
 
     bool SetResolversForNetwork(const std::vector<std::string>& servers,
@@ -36,6 +36,18 @@ public:
     bool SetResolversWithTls(const std::vector<std::string>& servers,
             const std::vector<std::string>& searchDomains,
             const std::vector<int>& params,
+            const std::string& name,
+            const std::vector<std::string>& fingerprints) {
+        // Pass servers as both network-assigned and TLS servers.  Tests can
+        // determine on which server and by which protocol queries arrived.
+        return SetResolversWithTls(servers, searchDomains, params,
+                                   servers, name, fingerprints);
+    }
+
+    bool SetResolversWithTls(const std::vector<std::string>& servers,
+            const std::vector<std::string>& searchDomains,
+            const std::vector<int>& params,
+            const std::vector<std::string>& tlsServers,
             const std::string& name,
             const std::vector<std::string>& fingerprints);
 
