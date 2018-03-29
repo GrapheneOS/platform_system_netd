@@ -124,21 +124,11 @@ const std::string GET_TETHER_STATS_COMMAND = StringPrintf(
     "COMMIT\n", android::net::TetherController::LOCAL_TETHER_COUNTERS_CHAIN);
 
 TetherController::TetherController() {
-    mDnsNetId = 0;
-    mDaemonFd = -1;
-    mDaemonPid = 0;
     if (inBpToolsMode()) {
         enableForwarding(BP_TOOLS_MODE);
     } else {
         setIpFwdEnabled();
     }
-}
-
-TetherController::~TetherController() {
-    mInterfaces.clear();
-    mDnsForwarders.clear();
-    mForwardingRequests.clear();
-    mFwdIfaces.clear();
 }
 
 bool TetherController::setIpFwdEnabled() {

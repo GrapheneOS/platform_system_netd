@@ -46,16 +46,16 @@ private:
 
     // NetId to use for forwarded DNS queries. This may not be the default
     // network, e.g., in the case where we are tethering to a DUN APN.
-    unsigned               mDnsNetId;
+    unsigned               mDnsNetId = 0;
     std::list<std::string> mDnsForwarders;
-    pid_t                  mDaemonPid;
-    int                    mDaemonFd;
+    pid_t                  mDaemonPid = 0;
+    int                    mDaemonFd = -1;
     std::set<std::string>  mForwardingRequests;
 
 public:
 
     TetherController();
-    virtual ~TetherController();
+    ~TetherController() = default;
 
     bool enableForwarding(const char* requester);
     bool disableForwarding(const char* requester);
