@@ -21,6 +21,8 @@
 #include <sys/cdefs.h>
 #include <sys/types.h>
 
+#define NETID_USE_LOCAL_NAMESERVERS 0x80000000
+
 __BEGIN_DECLS
 
 // All functions below that return an int return 0 on success or a negative errno value on failure.

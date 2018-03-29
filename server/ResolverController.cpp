@@ -82,11 +82,20 @@ bool parseServer(const char* server, sockaddr_storage* parsed) {
     return true;
 }
 
+const char* getPrivateDnsModeString(PrivateDnsMode mode) {
+    switch (mode) {
+        case PrivateDnsMode::OFF: return "OFF";
+        case PrivateDnsMode::OPPORTUNISTIC: return "OPPORTUNISTIC";
+        case PrivateDnsMode::STRICT: return "STRICT";
+    }
+}
+
+std::mutex privateDnsLock;
+std::map<unsigned, PrivateDnsMode> privateDnsModes GUARDED_BY(privateDnsLock);
 // Structure for tracking the validation status of servers on a specific netId.
 // Using the AddressComparator ensures at most one entry per IP address.
 typedef std::map<DnsTlsServer, ResolverController::Validation,
         AddressComparator> PrivateDnsTracker;
-std::mutex privateDnsLock;
 std::map<unsigned, PrivateDnsTracker> privateDnsTransports GUARDED_BY(privateDnsLock);
 EventReporter eventReporter;
 android::sp<android::net::metrics::INetdEventListener> netdEventListener;
@@ -165,15 +174,18 @@ void validatePrivateDnsProvider(const DnsTlsServer& server,
     validate_thread.detach();
 }
 
-int setPrivateDnsProviders(int32_t netId,
+int setPrivateDnsConfiguration(int32_t netId,
         const std::vector<std::string>& servers, const std::string& name,
         const std::set<std::vector<uint8_t>>& fingerprints) {
     if (DBG) {
-        ALOGD("setPrivateDnsProviders(%u, %zu, %s, %zu)",
+        ALOGD("setPrivateDnsConfiguration(%u, %zu, %s, %zu)",
                 netId, servers.size(), name.c_str(), fingerprints.size());
     }
+
+    const bool explicitlyConfigured = !name.empty() || !fingerprints.empty();
+
     // Parse the list of servers that has been passed in
-    std::set<DnsTlsServer> set;
+    std::set<DnsTlsServer> tlsServers;
     for (size_t i = 0; i < servers.size(); ++i) {
         sockaddr_storage parsed;
         if (!parseServer(servers[i].c_str(), &parsed)) {
@@ -182,10 +194,20 @@ int setPrivateDnsProviders(int32_t netId,
         DnsTlsServer server(parsed);
         server.name = name;
         server.fingerprints = fingerprints;
-        set.insert(server);
+        tlsServers.insert(server);
     }
 
     std::lock_guard<std::mutex> guard(privateDnsLock);
+    if (explicitlyConfigured) {
+        privateDnsModes[netId] = PrivateDnsMode::STRICT;
+    } else if (!tlsServers.empty()) {
+        privateDnsModes[netId] = PrivateDnsMode::OPPORTUNISTIC;
+    } else {
+        privateDnsModes[netId] = PrivateDnsMode::OFF;
+        privateDnsTransports.erase(netId);
+        return 0;
+    }
+
     // Create the tracker if it was not present
     auto netPair = privateDnsTransports.find(netId);
     if (netPair == privateDnsTransports.end()) {
@@ -201,7 +223,7 @@ int setPrivateDnsProviders(int32_t netId,
 
     // Remove any servers from the tracker that are not in |servers| exactly.
     for (auto it = tracker.begin(); it != tracker.end();) {
-        if (set.count(it->first) == 0) {
+        if (tlsServers.count(it->first) == 0) {
             it = tracker.erase(it);
         } else {
             ++it;
@@ -209,7 +231,7 @@ int setPrivateDnsProviders(int32_t netId,
     }
 
     // Add any new or changed servers to the tracker, and initiate async checks for them.
-    for (const auto& server : set) {
+    for (const auto& server : tlsServers) {
         // Don't probe a server more than once.  This means that the only way to
         // re-check a failed server is to remove it and re-add it from the netId.
         if (tracker.count(server) == 0) {
@@ -224,6 +246,7 @@ void clearPrivateDnsProviders(unsigned netId) {
         ALOGD("clearPrivateDnsProviders(%u)", netId);
     }
     std::lock_guard<std::mutex> guard(privateDnsLock);
+    privateDnsModes.erase(netId);
     privateDnsTransports.erase(netId);
 }
 
@@ -248,37 +271,30 @@ int ResolverController::setDnsServers(unsigned netId, const char* searchDomains,
     return -_resolv_set_nameservers_for_net(netId, servers, numservers, searchDomains, params);
 }
 
-ResolverController::Validation ResolverController::getTlsStatus(unsigned netId,
-        const sockaddr_storage& insecureServer,
-        DnsTlsServer* secureServer) {
-    // This mutex is on the critical path of every DNS lookup that doesn't hit a local cache.
-    // If the overhead of mutex acquisition proves too high, we could reduce it by maintaining
-    // an atomic_int32_t counter of validated connections, and returning early if it's zero.
-    if (DBG) {
-        ALOGD("getTlsStatus(%u, %s)?", netId, addrToString(&insecureServer).c_str());
-    }
+ResolverController::PrivateDnsStatus
+ResolverController::getPrivateDnsStatus(unsigned netid) const {
+    PrivateDnsStatus status{PrivateDnsMode::OFF, {}};
+
+    // This mutex is on the critical path of every DNS lookup.
+    //
+    // If the overhead of mutex acquisition proves too high, we could reduce it
+    // by maintaining an atomic_int32_t counter of TLS-enabled netids, or by
+    // using an RWLock.
     std::lock_guard<std::mutex> guard(privateDnsLock);
-    const auto netPair = privateDnsTransports.find(netId);
-    if (netPair == privateDnsTransports.end()) {
-        if (DBG) {
-            ALOGD("Not using TLS: no tracked servers for netId %u", netId);
+
+    const auto mode = privateDnsModes.find(netid);
+    if (mode == privateDnsModes.end()) return status;
+    status.mode = mode->second;
+
+    const auto netPair = privateDnsTransports.find(netid);
+    if (netPair != privateDnsTransports.end()) {
+        for (const auto& serverPair : netPair->second) {
+            if (serverPair.second == Validation::success) {
+                status.validatedServers.push_back(serverPair.first);
+            }
         }
-        return Validation::unknown_netid;
     }
-    const auto& tracker = netPair->second;
-    const auto serverPair = tracker.find(insecureServer);
-    if (serverPair == tracker.end()) {
-        if (DBG) {
-            ALOGD("Server is not in the tracker (size %zu) for netid %u", tracker.size(), netId);
-        }
-        return Validation::unknown_server;
-    }
-    const auto& validatedServer = serverPair->first;
-    Validation status = serverPair->second;
-    if (DBG) {
-        ALOGD("Server %s has status %d", addrToString(&(validatedServer.ss)).c_str(), (int)status);
-    }
-    *secureServer = validatedServer;
+
     return status;
 }
 
@@ -383,30 +399,16 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         return -EINVAL;
     }
 
-    if (!tlsServers.empty()) {
-        const int err = setPrivateDnsProviders(netId, tlsServers, tlsName, tlsFingerprints);
-        if (err != 0) {
-            return err;
-        }
-    } else {
-        clearPrivateDnsProviders(netId);
+    const int err = setPrivateDnsConfiguration(netId, tlsServers, tlsName, tlsFingerprints);
+    if (err != 0) {
+        return err;
     }
 
-    // TODO: separate out configuring TLS servers and locally-assigned servers.
-    // We should always program bionic with locally-assigned servers, so we can
-    // make TLS-bypass simple by not setting .qhook in the right circumstances.
-    // Relatedly, shunting queries to DNS-over-TLS should not be based on
-    // matching resolver IPs in the qhook but rather purely a function of the
-    // current state of DNS-over-TLS as known only within the dispatcher.
-    const std::vector<std::string>& nameservers = (!tlsServers.empty())
-            ? tlsServers  // Strict mode or Opportunistic
-            : servers;    // off
-
-    // Convert server list to bionic's format.
-    auto server_count = std::min<size_t>(MAXNS, nameservers.size());
+    // Convert network-assigned server list to bionic's format.
+    auto server_count = std::min<size_t>(MAXNS, servers.size());
     std::vector<const char*> server_ptrs;
     for (size_t i = 0 ; i < server_count ; ++i) {
-        server_ptrs.push_back(nameservers[i].c_str());
+        server_ptrs.push_back(servers[i].c_str());
     }
 
     std::string domains_str;
@@ -502,9 +504,12 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
         }
         {
             std::lock_guard<std::mutex> guard(privateDnsLock);
+            const auto& mode = privateDnsModes.find(netId);
+            dw.println("Private DNS mode: %s", getPrivateDnsModeString(
+                    mode != privateDnsModes.end() ? mode->second : PrivateDnsMode::OFF));
             const auto& netPair = privateDnsTransports.find(netId);
             if (netPair == privateDnsTransports.end()) {
-                dw.println("No Private DNS configured");
+                dw.println("No Private DNS servers configured");
             } else {
                 const auto& tracker = netPair->second;
                 dw.println("Private DNS configuration (%zu entries)", tracker.size());
