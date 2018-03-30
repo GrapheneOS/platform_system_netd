@@ -146,7 +146,7 @@ void logHex(const char* desc16, const char* buf, size_t len) {
     offset += 8;
 
     for (uint32_t j = 0; j < (uint32_t)len; j++) {
-        sprintf(&printBuf[j * 2 + offset], "%0.2x", buf[j]);
+        sprintf(&printBuf[j * 2 + offset], "%0.2x", (unsigned char)buf[j]);
     }
     ALOGD("%s", printBuf);
     delete[] printBuf;
