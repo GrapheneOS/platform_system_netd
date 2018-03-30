@@ -700,6 +700,9 @@ TEST_F(ServerTest, IPv6ScopeId) {
     addr2->sin6_scope_id = 2;
     checkUnequal(s1, s2);
     EXPECT_FALSE(isAddressEqual(s1, s2));
+
+    EXPECT_FALSE(s1.wasExplicitlyConfigured());
+    EXPECT_FALSE(s2.wasExplicitlyConfigured());
 }
 
 TEST_F(ServerTest, IPv6FlowInfo) {
@@ -711,6 +714,9 @@ TEST_F(ServerTest, IPv6FlowInfo) {
     // All comparisons ignore flowinfo.
     EXPECT_EQ(s1, s2);
     EXPECT_TRUE(isAddressEqual(s1, s2));
+
+    EXPECT_FALSE(s1.wasExplicitlyConfigured());
+    EXPECT_FALSE(s2.wasExplicitlyConfigured());
 }
 
 TEST_F(ServerTest, Port) {
@@ -725,6 +731,9 @@ TEST_F(ServerTest, Port) {
     parseServer("2001:db8::1", 852, &s4.ss);
     checkUnequal(s3, s4);
     EXPECT_TRUE(isAddressEqual(s3, s4));
+
+    EXPECT_FALSE(s1.wasExplicitlyConfigured());
+    EXPECT_FALSE(s2.wasExplicitlyConfigured());
 }
 
 TEST_F(ServerTest, Name) {
@@ -734,6 +743,9 @@ TEST_F(ServerTest, Name) {
     s2.name = SERVERNAME2;
     checkUnequal(s1, s2);
     EXPECT_TRUE(isAddressEqual(s1, s2));
+
+    EXPECT_TRUE(s1.wasExplicitlyConfigured());
+    EXPECT_TRUE(s2.wasExplicitlyConfigured());
 }
 
 TEST_F(ServerTest, Fingerprint) {
@@ -754,6 +766,9 @@ TEST_F(ServerTest, Fingerprint) {
     s1.fingerprints.insert(FINGERPRINT2);
     EXPECT_EQ(s1, s2);
     EXPECT_TRUE(isAddressEqual(s1, s2));
+
+    EXPECT_TRUE(s1.wasExplicitlyConfigured());
+    EXPECT_TRUE(s2.wasExplicitlyConfigured());
 }
 
 TEST(QueryMapTest, Basic) {

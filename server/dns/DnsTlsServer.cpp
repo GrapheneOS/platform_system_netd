@@ -125,5 +125,9 @@ bool DnsTlsServer::operator ==(const DnsTlsServer& other) const {
     return make_tie(*this) == make_tie(other);
 }
 
+bool DnsTlsServer::wasExplicitlyConfigured() const {
+    return !name.empty() || !fingerprints.empty();
+}
+
 }  // namespace net
 }  // namespace android

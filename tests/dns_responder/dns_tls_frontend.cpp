@@ -36,8 +36,6 @@ using android::netdutils::enableSockopt;
 
 namespace {
 
-const int SHA256_SIZE = 32;
-
 // Copied from DnsTlsTransport.
 bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
     int spki_len = i2d_X509_PUBKEY(X509_get_X509_PUBKEY(cert), NULL);
@@ -47,7 +45,7 @@ bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
         ALOGE("SPKI length mismatch");
         return false;
     }
-    out->resize(SHA256_SIZE);
+    out->resize(test::SHA256_SIZE);
     unsigned int digest_len = 0;
     int ret = EVP_Digest(spki, spki_len, out->data(), &digest_len, EVP_sha256(), NULL);
     if (ret != 1) {

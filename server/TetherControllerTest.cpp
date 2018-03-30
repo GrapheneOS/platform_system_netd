@@ -116,9 +116,7 @@ protected:
 
     template<typename T>
     void appendAll(std::vector<T>& cmds, const std::vector<T>& appendCmds) {
-        for (auto& cmd : appendCmds) {
-            cmds.push_back(cmd);
-        }
+        cmds.insert(cmds.end(), appendCmds.begin(), appendCmds.end());
     }
 
     ExpectedIptablesCommands startNatCommands(const char *intIf, const char *extIf,
@@ -167,6 +165,29 @@ protected:
         };
     }
 
+    constexpr static const bool WITH_COUNTERS = true;
+    constexpr static const bool NO_COUNTERS = false;
+    constexpr static const bool WITH_IPV6 = true;
+    constexpr static const bool NO_IPV6 = false;
+    ExpectedIptablesCommands allNewNatCommands(
+            const char *intIf, const char *extIf, bool withCounterChainRules,
+            bool withIPv6Upstream) {
+
+        ExpectedIptablesCommands commands;
+        ExpectedIptablesCommands setupFirstIPv4Commands = firstIPv4UpstreamCommands(extIf);
+        ExpectedIptablesCommands startFirstNatCommands = startNatCommands(intIf, extIf,
+            withCounterChainRules);
+
+        appendAll(commands, setupFirstIPv4Commands);
+        if (withIPv6Upstream) {
+            ExpectedIptablesCommands setupFirstIPv6Commands = firstIPv6UpstreamCommands();
+            appendAll(commands, setupFirstIPv6Commands);
+        }
+        appendAll(commands, startFirstNatCommands);
+
+        return commands;
+    }
+
     ExpectedIptablesCommands stopNatCommands(const char *intIf, const char *extIf) {
         std::string rpfilterCmd = StringPrintf(
             "*raw\n"
@@ -204,18 +225,14 @@ TEST_F(TetherControllerTest, TestSetDefaults) {
 
 TEST_F(TetherControllerTest, TestAddAndRemoveNat) {
     // Start first NAT on first upstream interface. Expect the upstream and NAT rules to be created.
-    ExpectedIptablesCommands firstNat;
-    ExpectedIptablesCommands setupFirstIPv4Commands = firstIPv4UpstreamCommands("rmnet0");
-    ExpectedIptablesCommands setupFirstIPv6Commands = firstIPv6UpstreamCommands();
-    ExpectedIptablesCommands startFirstNatCommands = startNatCommands("wlan0", "rmnet0", true);
-    appendAll(firstNat, setupFirstIPv4Commands);
-    appendAll(firstNat, setupFirstIPv6Commands);
-    appendAll(firstNat, startFirstNatCommands);
+    ExpectedIptablesCommands firstNat = allNewNatCommands(
+            "wlan0", "rmnet0", WITH_COUNTERS, WITH_IPV6);
     mTetherCtrl.enableNat("wlan0", "rmnet0");
     expectIptablesRestoreCommands(firstNat);
 
     // Start second NAT on same upstream. Expect only the counter rules to be created.
-    ExpectedIptablesCommands startOtherNatOnSameUpstream = startNatCommands("usb0", "rmnet0", true);
+    ExpectedIptablesCommands startOtherNatOnSameUpstream = startNatCommands(
+            "usb0", "rmnet0", WITH_COUNTERS);
     mTetherCtrl.enableNat("usb0", "rmnet0");
     expectIptablesRestoreCommands(startOtherNatOnSameUpstream);
 
@@ -231,13 +248,8 @@ TEST_F(TetherControllerTest, TestAddAndRemoveNat) {
     mTetherCtrl.disableNat("usb0", "rmnet0");
     expectIptablesRestoreCommands(stopLastNat);
 
-    // Re-add a NAT removed previously
-    firstNat = {};
-    // tetherctrl_counters chain rules are not re-added
-    startFirstNatCommands = startNatCommands("wlan0", "rmnet0", false);
-    appendAll(firstNat, setupFirstIPv4Commands);
-    appendAll(firstNat, setupFirstIPv6Commands);
-    appendAll(firstNat, startFirstNatCommands);
+    // Re-add a NAT removed previously: tetherctrl_counters chain rules are not re-added
+    firstNat = allNewNatCommands("wlan0", "rmnet0", NO_COUNTERS, WITH_IPV6);
     mTetherCtrl.enableNat("wlan0", "rmnet0");
     expectIptablesRestoreCommands(firstNat);
 
@@ -246,6 +258,38 @@ TEST_F(TetherControllerTest, TestAddAndRemoveNat) {
     appendAll(stopLastNat, FLUSH_COMMANDS);
     mTetherCtrl.disableNat("wlan0", "rmnet0");
     expectIptablesRestoreCommands(stopLastNat);
+}
+
+TEST_F(TetherControllerTest, TestMultipleUpstreams) {
+    // Start first NAT on first upstream interface. Expect the upstream and NAT rules to be created.
+    ExpectedIptablesCommands firstNat = allNewNatCommands(
+            "wlan0", "rmnet0", WITH_COUNTERS, WITH_IPV6);
+    mTetherCtrl.enableNat("wlan0", "rmnet0");
+    expectIptablesRestoreCommands(firstNat);
+
+    // Start second NAT, on new upstream. Expect the upstream and NAT rules to be created for IPv4,
+    // but no counter rules for IPv6.
+    ExpectedIptablesCommands secondNat = allNewNatCommands(
+            "wlan0", "v4-rmnet0", WITH_COUNTERS, NO_IPV6);
+    mTetherCtrl.enableNat("wlan0", "v4-rmnet0");
+    expectIptablesRestoreCommands(secondNat);
+
+    // Pretend that the caller has forgotten that it set up the second NAT, and asks us to do so
+    // again. Expect that we take no action.
+    const ExpectedIptablesCommands NONE = {};
+    mTetherCtrl.enableNat("wlan0", "v4-rmnet0");
+    expectIptablesRestoreCommands(NONE);
+
+    // Remove the second NAT.
+    ExpectedIptablesCommands stopSecondNat = stopNatCommands("wlan0", "v4-rmnet0");
+    mTetherCtrl.disableNat("wlan0", "v4-rmnet0");
+    expectIptablesRestoreCommands(stopSecondNat);
+
+    // Remove the first NAT. Expect rules to be cleared.
+    ExpectedIptablesCommands stopFirstNat = stopNatCommands("wlan0", "rmnet0");
+    appendAll(stopFirstNat, FLUSH_COMMANDS);
+    mTetherCtrl.disableNat("wlan0", "rmnet0");
+    expectIptablesRestoreCommands(stopFirstNat);
 }
 
 std::string kTetherCounterHeaders = Join(std::vector<std::string> {
