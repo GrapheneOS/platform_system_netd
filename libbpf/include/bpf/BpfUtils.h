@@ -32,39 +32,6 @@
 #define BPF_PASS 1
 #define BPF_DROP 0
 
-/* instruction set for bpf program */
-
-#define MEM_LD(SIZE) (BPF_LDX | BPF_SIZE(SIZE) | BPF_MEM)
-#define MEM_SET_BY_REG(SIZE) (BPF_STX | BPF_SIZE(SIZE) | BPF_MEM)
-#define MEM_SET_BY_VAL(SIZE) (BPF_ST | BPF_SIZE(SIZE) | BPF_MEM)
-#define PROG_EXIT (BPF_JMP | BPF_EXIT)
-#define REG_ALU64(OP) (BPF_ALU64 | BPF_OP(OP) | BPF_X)
-#define REG_ALU32(OP) (BPF_ALU | BPF_OP(OP) | BPF_X)
-#define REG_ALU_JMP(OP) (BPF_JMP | BPF_OP(OP) | BPF_X)
-#define REG_ATOMIC_ADD(SIZE) (BPF_STX | BPF_SIZE(SIZE) | BPF_XADD)
-#define REG_MOV64 (BPF_ALU64 | BPF_MOV | BPF_X)
-#define REG_MOV32 (BPF_ALU | BPF_MOV | BPF_X)
-#define SKB_LD(SIZE) (BPF_LD | BPF_SIZE(SIZE) | BPF_ABS)
-#define VAL_ALU64(OP) (BPF_ALU64 | BPF_OP(OP) | BPF_K)
-#define VAL_ALU32(OP) (BPF_ALU | BPF_OP(OP) | BPF_K)
-#define VAL_ALU_JMP(OP) (BPF_JMP | BPF_OP(OP) | BPF_K)
-#define VAL_MOV64 (BPF_ALU64 | BPF_MOV | BPF_K)
-#define VAL_MOV32 (BPF_ALU | BPF_MOV | BPF_K)
-
-/* Raw code statement block */
-
-#define BPF_INS_BLK(CODE, DST, SRC, OFF, IMM) \
-    ((struct bpf_insn){                       \
-        .code = (CODE), .dst_reg = (DST), .src_reg = (SRC), .off = (OFF), .imm = (IMM)})
-
-#ifndef BPF_PSEUDO_MAP_FD
-#define BPF_PSEUDO_MAP_FD 1
-#endif
-
-#define LOAD_MAP_FD(DST, MAP_FD)                                                                 \
-    BPF_INS_BLK(BPF_LD | BPF_DW | BPF_IMM, DST, BPF_PSEUDO_MAP_FD, 0, (__s32)((__u32)(MAP_FD))), \
-        BPF_INS_BLK(0, 0, 0, 0, (__s32)(((__u64)(MAP_FD)) >> 32))
-
 namespace android {
 namespace bpf {
 
