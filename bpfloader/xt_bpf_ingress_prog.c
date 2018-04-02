@@ -19,5 +19,7 @@
 
 ELF_SEC(BPF_PROG_SEC_NAME)
 int xt_bpf_ingress_prog(struct __sk_buff* skb) {
-    return xt_bpf_count(skb, BPF_INGRESS);
+    uint32_t key = skb->ifindex;
+    bpf_update_stats(skb, IFACE_STATS_MAP, BPF_INGRESS, &key);
+    return BPF_PASS;
 }
