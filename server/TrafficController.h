@@ -51,6 +51,8 @@ constexpr const int NONEXIST_COOKIE = 0;
 namespace android {
 namespace net {
 
+class DumpWriter;
+
 class TrafficController {
   public:
     TrafficController();
@@ -113,8 +115,12 @@ class TrafficController {
     int updateOwnerMapEntry(const base::unique_fd& map_fd, uid_t uid, FirewallRule rule,
                             FirewallType type);
 
+    void dump(DumpWriter& dw, bool verbose);
+
     int replaceUidsInMap(const base::unique_fd& map_fd, const std::vector<int32_t> &uids,
                          FirewallRule rule, FirewallType type);
+
+    static const String16 DUMP_KEYWORD;
 
     int toggleUidOwnerMap(ChildChain chain, bool enable);
 

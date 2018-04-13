@@ -64,45 +64,23 @@ static int (*bpf_skb_load_bytes)(struct __sk_buff* skb, int off, void* to,
 #define TCP_FLAG_OFF 13
 #define RST_OFFSET 2
 
-static __always_inline int xt_bpf_count(struct __sk_buff* skb, int type) {
-    uint32_t key = skb->ifindex;
+static __always_inline inline void bpf_update_stats(struct __sk_buff* skb, uint64_t map,
+                                                    int direction, void *key) {
     struct stats_value* value;
-
-    value = find_map_entry(IFACE_STATS_MAP, &key);
+    value = find_map_entry(map, key);
     if (!value) {
         struct stats_value newValue = {};
-        write_to_map_entry(IFACE_STATS_MAP, &key, &newValue, BPF_NOEXIST);
-        value = find_map_entry(IFACE_STATS_MAP, &key);
+        write_to_map_entry(map, key, &newValue, BPF_NOEXIST);
+        value = find_map_entry(map, key);
     }
     if (value) {
-        if (type == BPF_EGRESS) {
+        if (direction == BPF_EGRESS) {
             __sync_fetch_and_add(&value->txPackets, 1);
             __sync_fetch_and_add(&value->txBytes, skb->len);
-        } else if (type == BPF_INGRESS) {
+        } else if (direction == BPF_INGRESS) {
             __sync_fetch_and_add(&value->rxPackets, 1);
             __sync_fetch_and_add(&value->rxBytes, skb->len);
         }
-    }
-    return BPF_PASS;
-}
-
-static __always_inline inline void bpf_update_stats(struct __sk_buff* skb, uint64_t map,
-                                                    int direction, struct stats_key key) {
-    struct stats_value* value;
-    value = find_map_entry(map, &key);
-    if (!value) {
-        struct stats_value newValue = {};
-        write_to_map_entry(map, &key, &newValue, BPF_NOEXIST);
-        value = find_map_entry(map, &key);
-    }
-    if (value) {
-      if (direction == BPF_INGRESS) {
-        __sync_fetch_and_add(&value->rxPackets, 1);
-        __sync_fetch_and_add(&value->rxBytes, skb->len);
-      } else {
-        __sync_fetch_and_add(&value->txPackets, 1);
-        __sync_fetch_and_add(&value->txBytes, skb->len);
-      }
     }
 }
 
@@ -191,10 +169,10 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
 
     int ret;
     if (tag) {
-        bpf_update_stats(skb, TAG_STATS_MAP, direction, key);
+        bpf_update_stats(skb, TAG_STATS_MAP, direction, &key);
     }
 
     key.tag = 0;
-    bpf_update_stats(skb, UID_STATS_MAP, direction, key);
+    bpf_update_stats(skb, UID_STATS_MAP, direction, &key);
     return bpf_owner_match(skb, uid);
 }

@@ -36,6 +36,7 @@
 #include <vector>
 
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 #include <logwrap/logwrap.h>
 #include <netdutils/StatusOr.h>
@@ -46,6 +47,7 @@
 #include "bpf/BpfUtils.h"
 #include "bpf/bpf_shared.h"
 
+#include "DumpWriter.h"
 #include "FirewallController.h"
 #include "InterfaceController.h"
 #include "NetlinkListener.h"
@@ -58,6 +60,7 @@ namespace net {
 
 using base::StringPrintf;
 using base::unique_fd;
+using base::Join;
 using netdutils::extract;
 using netdutils::Slice;
 using netdutils::sSyscalls;
@@ -617,6 +620,212 @@ int TrafficController::toggleUidOwnerMap(ChildChain chain, bool enable) {
 
 bool TrafficController::checkBpfStatsEnable() {
     return ebpfSupported;
+}
+
+std::string getProgramStatus(const char *path) {
+    int ret = access(path, R_OK);
+    if (ret == 0) {
+        return StringPrintf("OK");
+    }
+    if (ret != 0 && errno == ENOENT) {
+        return StringPrintf("program is missing at: %s", path);
+    }
+    return StringPrintf("check Program %s error: %s", path, strerror(errno));
+}
+
+std::string getMapStatus(const unique_fd& map_fd, const char *path) {
+    if (map_fd.get() < 0) {
+        return StringPrintf("map fd lost");
+    }
+    if (access(path, F_OK) != 0) {
+        return StringPrintf("map not pinned to location: %s", path);
+    }
+    return StringPrintf("OK");
+}
+
+void dumpBpfMap(std::string mapName, DumpWriter& dw, const std::string& header) {
+    dw.blankline();
+    dw.println("%s:", mapName.c_str());
+    if(!header.empty()) {
+        dw.println(header.c_str());
+    }
+}
+
+const String16 TrafficController::DUMP_KEYWORD = String16("trafficcontroller");
+
+void TrafficController::dump(DumpWriter& dw, bool verbose) {
+    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    dw.incIndent();
+    dw.println("TrafficController");
+
+    dw.incIndent();
+    dw.println("BPF module status: %s", ebpfSupported? "ON" : "OFF");
+
+    if (!ebpfSupported)
+        return;
+
+    dw.blankline();
+    dw.println("mCookieTagMap status: %s",
+               getMapStatus(mCookieTagMap, COOKIE_TAG_MAP_PATH).c_str());
+    dw.println("mUidCounterSetMap status: %s",
+               getMapStatus(mUidCounterSetMap, UID_COUNTERSET_MAP_PATH).c_str());
+    dw.println("mUidStatsMap status: %s", getMapStatus(mUidStatsMap, UID_STATS_MAP_PATH).c_str());
+    dw.println("mTagStatsMap status: %s", getMapStatus(mTagStatsMap, TAG_STATS_MAP_PATH).c_str());
+    dw.println("mIfaceIndexNameMap status: %s",
+               getMapStatus(mIfaceIndexNameMap, IFACE_INDEX_NAME_MAP_PATH).c_str());
+    dw.println("mIfaceStatsMap status: %s",
+               getMapStatus(mIfaceStatsMap, IFACE_STATS_MAP_PATH).c_str());
+    dw.println("mDozableUidMap status: %s",
+               getMapStatus(mDozableUidMap, DOZABLE_UID_MAP_PATH).c_str());
+    dw.println("mStandbyUidMap status: %s",
+               getMapStatus(mStandbyUidMap, STANDBY_UID_MAP_PATH).c_str());
+    dw.println("mPowerSaveUidMap status: %s",
+               getMapStatus(mPowerSaveUidMap, POWERSAVE_UID_MAP_PATH).c_str());
+
+    dw.blankline();
+    dw.println("Cgroup ingress program status: %s",
+               getProgramStatus(BPF_INGRESS_PROG_PATH).c_str());
+    dw.println("Cgroup egress program status: %s", getProgramStatus(BPF_EGRESS_PROG_PATH).c_str());
+    dw.println("xt_bpf ingress program status: %s",
+               getProgramStatus(XT_BPF_INGRESS_PROG_PATH).c_str());
+    dw.println("xt_bpf egress program status: %s",
+               getProgramStatus(XT_BPF_EGRESS_PROG_PATH).c_str());
+
+    if(!verbose) return;
+
+    dw.blankline();
+    dw.println("BPF map content:");
+
+    dw.incIndent();
+
+    // Print CookieTagMap content.
+    dumpBpfMap("mCookieTagMap", dw, "");
+    const uint64_t nonExistentCookie = NONEXIST_COOKIE;
+    UidTag dummyUidTag;
+    auto printCookieTagInfo = [&dw](void *key, void *value) {
+        UidTag uidTagEntry = *(UidTag *) value;
+        uint64_t cookie = *(uint64_t *) key;
+        dw.println("cookie=%" PRIu64 " tag=0x%x uid=%u", cookie, uidTagEntry.tag, uidTagEntry.uid);
+        return 0;
+    };
+    int ret = bpfIterateMapWithValue(nonExistentCookie, dummyUidTag, mCookieTagMap,
+                                     printCookieTagInfo);
+    if (ret) {
+        dw.println("mCookieTagMap print end with error: %s", strerror(-ret));
+    }
+
+    // Print UidCounterSetMap Content
+    dumpBpfMap("mUidCounterSetMap", dw, "");
+    const uint32_t nonExistentUid = NONEXISTENT_UID;
+    uint32_t dummyUidInfo;
+    auto printUidInfo = [&dw](void *key, void *value) {
+        uint8_t setting = *(uint8_t *) value;
+        uint32_t uid = *(uint32_t *) key;
+        dw.println("%u %u", uid, setting);
+        return 0;
+    };
+    ret = bpfIterateMapWithValue(nonExistentUid, dummyUidInfo, mUidCounterSetMap, printUidInfo);
+    if (ret) {
+       dw.println("mUidCounterSetMap print end with error: %s", strerror(-ret));
+    }
+
+    // Print uidStatsMap content
+    std::string statsHeader = StringPrintf("ifaceIndex ifaceName tag_hex uid_int cnt_set rxBytes"
+                                           " rxPackets txBytes txPackets");
+    dumpBpfMap("mUidStatsMap", dw, statsHeader);
+    const struct StatsKey nonExistentStatsKey = NONEXISTENT_STATSKEY;
+    struct StatsValue dummyStatsValue;
+    auto printStatsInfo = [&dw, this](void *key, void *value) {
+        StatsValue statsEntry = *(StatsValue *) value;
+        StatsKey keyInfo = *(StatsKey *) key;
+        char ifname[IFNAMSIZ];
+        uint32_t ifIndex = keyInfo.ifaceIndex;
+        if (bpf::findMapEntry(mIfaceIndexNameMap, &ifIndex, &ifname) < 0) {
+            strlcpy(ifname, "unknown", sizeof(ifname));
+        }
+        dw.println("%u %s 0x%x %u %u %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64, ifIndex, ifname,
+                   keyInfo.tag, keyInfo.uid, keyInfo.counterSet, statsEntry.rxBytes,
+                   statsEntry.rxPackets, statsEntry.txBytes, statsEntry.txPackets);
+        return 0;
+    };
+    ret = bpfIterateMapWithValue(nonExistentStatsKey, dummyStatsValue, mUidStatsMap,
+                                 printStatsInfo);
+    if (ret) {
+        dw.println("mUidStatsMap print end with error: %s", strerror(-ret));
+    }
+
+    // Print TagStatsMap content.
+    dumpBpfMap("mTagStatsMap", dw, statsHeader);
+    ret = bpfIterateMapWithValue(nonExistentStatsKey, dummyStatsValue, mTagStatsMap,
+                                 printStatsInfo);
+    if (ret) {
+        dw.println("mTagStatsMap print end with error: %s", strerror(-ret));
+    }
+
+    // Print ifaceIndexToNameMap content.
+    dumpBpfMap("mIfaceIndexNameMap", dw, "");
+    uint32_t nonExistentIface = NONEXISTENT_IFACE_STATS_KEY;
+    char dummyIface[IFNAMSIZ];
+    auto printIfaceNameInfo = [&dw](void *key, void *value) {
+        char *ifname = (char *) value;
+        uint32_t ifaceIndex = *(uint32_t *)key;
+        dw.println("ifaceIndex=%u ifaceName=%s", ifaceIndex, ifname);
+        return 0;
+    };
+    ret = bpfIterateMapWithValue(nonExistentIface, dummyIface, mIfaceIndexNameMap,
+                               printIfaceNameInfo);
+    if (ret) {
+        dw.println("mIfaceIndexNameMap print end with error: %s", strerror(-ret));
+    }
+
+    // Print ifaceStatsMap content
+    std::string ifaceStatsHeader = StringPrintf("ifaceIndex ifaceName rxBytes rxPackets txBytes"
+                                                " txPackets");
+    dumpBpfMap("mIfaceStatsMap:", dw, ifaceStatsHeader);
+    auto printIfaceStatsInfo = [&dw, this] (void *key, void *value) {
+        StatsValue statsEntry = *(StatsValue *) value;
+        uint32_t ifaceIndex = *(uint32_t *) key;
+        char ifname[IFNAMSIZ];
+        if (bpf::findMapEntry(mIfaceIndexNameMap, key, ifname) < 0) {
+            strlcpy(ifname, "unknown", sizeof(ifname));
+        }
+        dw.println("%u %s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64, ifaceIndex, ifname,
+                   statsEntry.rxBytes, statsEntry.rxPackets, statsEntry.txBytes,
+                   statsEntry.txPackets);
+        return 0;
+    };
+    ret = bpfIterateMapWithValue(nonExistentIface, dummyStatsValue, mIfaceStatsMap,
+                                 printIfaceStatsInfo);
+    if (ret) {
+        dw.println("mIfaceStatsMap print end with error: %s", strerror(-ret));
+    }
+
+    // Print owner match uid maps
+    uint8_t dummyOwnerInfo;
+    dumpBpfMap("mDozableUidMap", dw, "");
+    ret = bpfIterateMapWithValue(nonExistentUid, dummyOwnerInfo, mDozableUidMap, printUidInfo);
+    if (ret) {
+        dw.println("mDozableUidMap print end with error: %s", strerror(-ret));
+    }
+
+    dumpBpfMap("mStandbyUidMap", dw, "");
+    ret = bpfIterateMapWithValue(nonExistentUid, dummyOwnerInfo, mStandbyUidMap, printUidInfo);
+    if (ret) {
+        dw.println("mDozableUidMap print end with error: %s", strerror(-ret));
+    }
+
+    dumpBpfMap("mPowerSaveUidMap", dw, "");
+    ret = bpfIterateMapWithValue(nonExistentUid, dummyOwnerInfo, mPowerSaveUidMap, printUidInfo);
+    if (ret) {
+        dw.println("mDozableUidMap print end with error: %s", strerror(-ret));
+    }
+
+    dw.decIndent();
+
+    dw.decIndent();
+
+    dw.decIndent();
+
 }
 
 }  // namespace net
