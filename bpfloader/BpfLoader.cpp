@@ -199,9 +199,9 @@ int loadAndAttachProgram(bpf_attach_type type, const char* path, const char* nam
     }
 
     unique_fd fd;
-    if (type == BPF_CGROUP_INET_EGRESS) {
+    if (type == BPF_CGROUP_INET_INGRESS) {
         fd.reset(loadProg(INGRESS_PROG, mapPatterns));
-    } else if (type == BPF_CGROUP_INET_INGRESS) {
+    } else if (type == BPF_CGROUP_INET_EGRESS) {
         fd.reset(loadProg(EGRESS_PROG, mapPatterns));
     } else if (!strcmp(name, "xt_bpf_ingress_prog")) {
         fd.reset(loadProg(XT_BPF_INGRESS_PROG, mapPatterns));
