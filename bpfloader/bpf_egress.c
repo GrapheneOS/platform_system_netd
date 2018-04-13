@@ -15,11 +15,7 @@
  */
 
 #include <linux/bpf.h>
-#include <linux/if_ether.h>
-#include <linux/if_packet.h>
-#include <linux/ip.h>
 #include "bpf_kern.h"
-#include "bpf_shared.h"
 
 ELF_SEC(BPF_PROG_SEC_NAME)
 int bpf_cgroup_egress(struct __sk_buff* skb) {

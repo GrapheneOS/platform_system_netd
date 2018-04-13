@@ -85,6 +85,7 @@ protected:
 
 private:
     FirewallType mFirewallType;
+    bool mUseBpfOwnerMatch;
     std::set<std::string> mIfaceRules;
     int attachChain(const char*, const char*);
     int detachChain(const char*, const char*);

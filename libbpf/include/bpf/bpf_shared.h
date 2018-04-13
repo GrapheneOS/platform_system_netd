@@ -23,3 +23,13 @@
 #define UID_STATS_MAP 0xbfdaafffffffffff
 #define TAG_STATS_MAP 0xbfaaafffffffffff
 #define IFACE_STATS_MAP 0xbf1faceaafffffff
+#define DOZABLE_UID_MAP 0Xbfd0ab1e1dafffff
+#define STANDBY_UID_MAP 0Xbfadb1daffffffff
+#define POWERSAVE_UID_MAP 0Xbf0eae1dafffffff
+// These are also defined in NetdConstants.h, but we want to minimize the number of headers
+// included by the BPF kernel program.
+// TODO: refactor the the following constant into a seperate file so
+// NetdConstants.h can also include it from there.
+#define MIN_SYSTEM_UID 0
+#define MAX_SYSTEM_UID 9999
+#define UID_MAP_ENABLED UINT32_MAX
