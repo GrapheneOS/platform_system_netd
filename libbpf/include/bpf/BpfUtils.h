@@ -29,6 +29,9 @@
 #define ptr_to_u64(x) ((uint64_t)(uintptr_t)x)
 #define DEFAULT_LOG_LEVEL 1
 
+#define BPF_PASS 1
+#define BPF_DROP 0
+
 /* instruction set for bpf program */
 
 #define MEM_LD(SIZE) (BPF_LDX | BPF_SIZE(SIZE) | BPF_MEM)
@@ -106,17 +109,21 @@ constexpr const char* XT_BPF_EGRESS_PROG_PATH = BPF_PATH "/xt_bpf_egress_prog";
 
 constexpr const char* CGROUP_ROOT_PATH = "/dev/cg2_bpf";
 
-constexpr const char* COOKIE_UID_MAP_PATH = BPF_PATH "/traffic_cookie_uid_map";
+constexpr const char* COOKIE_TAG_MAP_PATH = BPF_PATH "/traffic_cookie_tag_map";
 constexpr const char* UID_COUNTERSET_MAP_PATH = BPF_PATH "/traffic_uid_counterSet_map";
 constexpr const char* UID_STATS_MAP_PATH = BPF_PATH "/traffic_uid_stats_map";
 constexpr const char* TAG_STATS_MAP_PATH = BPF_PATH "/traffic_tag_stats_map";
 constexpr const char* IFACE_INDEX_NAME_MAP_PATH = BPF_PATH "/traffic_iface_index_name_map";
 constexpr const char* IFACE_STATS_MAP_PATH = BPF_PATH "/traffic_iface_stats_map";
+constexpr const char* DOZABLE_UID_MAP_PATH = BPF_PATH "/traffic_dozable_uid_map";
+constexpr const char* STANDBY_UID_MAP_PATH = BPF_PATH "/traffic_standby_uid_map";
+constexpr const char* POWERSAVE_UID_MAP_PATH = BPF_PATH "/traffic_powersave_uid_map";
 
 const StatsKey NONEXISTENT_STATSKEY = {
     .uid = DEFAULT_OVERFLOWUID,
 };
 
+const uint32_t NONEXISTENT_UID = DEFAULT_OVERFLOWUID;
 const uint32_t NONEXISTENT_IFACE_STATS_KEY = 0;
 
 int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size,

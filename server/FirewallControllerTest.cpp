@@ -35,6 +35,7 @@ class FirewallControllerTest : public IptablesBaseTest {
 protected:
     FirewallControllerTest() {
         FirewallController::execIptablesRestore = fakeExecIptablesRestore;
+        mFw.mUseBpfOwnerMatch = false;
     }
     FirewallController mFw;
 
