@@ -17,9 +17,27 @@
 #include <linux/bpf.h>
 #include "bpf_kern.h"
 
-ELF_SEC(BPF_PROG_SEC_NAME)
+
+ELF_SEC(BPF_CGROUP_INGRESS_PROG_NAME)
+int bpf_cgroup_ingress(struct __sk_buff* skb) {
+    return bpf_traffic_account(skb, BPF_INGRESS);
+}
+
+ELF_SEC(BPF_CGROUP_EGRESS_PROG_NAME)
+int bpf_cgroup_egress(struct __sk_buff* skb) {
+    return bpf_traffic_account(skb, BPF_EGRESS);
+}
+
+ELF_SEC(XT_BPF_EGRESS_PROG_NAME)
 int xt_bpf_egress_prog(struct __sk_buff* skb) {
     uint32_t key = skb->ifindex;
     bpf_update_stats(skb, IFACE_STATS_MAP, BPF_EGRESS, &key);
+    return BPF_PASS;
+}
+
+ELF_SEC(XT_BPF_INGRESS_PROG_NAME)
+int xt_bpf_ingress_prog(struct __sk_buff* skb) {
+    uint32_t key = skb->ifindex;
+    bpf_update_stats(skb, IFACE_STATS_MAP, BPF_INGRESS, &key);
     return BPF_PASS;
 }
