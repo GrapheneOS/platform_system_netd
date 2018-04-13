@@ -15,8 +15,13 @@
  */
 
 #include <linux/bpf.h>
+#include <linux/if_ether.h>
+#include <linux/in.h>
+#include <linux/in6.h>
+#include <linux/ip.h>
+#include <linux/ipv6.h>
 #include <stdint.h>
-#include "bpf_shared.h"
+#include "bpf/bpf_shared.h"
 
 #define ELF_SEC(NAME) __attribute__((section(NAME), used))
 
@@ -48,52 +53,100 @@ static uint64_t (*get_socket_cookie)(struct __sk_buff* skb) = (void*)BPF_FUNC_ge
 static uint32_t (*get_socket_uid)(struct __sk_buff* skb) = (void*)BPF_FUNC_get_socket_uid;
 static int (*bpf_skb_load_bytes)(struct __sk_buff* skb, int off, void* to,
                                  int len) = (void*)BPF_FUNC_skb_load_bytes;
-
 #define BPF_PASS 1
 #define BPF_DROP 0
 #define BPF_EGRESS 0
 #define BPF_INGRESS 1
 
-static __always_inline int xt_bpf_count(struct __sk_buff* skb, int type) {
-    uint32_t key = skb->ifindex;
-    struct stats_value* value;
+#define IP_PROTO_OFF offsetof(struct iphdr, protocol)
+#define IPV6_PROTO_OFF offsetof(struct ipv6hdr, nexthdr)
+#define IPPROTO_IHL_OFF 0
+#define TCP_FLAG_OFF 13
+#define RST_OFFSET 2
 
-    value = find_map_entry(IFACE_STATS_MAP, &key);
+static __always_inline inline void bpf_update_stats(struct __sk_buff* skb, uint64_t map,
+                                                    int direction, void *key) {
+    struct stats_value* value;
+    value = find_map_entry(map, key);
     if (!value) {
         struct stats_value newValue = {};
-        write_to_map_entry(IFACE_STATS_MAP, &key, &newValue, BPF_NOEXIST);
-        value = find_map_entry(IFACE_STATS_MAP, &key);
+        write_to_map_entry(map, key, &newValue, BPF_NOEXIST);
+        value = find_map_entry(map, key);
     }
     if (value) {
-        if (type == BPF_EGRESS) {
+        if (direction == BPF_EGRESS) {
             __sync_fetch_and_add(&value->txPackets, 1);
             __sync_fetch_and_add(&value->txBytes, skb->len);
-        } else if (type == BPF_INGRESS) {
+        } else if (direction == BPF_INGRESS) {
             __sync_fetch_and_add(&value->rxPackets, 1);
             __sync_fetch_and_add(&value->rxBytes, skb->len);
         }
     }
-    return BPF_PASS;
 }
 
-static __always_inline inline void bpf_update_stats(struct __sk_buff* skb, uint64_t map,
-                                                    int direction, struct stats_key key) {
-    struct stats_value* value;
-    value = find_map_entry(map, &key);
-    if (!value) {
-        struct stats_value newValue = {};
-        write_to_map_entry(map, &key, &newValue, BPF_NOEXIST);
-        value = find_map_entry(map, &key);
+static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid) {
+    int offset = -1;
+    int ret = 0;
+    if (skb->protocol == ETH_P_IP) {
+        offset = IP_PROTO_OFF;
+        uint8_t proto, ihl;
+        uint16_t flag;
+        ret = bpf_skb_load_bytes(skb, offset, &proto, 1);
+        if (!ret) {
+            if (proto == IPPROTO_ESP) {
+                return 1;
+            } else if (proto == IPPROTO_TCP) {
+                ret = bpf_skb_load_bytes(skb, IPPROTO_IHL_OFF, &ihl, 1);
+                ihl = ihl & 0x0F;
+                ret = bpf_skb_load_bytes(skb, ihl * 4 + TCP_FLAG_OFF, &flag, 1);
+                if (ret == 0 && (flag >> RST_OFFSET & 1)) {
+                    return BPF_PASS;
+                }
+            }
+        }
+    } else if (skb->protocol == ETH_P_IPV6) {
+        offset = IPV6_PROTO_OFF;
+        uint8_t proto;
+        ret = bpf_skb_load_bytes(skb, offset, &proto, 1);
+        if (!ret) {
+            if (proto == IPPROTO_ESP) {
+                return BPF_PASS;
+            } else if (proto == IPPROTO_TCP) {
+                uint16_t flag;
+                ret = bpf_skb_load_bytes(skb, sizeof(struct ipv6hdr) + TCP_FLAG_OFF, &flag, 1);
+                if (ret == 0 && (flag >> RST_OFFSET & 1)) {
+                    return BPF_PASS;
+                }
+            }
+        }
     }
-    if (value) {
-      if (direction == BPF_INGRESS) {
-        __sync_fetch_and_add(&value->rxPackets, 1);
-        __sync_fetch_and_add(&value->rxBytes, skb->len);
-      } else {
-        __sync_fetch_and_add(&value->txPackets, 1);
-        __sync_fetch_and_add(&value->txBytes, skb->len);
-      }
+
+    if ((uid <= MAX_SYSTEM_UID) && (uid >= MIN_SYSTEM_UID)) return BPF_PASS;
+
+    // In each of these maps, the entry with key UID_MAP_ENABLED tells us whether that
+    // map is enabled or not.
+    // TODO: replace this with a map of size one that contains a config structure defined in
+    // bpf_shared.h that can be written by userspace and read here.
+    uint32_t mapSettingKey = UID_MAP_ENABLED;
+    uint8_t* ownerMatch;
+    uint8_t* mapEnabled = find_map_entry(DOZABLE_UID_MAP, &mapSettingKey);
+    if (mapEnabled && *mapEnabled) {
+        ownerMatch = find_map_entry(DOZABLE_UID_MAP, &uid);
+        if (ownerMatch) return *ownerMatch;
+        return BPF_DROP;
     }
+    mapEnabled = find_map_entry(STANDBY_UID_MAP, &mapSettingKey);
+    if (mapEnabled && *mapEnabled) {
+        ownerMatch = find_map_entry(STANDBY_UID_MAP, &uid);
+        if (ownerMatch) return *ownerMatch;
+    }
+    mapEnabled = find_map_entry(POWERSAVE_UID_MAP, &mapSettingKey);
+    if (mapEnabled && *mapEnabled) {
+        ownerMatch = find_map_entry(POWERSAVE_UID_MAP, &uid);
+        if (ownerMatch) return *ownerMatch;
+        return BPF_DROP;
+    }
+    return BPF_PASS;
 }
 
 static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int direction) {
@@ -116,10 +169,10 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
 
     int ret;
     if (tag) {
-        bpf_update_stats(skb, TAG_STATS_MAP, direction, key);
+        bpf_update_stats(skb, TAG_STATS_MAP, direction, &key);
     }
 
     key.tag = 0;
-    bpf_update_stats(skb, UID_STATS_MAP, direction, key);
-    return BPF_PASS;
+    bpf_update_stats(skb, UID_STATS_MAP, direction, &key);
+    return bpf_owner_match(skb, uid);
 }

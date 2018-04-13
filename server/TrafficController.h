@@ -20,8 +20,10 @@
 #include <linux/bpf.h>
 
 #include <netdutils/StatusOr.h>
+#include "FirewallController.h"
 #include "NetlinkListener.h"
 #include "Network.h"
+#include "android-base/thread_annotations.h"
 #include "android-base/unique_fd.h"
 
 // Since we cannot garbage collect the stats map since device boot, we need to make these maps as
@@ -49,8 +51,11 @@ constexpr const int NONEXIST_COOKIE = 0;
 namespace android {
 namespace net {
 
+class DumpWriter;
+
 class TrafficController {
   public:
+    TrafficController();
     /*
      * Initialize the whole controller
      */
@@ -99,6 +104,25 @@ class TrafficController {
      * Add the interface name and index pair into the eBPF map.
      */
     int addInterface(const char* name, uint32_t ifaceIndex);
+
+    int changeUidOwnerRule(ChildChain chain, const uid_t uid, FirewallRule rule, FirewallType type);
+
+    int removeUidOwnerRule(const uid_t uid);
+
+    int replaceUidOwnerMap(const std::string& name, bool isWhitelist,
+                           const std::vector<int32_t>& uids);
+
+    int updateOwnerMapEntry(const base::unique_fd& map_fd, uid_t uid, FirewallRule rule,
+                            FirewallType type);
+
+    void dump(DumpWriter& dw, bool verbose);
+
+    int replaceUidsInMap(const base::unique_fd& map_fd, const std::vector<int32_t> &uids,
+                         FirewallRule rule, FirewallType type);
+
+    static const String16 DUMP_KEYWORD;
+
+    int toggleUidOwnerMap(ChildChain chain, bool enable);
 
   private:
     /*
@@ -152,13 +176,34 @@ class TrafficController {
      */
     base::unique_fd mIfaceStatsMap;
 
+    /*
+     * mDozableUidMap: Store uids that have related rules in dozable mode owner match
+     * chain.
+     */
+    base::unique_fd mDozableUidMap GUARDED_BY(mOwnerMatchMutex);
+
+    /*
+     * mStandbyUidMap: Store uids that have related rules in standby mode owner match
+     * chain.
+     */
+    base::unique_fd mStandbyUidMap GUARDED_BY(mOwnerMatchMutex);
+
+    /*
+     * mPowerSaveUidMap: Store uids that have related rules in power save mode owner match
+     * chain.
+     */
+    base::unique_fd mPowerSaveUidMap GUARDED_BY(mOwnerMatchMutex);
+
     std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
 
     bool ebpfSupported;
 
+    std::mutex mOwnerMatchMutex;
+
     netdutils::Status loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
                                            base::unique_fd& cg_fd);
 
+    netdutils::Status initMaps();
     // For testing
     friend class TrafficControllerTest;
 };
