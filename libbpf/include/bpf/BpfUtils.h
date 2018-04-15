@@ -29,38 +29,8 @@
 #define ptr_to_u64(x) ((uint64_t)(uintptr_t)x)
 #define DEFAULT_LOG_LEVEL 1
 
-/* instruction set for bpf program */
-
-#define MEM_LD(SIZE) (BPF_LDX | BPF_SIZE(SIZE) | BPF_MEM)
-#define MEM_SET_BY_REG(SIZE) (BPF_STX | BPF_SIZE(SIZE) | BPF_MEM)
-#define MEM_SET_BY_VAL(SIZE) (BPF_ST | BPF_SIZE(SIZE) | BPF_MEM)
-#define PROG_EXIT (BPF_JMP | BPF_EXIT)
-#define REG_ALU64(OP) (BPF_ALU64 | BPF_OP(OP) | BPF_X)
-#define REG_ALU32(OP) (BPF_ALU | BPF_OP(OP) | BPF_X)
-#define REG_ALU_JMP(OP) (BPF_JMP | BPF_OP(OP) | BPF_X)
-#define REG_ATOMIC_ADD(SIZE) (BPF_STX | BPF_SIZE(SIZE) | BPF_XADD)
-#define REG_MOV64 (BPF_ALU64 | BPF_MOV | BPF_X)
-#define REG_MOV32 (BPF_ALU | BPF_MOV | BPF_X)
-#define SKB_LD(SIZE) (BPF_LD | BPF_SIZE(SIZE) | BPF_ABS)
-#define VAL_ALU64(OP) (BPF_ALU64 | BPF_OP(OP) | BPF_K)
-#define VAL_ALU32(OP) (BPF_ALU | BPF_OP(OP) | BPF_K)
-#define VAL_ALU_JMP(OP) (BPF_JMP | BPF_OP(OP) | BPF_K)
-#define VAL_MOV64 (BPF_ALU64 | BPF_MOV | BPF_K)
-#define VAL_MOV32 (BPF_ALU | BPF_MOV | BPF_K)
-
-/* Raw code statement block */
-
-#define BPF_INS_BLK(CODE, DST, SRC, OFF, IMM) \
-    ((struct bpf_insn){                       \
-        .code = (CODE), .dst_reg = (DST), .src_reg = (SRC), .off = (OFF), .imm = (IMM)})
-
-#ifndef BPF_PSEUDO_MAP_FD
-#define BPF_PSEUDO_MAP_FD 1
-#endif
-
-#define LOAD_MAP_FD(DST, MAP_FD)                                                                 \
-    BPF_INS_BLK(BPF_LD | BPF_DW | BPF_IMM, DST, BPF_PSEUDO_MAP_FD, 0, (__s32)((__u32)(MAP_FD))), \
-        BPF_INS_BLK(0, 0, 0, 0, (__s32)(((__u64)(MAP_FD)) >> 32))
+#define BPF_PASS 1
+#define BPF_DROP 0
 
 namespace android {
 namespace bpf {
@@ -106,17 +76,21 @@ constexpr const char* XT_BPF_EGRESS_PROG_PATH = BPF_PATH "/xt_bpf_egress_prog";
 
 constexpr const char* CGROUP_ROOT_PATH = "/dev/cg2_bpf";
 
-constexpr const char* COOKIE_UID_MAP_PATH = BPF_PATH "/traffic_cookie_uid_map";
+constexpr const char* COOKIE_TAG_MAP_PATH = BPF_PATH "/traffic_cookie_tag_map";
 constexpr const char* UID_COUNTERSET_MAP_PATH = BPF_PATH "/traffic_uid_counterSet_map";
 constexpr const char* UID_STATS_MAP_PATH = BPF_PATH "/traffic_uid_stats_map";
 constexpr const char* TAG_STATS_MAP_PATH = BPF_PATH "/traffic_tag_stats_map";
 constexpr const char* IFACE_INDEX_NAME_MAP_PATH = BPF_PATH "/traffic_iface_index_name_map";
 constexpr const char* IFACE_STATS_MAP_PATH = BPF_PATH "/traffic_iface_stats_map";
+constexpr const char* DOZABLE_UID_MAP_PATH = BPF_PATH "/traffic_dozable_uid_map";
+constexpr const char* STANDBY_UID_MAP_PATH = BPF_PATH "/traffic_standby_uid_map";
+constexpr const char* POWERSAVE_UID_MAP_PATH = BPF_PATH "/traffic_powersave_uid_map";
 
 const StatsKey NONEXISTENT_STATSKEY = {
     .uid = DEFAULT_OVERFLOWUID,
 };
 
+const uint32_t NONEXISTENT_UID = DEFAULT_OVERFLOWUID;
 const uint32_t NONEXISTENT_IFACE_STATS_KEY = 0;
 
 int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size,
@@ -136,6 +110,7 @@ netdutils::StatusOr<base::unique_fd> setUpBPFMap(uint32_t key_size, uint32_t val
                                                  uint32_t map_size, const char* path,
                                                  bpf_map_type map_type);
 bool hasBpfSupport();
+
 typedef std::function<int(void* key, const base::unique_fd& map_fd)> BpfMapEntryFilter;
 template <class Key, class Value>
 int bpfIterateMap(const Key& nonExistentKey, const Value& /* dummy */,
@@ -151,6 +126,37 @@ int bpfIterateMap(const Key& nonExistentKey, const Value& /* dummy */,
     while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1) {
         curKey = nextKey;
         if ((ret = filter(&curKey, map_fd))) return ret;
+    }
+    // Return errno if getNextMapKey return error before hit to the end of the map.
+    if (errno != ENOENT) {
+        ret = errno;
+        ALOGE("bpfIterateMap failed on MAP_FD: %d, error: %s", map_fd.get(), strerror(errno));
+        return -ret;
+    }
+    return 0;
+}
+
+typedef std::function<int(void* key, void* value)> BpfMapEntryFilterWithValue;
+template <class Key, class Value>
+int bpfIterateMapWithValue(const Key& nonExistentKey, const Value& /* dummy */,
+                           const base::unique_fd& map_fd,
+                           const BpfMapEntryFilterWithValue& filter) {
+    Key curKey = nonExistentKey;
+    Key nextKey;
+    int ret = 0;
+    Value curValue;
+    if (bpf::findMapEntry(map_fd, &curKey, &curValue) == 0) {
+        ALOGE("This entry should never exist in map!");
+        return -EUCLEAN;
+    }
+    while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1) {
+        curKey = nextKey;
+        ret = bpf::findMapEntry(map_fd, &curKey, &curValue);
+        if (ret) {
+            ALOGE("Get current value failed");
+            return ret;
+        }
+        if ((ret = filter(&curKey, &curValue))) return ret;
     }
     // Return errno if getNextMapKey return error before hit to the end of the map.
     if (errno != ENOENT) {
