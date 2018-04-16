@@ -279,8 +279,10 @@ Status TrafficController::start() {
 }
 
 int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
-    if (legacy_tagSocket(sockFd, tag, uid)) return -errno;
-    if (!ebpfSupported) return 0;
+    if (!ebpfSupported) {
+        if (legacy_tagSocket(sockFd, tag, uid)) return -errno;
+        return 0;
+    }
 
     uint64_t sock_cookie = getSocketCookie(sockFd);
     if (sock_cookie == INET_DIAG_NOCOOKIE) return -errno;
@@ -301,8 +303,10 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
 }
 
 int TrafficController::untagSocket(int sockFd) {
-    if (legacy_untagSocket(sockFd)) return -errno;
-    if (!ebpfSupported) return 0;
+    if (!ebpfSupported) {
+        if (legacy_untagSocket(sockFd)) return -errno;
+        return 0;
+    }
     uint64_t sock_cookie = getSocketCookie(sockFd);
 
     if (sock_cookie == INET_DIAG_NOCOOKIE) return -errno;
@@ -317,8 +321,10 @@ int TrafficController::untagSocket(int sockFd) {
 int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
     if (counterSetNum < 0 || counterSetNum >= COUNTERSETS_LIMIT) return -EINVAL;
     int res;
-    if (legacy_setCounterSet(counterSetNum, uid)) return -errno;
-    if (!ebpfSupported) return 0;
+    if (!ebpfSupported) {
+        if (legacy_setCounterSet(counterSetNum, uid)) return -errno;
+        return 0;
+    }
 
     // The default counter set for all uid is 0, so deleting the current counterset for that uid
     // will automatically set it to 0.
@@ -345,8 +351,10 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
 int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     int res = 0;
 
-    if (legacy_deleteTagData(tag, uid)) return -errno;
-    if (!ebpfSupported) return 0;
+    if (!ebpfSupported) {
+        if (legacy_deleteTagData(tag, uid)) return -errno;
+        return 0;
+    }
 
     uint64_t curCookie = NONEXIST_COOKIE;
     uint64_t nextCookie = 0;
