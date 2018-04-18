@@ -53,12 +53,18 @@ int cleanStatsMapInternal(const base::unique_fd& cookieTagMap, const base::uniqu
 int getIfaceNameFromMap(const base::unique_fd& ifaceMapFd, const base::unique_fd& statsMapFd,
                         uint32_t ifaceIndex, char* ifname, void* curKey,
                         int64_t* unknownIfaceBytesTotal);
+// For test only
+int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
+                                    const base::unique_fd& statsMapFd,
+                                    const base::unique_fd& ifaceMapFd);
 
 int bpfGetUidStats(uid_t uid, struct Stats* stats);
 int bpfGetIfaceStats(const char* iface, struct Stats* stats);
 int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
                                const std::vector<std::string>& limitIfaces, int limitTag,
                                int limitUid);
+
+int parseBpfNetworkStatsDev(std::vector<stats_line>* lines);
 int cleanStatsMap();
 }  // namespace bpf
 }  // namespace android
