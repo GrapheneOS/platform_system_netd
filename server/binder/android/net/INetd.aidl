@@ -483,6 +483,10 @@ interface INetd {
             int markValue,
             int markMask);
 
+    // This could not be declared as @uft8InCpp; thus, when used in native code it must be
+    // converted from a UTF-16 string to an ASCII string.
+    const String IPSEC_INTERFACE_PREFIX = "ipsec";
+
    /**
     * Add a Virtual Tunnel Interface.
     *
