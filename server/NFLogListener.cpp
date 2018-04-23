@@ -22,7 +22,7 @@
 #include <arpa/inet.h>
 #include <linux/netfilter/nfnetlink_log.h>
 
-#include <cutils/log.h>
+#include <log/log.h>
 #include <netdutils/Misc.h>
 #include <netdutils/Netfilter.h>
 #include <netdutils/Syscalls.h>

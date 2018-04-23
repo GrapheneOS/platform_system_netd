@@ -30,7 +30,7 @@
 #include <arpa/inet.h>
 
 #define LOG_TAG "PppController"
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include "PppController.h"
 

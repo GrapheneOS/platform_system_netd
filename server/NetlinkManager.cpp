@@ -29,7 +29,7 @@
 
 #define LOG_TAG "Netd"
 
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include <linux/netfilter/nfnetlink.h>
 #include <linux/netfilter/nfnetlink_log.h>

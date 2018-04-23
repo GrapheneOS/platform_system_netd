@@ -21,7 +21,7 @@
 
 #include <linux/netfilter/nfnetlink.h>
 
-#include <cutils/log.h>
+#include <log/log.h>
 #include <netdutils/Misc.h>
 #include <netdutils/Syscalls.h>
 

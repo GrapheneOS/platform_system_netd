@@ -22,7 +22,7 @@
 #include <sys/wait.h>
 
 #define LOG_TAG "ClatdController"
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include <resolv_netid.h>
 

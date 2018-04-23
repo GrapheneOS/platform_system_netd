@@ -28,8 +28,8 @@
 #define LOG_TAG "Netd"
 
 #include <android-base/stringprintf.h>
-#include <cutils/log.h>
 #include <cutils/sockets.h>
+#include <log/log.h>
 #include <logwrap/logwrap.h>
 
 #include "Controllers.h"
