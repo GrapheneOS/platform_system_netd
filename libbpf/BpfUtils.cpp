@@ -43,6 +43,11 @@ using android::netdutils::StatusOr;
 namespace android {
 namespace bpf {
 
+/*  The bpf_attr is a union which might have a much larger size then the struct we are using, while
+ *  The inline initializer only reset the field we are using and leave the reset of the memory as
+ *  is. The bpf kernel code will performs a much stricter check to ensure all unused field is 0. So
+ *  this syscall will normally fail with E2BIG if we don't do a memset to bpf_attr.
+ */
 int bpf(int cmd, Slice bpfAttr) {
     return syscall(__NR_bpf, cmd, bpfAttr.base(), bpfAttr.size());
 }
@@ -96,6 +101,16 @@ int getNextMapKey(const base::unique_fd& map_fd, void* key, void* next_key) {
     attr.map_fd = map_fd.get();
     attr.key = ptr_to_u64(key);
     attr.next_key = ptr_to_u64(next_key);
+
+    return bpf(BPF_MAP_GET_NEXT_KEY, Slice(&attr, sizeof(attr)));
+}
+
+int getFirstMapKey(const base::unique_fd& map_fd, void* firstKey) {
+    bpf_attr attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.map_fd = map_fd.get();
+    attr.key = 0;
+    attr.next_key = ptr_to_u64(firstKey);
 
     return bpf(BPF_MAP_GET_NEXT_KEY, Slice(&attr, sizeof(attr)));
 }
