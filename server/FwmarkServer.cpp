@@ -156,6 +156,15 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
         return -EBADF;
     }
 
+    int family;
+    socklen_t familyLen = sizeof(family);
+    if (getsockopt(*socketFd, SOL_SOCKET, SO_DOMAIN, &family, &familyLen) == -1) {
+        return -errno;
+    }
+    if (!FwmarkCommand::isSupportedFamily(family)) {
+        return -EAFNOSUPPORT;
+    }
+
     Fwmark fwmark;
     socklen_t fwmarkLen = sizeof(fwmark.intValue);
     if (getsockopt(*socketFd, SOL_SOCKET, SO_MARK, &fwmark.intValue, &fwmarkLen) == -1) {
