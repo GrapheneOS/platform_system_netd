@@ -28,7 +28,7 @@
 #include "NetdConstants.h"
 
 #define LOG_TAG "IptablesBaseTest"
-#include <cutils/log.h>
+#include <log/log.h>
 
 using android::base::StringPrintf;
 

@@ -33,7 +33,7 @@
 
 #define LOG_TAG "CommandListener"
 
-#include <cutils/log.h>
+#include <log/log.h>
 #include <netdutils/Status.h>
 #include <netdutils/StatusOr.h>
 #include <netutils/ifc.h>
