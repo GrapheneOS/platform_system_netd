@@ -30,6 +30,7 @@
 #include "RouteController.h"
 #include "Stopwatch.h"
 #include "oem_iptables_hook.h"
+#include "XfrmController.h"
 
 namespace android {
 namespace net {
@@ -279,6 +280,12 @@ void Controllers::init() {
         ALOGE("failed to initialize RouteController (%s)", strerror(-ret));
     }
     ALOGI("Initializing RouteController: %.1fms", s.getTimeAndReset());
+
+    netdutils::Status xStatus = XfrmController::Init();
+    if (!isOk(xStatus)) {
+        ALOGE("Failed to initialize XfrmController (%s)", netdutils::toString(xStatus).c_str());
+    };
+    ALOGI("Initializing XfrmController: %.1fms", s.getTimeAndReset());
 }
 
 Controllers* gCtls = nullptr;
