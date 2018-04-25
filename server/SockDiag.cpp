@@ -29,7 +29,7 @@
 #define LOG_TAG "Netd"
 
 #include <android-base/strings.h>
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include "NetdConstants.h"
 #include "Permission.h"

@@ -46,8 +46,8 @@
 #include "android-base/stringprintf.h"
 #include "android-base/strings.h"
 #define LOG_TAG "BandwidthController"
-#include <cutils/log.h>
 #include <cutils/properties.h>
+#include <log/log.h>
 #include <logwrap/logwrap.h>
 
 #include <netdutils/Syscalls.h>

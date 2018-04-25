@@ -27,7 +27,7 @@
 
 #include <android-base/strings.h>
 #include <android-base/stringprintf.h>
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include "Controllers.h"
 #include "FirewallController.h"

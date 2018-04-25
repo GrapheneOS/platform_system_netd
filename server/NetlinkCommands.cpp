@@ -22,7 +22,7 @@
 #include <linux/rtnetlink.h>
 
 #define LOG_TAG "Netd"
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include "NetdConstants.h"
 #include "NetlinkCommands.h"

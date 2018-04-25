@@ -26,7 +26,7 @@
 #include <android-base/strings.h>
 
 #define LOG_TAG "NetUtilsWrapper"
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include "NetUtilsWrapper.h"
 
