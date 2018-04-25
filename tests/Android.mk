@@ -49,7 +49,9 @@ LOCAL_SRC_FILES := binder_test.cpp \
                    ../server/dns/DnsTlsServer.cpp \
                    ../server/dns/DnsTlsSessionCache.cpp \
                    ../server/dns/DnsTlsSocket.cpp \
-
+                   ../server/InterfaceController.cpp \
+                   ../server/NetlinkCommands.cpp \
+                   ../server/XfrmController.cpp
 LOCAL_MODULE_TAGS := eng tests
 include $(BUILD_NATIVE_TEST)
 

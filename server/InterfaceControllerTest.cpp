@@ -178,6 +178,19 @@ TEST_F(StablePrivacyTest, ExistingPropertyWriteFail) {
 
 class GetIfaceListTest : public testing::Test {};
 
+TEST_F(GetIfaceListTest, IfaceNames) {
+    StatusOr<std::vector<std::string>> ifaceNames = InterfaceController::getIfaceNames();
+    EXPECT_EQ(ok, ifaceNames.status());
+    struct ifaddrs *ifaddr, *ifa;
+    EXPECT_EQ(0, getifaddrs(&ifaddr));
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        const auto val = std::find(
+                ifaceNames.value().begin(), ifaceNames.value().end(), ifa->ifa_name);
+        EXPECT_NE(ifaceNames.value().end(), val);
+    }
+    freeifaddrs(ifaddr);
+}
+
 TEST_F(GetIfaceListTest, IfaceExist) {
     StatusOr<std::map<std::string, uint32_t>> ifaceMap = InterfaceController::getIfaceList();
     EXPECT_EQ(ok, ifaceMap.status());

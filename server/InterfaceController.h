@@ -53,6 +53,7 @@ public:
             const char *family, const char *which, const char *interface, const char *parameter,
             const char *value);
 
+    static android::netdutils::StatusOr<std::vector<std::string>> getIfaceNames();
     static android::netdutils::StatusOr<std::map<std::string, uint32_t>> getIfaceList();
 
 private:
