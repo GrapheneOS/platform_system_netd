@@ -125,14 +125,16 @@ class XfrmController {
 public:
     XfrmController();
 
-    netdutils::Status ipSecSetEncapSocketOwner(const android::base::unique_fd& socket, int newUid,
-                                               uid_t callerUid);
+    static netdutils::Status Init();
 
-    netdutils::Status ipSecAllocateSpi(int32_t transformId, const std::string& localAddress,
-                                       const std::string& remoteAddress, int32_t inSpi,
-                                       int32_t* outSpi);
+    static netdutils::Status ipSecSetEncapSocketOwner(const android::base::unique_fd& socket,
+                                                      int newUid, uid_t callerUid);
 
-    netdutils::Status ipSecAddSecurityAssociation(
+    static netdutils::Status ipSecAllocateSpi(int32_t transformId, const std::string& localAddress,
+                                              const std::string& remoteAddress, int32_t inSpi,
+                                              int32_t* outSpi);
+
+    static netdutils::Status ipSecAddSecurityAssociation(
         int32_t transformId, int32_t mode, const std::string& sourceAddress,
         const std::string& destinationAddress, int32_t underlyingNetId, int32_t spi,
         int32_t markValue, int32_t markMask, const std::string& authAlgo,
@@ -141,41 +143,43 @@ public:
         const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits, int32_t encapType,
         int32_t encapLocalPort, int32_t encapRemotePort);
 
-    netdutils::Status ipSecDeleteSecurityAssociation(int32_t transformId,
-                                                     const std::string& sourceAddress,
-                                                     const std::string& destinationAddress,
-                                                     int32_t spi, int32_t markValue,
-                                                     int32_t markMask);
+    static netdutils::Status ipSecDeleteSecurityAssociation(int32_t transformId,
+                                                            const std::string& sourceAddress,
+                                                            const std::string& destinationAddress,
+                                                            int32_t spi, int32_t markValue,
+                                                            int32_t markMask);
 
-    netdutils::Status ipSecApplyTransportModeTransform(const android::base::unique_fd& socket,
-                                                       int32_t transformId, int32_t direction,
-                                                       const std::string& localAddress,
-                                                       const std::string& remoteAddress,
-                                                       int32_t spi);
+    static netdutils::Status
+    ipSecApplyTransportModeTransform(const android::base::unique_fd& socket, int32_t transformId,
+                                     int32_t direction, const std::string& localAddress,
+                                     const std::string& remoteAddress, int32_t spi);
 
-    netdutils::Status ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket);
+    static netdutils::Status
+    ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket);
 
-    netdutils::Status ipSecAddSecurityPolicy(int32_t transformId, int32_t direction,
-                                             const std::string& sourceAddress,
-                                             const std::string& destinationAddress, int32_t spi,
-                                             int32_t markValue, int32_t markMask);
+    static netdutils::Status ipSecAddSecurityPolicy(int32_t transformId, int32_t direction,
+                                                    const std::string& sourceAddress,
+                                                    const std::string& destinationAddress,
+                                                    int32_t spi, int32_t markValue,
+                                                    int32_t markMask);
 
-    netdutils::Status ipSecUpdateSecurityPolicy(int32_t transformId, int32_t direction,
-                                                const std::string& sourceAddress,
-                                                const std::string& destinationAddress, int32_t spi,
-                                                int32_t markValue, int32_t markMask);
+    static netdutils::Status ipSecUpdateSecurityPolicy(int32_t transformId, int32_t direction,
+                                                       const std::string& sourceAddress,
+                                                       const std::string& destinationAddress,
+                                                       int32_t spi, int32_t markValue,
+                                                       int32_t markMask);
 
-    netdutils::Status ipSecDeleteSecurityPolicy(int32_t transformId, int32_t direction,
-                                                const std::string& sourceAddress,
-                                                const std::string& destinationAddress,
-                                                int32_t markValue, int32_t markMask);
+    static netdutils::Status ipSecDeleteSecurityPolicy(int32_t transformId, int32_t direction,
+                                                       const std::string& sourceAddress,
+                                                       const std::string& destinationAddress,
+                                                       int32_t markValue, int32_t markMask);
 
-    int addVirtualTunnelInterface(const std::string& deviceName,
-                                  const std::string& localAddress,
-                                  const std::string& remoteAddress,
-                                  int32_t ikey, int32_t okey, bool isUpdate);
+    static int addVirtualTunnelInterface(const std::string& deviceName,
+                                         const std::string& localAddress,
+                                         const std::string& remoteAddress, int32_t ikey,
+                                         int32_t okey, bool isUpdate);
 
-    int removeVirtualTunnelInterface(const std::string& deviceName);
+    static int removeVirtualTunnelInterface(const std::string& deviceName);
 
     // Some XFRM netlink attributes comprise a header, a struct, and some data
     // after the struct. We wrap all of those in one struct for easier
@@ -323,9 +327,9 @@ private:
 
     static netdutils::Status processSecurityPolicy(int32_t transformId, int32_t direction,
                                                    const std::string& localAddress,
-                                                   const std::string& remoteAddress,
-                                                   int32_t spi, int32_t markValue,
-                                                   int32_t markMask, int32_t msgType);
+                                                   const std::string& remoteAddress, int32_t spi,
+                                                   int32_t markValue, int32_t markMask,
+                                                   int32_t msgType);
     static netdutils::Status updateTunnelModeSecurityPolicy(const XfrmSaInfo& record,
                                                             const XfrmSocket& sock,
                                                             XfrmDirection direction,
@@ -333,6 +337,10 @@ private:
     static netdutils::Status deleteTunnelModeSecurityPolicy(const XfrmSaInfo& record,
                                                             const XfrmSocket& sock,
                                                             XfrmDirection direction);
+    static netdutils::Status flushInterfaces();
+    static netdutils::Status flushSaDb(const XfrmSocket& s);
+    static netdutils::Status flushPolicyDb(const XfrmSocket& s);
+
     // END TODO(messagerefactor)
 };
 
