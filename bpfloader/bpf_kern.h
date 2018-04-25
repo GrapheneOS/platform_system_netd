@@ -150,6 +150,14 @@ static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid) {
 }
 
 static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int direction) {
+    uint32_t sock_uid = get_socket_uid(skb);
+    int match = bpf_owner_match(skb, sock_uid);
+    if ((direction == BPF_EGRESS) && (match == BPF_DROP)) {
+        // If an outbound packet is going to be dropped, we do not count that
+        // traffic.
+        return match;
+    }
+
     uint64_t cookie = get_socket_cookie(skb);
     struct uid_tag* utag = find_map_entry(COOKIE_TAG_MAP, &cookie);
     uint32_t uid, tag;
@@ -157,7 +165,7 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
         uid = utag->uid;
         tag = utag->tag;
     } else {
-        uid = get_socket_uid(skb);
+        uid = sock_uid;
         tag = 0;
     }
 
@@ -174,5 +182,5 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
 
     key.tag = 0;
     bpf_update_stats(skb, UID_STATS_MAP, direction, &key);
-    return bpf_owner_match(skb, uid);
+    return match;
 }
