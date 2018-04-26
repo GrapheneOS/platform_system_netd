@@ -24,7 +24,7 @@ LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
 LOCAL_CFLAGS += -Wno-varargs
 
 EXTRA_LDLIBS := -lpthread
-LOCAL_SHARED_LIBRARIES += libbase libbinder libcrypto libcutils liblog \
+LOCAL_SHARED_LIBRARIES += libbase libbinder libbpf libcrypto libcutils liblog \
                           libnetd_client libnetutils libssl libutils
 LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder liblogwrap libnetdaidl_static \
                           libnetdutils libnetd_test_tun_interface libbpf
