@@ -317,6 +317,7 @@ TEST_F(BinderTest, TestXfrmControllerInit) {
     ASSERT_TRUE(allocateIpSecResources(false, &spi));
 
     status = XfrmController::Init();
+    ASSERT_TRUE(status.ok());
     ASSERT_TRUE(allocateIpSecResources(true, &spi));
 
     // Clean up
