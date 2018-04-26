@@ -22,7 +22,7 @@
 #include <android-base/stringprintf.h>
 
 #define LOG_TAG "Netd"
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include "Controllers.h"
 #include "IdletimerController.h"

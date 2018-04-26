@@ -24,7 +24,7 @@
 #include <gtest/gtest.h>
 
 #define LOG_TAG "IptablesRestoreControllerTest"
-#include <cutils/log.h>
+#include <log/log.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <netdutils/MockSyscalls.h>
