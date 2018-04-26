@@ -53,7 +53,7 @@ bool FwmarkClient::shouldSetFwmark(int family) {
     if (isOverriddenBy(ANDROID_NO_USE_FWMARK_CLIENT)) {
         return false;
     }
-    return family == AF_INET || family == AF_INET6;
+    return FwmarkCommand::isSupportedFamily(family);
 }
 
 bool FwmarkClient::shouldReportConnectComplete(int family) {
