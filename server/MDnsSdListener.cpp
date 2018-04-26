@@ -32,8 +32,8 @@
 #define DBG 1
 #define VDBG 1
 
-#include <cutils/log.h>
 #include <cutils/properties.h>
+#include <log/log.h>
 #include <sysutils/SocketClient.h>
 
 #include "MDnsSdListener.h"

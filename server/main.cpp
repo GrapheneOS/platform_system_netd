@@ -28,7 +28,7 @@
 
 #define LOG_TAG "Netd"
 
-#include "cutils/log.h"
+#include "log/log.h"
 #include "utils/RWLock.h"
 
 #include <binder/IPCThreadState.h>

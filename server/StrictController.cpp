@@ -24,7 +24,7 @@
 
 #define LOG_TAG "StrictController"
 #define LOG_NDEBUG 0
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>

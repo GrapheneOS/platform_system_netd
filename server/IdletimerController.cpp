@@ -114,7 +114,7 @@
 #include <android-base/stringprintf.h>
 
 #define LOG_TAG "IdletimerController"
-#include <cutils/log.h>
+#include <log/log.h>
 #include <logwrap/logwrap.h>
 
 #include "IdletimerController.h"

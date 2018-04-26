@@ -56,8 +56,8 @@
 #include "netdutils/Fd.h"
 #include "netdutils/Slice.h"
 #include "netdutils/Syscalls.h"
-#include <cutils/log.h>
 #include <cutils/properties.h>
+#include <log/log.h>
 #include <logwrap/logwrap.h>
 
 using android::netdutils::Fd;

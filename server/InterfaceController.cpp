@@ -26,7 +26,7 @@
 #include <android-base/file.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
-#include <cutils/log.h>
+#include <log/log.h>
 #include <logwrap/logwrap.h>
 #include <netutils/ifc.h>
 

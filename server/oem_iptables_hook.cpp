@@ -23,7 +23,7 @@
 #include <unistd.h>
 
 #define LOG_TAG "OemIptablesHook"
-#include <cutils/log.h>
+#include <log/log.h>
 #include <logwrap/logwrap.h>
 #include "NetdConstants.h"
 
