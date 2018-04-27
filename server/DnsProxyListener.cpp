@@ -38,7 +38,7 @@
 #include <list>
 #include <vector>
 
-#include <cutils/log.h>
+#include <log/log.h>
 #include <netdutils/Slice.h>
 #include <utils/String16.h>
 #include <sysutils/SocketClient.h>

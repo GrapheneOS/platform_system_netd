@@ -42,12 +42,15 @@
 #include <logwrap/logwrap.h>
 #include <netutils/ifc.h>
 
+#include "InterfaceController.h"
 #include "NetdConstants.h"
 #include "Stopwatch.h"
+#include "XfrmController.h"
 #include "tun_interface.h"
 #include "android/net/INetd.h"
 #include "android/net/UidRange.h"
 #include "binder/IServiceManager.h"
+#include "netdutils/Syscalls.h"
 
 #define IP_PATH "/system/bin/ip"
 #define IP6TABLES_PATH "/system/bin/ip6tables"
@@ -61,6 +64,8 @@ using android::base::StartsWith;
 using android::net::INetd;
 using android::net::TunInterface;
 using android::net::UidRange;
+using android::net::XfrmController;
+using android::netdutils::sSyscalls;
 using android::os::PersistableBundle;
 
 static const char* IP_RULE_V4 = "-4";
@@ -91,6 +96,8 @@ public:
         mNetd->networkDestroy(TEST_NETID1);
         mNetd->networkDestroy(TEST_NETID2);
     }
+
+    bool allocateIpSecResources(bool expectOk, int32_t *spi);
 
     // Static because setting up the tun interface takes about 40ms.
     static void SetUpTestCase() {
@@ -252,18 +259,18 @@ TEST_F(BinderTest, TestVirtualTunnelInterface) {
         int32_t iKey;
         int32_t oKey;
     } kTestData[] = {
-        { "IPV4", "test_vti", "127.0.0.1", "8.8.8.8", 0x1234 + 53, 0x1234 + 53 },
-        { "IPV6", "test_vti6", "::1", "2001:4860:4860::8888", 0x1234 + 50, 0x1234 + 50 },
+        {"IPV4", "test_vti", "127.0.0.1", "8.8.8.8", 0x1234 + 53, 0x1234 + 53},
+        {"IPV6", "test_vti6", "::1", "2001:4860:4860::8888", 0x1234 + 50, 0x1234 + 50},
     };
 
     for (unsigned int i = 0; i < arraysize(kTestData); i++) {
-        const auto &td = kTestData[i];
+        const auto& td = kTestData[i];
 
         binder::Status status;
 
         // Create Virtual Tunnel Interface.
-        status = mNetd->addVirtualTunnelInterface(td.deviceName, td.localAddress,
-                                                  td.remoteAddress, td.iKey, td.oKey);
+        status = mNetd->addVirtualTunnelInterface(td.deviceName, td.localAddress, td.remoteAddress,
+                                                  td.iKey, td.oKey);
         EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
 
         // Update Virtual Tunnel Interface.
@@ -275,6 +282,59 @@ TEST_F(BinderTest, TestVirtualTunnelInterface) {
         status = mNetd->removeVirtualTunnelInterface(td.deviceName);
         EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
     }
+}
+
+#define RETURN_FALSE_IF_NEQ(_expect_, _ret_) \
+        do { if ((_expect_) != (_ret_)) return false; } while(false)
+bool BinderTest::allocateIpSecResources(bool expectOk, int32_t *spi) {
+    netdutils::Status status = XfrmController::ipSecAllocateSpi(0, "::", "::1", 123, spi);
+    SCOPED_TRACE(status);
+    RETURN_FALSE_IF_NEQ(status.ok(), expectOk);
+
+    // Add a policy
+    status = XfrmController::ipSecAddSecurityPolicy(0, 0, "::", "::1", 123, 0, 0);
+    SCOPED_TRACE(status);
+    RETURN_FALSE_IF_NEQ(status.ok(), expectOk);
+
+    // Add an ipsec interface
+    status = netdutils::statusFromErrno(
+            XfrmController::addVirtualTunnelInterface(
+                    "ipsec_test", "::", "::1", 0xF00D, 0xD00D, false),
+            "addVirtualTunnelInterface");
+    return (status.ok() == expectOk);
+}
+
+
+TEST_F(BinderTest, TestXfrmControllerInit) {
+    netdutils::Status status;
+    status = XfrmController::Init();
+    SCOPED_TRACE(status);
+    ASSERT_TRUE(status.ok());
+
+    int32_t spi = 0;
+
+    ASSERT_TRUE(allocateIpSecResources(true, &spi));
+    ASSERT_TRUE(allocateIpSecResources(false, &spi));
+
+    status = XfrmController::Init();
+    ASSERT_TRUE(status.ok());
+    ASSERT_TRUE(allocateIpSecResources(true, &spi));
+
+    // Clean up
+    status = XfrmController::ipSecDeleteSecurityAssociation(0, "::", "::1", 123, spi, 0);
+    SCOPED_TRACE(status);
+    ASSERT_TRUE(status.ok());
+
+    status = XfrmController::ipSecDeleteSecurityPolicy(0, 0, "::", "::1", 0, 0);
+    SCOPED_TRACE(status);
+    ASSERT_TRUE(status.ok());
+
+    // Remove Virtual Tunnel Interface.
+    status = netdutils::statusFromErrno(
+            XfrmController::removeVirtualTunnelInterface("ipsec_test"),
+            "removeVirtualTunnelInterface");
+
+    ASSERT_TRUE(status.ok());
 }
 
 static int bandwidthDataSaverEnabled(const char *binary) {

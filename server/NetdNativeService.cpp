@@ -21,8 +21,8 @@
 
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
-#include <cutils/log.h>
 #include <cutils/properties.h>
+#include <log/log.h>
 #include <utils/Errors.h>
 #include <utils/String16.h>
 
@@ -466,7 +466,6 @@ binder::Status NetdNativeService::ipSecSetEncapSocketOwner(const android::base::
     uid_t callerUid = IPCThreadState::self()->getCallingUid();
     return asBinderStatus(gCtls->xfrmCtrl.ipSecSetEncapSocketOwner(socket, newUid, callerUid));
 }
-
 
 binder::Status NetdNativeService::ipSecAllocateSpi(
         int32_t transformId,
