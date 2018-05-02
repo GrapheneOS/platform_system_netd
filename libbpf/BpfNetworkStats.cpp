@@ -48,7 +48,7 @@ int bpfGetUidStatsInternal(uid_t uid, Stats* stats, const base::unique_fd& map_f
     struct StatsValue dummyValue;
     auto processUidStats = [uid, stats](void *key, const base::unique_fd& map_fd) {
         if (((StatsKey *) key)->uid != uid) {
-            return 0;
+            return BPF_CONTINUE;
         }
         StatsValue statsEntry;
         int ret = bpf::findMapEntry(map_fd, key, &statsEntry);
@@ -57,7 +57,7 @@ int bpfGetUidStatsInternal(uid_t uid, Stats* stats, const base::unique_fd& map_f
         stats->txPackets += statsEntry.txPackets;
         stats->rxBytes += statsEntry.rxBytes;
         stats->txBytes += statsEntry.txBytes;
-        return 0;
+        return BPF_CONTINUE;
     };
     return bpfIterateMap(nonExistentKey, dummyValue, map_fd, processUidStats);
 }
@@ -86,7 +86,7 @@ int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
         int ifIndex = *(int *)key;
         if (getIfaceNameFromMap(ifaceNameMapFd, ifaceStatsMapFd, ifIndex, ifname, &ifIndex,
                                 &unknownIfaceBytesTotal)) {
-            return 0;
+            return BPF_CONTINUE;
         }
         if (!iface || !strcmp(iface, ifname)) {
             StatsValue statsEntry;
@@ -97,7 +97,7 @@ int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
             stats->rxBytes += statsEntry.rxBytes;
             stats->txBytes += statsEntry.txBytes;
         }
-        return 0;
+        return BPF_CONTINUE;
     };
     return bpfIterateMap(nonExistentKey, dummyValue, ifaceStatsMapFd, processIfaceStats);
 }
@@ -179,24 +179,24 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
         char ifname[IFNAMSIZ];
         if (getIfaceNameFromMap(ifaceMapFd, statsMapFd, curKey.ifaceIndex, ifname, &curKey,
                                 &unknownIfaceBytesTotal)) {
-            return 0;
+            return BPF_CONTINUE;
         }
         std::string ifnameStr(ifname);
         if (limitIfaces.size() > 0 &&
             std::find(limitIfaces.begin(), limitIfaces.end(), ifnameStr) == limitIfaces.end()) {
             // Nothing matched; skip this line.
-            return 0;
+            return BPF_CONTINUE;
         }
         if (limitTag != TAG_ALL && uint32_t(limitTag) != curKey.tag) {
-            return 0;
+            return BPF_CONTINUE;
         }
         if (limitUid != UID_ALL && uint32_t(limitUid) != curKey.uid) {
-            return 0;
+            return BPF_CONTINUE;
         }
         StatsValue statsEntry;
         if (bpf::findMapEntry(statsMapFd, &curKey, &statsEntry) < 0) return -errno;
         lines->push_back(populateStatsEntry(curKey, statsEntry, ifname));
-        return 0;
+        return BPF_CONTINUE;
     };
     return bpfIterateMap(nonExistentKey, dummyValue, statsMapFd, processDetailUidStats);
 }
