@@ -129,7 +129,8 @@ Status initialOwnerMap(const unique_fd& map_fd, const std::string mapName) {
 }
 
 Status TrafficController::initMaps() {
-    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    std::lock_guard<std::mutex> ownerMapGuard(mOwnerMatchMutex);
+    std::lock_guard<std::mutex> statsMapGuard(mDeleteStatsMutex);
     ASSIGN_OR_RETURN(mCookieTagMap,
                      setUpBPFMap(sizeof(uint64_t), sizeof(struct UidTag), COOKIE_UID_MAP_SIZE,
                                  COOKIE_TAG_MAP_PATH, BPF_MAP_TYPE_HASH));
@@ -285,7 +286,7 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
     }
 
     uint64_t sock_cookie = getSocketCookie(sockFd);
-    if (sock_cookie == INET_DIAG_NOCOOKIE) return -errno;
+    if (sock_cookie == NONEXISTENT_COOKIE) return -errno;
     UidTag newKey = {.uid = (uint32_t)uid, .tag = tag};
 
     // Update the tag information of a socket to the cookieUidMap. Use BPF_ANY
@@ -309,7 +310,7 @@ int TrafficController::untagSocket(int sockFd) {
     }
     uint64_t sock_cookie = getSocketCookie(sockFd);
 
-    if (sock_cookie == INET_DIAG_NOCOOKIE) return -errno;
+    if (sock_cookie == NONEXISTENT_COOKIE) return -errno;
     int res = deleteMapEntry(mCookieTagMap, &sock_cookie);
     if (res) {
         res = -errno;
@@ -346,9 +347,8 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
     return res;
 }
 
-// TODO: Add a lock for delete tag Data so when several request for different uid comes in, they do
-// not race with each other.
 int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
+    std::lock_guard<std::mutex> guard(mDeleteStatsMutex);
     int res = 0;
 
     if (!ebpfSupported) {
@@ -356,56 +356,46 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
         return 0;
     }
 
-    uint64_t curCookie = NONEXIST_COOKIE;
-    uint64_t nextCookie = 0;
-    UidTag tmp_uidtag;
-    std::vector<uint64_t> cookieList;
+    uint64_t nonExistentCookie = NONEXISTENT_COOKIE;
     // First we go through the cookieTagMap to delete the target uid tag combination. Or delete all
-    // the tags related to the uid if the tag is 0, we start the map iteration with a cookie of
-    // INET_DIAG_NOCOOKIE because it's guaranteed that that will not be in the map.
-    while (getNextMapKey(mCookieTagMap, &curCookie, &nextCookie) != -1) {
-        res = findMapEntry(mCookieTagMap, &nextCookie, &tmp_uidtag);
-        if (res < 0) {
-            res = -errno;
-            ALOGE("Failed to get tag info(cookie = %" PRIu64 ": %s\n", nextCookie, strerror(errno));
-            // Continue to look for next entry.
-            curCookie = nextCookie;
-            continue;
-        }
-
-        if (tmp_uidtag.uid == uid && (tmp_uidtag.tag == tag || tag == 0)) {
-            res = deleteMapEntry(mCookieTagMap, &nextCookie);
-            if (res < 0 && errno != ENOENT) {
-                res = -errno;
-                ALOGE("Failed to delete data(cookie = %" PRIu64 "): %s\n", nextCookie,
-                      strerror(errno));
+    // the tags related to the uid if the tag is 0.
+    struct UidTag dummyUidTag;
+    auto deleteMatchedCookieEntry = [&uid, &tag](void *key, void *value,
+                                                 const base::unique_fd& map_fd) {
+        UidTag *tmp_uidtag = (UidTag *) value;
+        uint64_t cookie = *(uint64_t *)key;
+        if (tmp_uidtag->uid == uid && (tmp_uidtag->tag == tag || tag == 0)) {
+            int res = deleteMapEntry(map_fd, &cookie);
+            if (res == 0 || (res && errno == ENOENT)) {
+                return BPF_DELETED;
             }
-        } else {
-            // Move forward to next cookie in the map.
-            curCookie = nextCookie;
+            ALOGE("Failed to delete data(cookie = %" PRIu64 "): %s\n", cookie,
+                  strerror(errno));
         }
-    }
-
+        // Move forward to next cookie in the map.
+        return BPF_CONTINUE;
+    };
+    bpfIterateMapWithValue(nonExistentCookie, dummyUidTag, mCookieTagMap,
+                                 deleteMatchedCookieEntry);
     // Now we go through the Tag stats map and delete the data entry with correct uid and tag
-    // combination. Or all tag stats under that uid if the target tag is 0. The initial key is
-    // set to the nonexist_statskey because it will never be in the map, and thus getNextMapKey will
-    // return 0 and set nextKey to the first key in the map.
-    struct StatsKey curKey, nextKey;
-    curKey = android::bpf::NONEXISTENT_STATSKEY;
-    while (getNextMapKey(mTagStatsMap, &curKey, &nextKey) != -1) {
-        if (nextKey.uid == uid && (nextKey.tag == tag || tag == 0)) {
-            res = deleteMapEntry(mTagStatsMap, &nextKey);
-            if (res < 0 && errno != ENOENT) {
-                // Skip the current entry if unexpected error happened.
-                ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", nextKey.uid, nextKey.tag,
-                      strerror(errno));
-                curKey = nextKey;
+    // combination. Or all tag stats under that uid if the target tag is 0.
+    struct StatsKey nonExistentStatsKey = NONEXISTENT_STATSKEY;
+    struct StatsValue dummyStatsValue;
+    auto deleteMatchedUidTagEntry = [&uid, &tag](void *key, const base::unique_fd& map_fd) {
+        StatsKey *keyInfo = (StatsKey *) key;
+        if (keyInfo->uid == uid && (keyInfo->tag == tag || tag == 0)) {
+            int res = deleteMapEntry(map_fd, key);
+            if (res == 0 || (res && (errno == ENOENT))) {
+                //Entry is deleted, use the current key to get a new nextKey;
+                return BPF_DELETED;
             }
-        } else {
-            curKey = nextKey;
+            ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", keyInfo->uid,
+                  keyInfo->tag, strerror(errno));
         }
-    }
-
+        return BPF_CONTINUE;
+    };
+    bpfIterateMap(nonExistentStatsKey, dummyStatsValue, mTagStatsMap,
+                  deleteMatchedUidTagEntry);
     // If the tag is not zero, we already deleted all the data entry required. If tag is 0, we also
     // need to delete the stats stored in uidStatsMap and counterSet map.
     if (tag != 0) return 0;
@@ -414,52 +404,8 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     if (res < 0 && errno != ENOENT) {
         ALOGE("Failed to delete counterSet data(uid=%u, tag=%u): %s\n", uid, tag, strerror(errno));
     }
-
-    // For the uid stats deleted from the map, move them into a special
-    // removed uid entry. The removed uid is stored in uid 0, tag 0 and
-    // counterSet as COUNTERSETS_LIMIT.
-    StatsKey removedStatsKey = {0, 0, COUNTERSETS_LIMIT, 0};
-    StatsValue removedStatsTotal = {};
-    res = findMapEntry(mUidStatsMap, &removedStatsKey, &removedStatsTotal);
-    if (res < 0 && errno != ENOENT) {
-        ALOGE("Failed to get stats of removed uid: %s", strerror(errno));
-    }
-
-    curKey = android::bpf::NONEXISTENT_STATSKEY;
-    while (getNextMapKey(mUidStatsMap, &curKey, &nextKey) != -1) {
-        if (nextKey.uid == uid) {
-            StatsValue old_stats = {};
-            res = findMapEntry(mUidStatsMap, &nextKey, &old_stats);
-            if (res < 0) {
-                if (errno != ENOENT) {
-                    // if errno is ENOENT Somebody else deleted nextKey. Lookup the next key from
-                    // curKey. If we have other error. Skip this key to avoid an infinite loop.
-                    curKey = nextKey;
-                }
-                continue;
-            }
-            res = deleteMapEntry(mUidStatsMap, &nextKey);
-            if (res < 0 && errno != ENOENT) {
-                ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", nextKey.uid, nextKey.tag,
-                      strerror(errno));
-                curKey = nextKey;
-                continue;
-            }
-            removedStatsTotal.rxPackets += old_stats.rxPackets;
-            removedStatsTotal.rxBytes += old_stats.rxBytes;
-            removedStatsTotal.txPackets += old_stats.txPackets;
-            removedStatsTotal.txBytes += old_stats.txBytes;
-        } else {
-            curKey = nextKey;
-        }
-    }
-
-    res = writeToMapEntry(mUidStatsMap, &removedStatsKey, &removedStatsTotal, BPF_ANY);
-    if (res) {
-        res = -errno;
-        ALOGE("Failed to add deleting stats to removed uid: %s", strerror(errno));
-    }
-    return res;
+    return bpfIterateMap(nonExistentStatsKey, dummyStatsValue, mUidStatsMap,
+                         deleteMatchedUidTagEntry);
 }
 
 int TrafficController::addInterface(const char* name, uint32_t ifaceIndex) {
@@ -544,7 +490,7 @@ int TrafficController::replaceUidsInMap(const base::unique_fd& map_fd,
         if (uid != UID_MAP_ENABLED && uidSet.find((int32_t)uid) == uidSet.end()) {
             uidsToDelete.push_back(uid);
         }
-        return 0;
+        return BPF_CONTINUE;
     };
     uint32_t nonExistentKey = NONEXISTENT_UID;
     uint8_t dummyValue;
@@ -662,7 +608,8 @@ void dumpBpfMap(std::string mapName, DumpWriter& dw, const std::string& header) 
 const String16 TrafficController::DUMP_KEYWORD = String16("trafficcontroller");
 
 void TrafficController::dump(DumpWriter& dw, bool verbose) {
-    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    std::lock_guard<std::mutex> ownerMapGuard(mOwnerMatchMutex);
+    std::lock_guard<std::mutex> statsMapGuard(mDeleteStatsMutex);
     dw.incIndent();
     dw.println("TrafficController");
 
@@ -708,13 +655,13 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
 
     // Print CookieTagMap content.
     dumpBpfMap("mCookieTagMap", dw, "");
-    const uint64_t nonExistentCookie = NONEXIST_COOKIE;
+    const uint64_t nonExistentCookie = NONEXISTENT_COOKIE;
     UidTag dummyUidTag;
-    auto printCookieTagInfo = [&dw](void *key, void *value) {
+    auto printCookieTagInfo = [&dw](void *key, void *value, const base::unique_fd&) {
         UidTag uidTagEntry = *(UidTag *) value;
         uint64_t cookie = *(uint64_t *) key;
         dw.println("cookie=%" PRIu64 " tag=0x%x uid=%u", cookie, uidTagEntry.tag, uidTagEntry.uid);
-        return 0;
+        return BPF_CONTINUE;
     };
     int ret = bpfIterateMapWithValue(nonExistentCookie, dummyUidTag, mCookieTagMap,
                                      printCookieTagInfo);
@@ -726,11 +673,11 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     dumpBpfMap("mUidCounterSetMap", dw, "");
     const uint32_t nonExistentUid = NONEXISTENT_UID;
     uint32_t dummyUidInfo;
-    auto printUidInfo = [&dw](void *key, void *value) {
+    auto printUidInfo = [&dw](void *key, void *value, const base::unique_fd&) {
         uint8_t setting = *(uint8_t *) value;
         uint32_t uid = *(uint32_t *) key;
         dw.println("%u %u", uid, setting);
-        return 0;
+        return BPF_CONTINUE;
     };
     ret = bpfIterateMapWithValue(nonExistentUid, dummyUidInfo, mUidCounterSetMap, printUidInfo);
     if (ret) {
@@ -743,7 +690,7 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     dumpBpfMap("mUidStatsMap", dw, statsHeader);
     const struct StatsKey nonExistentStatsKey = NONEXISTENT_STATSKEY;
     struct StatsValue dummyStatsValue;
-    auto printStatsInfo = [&dw, this](void *key, void *value) {
+    auto printStatsInfo = [&dw, this](void *key, void *value, const base::unique_fd&) {
         StatsValue statsEntry = *(StatsValue *) value;
         StatsKey keyInfo = *(StatsKey *) key;
         char ifname[IFNAMSIZ];
@@ -754,7 +701,7 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
         dw.println("%u %s 0x%x %u %u %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64, ifIndex, ifname,
                    keyInfo.tag, keyInfo.uid, keyInfo.counterSet, statsEntry.rxBytes,
                    statsEntry.rxPackets, statsEntry.txBytes, statsEntry.txPackets);
-        return 0;
+        return BPF_CONTINUE;
     };
     ret = bpfIterateMapWithValue(nonExistentStatsKey, dummyStatsValue, mUidStatsMap,
                                  printStatsInfo);
@@ -774,11 +721,11 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     dumpBpfMap("mIfaceIndexNameMap", dw, "");
     uint32_t nonExistentIface = NONEXISTENT_IFACE_STATS_KEY;
     char dummyIface[IFNAMSIZ];
-    auto printIfaceNameInfo = [&dw](void *key, void *value) {
+    auto printIfaceNameInfo = [&dw](void *key, void *value, const base::unique_fd&) {
         char *ifname = (char *) value;
         uint32_t ifaceIndex = *(uint32_t *)key;
         dw.println("ifaceIndex=%u ifaceName=%s", ifaceIndex, ifname);
-        return 0;
+        return BPF_CONTINUE;
     };
     ret = bpfIterateMapWithValue(nonExistentIface, dummyIface, mIfaceIndexNameMap,
                                printIfaceNameInfo);
@@ -790,7 +737,7 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     std::string ifaceStatsHeader = StringPrintf("ifaceIndex ifaceName rxBytes rxPackets txBytes"
                                                 " txPackets");
     dumpBpfMap("mIfaceStatsMap:", dw, ifaceStatsHeader);
-    auto printIfaceStatsInfo = [&dw, this] (void *key, void *value) {
+    auto printIfaceStatsInfo = [&dw, this] (void *key, void *value, const base::unique_fd&) {
         StatsValue statsEntry = *(StatsValue *) value;
         uint32_t ifaceIndex = *(uint32_t *) key;
         char ifname[IFNAMSIZ];
@@ -800,7 +747,7 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
         dw.println("%u %s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64, ifaceIndex, ifname,
                    statsEntry.rxBytes, statsEntry.rxPackets, statsEntry.txBytes,
                    statsEntry.txPackets);
-        return 0;
+        return BPF_CONTINUE;
     };
     ret = bpfIterateMapWithValue(nonExistentIface, dummyStatsValue, mIfaceStatsMap,
                                  printIfaceStatsInfo);
