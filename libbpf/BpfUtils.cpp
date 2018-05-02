@@ -165,8 +165,8 @@ uint64_t getSocketCookie(int sockFd) {
         res = -errno;
         ALOGE("Failed to get socket cookie: %s\n", strerror(errno));
         errno = -res;
-        // 0 is an invalid cookie. See INET_DIAG_NOCOOKIE.
-        return 0;
+        // 0 is an invalid cookie. See sock_gen_cookie.
+        return NONEXISTENT_COOKIE;
     }
     return sock_cookie;
 }

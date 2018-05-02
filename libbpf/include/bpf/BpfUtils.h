@@ -90,8 +90,9 @@ const StatsKey NONEXISTENT_STATSKEY = {
     .uid = DEFAULT_OVERFLOWUID,
 };
 
-const uint32_t NONEXISTENT_UID = DEFAULT_OVERFLOWUID;
-const uint32_t NONEXISTENT_IFACE_STATS_KEY = 0;
+constexpr const uint64_t NONEXISTENT_COOKIE = 0;
+constexpr const uint32_t NONEXISTENT_UID = DEFAULT_OVERFLOWUID;
+constexpr const uint32_t NONEXISTENT_IFACE_STATS_KEY = 0;
 
 int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size,
               uint32_t max_entries, uint32_t map_flags);
@@ -111,21 +112,34 @@ netdutils::StatusOr<base::unique_fd> setUpBPFMap(uint32_t key_size, uint32_t val
                                                  bpf_map_type map_type);
 bool hasBpfSupport();
 
+constexpr int BPF_CONTINUE = 0;
+constexpr int BPF_DELETED = 1;
+
 typedef std::function<int(void* key, const base::unique_fd& map_fd)> BpfMapEntryFilter;
 template <class Key, class Value>
 int bpfIterateMap(const Key& nonExistentKey, const Value& /* dummy */,
                   const base::unique_fd& map_fd, const BpfMapEntryFilter& filter) {
     Key curKey = nonExistentKey;
     Key nextKey;
-    int ret = 0;
+    int ret;
     Value dummyEntry;
     if (bpf::findMapEntry(map_fd, &curKey, &dummyEntry) == 0) {
         ALOGE("This entry should never exist in map!");
         return -EUCLEAN;
     }
     while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1) {
-        curKey = nextKey;
-        if ((ret = filter(&curKey, map_fd))) return ret;
+        ret = filter(&nextKey, map_fd);
+        switch (ret) {
+            case BPF_DELETED:
+                // The filter deleted the entry. Find the next key by looking up the same key
+                // we looked up this time.
+                continue;
+            case BPF_CONTINUE:
+                curKey = nextKey;
+                continue;
+            default:
+                return ret;
+        }
     }
     // Return errno if getNextMapKey return error before hit to the end of the map.
     if (errno != ENOENT) {
@@ -136,7 +150,8 @@ int bpfIterateMap(const Key& nonExistentKey, const Value& /* dummy */,
     return 0;
 }
 
-typedef std::function<int(void* key, void* value)> BpfMapEntryFilterWithValue;
+typedef std::function<int(void* key, void* value, const base::unique_fd& map_fd)>
+    BpfMapEntryFilterWithValue;
 template <class Key, class Value>
 int bpfIterateMapWithValue(const Key& nonExistentKey, const Value& /* dummy */,
                            const base::unique_fd& map_fd,
@@ -144,19 +159,29 @@ int bpfIterateMapWithValue(const Key& nonExistentKey, const Value& /* dummy */,
     Key curKey = nonExistentKey;
     Key nextKey;
     int ret = 0;
-    Value curValue;
-    if (bpf::findMapEntry(map_fd, &curKey, &curValue) == 0) {
+    Value value;
+    if (bpf::findMapEntry(map_fd, &curKey, &value) == 0) {
         ALOGE("This entry should never exist in map!");
         return -EUCLEAN;
     }
     while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1) {
-        curKey = nextKey;
-        ret = bpf::findMapEntry(map_fd, &curKey, &curValue);
+        ret = bpf::findMapEntry(map_fd, &nextKey, &value);
         if (ret) {
-            ALOGE("Get current value failed");
+            ALOGE("Get value failed");
             return ret;
         }
-        if ((ret = filter(&curKey, &curValue))) return ret;
+        ret = filter(&nextKey, &value, map_fd);
+        switch (ret) {
+            case BPF_DELETED:
+                // The filter deleted the entry. Find the next key by looking up the same key
+                // we looked up this time.
+                continue;
+            case BPF_CONTINUE:
+                curKey = nextKey;
+                continue;
+            default:
+                return ret;
+        }
     }
     // Return errno if getNextMapKey return error before hit to the end of the map.
     if (errno != ENOENT) {
