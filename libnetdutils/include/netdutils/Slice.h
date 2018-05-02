@@ -147,6 +147,14 @@ inline bool operator!=(const Slice& lhs, const Slice& rhs) {
 
 std::ostream& operator<<(std::ostream& os, const Slice& slice);
 
+// Return suffix of Slice s starting at the first match of byte c. If no matched
+// byte, return an empty Slice.
+inline const Slice findFirstMatching(const Slice s, uint8_t c) {
+    uint8_t* match = (uint8_t*)memchr(s.base(), c, s.size());
+    if (!match) return Slice();
+    return drop(s, match - s.base());
+}
+
 }  // namespace netdutils
 }  // namespace android
 
