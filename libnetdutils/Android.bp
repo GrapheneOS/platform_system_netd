@@ -26,6 +26,7 @@ cc_library {
 cc_test {
     name: "netdutils_test",
     srcs: [
+        "MemBlockTest.cpp",
         "SliceTest.cpp",
         "StatusTest.cpp",
         "FdTest.cpp",
