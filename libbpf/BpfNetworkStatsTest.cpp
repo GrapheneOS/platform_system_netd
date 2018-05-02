@@ -378,5 +378,38 @@ TEST_F(BpfNetworkStatsHelperTest, TestUnkownIfaceError) {
     expectStatsLineEqual(value1, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, 0, lines.front());
 }
 
+TEST_F(BpfNetworkStatsHelperTest, TestGetIfaceStatsDetail) {
+    updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
+    updateIfaceMap(IFACE_NAME2, IFACE_INDEX2);
+    updateIfaceMap(IFACE_NAME3, IFACE_INDEX3);
+    StatsValue value1 = {
+        .rxBytes = TEST_BYTES0,
+        .rxPackets = TEST_PACKET0,
+        .txBytes = TEST_BYTES1,
+        .txPackets = TEST_PACKET1,
+    };
+    StatsValue value2 = {
+        .rxBytes = TEST_BYTES1,
+        .rxPackets = TEST_PACKET1,
+        .txBytes = TEST_BYTES0,
+        .txPackets = TEST_PACKET0,
+    };
+    uint32_t ifaceStatsKey = IFACE_INDEX1;
+    EXPECT_EQ(0, writeToMapEntry(mFakeIfaceStatsMap, &ifaceStatsKey, &value1, BPF_ANY));
+    ifaceStatsKey = IFACE_INDEX2;
+    EXPECT_EQ(0, writeToMapEntry(mFakeIfaceStatsMap, &ifaceStatsKey, &value2, BPF_ANY));
+    ifaceStatsKey = IFACE_INDEX3;
+    EXPECT_EQ(0, writeToMapEntry(mFakeIfaceStatsMap, &ifaceStatsKey, &value1, BPF_ANY));
+    std::vector<stats_line> lines;
+    ASSERT_EQ(0,
+              parseBpfNetworkStatsDevInternal(&lines, mFakeIfaceStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ((unsigned long)3, lines.size());
+    std::sort(lines.begin(), lines.end(), [](const auto& line1, const auto& line2)-> bool {
+        return strcmp(line1.iface, line2.iface) < 0;
+    });
+    expectStatsLineEqual(value1, IFACE_NAME1, UID_ALL, SET_ALL, TAG_NONE, lines[0]);
+    expectStatsLineEqual(value1, IFACE_NAME3, UID_ALL, SET_ALL, TAG_NONE, lines[1]);
+    expectStatsLineEqual(value2, IFACE_NAME2, UID_ALL, SET_ALL, TAG_NONE, lines[2]);
+}
 }  // namespace bpf
 }  // namespace android
