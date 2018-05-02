@@ -39,9 +39,12 @@
 #include <vector>
 
 #include <cutils/log.h>
+#include <cutils/misc.h>
 #include <netdutils/Slice.h>
 #include <utils/String16.h>
 #include <sysutils/SocketClient.h>
+
+#include <binder/IServiceManager.h>
 
 #include "Controllers.h"
 #include "Fwmark.h"
@@ -64,6 +67,12 @@ namespace android {
 namespace net {
 
 namespace {
+
+// TODO: move to a separate file (with other constants from FwmarkService and NetdNativeService)
+constexpr const char CONNECTIVITY_USE_RESTRICTED_NETWORKS[] =
+    "android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS";
+constexpr const char NETWORK_BYPASS_PRIVATE_DNS[] =
+    "android.permission.NETWORK_BYPASS_PRIVATE_DNS";
 
 void logArguments(int argc, char** argv) {
     for (int i = 0; i < argc; i++) {
@@ -189,12 +198,25 @@ inline bool queryingViaTls(unsigned dns_netid) {
     }
 }
 
-void maybeFixupNetContext(android_net_context* ctx) {
-    if (requestingUseLocalNameservers(ctx->flags)) {
-        if (net::gCtls->netCtrl.getPermissionForUser(ctx->uid) != Permission::PERMISSION_SYSTEM) {
-            // Not permitted; clear the flag.
-            ctx->flags &= ~NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
+bool hasPermissionToBypassPrivateDns(uid_t uid) {
+    static_assert(AID_SYSTEM >= 0 && AID_SYSTEM < FIRST_APPLICATION_UID,
+        "Calls from AID_SYSTEM must not result in a permission check to avoid deadlock.");
+    if (uid >= 0 && uid < FIRST_APPLICATION_UID) {
+        return true;
+    }
+
+    for (auto& permission : {CONNECTIVITY_USE_RESTRICTED_NETWORKS, NETWORK_BYPASS_PRIVATE_DNS}) {
+        if (checkCallingPermission(String16(permission))) {
+            return true;
         }
+    }
+    return false;
+}
+
+void maybeFixupNetContext(android_net_context* ctx) {
+    if (requestingUseLocalNameservers(ctx->flags) && !hasPermissionToBypassPrivateDns(ctx->uid)) {
+        // Not permitted; clear the flag.
+        ctx->flags &= ~NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
     }
 
     if (!requestingUseLocalNameservers(ctx->flags)) {
