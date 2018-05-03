@@ -123,9 +123,9 @@ stats_line populateStatsEntry(const StatsKey& statsKey, const StatsValue& statsE
                               const char* ifname) {
     stats_line newLine;
     strlcpy(newLine.iface, ifname, sizeof(newLine.iface));
-    newLine.uid = statsKey.uid;
-    newLine.set = statsKey.counterSet;
-    newLine.tag = statsKey.tag;
+    newLine.uid = (int32_t)statsKey.uid;
+    newLine.set = (int32_t)statsKey.counterSet;
+    newLine.tag = (int32_t)statsKey.tag;
     newLine.rxPackets = statsEntry.rxPackets;
     newLine.txPackets = statsEntry.txPackets;
     newLine.rxBytes = statsEntry.rxBytes;
@@ -238,6 +238,47 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
                                                  uidStatsMap, ifaceIndexNameMap);
     }
     return ret;
+}
+
+int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
+                                    const base::unique_fd& statsMapFd,
+                                    const base::unique_fd& ifaceMapFd) {
+    int64_t unknownIfaceBytesTotal = 0;
+    uint32_t nonExistentKey = NONEXISTENT_IFACE_STATS_KEY;
+    struct StatsValue dummyValue;
+    auto processDetailIfaceStats = [lines, &unknownIfaceBytesTotal, &ifaceMapFd](
+                                    void* key, void* value, const base::unique_fd& statsMapFd) {
+        uint32_t ifIndex = *(uint32_t*)key;
+        char ifname[IFNAMSIZ];
+        if (getIfaceNameFromMap(ifaceMapFd, statsMapFd, ifIndex, ifname, &ifIndex,
+                                &unknownIfaceBytesTotal)) {
+            return BPF_CONTINUE;
+        }
+        StatsValue* statsEntry = (StatsValue*)value;
+        StatsKey fakeKey = {
+            .uid = (uint32_t)UID_ALL, .counterSet = (uint32_t)SET_ALL, .tag = (uint32_t)TAG_NONE};
+        lines->push_back(populateStatsEntry(fakeKey, *statsEntry, ifname));
+        return BPF_CONTINUE;
+    };
+    return bpfIterateMapWithValue(nonExistentKey, dummyValue, statsMapFd, processDetailIfaceStats);
+}
+
+int parseBpfNetworkStatsDev(std::vector<stats_line>* lines) {
+    int ret = 0;
+    base::unique_fd ifaceIndexNameMap(bpf::mapRetrieve(IFACE_INDEX_NAME_MAP_PATH, BPF_OPEN_FLAGS));
+    if (ifaceIndexNameMap < 0) {
+        ret = -errno;
+        ALOGE("get ifaceIndexName map fd failed: %s", strerror(errno));
+        return ret;
+    }
+
+    base::unique_fd ifaceStatsMap(bpf::mapRetrieve(IFACE_STATS_MAP_PATH, BPF_OPEN_FLAGS));
+    if (ifaceStatsMap < 0) {
+        ret = -errno;
+        ALOGE("get ifaceStats map fd failed: %s", strerror(errno));
+        return ret;
+    }
+    return parseBpfNetworkStatsDevInternal(lines, ifaceStatsMap, ifaceIndexNameMap);
 }
 
 uint64_t combineUidTag(const uid_t uid, const uint32_t tag) {
