@@ -29,6 +29,7 @@
 #include <ifaddrs.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
+#include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <openssl/base64.h>
@@ -286,9 +287,11 @@ TEST_F(BinderTest, IpSecTunnelInterface) {
         const std::string remoteAddress;
         int32_t iKey;
         int32_t oKey;
+        int32_t ifId;
     } kTestData[] = {
-            {"IPV4", "ipsec_test", "127.0.0.1", "8.8.8.8", 0x1234 + 53, 0x1234 + 53},
-            {"IPV6", "ipsec_test6", "::1", "2001:4860:4860::8888", 0x1234 + 50, 0x1234 + 50},
+            {"IPV4", "ipsec_test", "127.0.0.1", "8.8.8.8", 0x1234 + 53, 0x1234 + 53, 0xFFFE},
+            {"IPV6", "ipsec_test6", "::1", "2001:4860:4860::8888", 0x1234 + 50, 0x1234 + 50,
+             0xFFFE},
     };
 
     for (unsigned int i = 0; i < std::size(kTestData); i++) {
@@ -298,17 +301,23 @@ TEST_F(BinderTest, IpSecTunnelInterface) {
 
         // Create Tunnel Interface.
         status = mNetd->ipSecAddTunnelInterface(td.deviceName, td.localAddress, td.remoteAddress,
-                                                td.iKey, td.oKey);
+                                                td.iKey, td.oKey, td.ifId);
         EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
+
+        // Check that the interface exists
+        EXPECT_NE(0, if_nametoindex(td.deviceName.c_str()));
 
         // Update Tunnel Interface.
         status = mNetd->ipSecUpdateTunnelInterface(td.deviceName, td.localAddress, td.remoteAddress,
-                                                   td.iKey, td.oKey);
+                                                   td.iKey, td.oKey, td.ifId);
         EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
 
         // Remove Tunnel Interface.
         status = mNetd->ipSecRemoveTunnelInterface(td.deviceName);
         EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
+
+        // Check that the interface no longer exists
+        EXPECT_EQ(0, if_nametoindex(td.deviceName.c_str()));
     }
 }
 
@@ -327,14 +336,14 @@ bool BinderTest::allocateIpSecResources(bool expectOk, int32_t* spi) {
     RETURN_FALSE_IF_NEQ(status.ok(), expectOk);
 
     // Add a policy
-    status = XfrmController::ipSecAddSecurityPolicy(0, AF_INET6, 0, "::", "::1", 123, 0, 0);
+    status = XfrmController::ipSecAddSecurityPolicy(0, AF_INET6, 0, "::", "::1", 123, 0, 0, 0);
     SCOPED_TRACE(status);
     RETURN_FALSE_IF_NEQ(status.ok(), expectOk);
 
     // Add an ipsec interface
-    return expectOk ==
-           XfrmController::ipSecAddTunnelInterface("ipsec_test", "::", "::1", 0xF00D, 0xD00D, false)
-                   .ok();
+    return expectOk == XfrmController::ipSecAddTunnelInterface("ipsec_test", "::", "::1", 0xF00D,
+                                                               0xD00D, 0xE00D, false)
+                               .ok();
 }
 
 TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV4) {
@@ -345,7 +354,7 @@ TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV4) {
         for (int direction : XFRM_DIRECTIONS) {
             for (int addrFamily : ADDRESS_FAMILIES) {
                 status = mNetd->ipSecAddSecurityPolicy(0, addrFamily, direction, "127.0.0.5",
-                                                       "127.0.0.6", 123, 0, 0);
+                                                       "127.0.0.6", 123, 0, 0, 0);
                 EXPECT_TRUE(status.isOk())
                         << " family: " << addrFamily << " direction: " << direction;
             }
@@ -354,7 +363,7 @@ TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV4) {
         // Cleanup
         for (int direction : XFRM_DIRECTIONS) {
             for (int addrFamily : ADDRESS_FAMILIES) {
-                status = mNetd->ipSecDeleteSecurityPolicy(0, addrFamily, direction, 0, 0);
+                status = mNetd->ipSecDeleteSecurityPolicy(0, addrFamily, direction, 0, 0, 0);
                 EXPECT_TRUE(status.isOk());
             }
         }
@@ -369,7 +378,7 @@ TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV6) {
         for (int direction : XFRM_DIRECTIONS) {
             for (int addrFamily : ADDRESS_FAMILIES) {
                 status = mNetd->ipSecAddSecurityPolicy(0, addrFamily, direction, "2001:db8::f00d",
-                                                       "2001:db8::d00d", 123, 0, 0);
+                                                       "2001:db8::d00d", 123, 0, 0, 0);
                 EXPECT_TRUE(status.isOk())
                         << " family: " << addrFamily << " direction: " << direction;
             }
@@ -378,7 +387,7 @@ TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV6) {
         // Cleanup
         for (int direction : XFRM_DIRECTIONS) {
             for (int addrFamily : ADDRESS_FAMILIES) {
-                status = mNetd->ipSecDeleteSecurityPolicy(0, addrFamily, direction, 0, 0);
+                status = mNetd->ipSecDeleteSecurityPolicy(0, addrFamily, direction, 0, 0, 0);
                 EXPECT_TRUE(status.isOk());
             }
         }
@@ -406,11 +415,11 @@ TEST_F(BinderTest, XfrmControllerInit) {
     ASSERT_TRUE(allocateIpSecResources(true, &spi));
 
     // Clean up
-    status = XfrmController::ipSecDeleteSecurityAssociation(0, "::", "::1", 123, spi, 0);
+    status = XfrmController::ipSecDeleteSecurityAssociation(0, "::", "::1", 123, spi, 0, 0);
     SCOPED_TRACE(status);
     ASSERT_TRUE(status.ok());
 
-    status = XfrmController::ipSecDeleteSecurityPolicy(0, AF_INET6, 0, 0, 0);
+    status = XfrmController::ipSecDeleteSecurityPolicy(0, AF_INET6, 0, 0, 0, 0);
     SCOPED_TRACE(status);
     ASSERT_TRUE(status.ok());
 
