@@ -153,6 +153,8 @@ class BpfNetworkStatsHelperTest : public testing::Test {
 // TEST to verify the behavior of bpf map when cocurrent deletion happens when
 // iterating the same map.
 TEST_F(BpfNetworkStatsHelperTest, TestIterateMapWithDeletion) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     for (int i = 0; i < 5; i++) {
         uint64_t cookie = i + 1;
         struct UidTag tag = {.uid = TEST_UID1, .tag = TEST_TAG};
@@ -180,6 +182,8 @@ TEST_F(BpfNetworkStatsHelperTest, TestIterateMapWithDeletion) {
 }
 
 TEST_F(BpfNetworkStatsHelperTest, TestGetUidStatsTotal) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
     StatsValue value1 = {.rxBytes = TEST_BYTES0,
                          .rxPackets = TEST_PACKET0,
@@ -214,6 +218,8 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetUidStatsTotal) {
 }
 
 TEST_F(BpfNetworkStatsHelperTest, TestGetIfaceStatsInternal) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
     updateIfaceMap(IFACE_NAME2, IFACE_INDEX2);
     updateIfaceMap(IFACE_NAME3, IFACE_INDEX3);
@@ -257,6 +263,8 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetIfaceStatsInternal) {
 }
 
 TEST_F(BpfNetworkStatsHelperTest, TestGetStatsDetail) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
     updateIfaceMap(IFACE_NAME2, IFACE_INDEX2);
     StatsValue value1 = {.rxBytes = TEST_BYTES0,
@@ -293,6 +301,8 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsDetail) {
 }
 
 TEST_F(BpfNetworkStatsHelperTest, TestGetStatsWithSkippedIface) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
     updateIfaceMap(IFACE_NAME2, IFACE_INDEX2);
     StatsValue value1 = {.rxBytes = TEST_BYTES0,
@@ -326,6 +336,8 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsWithSkippedIface) {
 }
 
 TEST_F(BpfNetworkStatsHelperTest, TestGetStatsWithNoExistKey) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
     StatsValue value1 = {
         .rxBytes = TEST_BYTES0,
@@ -343,6 +355,8 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsWithNoExistKey) {
 }
 
 TEST_F(BpfNetworkStatsHelperTest, TestUnkownIfaceError) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
     StatsValue value1 = {.rxBytes = TEST_BYTES0 * 20,
                          .rxPackets = TEST_PACKET0,
@@ -379,6 +393,8 @@ TEST_F(BpfNetworkStatsHelperTest, TestUnkownIfaceError) {
 }
 
 TEST_F(BpfNetworkStatsHelperTest, TestGetIfaceStatsDetail) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
     updateIfaceMap(IFACE_NAME2, IFACE_INDEX2);
     updateIfaceMap(IFACE_NAME3, IFACE_INDEX3);
