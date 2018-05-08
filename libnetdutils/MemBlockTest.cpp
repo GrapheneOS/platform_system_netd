@@ -28,22 +28,21 @@ namespace netdutils {
 
 namespace {
 
-constexpr int DNS_PACKET_SIZE = 512;
+constexpr unsigned DNS_PACKET_SIZE = 512;
 constexpr int ARBITRARY_VALUE = 0x55;
 
 MemBlock makeArbitraryMemBlock(size_t len) {
     MemBlock result(len);
-    Slice slice = result.get();
     // Do some fictional work before returning.
-    for (int i = 0; i < slice.size(); i++) {
-        slice.base()[i] = ARBITRARY_VALUE;
+    for (Slice slice = result.get(); !slice.empty(); slice = drop(slice, 1)) {
+        slice.base()[0] = ARBITRARY_VALUE;
     }
     return result;
 }
 
 void checkAllZeros(Slice slice) {
-    for (int i = 0; i < slice.size(); i++) {
-        EXPECT_EQ(0U, slice.base()[i]);
+    for (; !slice.empty(); slice = drop(slice, 1)) {
+        EXPECT_EQ(0U, slice.base()[0]);
     }
 }
 
@@ -51,8 +50,8 @@ void checkArbitraryMemBlock(const MemBlock& block, size_t expectedSize) {
     Slice slice = block.get();
     EXPECT_EQ(expectedSize, slice.size());
     EXPECT_NE(nullptr, slice.base());
-    for (int i = 0; i < slice.size(); i++) {
-        EXPECT_EQ(ARBITRARY_VALUE, slice.base()[i]);
+    for (; !slice.empty(); slice = drop(slice, 1)) {
+        EXPECT_EQ(ARBITRARY_VALUE, slice.base()[0]);
     }
 }
 
@@ -101,7 +100,7 @@ TEST(MemBlockTest, MoveAssignmentOrConstruction) {
 }
 
 TEST(MemBlockTest, StdMoveAssignment) {
-    constexpr int SIZE = 10;
+    constexpr unsigned SIZE = 10;
 
     MemBlock block;
     EXPECT_TRUE(block.get().empty());
@@ -111,14 +110,14 @@ TEST(MemBlockTest, StdMoveAssignment) {
         MemBlock block2 = makeArbitraryMemBlock(SIZE);
         EXPECT_EQ(SIZE, block2.get().size());
         // More fictional work.
-        for (int i = 0; i < SIZE; i++) {
+        for (unsigned i = 0; i < SIZE; i++) {
             block2.get().base()[i] = i;
         }
         block = std::move(block2);
     }
 
     EXPECT_EQ(SIZE, block.get().size());
-    for (int i = 0; i < SIZE; i++) {
+    for (unsigned i = 0; i < SIZE; i++) {
         EXPECT_EQ(i, block.get().base()[i]);
     }
 }
