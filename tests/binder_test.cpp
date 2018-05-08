@@ -37,6 +37,7 @@
 #include <android-base/macros.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <bpf/BpfUtils.h>
 #include <cutils/multiuser.h>
 #include <gtest/gtest.h>
 #include <logwrap/logwrap.h>
@@ -61,12 +62,18 @@ using namespace android;
 using namespace android::base;
 using namespace android::binder;
 using android::base::StartsWith;
+using android::bpf::hasBpfSupport;
 using android::net::INetd;
 using android::net::TunInterface;
 using android::net::UidRange;
 using android::net::XfrmController;
 using android::netdutils::sSyscalls;
 using android::os::PersistableBundle;
+
+#define SKIP_IF_BPF_SUPPORTED         \
+    do {                              \
+        if (hasBpfSupport()) return;  \
+    } while (0);
 
 static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
@@ -200,6 +207,8 @@ static bool iptablesEspAllowRuleExists(const char *chainName){
 }
 
 TEST_F(BinderTest, TestFirewallReplaceUidChain) {
+    SKIP_IF_BPF_SUPPORTED;
+
     std::string chainName = StringPrintf("netd_binder_test_%u", arc4random_uniform(10000));
     const int kNumUids = 500;
     std::vector<int32_t> noUids(0);
