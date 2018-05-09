@@ -467,7 +467,6 @@ binder::Status NetdNativeService::ipSecSetEncapSocketOwner(const android::base::
     return asBinderStatus(gCtls->xfrmCtrl.ipSecSetEncapSocketOwner(socket, newUid, callerUid));
 }
 
-
 binder::Status NetdNativeService::ipSecAllocateSpi(
         int32_t transformId,
         const std::string& sourceAddress,
