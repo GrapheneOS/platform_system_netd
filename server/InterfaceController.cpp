@@ -43,6 +43,7 @@ using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 using android::net::INetd;
 using android::net::RouteController;
+using android::netdutils::isOk;
 using android::netdutils::Status;
 using android::netdutils::StatusOr;
 using android::netdutils::makeSlice;
@@ -388,8 +389,8 @@ void InterfaceController::setIPv6OptimisticMode(const char *value) {
     setOnAllInterfaces(ipv6_proc_path, "use_optimistic", value);
 }
 
-StatusOr<std::map<std::string, uint32_t>> InterfaceController::getIfaceList() {
-    std::map<std::string, uint32_t> ifacePairs;
+StatusOr<std::vector<std::string>> InterfaceController::getIfaceNames() {
+    std::vector<std::string> ifaceNames;
     DIR* d;
     struct dirent* de;
 
@@ -398,11 +399,22 @@ StatusOr<std::map<std::string, uint32_t>> InterfaceController::getIfaceList() {
     }
     while ((de = readdir(d))) {
         if (de->d_name[0] == '.') continue;
-        uint32_t ifaceIndex = if_nametoindex(de->d_name);
-        if (ifaceIndex) {
-          ifacePairs.insert(std::pair<std::string, uint32_t>(de->d_name, ifaceIndex));
-        } 
+        ifaceNames.push_back(std::string(de->d_name));
     }
     closedir(d);
+    return ifaceNames;
+}
+
+StatusOr<std::map<std::string, uint32_t>> InterfaceController::getIfaceList() {
+    std::map<std::string, uint32_t> ifacePairs;
+
+    ASSIGN_OR_RETURN(auto ifaceNames, getIfaceNames());
+
+    for (const auto& name : ifaceNames) {
+        uint32_t ifaceIndex = if_nametoindex(name.c_str());
+        if (ifaceIndex) {
+            ifacePairs.insert(std::pair<std::string, uint32_t>(name, ifaceIndex));
+        }
+    }
     return ifacePairs;
 }
