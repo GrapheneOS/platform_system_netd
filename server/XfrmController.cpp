@@ -1346,7 +1346,8 @@ int XfrmController::addVirtualTunnelInterface(const std::string& deviceName,
         flags |= NLM_F_EXCL | NLM_F_CREATE;
     }
 
-    int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr);
+    // sendNetlinkRequest returns -errno
+    int ret = -1 * sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr);
     if (ret) {
         ALOGE("Error in %s virtual tunnel interface. Error Code: %d",
               isUpdate ? "updating" : "adding", ret);
@@ -1383,7 +1384,8 @@ int XfrmController::removeVirtualTunnelInterface(const std::string& deviceName) 
     uint16_t action = RTM_DELLINK;
     uint16_t flags = NLM_F_REQUEST | NLM_F_ACK;
 
-    int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr);
+    // sendNetlinkRequest returns -errno
+    int ret = -1 * sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr);
     if (ret) {
         ALOGE("Error in removing virtual tunnel interface %s. Error Code: %d", iflaIfNameStrValue,
               ret);
