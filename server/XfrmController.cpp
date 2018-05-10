@@ -43,11 +43,12 @@
 #include <linux/netlink.h>
 #include <linux/xfrm.h>
 
+#define LOG_TAG "XfrmController"
 #include "android-base/stringprintf.h"
 #include "android-base/strings.h"
 #include "android-base/unique_fd.h"
+#include <android/net/INetd.h>
 #include <log/log_properties.h>
-#define LOG_TAG "XfrmController"
 #include "InterfaceController.h"
 #include "NetdConstants.h"
 #include "NetlinkCommands.h"
@@ -60,6 +61,7 @@
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
 
+using android::net::INetd;
 using android::netdutils::Fd;
 using android::netdutils::Slice;
 using android::netdutils::Status;
@@ -84,9 +86,6 @@ constexpr uint32_t RAND_SPI_MIN = 256;
 constexpr uint32_t RAND_SPI_MAX = 0xFFFFFFFE;
 
 constexpr uint32_t INVALID_SPI = 0;
-
-// Must match TUNNEL_INTERFACE_PREFIX in IpSecService.java
-constexpr char const* TUNNEL_INTERFACE_PREFIX = "ipsec";
 
 #define XFRM_MSG_TRANS(x)                                                                          \
     case x:                                                                                        \
@@ -386,11 +385,12 @@ netdutils::Status XfrmController::Init() {
 netdutils::Status XfrmController::flushInterfaces() {
     const auto& ifaces = InterfaceController::getIfaceNames();
     RETURN_IF_NOT_OK(ifaces);
+    const String8 ifPrefix8 = String8(INetd::IPSEC_INTERFACE_PREFIX().string());
 
     for (const std::string& iface : ifaces.value()) {
         int status = 0;
         // Look for the reserved interface prefix, which must be in the name at position 0
-        if (!iface.compare(0, strlen(TUNNEL_INTERFACE_PREFIX), TUNNEL_INTERFACE_PREFIX) &&
+        if (!iface.compare(0, ifPrefix8.length(), ifPrefix8.c_str()) &&
             (status = removeVirtualTunnelInterface(iface)) < 0) {
             ALOGE("Failed to delete ipsec tunnel %s.", iface.c_str());
             return netdutils::statusFromErrno(status, "Failed to remove ipsec tunnel.");
