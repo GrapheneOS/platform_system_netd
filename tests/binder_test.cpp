@@ -302,6 +302,10 @@ TEST_F(BinderTest, VirtualTunnelInterface) {
 // IPsec tests are not run in 32 bit mode; both 32-bit kernels and
 // mismatched ABIs (64-bit kernel with 32-bit userspace) are unsupported.
 #if INTPTR_MAX != INT32_MAX
+static const int XFRM_DIRECTIONS[] = {static_cast<int>(android::net::XfrmDirection::IN),
+                                      static_cast<int>(android::net::XfrmDirection::OUT)};
+static const int ADDRESS_FAMILIES[] = {AF_INET, AF_INET6};
+
 #define RETURN_FALSE_IF_NEQ(_expect_, _ret_) \
         do { if ((_expect_) != (_ret_)) return false; } while(false)
 bool BinderTest::allocateIpSecResources(bool expectOk, int32_t *spi) {
@@ -310,7 +314,7 @@ bool BinderTest::allocateIpSecResources(bool expectOk, int32_t *spi) {
     RETURN_FALSE_IF_NEQ(status.ok(), expectOk);
 
     // Add a policy
-    status = XfrmController::ipSecAddSecurityPolicy(0, 0, "::", "::1", 123, 0, 0);
+    status = XfrmController::ipSecAddSecurityPolicy(0, AF_INET6, 0, "::", "::1", 123, 0, 0);
     SCOPED_TRACE(status);
     RETURN_FALSE_IF_NEQ(status.ok(), expectOk);
 
@@ -320,6 +324,54 @@ bool BinderTest::allocateIpSecResources(bool expectOk, int32_t *spi) {
                     "ipsec_test", "::", "::1", 0xF00D, 0xD00D, false),
             "addVirtualTunnelInterface");
     return (status.ok() == expectOk);
+}
+
+TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV4) {
+    binder::Status status;
+
+    // Repeat to ensure cleanup and recreation works correctly
+    for (int i = 0; i < 2; i++) {
+        for (int direction : XFRM_DIRECTIONS) {
+            for (int addrFamily : ADDRESS_FAMILIES) {
+                status = mNetd->ipSecAddSecurityPolicy(0, addrFamily, direction, "127.0.0.5",
+                                                       "127.0.0.6", 123, 0, 0);
+                EXPECT_TRUE(status.isOk())
+                        << " family: " << addrFamily << " direction: " << direction;
+            }
+        }
+
+        // Cleanup
+        for (int direction : XFRM_DIRECTIONS) {
+            for (int addrFamily : ADDRESS_FAMILIES) {
+                status = mNetd->ipSecDeleteSecurityPolicy(0, addrFamily, direction, 0, 0);
+                EXPECT_TRUE(status.isOk());
+            }
+        }
+    }
+}
+
+TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV6) {
+    binder::Status status;
+
+    // Repeat to ensure cleanup and recreation works correctly
+    for (int i = 0; i < 2; i++) {
+        for (int direction : XFRM_DIRECTIONS) {
+            for (int addrFamily : ADDRESS_FAMILIES) {
+                status = mNetd->ipSecAddSecurityPolicy(0, addrFamily, direction, "2001:db8::f00d",
+                                                       "2001:db8::d00d", 123, 0, 0);
+                EXPECT_TRUE(status.isOk())
+                        << " family: " << addrFamily << " direction: " << direction;
+            }
+        }
+
+        // Cleanup
+        for (int direction : XFRM_DIRECTIONS) {
+            for (int addrFamily : ADDRESS_FAMILIES) {
+                status = mNetd->ipSecDeleteSecurityPolicy(0, addrFamily, direction, 0, 0);
+                EXPECT_TRUE(status.isOk());
+            }
+        }
+    }
 }
 
 TEST_F(BinderTest, XfrmControllerInit) {
@@ -347,7 +399,7 @@ TEST_F(BinderTest, XfrmControllerInit) {
     SCOPED_TRACE(status);
     ASSERT_TRUE(status.ok());
 
-    status = XfrmController::ipSecDeleteSecurityPolicy(0, 0, "::", "::1", 0, 0);
+    status = XfrmController::ipSecDeleteSecurityPolicy(0, AF_INET6, 0, 0, 0);
     SCOPED_TRACE(status);
     ASSERT_TRUE(status.ok());
 
