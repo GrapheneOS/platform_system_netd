@@ -41,12 +41,14 @@
 #include <android-base/unique_fd.h>
 #include <cutils/log.h>
 
+#include <netdutils/MemBlock.h>
 #include <netdutils/Misc.h>
 #include <netdutils/Slice.h>
 #include "bpf/BpfUtils.h"
 #include "bpf/bpf_shared.h"
 
 using android::base::unique_fd;
+using android::netdutils::MemBlock;
 using android::netdutils::Slice;
 
 #define BPF_PROG_PATH "/system/etc/bpf"
@@ -108,18 +110,18 @@ struct ReplacePattern {
     }
 };
 
-Slice cgroupIngressProg;
-Slice cgroupEgressProg;
-Slice xtIngressProg;
-Slice xtEgressProg;
+MemBlock cgroupIngressProg;
+MemBlock cgroupEgressProg;
+MemBlock xtIngressProg;
+MemBlock xtEgressProg;
 
-Slice getProgFromMem(Slice buffer, Elf64_Shdr* section) {
+MemBlock getProgFromMem(Slice buffer, Elf64_Shdr* section) {
     uint64_t progSize = (uint64_t)section->sh_size;
     Slice progSection = take(drop(buffer, section->sh_offset), progSize);
     if (progSection.size() < progSize) FAIL("programSection out of bound\n");
-    char* progArray = new char[progSize];
-    Slice progCopy(progArray, progSize);
-    if (copy(progCopy, progSection) != progSize) {
+
+    MemBlock progCopy(progSection);
+    if (progCopy.get().size() != progSize) {
         FAIL("program cannot be extracted");
     }
     return progCopy;
