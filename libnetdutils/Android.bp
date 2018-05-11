@@ -26,9 +26,11 @@ cc_library {
 cc_test {
     name: "netdutils_test",
     srcs: [
+        "BackoffSequenceTest.cpp",
+        "FdTest.cpp",
+        "MemBlockTest.cpp",
         "SliceTest.cpp",
         "StatusTest.cpp",
-        "FdTest.cpp",
         "SyscallsTest.cpp",
     ],
     cflags: [
