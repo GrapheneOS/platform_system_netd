@@ -19,12 +19,14 @@
 #include <linux/in.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
 #include <sstream>
 #include <string>
 
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
 #include <netdutils/Slice.h>
@@ -33,6 +35,7 @@
 
 using android::base::StringPrintf;
 using android::base::unique_fd;
+using android::base::GetUintProperty;
 using android::netdutils::Slice;
 using android::netdutils::statusFromErrno;
 using android::netdutils::StatusOr;
@@ -206,14 +209,24 @@ bool hasBpfSupport() {
     int kernel_version_major;
     int kernel_version_minor;
 
+    uint64_t api_level = GetUintProperty<uint64_t>("ro.product.first_api_level", 0);
+    if (api_level == 0) {
+        ALOGE("Cannot determine initial API level of the device");
+        api_level = GetUintProperty<uint64_t>("ro.build.version.sdk", 0);
+    }
+
     int ret = uname(&buf);
     if (ret) {
         return false;
     }
     char dummy;
     ret = sscanf(buf.release, "%d.%d%c", &kernel_version_major, &kernel_version_minor, &dummy);
-    return (ret >= 2 && ((kernel_version_major > 4) ||
-                         (kernel_version_major == 4 && kernel_version_minor >= 9)));
+    if (ret >= 2 && ((kernel_version_major > 4) ||
+                         (kernel_version_major == 4 && kernel_version_minor >= 9))) {
+        // Check if the device is shipped originally with android P.
+        return api_level >= MINIMUM_API_REQUIRED;
+    }
+    return false;
 }
 
 }  // namespace bpf

@@ -60,11 +60,6 @@ constexpr uint32_t TEST_TAG = 42;
 constexpr int TEST_COUNTERSET = 1;
 constexpr int DEFAULT_COUNTERSET = 0;
 
-#define SKIP_IF_BPF_NOT_SUPPORTED     \
-    do {                              \
-        if (!hasBpfSupport()) return; \
-    } while (0);
-
 class TrafficControllerTest : public ::testing::Test {
   protected:
     TrafficControllerTest() {}
