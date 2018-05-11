@@ -188,6 +188,9 @@ status_t NetdNativeService::dump(int fd, const Vector<String16> &args) {
     gCtls->trafficCtrl.dump(dw, false);
     dw.blankline();
 
+    gCtls->xfrmCtrl.dump(dw);
+    dw.blankline();
+
     {
         ScopedIndent indentLog(dw);
         if (contains(args, String16(OPT_SHORT))) {
