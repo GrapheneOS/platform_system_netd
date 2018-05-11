@@ -94,6 +94,8 @@ constexpr const uint64_t NONEXISTENT_COOKIE = 0;
 constexpr const uint32_t NONEXISTENT_UID = DEFAULT_OVERFLOWUID;
 constexpr const uint32_t NONEXISTENT_IFACE_STATS_KEY = 0;
 
+constexpr const int MINIMUM_API_REQUIRED = 28;
+
 int createMap(bpf_map_type map_type, uint32_t key_size, uint32_t value_size,
               uint32_t max_entries, uint32_t map_flags);
 int writeToMapEntry(const base::unique_fd& map_fd, void* key, void* value, uint64_t flags);
@@ -111,6 +113,11 @@ netdutils::StatusOr<base::unique_fd> setUpBPFMap(uint32_t key_size, uint32_t val
                                                  uint32_t map_size, const char* path,
                                                  bpf_map_type map_type);
 bool hasBpfSupport();
+
+#define SKIP_IF_BPF_NOT_SUPPORTED     \
+    do {                              \
+        if (!hasBpfSupport()) return; \
+    } while (0);
 
 constexpr int BPF_CONTINUE = 0;
 constexpr int BPF_DELETED = 1;
