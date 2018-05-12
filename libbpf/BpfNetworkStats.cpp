@@ -42,31 +42,27 @@ using netdutils::Status;
 static constexpr uint32_t BPF_OPEN_FLAGS = BPF_F_RDONLY;
 
 int bpfGetUidStatsInternal(uid_t uid, Stats* stats,
-                           const BpfMap<StatsKey, StatsValue>& uidStatsMap) {
-    const auto processUidStats = [stats, uid](const StatsKey& key,
-                                              const BpfMap<StatsKey, StatsValue>& uidStatsMap) {
-        if (key.uid == uid) {
-            StatsValue statsEntry;
-            ASSIGN_OR_RETURN(statsEntry, uidStatsMap.readValue(key));
-            stats->rxPackets += statsEntry.rxPackets;
-            stats->txPackets += statsEntry.txPackets;
-            stats->rxBytes += statsEntry.rxBytes;
-            stats->txBytes += statsEntry.txBytes;
-        }
-        return netdutils::status::ok;
-    };
-    return -uidStatsMap.iterate(processUidStats).code();
+                           const BpfMap<uint32_t, StatsValue>& appUidStatsMap) {
+    auto statsEntry = appUidStatsMap.readValue(uid);
+    if (isOk(statsEntry)) {
+        stats->rxPackets = statsEntry.value().rxPackets;
+        stats->txPackets = statsEntry.value().txPackets;
+        stats->rxBytes = statsEntry.value().rxBytes;
+        stats->txBytes = statsEntry.value().txBytes;
+    }
+    return -statsEntry.status().code();
 }
 
 int bpfGetUidStats(uid_t uid, Stats* stats) {
-    BpfMap<StatsKey, StatsValue> uidStatsMap(mapRetrieve(UID_STATS_MAP_PATH, BPF_OPEN_FLAGS));
+    BpfMap<uint32_t, StatsValue> appUidStatsMap(
+        mapRetrieve(APP_UID_STATS_MAP_PATH, BPF_OPEN_FLAGS));
 
-    if (!uidStatsMap.isValid()) {
+    if (!appUidStatsMap.isValid()) {
         int ret = -errno;
-        ALOGE("Opening map fd from %s failed: %s", UID_STATS_MAP_PATH, strerror(errno));
+        ALOGE("Opening appUidStatsMap(%s) failed: %s", UID_STATS_MAP_PATH, strerror(errno));
         return ret;
     }
-    return bpfGetUidStatsInternal(uid, stats, uidStatsMap);
+    return bpfGetUidStatsInternal(uid, stats, appUidStatsMap);
 }
 
 int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,

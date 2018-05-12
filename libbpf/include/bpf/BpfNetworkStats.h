@@ -46,7 +46,7 @@ struct stats_line {
 };
 // For test only
 int bpfGetUidStatsInternal(uid_t uid, struct Stats* stats,
-                           const BpfMap<StatsKey, StatsValue>& uidStatsMap);
+                           const BpfMap<uint32_t, StatsValue>& appUidStatsMap);
 // For test only
 int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
                              const BpfMap<uint32_t, StatsValue>& ifaceStatsMap,
