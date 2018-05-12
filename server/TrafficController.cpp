@@ -149,6 +149,11 @@ Status TrafficController::initMaps() {
                                         "UidCounterSetMap", false));
 
     RETURN_IF_NOT_OK(
+        mAppUidStatsMap.getOrCreate(UID_STATS_MAP_SIZE, APP_UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(
+        changeOwnerAndMode(APP_UID_STATS_MAP_PATH, AID_NET_BW_STATS, "AppUidStatsMap", false));
+
+    RETURN_IF_NOT_OK(
         mUidStatsMap.getOrCreate(UID_STATS_MAP_SIZE, UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(UID_STATS_MAP_PATH, AID_NET_BW_STATS, "UidStatsMap",
                                         false));
@@ -391,6 +396,18 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
               strerror(res.code()));
     }
     mUidStatsMap.iterate(deleteMatchedUidTagEntries);
+
+    auto deleteAppUidStatsEntry = [uid](const uint32_t& key, BpfMap<uint32_t, StatsValue>& map) {
+        if (key == uid) {
+            Status res = map.deleteValue(key);
+            if (isOk(res) || (res.code() == ENOENT)) {
+                return netdutils::status::ok;
+            }
+            ALOGE("Failed to delete data(uid=%u): %s", key, strerror(res.code()));
+        }
+        return netdutils::status::ok;
+    };
+    mAppUidStatsMap.iterate(deleteAppUidStatsEntry);
     return 0;
 }
 
@@ -589,6 +606,8 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
                getMapStatus(mCookieTagMap.getMap(), COOKIE_TAG_MAP_PATH).c_str());
     dw.println("mUidCounterSetMap status: %s",
                getMapStatus(mUidCounterSetMap.getMap(), UID_COUNTERSET_MAP_PATH).c_str());
+    dw.println("mAppUidStatsMap status: %s",
+               getMapStatus(mAppUidStatsMap.getMap(), APP_UID_STATS_MAP_PATH).c_str());
     dw.println("mUidStatsMap status: %s",
                getMapStatus(mUidStatsMap.getMap(), UID_STATS_MAP_PATH).c_str());
     dw.println("mTagStatsMap status: %s",
@@ -642,6 +661,20 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     res = mUidCounterSetMap.iterateWithValue(printUidInfo);
     if (!isOk(res)) {
         dw.println("mUidCounterSetMap print end with error: %s", res.msg().c_str());
+    }
+
+    // Print AppUidStatsMap content
+    std::string appUidStatsHeader = StringPrintf("uid rxBytes rxPackets txBytes txPackets");
+    dumpBpfMap("mAppUidStatsMap:", dw, appUidStatsHeader);
+    auto printAppUidStatsInfo = [&dw](const uint32_t& key, const StatsValue& value,
+                                      const BpfMap<uint32_t, StatsValue>&) {
+        dw.println("%u %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64, key, value.rxBytes,
+                   value.rxPackets, value.txBytes, value.txPackets);
+        return netdutils::status::ok;
+    };
+    res = mAppUidStatsMap.iterateWithValue(printAppUidStatsInfo);
+    if (!res.ok()) {
+        dw.println("mAppUidStatsMap print end with error: %s", res.msg().c_str());
     }
 
     // Print uidStatsMap content
