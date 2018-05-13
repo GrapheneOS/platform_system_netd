@@ -27,7 +27,7 @@ EXTRA_LDLIBS := -lpthread
 LOCAL_SHARED_LIBRARIES += libbase libbinder libcrypto libcutils liblog \
                           libnetd_client libnetutils libssl libutils
 LOCAL_STATIC_LIBRARIES += libnetd_test_dnsresponder liblogwrap libnetdaidl_static \
-                          libnetdutils libnetd_test_tun_interface
+                          libnetdutils libnetd_test_tun_interface libbpf
 LOCAL_AIDL_INCLUDES := system/netd/server/binder
 LOCAL_C_INCLUDES += system/netd/include system/netd/binder/include \
                     system/netd/server system/core/logwrapper/include \
@@ -37,6 +37,7 @@ LOCAL_C_INCLUDES += system/netd/include system/netd/binder/include \
 # netd_integration_test.cpp is currently empty and exists only so that we can do:
 # runtest -x system/netd/tests/netd_integration_test.cpp
 LOCAL_SRC_FILES := binder_test.cpp \
+                   bpf_base_test.cpp \
                    dns_responder/dns_responder.cpp \
                    dns_tls_test.cpp \
                    netd_integration_test.cpp \

@@ -37,6 +37,7 @@
 #include <android-base/macros.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <bpf/BpfUtils.h>
 #include <cutils/multiuser.h>
 #include <gtest/gtest.h>
 #include <logwrap/logwrap.h>
@@ -61,12 +62,18 @@ using namespace android;
 using namespace android::base;
 using namespace android::binder;
 using android::base::StartsWith;
+using android::bpf::hasBpfSupport;
 using android::net::INetd;
 using android::net::TunInterface;
 using android::net::UidRange;
 using android::net::XfrmController;
 using android::netdutils::sSyscalls;
 using android::os::PersistableBundle;
+
+#define SKIP_IF_BPF_SUPPORTED         \
+    do {                              \
+        if (hasBpfSupport()) return;  \
+    } while (0);
 
 static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
@@ -200,6 +207,8 @@ static bool iptablesEspAllowRuleExists(const char *chainName){
 }
 
 TEST_F(BinderTest, TestFirewallReplaceUidChain) {
+    SKIP_IF_BPF_SUPPORTED;
+
     std::string chainName = StringPrintf("netd_binder_test_%u", arc4random_uniform(10000));
     const int kNumUids = 500;
     std::vector<int32_t> noUids(0);
@@ -284,6 +293,9 @@ TEST_F(BinderTest, TestVirtualTunnelInterface) {
     }
 }
 
+// IPsec tests are not run in 32 bit mode; both 32-bit kernels and
+// mismatched ABIs (64-bit kernel with 32-bit userspace) are unsupported.
+#if INTPTR_MAX != INT32_MAX
 #define RETURN_FALSE_IF_NEQ(_expect_, _ret_) \
         do { if ((_expect_) != (_ret_)) return false; } while(false)
 bool BinderTest::allocateIpSecResources(bool expectOk, int32_t *spi) {
@@ -304,11 +316,15 @@ bool BinderTest::allocateIpSecResources(bool expectOk, int32_t *spi) {
     return (status.ok() == expectOk);
 }
 
-
 TEST_F(BinderTest, TestXfrmControllerInit) {
     netdutils::Status status;
     status = XfrmController::Init();
     SCOPED_TRACE(status);
+
+    // Older devices or devices with mismatched Kernel/User ABI cannot support the IPsec
+    // feature.
+    if (status.code() == EOPNOTSUPP) return;
+
     ASSERT_TRUE(status.ok());
 
     int32_t spi = 0;
@@ -336,6 +352,7 @@ TEST_F(BinderTest, TestXfrmControllerInit) {
 
     ASSERT_TRUE(status.ok());
 }
+#endif
 
 static int bandwidthDataSaverEnabled(const char *binary) {
     std::vector<std::string> lines = listIptablesRule(binary, "bw_data_saver");
