@@ -390,7 +390,7 @@ netdutils::Status XfrmController::flushInterfaces() {
     for (const std::string& iface : ifaces.value()) {
         int status = 0;
         // Look for the reserved interface prefix, which must be in the name at position 0
-        if (!iface.compare(0, ifPrefix8.length(), ifPrefix8.c_str()) &&
+        if (android::base::StartsWith(iface.c_str(), ifPrefix8.c_str()) &&
             (status = removeVirtualTunnelInterface(iface)) < 0) {
             ALOGE("Failed to delete ipsec tunnel %s.", iface.c_str());
             return netdutils::statusFromErrno(status, "Failed to remove ipsec tunnel.");
