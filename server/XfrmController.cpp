@@ -745,41 +745,41 @@ XfrmController::ipSecRemoveTransportModeTransform(const android::base::unique_fd
 }
 
 netdutils::Status XfrmController::ipSecAddSecurityPolicy(int32_t transformId, int32_t direction,
-                                                         const std::string& localAddress,
-                                                         const std::string& remoteAddress,
+                                                         const std::string& tmplSrcAddress,
+                                                         const std::string& tmplDstAddress,
                                                          int32_t spi, int32_t markValue,
                                                          int32_t markMask) {
-    return processSecurityPolicy(transformId, direction, localAddress, remoteAddress, spi,
+    return processSecurityPolicy(transformId, direction, tmplSrcAddress, tmplDstAddress, spi,
                                  markValue, markMask, XFRM_MSG_NEWPOLICY);
 }
 
 netdutils::Status XfrmController::ipSecUpdateSecurityPolicy(int32_t transformId, int32_t direction,
-                                                            const std::string& localAddress,
-                                                            const std::string& remoteAddress,
+                                                            const std::string& tmplSrcAddress,
+                                                            const std::string& tmplDstAddress,
                                                             int32_t spi, int32_t markValue,
                                                             int32_t markMask) {
-    return processSecurityPolicy(transformId, direction, localAddress, remoteAddress, spi,
+    return processSecurityPolicy(transformId, direction, tmplSrcAddress, tmplDstAddress, spi,
                                  markValue, markMask, XFRM_MSG_UPDPOLICY);
 }
 
 netdutils::Status XfrmController::ipSecDeleteSecurityPolicy(int32_t transformId, int32_t direction,
-                                                            const std::string& localAddress,
-                                                            const std::string& remoteAddress,
+                                                            const std::string& tmplSrcAddress,
+                                                            const std::string& tmplDstAddress,
                                                             int32_t markValue, int32_t markMask) {
-    return processSecurityPolicy(transformId, direction, localAddress, remoteAddress, 0, markValue,
-                                 markMask, XFRM_MSG_DELPOLICY);
+    return processSecurityPolicy(transformId, direction, tmplSrcAddress, tmplDstAddress, 0,
+                                 markValue, markMask, XFRM_MSG_DELPOLICY);
 }
 
 netdutils::Status XfrmController::processSecurityPolicy(int32_t transformId, int32_t direction,
-                                                        const std::string& localAddress,
-                                                        const std::string& remoteAddress,
+                                                        const std::string& tmplSrcAddress,
+                                                        const std::string& tmplDstAddress,
                                                         int32_t spi, int32_t markValue,
                                                         int32_t markMask, int32_t msgType) {
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("transformId=%d", transformId);
     ALOGD("direction=%d", direction);
-    ALOGD("localAddress=%s", localAddress.c_str());
-    ALOGD("remoteAddress=%s", remoteAddress.c_str());
+    ALOGD("tmplSrcAddress=%s", tmplSrcAddress.c_str());
+    ALOGD("tmplDstAddress=%s", tmplDstAddress.c_str());
     ALOGD("spi=%0.8x", spi);
     ALOGD("markValue=%d", markValue);
     ALOGD("markMask=%d", markMask);
@@ -791,8 +791,8 @@ netdutils::Status XfrmController::processSecurityPolicy(int32_t transformId, int
     XfrmSocketImpl sock;
     RETURN_IF_NOT_OK(sock.open());
 
-    RETURN_IF_NOT_OK(
-        fillXfrmId(localAddress, remoteAddress, spi, markValue, markMask, transformId, &saInfo));
+    RETURN_IF_NOT_OK(fillXfrmId(tmplSrcAddress, tmplDstAddress, spi, markValue, markMask,
+                                transformId, &saInfo));
 
     if (msgType == XFRM_MSG_DELPOLICY) {
         return deleteTunnelModeSecurityPolicy(saInfo, sock, static_cast<XfrmDirection>(direction));
