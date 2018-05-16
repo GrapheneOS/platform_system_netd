@@ -22,6 +22,7 @@
 #include <string>
 #include <utility> // for pair
 
+#include <linux/if.h>
 #include <linux/if_link.h>
 #include <linux/if_tunnel.h>
 #include <linux/netlink.h>
@@ -182,12 +183,12 @@ public:
                                                        int32_t direction, int32_t markValue,
                                                        int32_t markMask);
 
-    static int addVirtualTunnelInterface(const std::string& deviceName,
-                                         const std::string& localAddress,
-                                         const std::string& remoteAddress, int32_t ikey,
-                                         int32_t okey, bool isUpdate);
+    static netdutils::Status ipSecAddTunnelInterface(const std::string& deviceName,
+                                                     const std::string& localAddress,
+                                                     const std::string& remoteAddress, int32_t ikey,
+                                                     int32_t okey, bool isUpdate);
 
-    static int removeVirtualTunnelInterface(const std::string& deviceName);
+    static netdutils::Status ipSecRemoveTunnelInterface(const std::string& deviceName);
 
     // Some XFRM netlink attributes comprise a header, a struct, and some data
     // after the struct. We wrap all of those in one struct for easier
@@ -249,7 +250,20 @@ public:
         __u32 outputMark;
     };
 
-private:
+    // Container for the content of an XFRMA_IF_ID netlink attribute.
+    // Exposed for testing
+    struct nlattr_xfrm_interface_id {
+        nlattr hdr;
+        __u32 if_id;
+    };
+
+    // Exposed for testing
+    struct nlattr_payload_u32 {
+        nlattr hdr;
+        uint32_t value;
+    };
+
+  private:
 /*
  * This is a workaround for a kernel bug in the 32bit netlink compat layer
  * that has been present on x86_64 kernels since 2010 with no fix on the
@@ -350,6 +364,7 @@ private:
     static int fillNlAttrXfrmMark(const XfrmCommonInfo& record, nlattr_xfrm_mark* mark);
     static int fillNlAttrXfrmOutputMark(const __u32 underlyingNetId,
                                         nlattr_xfrm_output_mark* output_mark);
+    static int fillNlAttrXfrmIntfId(const __u32 intf_id_value, nlattr_xfrm_interface_id* intf_id);
 
     static netdutils::Status allocateSpi(const XfrmSaInfo& record, uint32_t minSpi, uint32_t maxSpi,
                                          uint32_t* outSpi, const XfrmSocket& sock);
@@ -371,6 +386,14 @@ private:
     static netdutils::Status flushSaDb(const XfrmSocket& s);
     static netdutils::Status flushPolicyDb(const XfrmSocket& s);
 
+    static netdutils::Status ipSecAddXfrmInterface(const std::string& deviceName,
+                                                   int32_t underlyingInterface, int32_t interfaceId,
+                                                   uint16_t flags);
+    static netdutils::Status ipSecAddVirtualTunnelInterface(const std::string& deviceName,
+                                                            const std::string& localAddress,
+                                                            const std::string& remoteAddress,
+                                                            int32_t ikey, int32_t okey,
+                                                            uint16_t flags);
     // END TODO(messagerefactor)
 };
 
