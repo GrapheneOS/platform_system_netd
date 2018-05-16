@@ -175,7 +175,6 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
     counterSet = find_map_entry(UID_COUNTERSET_MAP, &uid);
     if (counterSet) key.counterSet = *counterSet;
 
-    int ret;
     if (tag) {
         bpf_update_stats(skb, TAG_STATS_MAP, direction, &key);
     }
