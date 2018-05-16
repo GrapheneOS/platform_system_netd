@@ -45,3 +45,13 @@ cc_binary {
     ],
 
 }
+
+bpf {
+    name: "bpf_kern.o",
+    srcs: ["bpf_kern.c"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    include_dirs: ["system/netd/libbpf/include"],
+}
