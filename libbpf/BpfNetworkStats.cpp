@@ -44,7 +44,6 @@ static const int64_t MAX_UNKNOWN_IFACE_BYTES = 100*1000;
 static constexpr uint32_t BPF_OPEN_FLAGS = BPF_F_RDONLY;
 
 int bpfGetUidStatsInternal(uid_t uid, Stats* stats, const base::unique_fd& map_fd) {
-    struct StatsKey nonExistentKey = NONEXISTENT_STATSKEY;
     struct StatsValue dummyValue;
     auto processUidStats = [uid, stats](void *key, const base::unique_fd& map_fd) {
         if (((StatsKey *) key)->uid != uid) {
@@ -59,7 +58,7 @@ int bpfGetUidStatsInternal(uid_t uid, Stats* stats, const base::unique_fd& map_f
         stats->txBytes += statsEntry.txBytes;
         return BPF_CONTINUE;
     };
-    return bpfIterateMap(nonExistentKey, dummyValue, map_fd, processUidStats);
+    return bpfIterateMap(dummyValue, map_fd, processUidStats);
 }
 
 int bpfGetUidStats(uid_t uid, Stats* stats) {
@@ -75,8 +74,7 @@ int bpfGetUidStats(uid_t uid, Stats* stats) {
 int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
                              const base::unique_fd& ifaceStatsMapFd,
                              const base::unique_fd& ifaceNameMapFd) {
-    uint32_t nonExistentKey = NONEXISTENT_IFACE_STATS_KEY;
-    struct StatsValue dummyValue;
+    uint32_t dummyKey;
     int64_t unknownIfaceBytesTotal = 0;
     stats->tcpRxPackets = -1;
     stats->tcpTxPackets = -1;
@@ -99,7 +97,7 @@ int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
         }
         return BPF_CONTINUE;
     };
-    return bpfIterateMap(nonExistentKey, dummyValue, ifaceStatsMapFd, processIfaceStats);
+    return bpfIterateMap(dummyKey, ifaceStatsMapFd, processIfaceStats);
 }
 
 int bpfGetIfaceStats(const char* iface, Stats* stats) {
@@ -170,8 +168,7 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
                                        int limitUid, const base::unique_fd& statsMapFd,
                                        const base::unique_fd& ifaceMapFd) {
     int64_t unknownIfaceBytesTotal = 0;
-    struct StatsKey nonExistentKey = NONEXISTENT_STATSKEY;
-    struct StatsValue dummyValue;
+    struct StatsKey dummyKey;
     auto processDetailUidStats = [lines, &limitIfaces, limitTag, limitUid,
                                   &unknownIfaceBytesTotal, &ifaceMapFd]
                                   (void* key, const base::unique_fd& statsMapFd) {
@@ -198,7 +195,7 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
         lines->push_back(populateStatsEntry(curKey, statsEntry, ifname));
         return BPF_CONTINUE;
     };
-    return bpfIterateMap(nonExistentKey, dummyValue, statsMapFd, processDetailUidStats);
+    return bpfIterateMap(dummyKey, statsMapFd, processDetailUidStats);
 }
 
 int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
@@ -244,7 +241,7 @@ int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
                                     const base::unique_fd& statsMapFd,
                                     const base::unique_fd& ifaceMapFd) {
     int64_t unknownIfaceBytesTotal = 0;
-    uint32_t nonExistentKey = NONEXISTENT_IFACE_STATS_KEY;
+    uint32_t dummyKey;
     struct StatsValue dummyValue;
     auto processDetailIfaceStats = [lines, &unknownIfaceBytesTotal, &ifaceMapFd](
                                     void* key, void* value, const base::unique_fd& statsMapFd) {
@@ -260,7 +257,7 @@ int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
         lines->push_back(populateStatsEntry(fakeKey, *statsEntry, ifname));
         return BPF_CONTINUE;
     };
-    return bpfIterateMapWithValue(nonExistentKey, dummyValue, statsMapFd, processDetailIfaceStats);
+    return bpfIterateMapWithValue(dummyKey, dummyValue, statsMapFd, processDetailIfaceStats);
 }
 
 int parseBpfNetworkStatsDev(std::vector<stats_line>* lines) {
@@ -283,77 +280,6 @@ int parseBpfNetworkStatsDev(std::vector<stats_line>* lines) {
 
 uint64_t combineUidTag(const uid_t uid, const uint32_t tag) {
     return (uint64_t)uid << 32 | tag;
-}
-
-// This function get called when the system_server decided to clean up the
-// tagStatsMap after it gethered the information of taggged socket stats. The
-// function go through all the entry in tagStatsMap and remove all the entry
-// for which the tag no longer exists.
-int cleanStatsMapInternal(const base::unique_fd& cookieTagMap, const base::unique_fd& tagStatsMap) {
-    uint64_t curCookie = 0;
-    uint64_t nextCookie = 0;
-    int res;
-    UidTag tmp_uidtag;
-    std::unordered_set<uint64_t> uidTagSet;
-    StatsKey curKey, nextKey;
-
-    // Find all the uid, tag pair exist in cookieTagMap.
-    while (bpf::getNextMapKey(cookieTagMap, &curCookie, &nextCookie) != -1) {
-        curCookie = nextCookie;
-        res = bpf::findMapEntry(cookieTagMap, &curCookie, &tmp_uidtag);
-        if (res < 0) {
-            // might be a concurrent delete, continue to check other entries.
-            continue;
-        }
-        uint64_t uidTag = combineUidTag(tmp_uidtag.uid, tmp_uidtag.tag);
-        uidTagSet.insert(uidTag);
-    }
-
-    // Find all the entries in tagStatsMap where the key is not in the set of
-    // uid, tag pairs found above.
-    curKey = NONEXISTENT_STATSKEY;
-    std::vector<StatsKey> keyList;
-    while (bpf::getNextMapKey(tagStatsMap, &curKey, &nextKey) != -1) {
-        curKey = nextKey;
-        uint64_t uidTag = combineUidTag(curKey.uid, curKey.tag);
-        if (uidTagSet.find(uidTag) == uidTagSet.end()) {
-            keyList.push_back(curKey);
-        }
-    }
-
-    // Delete the entries
-    int size = keyList.size();
-    while (!keyList.empty()) {
-        StatsKey key = keyList.back();
-        keyList.pop_back();
-        res = bpf::deleteMapEntry(tagStatsMap, &key);
-        if (res < 0 && errno != ENOENT) {
-            res = -errno;
-            ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", key.uid, key.tag, strerror(errno));
-            return res;
-        }
-    }
-    ALOGD("finish clean up, %d stats entry cleaned", size);
-    return 0;
-}
-
-int cleanStatsMap() {
-    base::unique_fd cookieTagMap(bpf::mapRetrieve(COOKIE_TAG_MAP_PATH, BPF_OPEN_FLAGS));
-    int ret = 0;
-    if (cookieTagMap < 0) {
-        ret = -errno;
-        ALOGE("get cookieTag map fd failed: %s", strerror(errno));
-        return ret;
-    }
-
-    base::unique_fd tagStatsMap(bpf::mapRetrieve(TAG_STATS_MAP_PATH, BPF_OPEN_FLAGS));
-    if (tagStatsMap < 0) {
-        ret = -errno;
-        ALOGE("get tagStats map fd failed: %s", strerror(errno));
-        return ret;
-    }
-
-    return cleanStatsMapInternal(cookieTagMap, tagStatsMap);
 }
 
 }  // namespace bpf
