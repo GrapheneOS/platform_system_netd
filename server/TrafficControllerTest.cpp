@@ -197,9 +197,8 @@ class TrafficControllerTest : public ::testing::Test {
             EXPECT_NE(uidSet.end(), uidSet.find(uid));
             return BPF_CONTINUE;
         };
-        uint32_t nonExistentKey = NONEXISTENT_UID;
-        uint8_t dummyValue;
-        EXPECT_EQ(0, bpfIterateMap(nonExistentKey, dummyValue, targetMap, checkNoOtherUid));
+        uint32_t dummyKey;
+        EXPECT_EQ(0, bpfIterateMap(dummyKey, targetMap, checkNoOtherUid));
     }
 
     void checkUidMapReplace(const std::string& name, const std::vector<int32_t>& uids,
