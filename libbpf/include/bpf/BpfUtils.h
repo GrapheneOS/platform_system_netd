@@ -86,13 +86,7 @@ constexpr const char* DOZABLE_UID_MAP_PATH = BPF_PATH "/traffic_dozable_uid_map"
 constexpr const char* STANDBY_UID_MAP_PATH = BPF_PATH "/traffic_standby_uid_map";
 constexpr const char* POWERSAVE_UID_MAP_PATH = BPF_PATH "/traffic_powersave_uid_map";
 
-const StatsKey NONEXISTENT_STATSKEY = {
-    .uid = DEFAULT_OVERFLOWUID,
-};
-
 constexpr const uint64_t NONEXISTENT_COOKIE = 0;
-constexpr const uint32_t NONEXISTENT_UID = DEFAULT_OVERFLOWUID;
-constexpr const uint32_t NONEXISTENT_IFACE_STATS_KEY = 0;
 
 constexpr const int MINIMUM_API_REQUIRED = 28;
 
@@ -102,6 +96,7 @@ int writeToMapEntry(const base::unique_fd& map_fd, void* key, void* value, uint6
 int findMapEntry(const base::unique_fd& map_fd, void* key, void* value);
 int deleteMapEntry(const base::unique_fd& map_fd, void* key);
 int getNextMapKey(const base::unique_fd& map_fd, void* key, void* next_key);
+int getFirstMapKey(const base::unique_fd& map_fd, void* firstKey);
 int bpfProgLoad(bpf_prog_type prog_type, netdutils::Slice bpf_insns, const char* license,
                 uint32_t kern_version, netdutils::Slice bpf_log);
 int mapPin(const base::unique_fd& map_fd, const char* pathname);
@@ -123,18 +118,21 @@ constexpr int BPF_CONTINUE = 0;
 constexpr int BPF_DELETED = 1;
 
 typedef std::function<int(void* key, const base::unique_fd& map_fd)> BpfMapEntryFilter;
-template <class Key, class Value>
-int bpfIterateMap(const Key& nonExistentKey, const Value& /* dummy */,
-                  const base::unique_fd& map_fd, const BpfMapEntryFilter& filter) {
-    Key curKey = nonExistentKey;
-    Key nextKey;
+template <class Key>
+int bpfIterateMap(const Key& /* dummy */, const base::unique_fd& map_fd,
+                  const BpfMapEntryFilter& filter) {
     int ret;
-    Value dummyEntry;
-    if (bpf::findMapEntry(map_fd, &curKey, &dummyEntry) == 0) {
-        ALOGE("This entry should never exist in map!");
-        return -EUCLEAN;
+    Key nextKey;
+    ret = bpf::getFirstMapKey(map_fd, &nextKey);
+    if (ret && errno == ENOENT) {
+        // Map is empty, return;
+        return 0;
+    } else if (ret) {
+        ALOGE("Fail to get the first key of the map: %s", strerror(errno));
+        return -errno;
     }
-    while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1) {
+    Key curKey = nextKey;
+    do {
         ret = filter(&nextKey, map_fd);
         switch (ret) {
             case BPF_DELETED:
@@ -147,11 +145,12 @@ int bpfIterateMap(const Key& nonExistentKey, const Value& /* dummy */,
             default:
                 return ret;
         }
-    }
+    } while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1);
     // Return errno if getNextMapKey return error before hit to the end of the map.
     if (errno != ENOENT) {
         ret = errno;
-        ALOGE("bpfIterateMap failed on MAP_FD: %d, error: %s", map_fd.get(), strerror(errno));
+        ALOGE("bpfIterateMap failed on MAP_FD: %d, error: %s", map_fd.get(),
+              strerror(errno));
         return -ret;
     }
     return 0;
@@ -160,18 +159,21 @@ int bpfIterateMap(const Key& nonExistentKey, const Value& /* dummy */,
 typedef std::function<int(void* key, void* value, const base::unique_fd& map_fd)>
     BpfMapEntryFilterWithValue;
 template <class Key, class Value>
-int bpfIterateMapWithValue(const Key& nonExistentKey, const Value& /* dummy */,
-                           const base::unique_fd& map_fd,
-                           const BpfMapEntryFilterWithValue& filter) {
-    Key curKey = nonExistentKey;
+int bpfIterateMapWithValue(const Key& /* dummy */, const Value& /* dummy */,
+                           const base::unique_fd& map_fd, const BpfMapEntryFilterWithValue& filter) {
     Key nextKey;
     int ret = 0;
-    Value value;
-    if (bpf::findMapEntry(map_fd, &curKey, &value) == 0) {
-        ALOGE("This entry should never exist in map!");
-        return -EUCLEAN;
+    ret = bpf::getFirstMapKey(map_fd, &nextKey);
+    if (ret && errno != ENOENT) {
+        ALOGE("Fail to get the first key of the map: %s", strerror(errno));
+        return -errno;
+    } else if (ret) {
+        // Map is empty, return;
+        return 0;
     }
-    while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1) {
+    Key curKey = nextKey;
+    Value value;
+    do {
         ret = bpf::findMapEntry(map_fd, &nextKey, &value);
         if (ret) {
             ALOGE("Get value failed");
@@ -189,11 +191,11 @@ int bpfIterateMapWithValue(const Key& nonExistentKey, const Value& /* dummy */,
             default:
                 return ret;
         }
-    }
+    } while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1);
     // Return errno if getNextMapKey return error before hit to the end of the map.
     if (errno != ENOENT) {
         ret = errno;
-        ALOGE("bpfIterateMap failed on MAP_FD: %d, error: %s", map_fd.get(), strerror(errno));
+        ALOGE("bpfIterateMapWithValue failed on MAP_FD: %d, error: %s", map_fd.get(), strerror(errno));
         return -ret;
     }
     return 0;
