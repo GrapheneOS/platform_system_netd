@@ -133,10 +133,18 @@ TetherController::TetherController() {
 
 bool TetherController::setIpFwdEnabled() {
     bool success = true;
-    const char* value = mForwardingRequests.empty() ? "0" : "1";
+    bool disable = mForwardingRequests.empty();
+    const char* value = disable ? "0" : "1";
     ALOGD("Setting IP forward enable = %s", value);
     success &= writeToFile(IPV4_FORWARDING_PROC_FILE, value);
     success &= writeToFile(IPV6_FORWARDING_PROC_FILE, value);
+    if (disable) {
+        // Turning off the forwarding sysconf in the kernel has the side effect
+        // of turning on ICMP redirect, which is a security hazard.
+        // Turn ICMP redirect back off immediately.
+        int rv = InterfaceController::disableIcmpRedirects();
+        success &= (rv == 0);
+    }
     return success;
 }
 

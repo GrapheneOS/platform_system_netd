@@ -43,6 +43,7 @@ public:
     static int setMtu(const char *interface, const char *mtu);
     static int addAddress(const char *interface, const char *addrString, int prefixLength);
     static int delAddress(const char *interface, const char *addrString, int prefixLength);
+    static int disableIcmpRedirects();
 
     // Read and write values in files of the form:
     //     /proc/sys/net/<family>/<which>/<interface>/<parameter>
