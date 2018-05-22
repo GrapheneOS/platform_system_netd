@@ -40,6 +40,7 @@
 
 #include <cutils/misc.h>
 #include <log/log.h>
+#include <netdutils/OperationLimiter.h>
 #include <netdutils/Slice.h>
 #include <utils/String16.h>
 #include <sysutils/SocketClient.h>
@@ -73,6 +74,10 @@ constexpr const char CONNECTIVITY_USE_RESTRICTED_NETWORKS[] =
     "android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS";
 constexpr const char NETWORK_BYPASS_PRIVATE_DNS[] =
     "android.permission.NETWORK_BYPASS_PRIVATE_DNS";
+
+// Limits the number of outstanding DNS queries by client UID.
+constexpr int MAX_QUERIES_PER_UID = 256;
+android::netdutils::OperationLimiter<uid_t> queryLimiter(MAX_QUERIES_PER_UID);
 
 void logArguments(int argc, char** argv) {
     for (int i = 0; i < argc; i++) {
@@ -353,7 +358,17 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     struct addrinfo* result = NULL;
     Stopwatch s;
     maybeFixupNetContext(&mNetContext);
-    uint32_t rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, &result);
+    const uid_t uid = mClient->getUid();
+    uint32_t rv = 0;
+    if (queryLimiter.start(uid)) {
+        rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, &result);
+        queryLimiter.finish(uid);
+    } else {
+        // Note that this error code is currently not passed down to the client.
+        // android_getaddrinfo_proxy() returns EAI_NODATA on any error.
+        rv = EAI_MEMORY;
+        ALOGE("getaddrinfo: from UID %d, max concurrent queries reached", uid);
+    }
     const int latencyMs = lround(s.timeTaken());
 
     if (rv) {
@@ -463,7 +478,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     int ai_protocol = atoi(argv[6]);
     unsigned netId = strtoul(argv[7], NULL, 10);
     const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
-    uid_t uid = cli->getUid();
+    const uid_t uid = cli->getUid();
 
     android_net_context netcontext;
     mDnsProxyListener->mNetCtrl->getNetworkContext(netId, uid, &netcontext);
@@ -563,16 +578,23 @@ DnsProxyListener::GetHostByNameHandler::~GetHostByNameHandler() {
 
 void DnsProxyListener::GetHostByNameHandler::run() {
     if (DBG) {
-        ALOGD("DnsProxyListener::GetHostByNameHandler::run\n");
+        ALOGD("DnsProxyListener::GetHostByNameHandler::run");
     }
 
     Stopwatch s;
     maybeFixupNetContext(&mNetContext);
-    struct hostent* hp = android_gethostbynamefornetcontext(mName, mAf, &mNetContext);
+    const uid_t uid = mClient->getUid();
+    struct hostent* hp = nullptr;
+    if (queryLimiter.start(uid)) {
+        hp = android_gethostbynamefornetcontext(mName, mAf, &mNetContext);
+        queryLimiter.finish(uid);
+    } else {
+        ALOGE("gethostbyname: from UID %d, max concurrent queries reached", uid);
+    }
     const int latencyMs = lround(s.timeTaken());
 
     if (DBG) {
-        ALOGD("GetHostByNameHandler::run gethostbyname errno: %s hp->h_name = %s, name_len = %zu\n",
+        ALOGD("GetHostByNameHandler::run gethostbyname errno: %s hp->h_name = %s, name_len = %zu",
                 hp ? "success" : strerror(errno),
                 (hp && hp->h_name) ? hp->h_name : "null",
                 (hp && hp->h_name) ? strlen(hp->h_name) + 1 : 0);
@@ -587,7 +609,7 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     }
 
     if (!success) {
-        ALOGW("GetHostByNameHandler: Error writing DNS result to client\n");
+        ALOGW("GetHostByNameHandler: Error writing DNS result to client");
     }
 
     if (mNetdEventListener != nullptr) {
@@ -625,7 +647,7 @@ void DnsProxyListener::GetHostByNameHandler::run() {
                 mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
                                                INetdEventListener::EVENT_GETHOSTBYNAME,
                                                h_errno, latencyMs, String16(mName), ip_addrs,
-                                               total_ip_addr_count, mClient->getUid());
+                                               total_ip_addr_count, uid);
                 break;
         }
     }
@@ -706,16 +728,22 @@ DnsProxyListener::GetHostByAddrHandler::~GetHostByAddrHandler() {
 
 void DnsProxyListener::GetHostByAddrHandler::run() {
     if (DBG) {
-        ALOGD("DnsProxyListener::GetHostByAddrHandler::run\n");
+        ALOGD("DnsProxyListener::GetHostByAddrHandler::run");
     }
 
-    // NOTE gethostbyaddr should take a void* but bionic thinks it should be char*
     maybeFixupNetContext(&mNetContext);
-    struct hostent* hp = android_gethostbyaddrfornetcontext(
-            (char*) mAddress, mAddressLen, mAddressFamily, &mNetContext);
+    const uid_t uid = mClient->getUid();
+    struct hostent* hp = nullptr;
+    if (queryLimiter.start(uid)) {
+        hp = android_gethostbyaddrfornetcontext(
+                mAddress, mAddressLen, mAddressFamily, &mNetContext);
+        queryLimiter.finish(uid);
+    } else {
+        ALOGE("gethostbyaddr: from UID %d, max concurrent queries reached", uid);
+    }
 
     if (DBG) {
-        ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %zu\n",
+        ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %zu",
                 hp ? "success" : strerror(errno),
                 (hp && hp->h_name) ? hp->h_name : "null",
                 (hp && hp->h_name) ? strlen(hp->h_name) + 1 : 0);
@@ -730,7 +758,7 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     }
 
     if (!success) {
-        ALOGW("GetHostByAddrHandler: Error writing DNS result to client\n");
+        ALOGW("GetHostByAddrHandler: Error writing DNS result to client");
     }
     mClient->decRef();
 }
