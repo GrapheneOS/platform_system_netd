@@ -135,7 +135,7 @@ public:
     bool query(uint16_t id, const Slice query) override {
         // Return the response immediately (asynchronously).
         std::thread(&IDnsTlsSocketObserver::onResponse, mObserver, make_echo(id, query)).detach();
-	return true;
+        return true;
     }
 private:
     IDnsTlsSocketObserver* const mObserver;
