@@ -16,6 +16,7 @@ cc_library {
     shared_libs: [
         "libbase",
         "libbinder",
+        "liblog",
     ],
     export_shared_lib_headers: [
         "libbase",
@@ -29,6 +30,7 @@ cc_test {
         "BackoffSequenceTest.cpp",
         "FdTest.cpp",
         "MemBlockTest.cpp",
+        "OperationLimiterTest.cpp",
         "SliceTest.cpp",
         "StatusTest.cpp",
         "SyscallsTest.cpp",
@@ -39,5 +41,8 @@ cc_test {
         "-Wno-error=unused-variable",
     ],
     static_libs: ["libgmock"],
-    shared_libs: ["libnetdutils"],
+    shared_libs: [
+        "libbase",
+        "libnetdutils",
+    ],
 }
