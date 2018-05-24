@@ -52,6 +52,20 @@ private:
     int                    mDaemonFd = -1;
     std::set<std::string>  mForwardingRequests;
 
+    struct DnsmasqState {
+        static int sendCmd(int daemonFd, const std::string& cmd);
+
+        // List of downstream interfaces on which to serve. The format used is:
+        //     update_ifaces|<ifname1>|<ifname2>|...
+        std::string update_ifaces_cmd;
+        // Forwarding (upstream) DNS configuration to use. The format used is:
+        //     update_dns|<hex_socket_mark>|<ip1>|<ip2>|...
+        std::string update_dns_cmd;
+
+        void clear();
+        int sendAllState(int daemonFd) const;
+    } mDnsmasqState{};
+
 public:
 
     TetherController();

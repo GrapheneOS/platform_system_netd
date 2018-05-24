@@ -123,6 +123,28 @@ const std::string GET_TETHER_STATS_COMMAND = StringPrintf(
     "-nvx -L %s\n"
     "COMMIT\n", android::net::TetherController::LOCAL_TETHER_COUNTERS_CHAIN);
 
+int TetherController::DnsmasqState::sendCmd(int daemonFd, const std::string& cmd) {
+    if (cmd.empty()) return 0;
+
+    ALOGD("Sending update msg to dnsmasq [%s]", cmd.c_str());
+    // Send the trailing \0 as well.
+    if (write(daemonFd, cmd.c_str(), cmd.size() + 1) < 0) {
+        ALOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
+        errno = EREMOTEIO;
+        return -1;
+    }
+    return 0;
+}
+
+void TetherController::DnsmasqState::clear() {
+    update_ifaces_cmd.clear();
+    update_dns_cmd.clear();
+}
+
+int TetherController::DnsmasqState::sendAllState(int daemonFd) const {
+    return sendCmd(daemonFd, update_ifaces_cmd) | sendCmd(daemonFd, update_dns_cmd);
+}
+
 TetherController::TetherController() {
     if (inBpToolsMode()) {
         enableForwarding(BP_TOOLS_MODE);
@@ -259,6 +281,7 @@ int TetherController::stopTethering() {
     mDaemonPid = 0;
     close(mDaemonFd);
     mDaemonFd = -1;
+    mDnsmasqState.clear();
     ALOGD("Tethering services stopped");
     return 0;
 }
@@ -271,7 +294,7 @@ bool TetherController::isTetheringStarted() {
 
 int TetherController::setDnsForwarders(unsigned netId, char **servers, int numServers) {
     int i;
-    char daemonCmd[MAX_CMD_SIZE];
+    char daemonCmd[MAX_CMD_SIZE] = {};
 
     Fwmark fwmark;
     fwmark.netId = netId;
@@ -308,10 +331,9 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
     }
 
     mDnsNetId = netId;
+    mDnsmasqState.update_dns_cmd = std::string(daemonCmd);
     if (mDaemonFd != -1) {
-        ALOGD("Sending update msg to dnsmasq [%s]", daemonCmd);
-        if (write(mDaemonFd, daemonCmd, strlen(daemonCmd) +1) < 0) {
-            ALOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
+        if (mDnsmasqState.sendAllState(mDaemonFd) != 0) {
             mDnsForwarders.clear();
             errno = EREMOTEIO;
             return -1;
@@ -329,7 +351,7 @@ const std::list<std::string> &TetherController::getDnsForwarders() const {
 }
 
 bool TetherController::applyDnsInterfaces() {
-    char daemonCmd[MAX_CMD_SIZE];
+    char daemonCmd[MAX_CMD_SIZE] = {};
 
     strcpy(daemonCmd, "update_ifaces");
     int cmdLen = strlen(daemonCmd);
@@ -347,12 +369,11 @@ bool TetherController::applyDnsInterfaces() {
         haveInterfaces = true;
     }
 
-    if ((mDaemonFd != -1) && haveInterfaces) {
-        ALOGD("Sending update msg to dnsmasq [%s]", daemonCmd);
-        if (write(mDaemonFd, daemonCmd, strlen(daemonCmd) +1) < 0) {
-            ALOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
-            return false;
-        }
+    if (!haveInterfaces) {
+        mDnsmasqState.update_ifaces_cmd.clear();
+    } else {
+        mDnsmasqState.update_ifaces_cmd = std::string(daemonCmd);
+        if (mDaemonFd != -1) return (mDnsmasqState.sendAllState(mDaemonFd) == 0);
     }
     return true;
 }
