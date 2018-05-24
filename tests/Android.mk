@@ -54,6 +54,9 @@ LOCAL_SRC_FILES := binder_test.cpp \
                    ../server/NetlinkCommands.cpp \
                    ../server/XfrmController.cpp
 LOCAL_MODULE_TAGS := eng tests
+LOCAL_MULTILIB := both
+LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)32
+LOCAL_MODULE_STEM_64 := $(LOCAL_MODULE)64
 include $(BUILD_NATIVE_TEST)
 
 include $(call all-makefiles-under, $(LOCAL_PATH))
