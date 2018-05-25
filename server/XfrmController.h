@@ -257,6 +257,8 @@ private:
         __u32 min;
         __u32 max;
     };
+    struct xfrm_userpolicy_info : ::xfrm_userpolicy_info {
+    } __attribute__((aligned(8)));
 
     /*
      * Anyone who encounters a failure when sending netlink messages should look here
@@ -280,6 +282,16 @@ private:
     static_assert(sizeof(::xfrm_userspi_info) - sizeof(::xfrm_usersa_info) ==
                       sizeof(xfrm_userspi_info) - sizeof(xfrm_usersa_info),
                   "struct xfrm_userspi_info has changed and does not match the kernel struct.");
+    static_assert(sizeof(::xfrm_userpolicy_info) % 8 != 0,
+                  "struct xfrm_userpolicy_info has changed "
+                  "alignment. Please consider whether this "
+                  "patch is needed.");
+    static_assert(sizeof(xfrm_userpolicy_info) - offsetof(xfrm_userpolicy_info, share) == 5,
+                  "struct xfrm_userpolicy_info probably misaligned with kernel struct.");
+    static_assert(sizeof(xfrm_userpolicy_info) % 8 == 0,
+                  "struct xfrm_userpolicy_info is not 64-bit "
+                  "aligned. Please consider whether this patch "
+                  "is needed.");
 #endif
 
     // helper function for filling in the XfrmId (and XfrmSaInfo) structure
