@@ -16,12 +16,13 @@
 
 #include "DumpWriter.h"
 
+#include <unistd.h>
+#include <limits>
+
 #include <android-base/stringprintf.h>
 #include <utils/String8.h>
 
 using android::base::StringAppendV;
-using android::String16;
-using android::Vector;
 
 namespace android {
 namespace net {
@@ -37,13 +38,13 @@ const size_t kIndentStringLen = strlen(kIndentString);
 DumpWriter::DumpWriter(int fd) : mIndentLevel(0), mFd(fd) {}
 
 void DumpWriter::incIndent() {
-    if (mIndentLevel < 255) {
+    if (mIndentLevel < std::numeric_limits<decltype(mIndentLevel)>::max()) {
         mIndentLevel++;
     }
 }
 
 void DumpWriter::decIndent() {
-    if (mIndentLevel > 0) {
+    if (mIndentLevel > std::numeric_limits<decltype(mIndentLevel)>::min()) {
         mIndentLevel--;
     }
 }
@@ -51,11 +52,11 @@ void DumpWriter::decIndent() {
 void DumpWriter::println(const std::string& line) {
     if (!line.empty()) {
         for (int i = 0; i < mIndentLevel; i++) {
-            write(mFd, kIndentString, kIndentStringLen);
+            ::write(mFd, kIndentString, kIndentStringLen);
         }
-        write(mFd, line.c_str(), line.size());
+        ::write(mFd, line.c_str(), line.size());
     }
-    write(mFd, "\n", 1);
+    ::write(mFd, "\n", 1);
 }
 
 void DumpWriter::println(const char* fmt, ...) {
