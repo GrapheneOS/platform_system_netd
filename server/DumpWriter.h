@@ -18,8 +18,6 @@
 #define NETD_SERVER_DUMPWRITER_H_
 
 #include <string>
-#include <utils/String16.h>
-#include <utils/Vector.h>
 
 namespace android {
 namespace net {
