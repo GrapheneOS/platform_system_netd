@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
+#ifndef BPF_BPFUTILS_H
+#define BPF_BPFUTILS_H
+
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>
 #include <linux/unistd.h>
+#include <net/if.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -25,9 +29,6 @@
 #include "android-base/unique_fd.h"
 #include "netdutils/Slice.h"
 #include "netdutils/StatusOr.h"
-
-#define ptr_to_u64(x) ((uint64_t)(uintptr_t)x)
-#define DEFAULT_LOG_LEVEL 1
 
 #define BPF_PASS 1
 #define BPF_DROP 0
@@ -63,11 +64,37 @@ struct Stats {
     uint64_t tcpTxPackets;
 };
 
+struct IfaceValue {
+    char name[IFNAMSIZ];
+};
+
 #ifndef DEFAULT_OVERFLOWUID
 #define DEFAULT_OVERFLOWUID 65534
 #endif
 
 #define BPF_PATH "/sys/fs/bpf"
+
+// Since we cannot garbage collect the stats map since device boot, we need to make these maps as
+// large as possible. The current rlimit of MEM_LOCK allows at most 10000 map entries for each
+// stats map. In the old qtaguid module, we don't have a total limit for data entries but only have
+// limitation of tags each uid can have. (default is 1024 in kernel);
+// cookie_tag_map:      key:  8 bytes, value:  8 bytes, total:10000*8*2 bytes         =  160Kbytes
+// uid_counter_set_map: key:  4 bytes, value:  1 bytes, total:2000*5 bytes            =   10Kbytes
+// uid_stats_map:       key: 16 bytes, value: 32 bytes, total:10000*16+10000*32 bytes =  480Kbytes
+// tag_stats_map:       key: 16 bytes, value: 32 bytes, total:10000*16+10000*32 bytes =  480Kbytes
+// iface_index_name_map:key:  4 bytes, value: 32 bytes, total:1000*36 bytes           =   36Kbytes
+// iface_stats_map:     key:  4 bytes, value: 32 bytes, total:1000*36 bytes           =   36Kbytes
+// dozable_uid_map:     key:  4 bytes, value:  1 bytes, total:2000*5 bytes            =   10Kbytes
+// standby_uid_map:     key:  4 bytes, value:  1 bytes, total:2000*5 bytes            =   10Kbytes
+// powersave_uid_map:   key:  4 bytes, value:  1 bytes, total:2000*5 bytes            =   10Kbytes
+// total:                                                                               1232Kbytes
+constexpr const int COOKIE_UID_MAP_SIZE = 10000;
+constexpr const int UID_COUNTERSET_MAP_SIZE = 2000;
+constexpr const int UID_STATS_MAP_SIZE = 10000;
+constexpr const int TAG_STATS_MAP_SIZE = 10000;
+constexpr const int IFACE_INDEX_NAME_MAP_SIZE = 1000;
+constexpr const int IFACE_STATS_MAP_SIZE = 1000;
+constexpr const int UID_OWNER_MAP_SIZE = 2000;
 
 constexpr const char* BPF_EGRESS_PROG_PATH = BPF_PATH "/egress_prog";
 constexpr const char* BPF_INGRESS_PROG_PATH = BPF_PATH "/ingress_prog";
@@ -85,6 +112,8 @@ constexpr const char* IFACE_STATS_MAP_PATH = BPF_PATH "/traffic_iface_stats_map"
 constexpr const char* DOZABLE_UID_MAP_PATH = BPF_PATH "/traffic_dozable_uid_map";
 constexpr const char* STANDBY_UID_MAP_PATH = BPF_PATH "/traffic_standby_uid_map";
 constexpr const char* POWERSAVE_UID_MAP_PATH = BPF_PATH "/traffic_powersave_uid_map";
+
+constexpr const int OVERFLOW_COUNTERSET = 2;
 
 constexpr const uint64_t NONEXISTENT_COOKIE = 0;
 
@@ -104,101 +133,20 @@ int mapRetrieve(const char* pathname, uint32_t flags);
 int attachProgram(bpf_attach_type type, uint32_t prog_fd, uint32_t cg_fd);
 int detachProgram(bpf_attach_type type, uint32_t cg_fd);
 uint64_t getSocketCookie(int sockFd);
-netdutils::StatusOr<base::unique_fd> setUpBPFMap(uint32_t key_size, uint32_t value_size,
-                                                 uint32_t map_size, const char* path,
-                                                 bpf_map_type map_type);
 bool hasBpfSupport();
 
 #define SKIP_IF_BPF_NOT_SUPPORTED     \
     do {                              \
         if (!hasBpfSupport()) return; \
-    } while (0);
+    } while (0)
 
 constexpr int BPF_CONTINUE = 0;
 constexpr int BPF_DELETED = 1;
 
-typedef std::function<int(void* key, const base::unique_fd& map_fd)> BpfMapEntryFilter;
-template <class Key>
-int bpfIterateMap(const Key& /* dummy */, const base::unique_fd& map_fd,
-                  const BpfMapEntryFilter& filter) {
-    int ret;
-    Key nextKey;
-    ret = bpf::getFirstMapKey(map_fd, &nextKey);
-    if (ret && errno == ENOENT) {
-        // Map is empty, return;
-        return 0;
-    } else if (ret) {
-        ALOGE("Fail to get the first key of the map: %s", strerror(errno));
-        return -errno;
-    }
-    Key curKey = nextKey;
-    do {
-        ret = filter(&nextKey, map_fd);
-        switch (ret) {
-            case BPF_DELETED:
-                // The filter deleted the entry. Find the next key by looking up the same key
-                // we looked up this time.
-                continue;
-            case BPF_CONTINUE:
-                curKey = nextKey;
-                continue;
-            default:
-                return ret;
-        }
-    } while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1);
-    // Return errno if getNextMapKey return error before hit to the end of the map.
-    if (errno != ENOENT) {
-        ret = errno;
-        ALOGE("bpfIterateMap failed on MAP_FD: %d, error: %s", map_fd.get(),
-              strerror(errno));
-        return -ret;
-    }
-    return 0;
-}
-
-typedef std::function<int(void* key, void* value, const base::unique_fd& map_fd)>
-    BpfMapEntryFilterWithValue;
-template <class Key, class Value>
-int bpfIterateMapWithValue(const Key& /* dummy */, const Value& /* dummy */,
-                           const base::unique_fd& map_fd, const BpfMapEntryFilterWithValue& filter) {
-    Key nextKey;
-    int ret = 0;
-    ret = bpf::getFirstMapKey(map_fd, &nextKey);
-    if (ret && errno != ENOENT) {
-        ALOGE("Fail to get the first key of the map: %s", strerror(errno));
-        return -errno;
-    } else if (ret) {
-        // Map is empty, return;
-        return 0;
-    }
-    Key curKey = nextKey;
-    Value value;
-    do {
-        ret = bpf::findMapEntry(map_fd, &nextKey, &value);
-        if (ret) {
-            ALOGE("Get value failed");
-            return ret;
-        }
-        ret = filter(&nextKey, &value, map_fd);
-        switch (ret) {
-            case BPF_DELETED:
-                // The filter deleted the entry. Find the next key by looking up the same key
-                // we looked up this time.
-                continue;
-            case BPF_CONTINUE:
-                curKey = nextKey;
-                continue;
-            default:
-                return ret;
-        }
-    } while (bpf::getNextMapKey(map_fd, &curKey, &nextKey) != -1);
-    // Return errno if getNextMapKey return error before hit to the end of the map.
-    if (errno != ENOENT) {
-        ret = errno;
-        ALOGE("bpfIterateMapWithValue failed on MAP_FD: %d, error: %s", map_fd.get(), strerror(errno));
-        return -ret;
-    }
-    return 0;
-}
+bool operator==(const StatsValue& lhs, const StatsValue& rhs);
+bool operator==(const UidTag& lhs, const UidTag& rhs);
+bool operator==(const StatsKey& lhs, const StatsKey& rhs);
 }  // namespace bpf
 }  // namespace android
+
+#endif
