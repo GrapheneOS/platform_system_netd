@@ -54,10 +54,10 @@ using android::netdutils::toString;
 
 namespace {
 
+const char ipv4_proc_path[] = "/proc/sys/net/ipv4/conf";
 const char ipv6_proc_path[] = "/proc/sys/net/ipv6/conf";
 
 const char ipv4_neigh_conf_dir[] = "/proc/sys/net/ipv4/neigh";
-
 const char ipv6_neigh_conf_dir[] = "/proc/sys/net/ipv6/neigh";
 
 const char proc_net_path[] = "/proc/sys/net";
@@ -245,8 +245,11 @@ void InterfaceController::initializeAll() {
     setBaseReachableTimeMs(15 * 1000);
 
     // When sending traffic via a given interface use only addresses configured
-       // on that interface as possible source addresses.
+    // on that interface as possible source addresses.
     setIPv6UseOutgoingInterfaceAddrsOnly("1");
+
+    // Ensure that ICMP redirects are rejected globally on all interfaces.
+    disableIcmpRedirects();
 }
 
 int InterfaceController::setEnableIPv6(const char *interface, const int on) {
@@ -356,6 +359,15 @@ int InterfaceController::addAddress(const char *interface,
 int InterfaceController::delAddress(const char *interface,
         const char *addrString, int prefixLength) {
     return ifc_del_address(interface, addrString, prefixLength);
+}
+
+int InterfaceController::disableIcmpRedirects() {
+    int rv = 0;
+    rv |= writeValueToPath(ipv4_proc_path, "all", "accept_redirects", "0");
+    rv |= writeValueToPath(ipv6_proc_path, "all", "accept_redirects", "0");
+    setOnAllInterfaces(ipv4_proc_path, "accept_redirects", "0");
+    setOnAllInterfaces(ipv6_proc_path, "accept_redirects", "0");
+    return rv;
 }
 
 int InterfaceController::getParameter(
