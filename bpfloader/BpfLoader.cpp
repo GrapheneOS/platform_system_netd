@@ -264,6 +264,7 @@ int loadAndAttachProgram(bpf_attach_type type, const char* path, const char* nam
 }  // namespace bpf
 }  // namespace android
 
+using android::bpf::APP_UID_STATS_MAP_PATH;
 using android::bpf::BPF_EGRESS_PROG_PATH;
 using android::bpf::BPF_INGRESS_PROG_PATH;
 using android::bpf::COOKIE_TAG_MAP_PATH;
@@ -276,6 +277,7 @@ using android::bpf::UID_COUNTERSET_MAP_PATH;
 using android::bpf::UID_STATS_MAP_PATH;
 using android::bpf::XT_BPF_EGRESS_PROG_PATH;
 using android::bpf::XT_BPF_INGRESS_PROG_PATH;
+
 using android::bpf::ReplacePattern;
 using android::bpf::loadAndAttachProgram;
 
@@ -291,6 +293,7 @@ int main(int argc, char** argv) {
     int ret = 0;
     DECLARE_MAP(cookieTagMap, COOKIE_TAG_MAP_PATH);
     DECLARE_MAP(uidCounterSetMap, UID_COUNTERSET_MAP_PATH);
+    DECLARE_MAP(appUidStatsMap, APP_UID_STATS_MAP_PATH);
     DECLARE_MAP(uidStatsMap, UID_STATS_MAP_PATH);
     DECLARE_MAP(tagStatsMap, TAG_STATS_MAP_PATH);
     DECLARE_MAP(ifaceStatsMap, IFACE_STATS_MAP_PATH);
@@ -301,6 +304,7 @@ int main(int argc, char** argv) {
     const std::vector<ReplacePattern> mapPatterns = {
         ReplacePattern(COOKIE_TAG_MAP, cookieTagMap.get()),
         ReplacePattern(UID_COUNTERSET_MAP, uidCounterSetMap.get()),
+        ReplacePattern(APP_UID_STATS_MAP, appUidStatsMap.get()),
         ReplacePattern(UID_STATS_MAP, uidStatsMap.get()),
         ReplacePattern(TAG_STATS_MAP, tagStatsMap.get()),
         ReplacePattern(IFACE_STATS_MAP, ifaceStatsMap.get()),

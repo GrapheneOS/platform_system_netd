@@ -194,5 +194,6 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
 
     key.tag = 0;
     bpf_update_stats(skb, UID_STATS_MAP, direction, &key);
+    bpf_update_stats(skb, APP_UID_STATS_MAP, direction, &uid);
     return match;
 }
