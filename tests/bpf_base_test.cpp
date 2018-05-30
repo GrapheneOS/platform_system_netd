@@ -102,6 +102,33 @@ TEST_F(BpfBasicTest, TestTagSocket) {
     ASSERT_EQ(ENOENT, tagResult.status().code());
 }
 
+TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    BpfMap<uint64_t, UidTag> cookieTagMap(mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
+    ASSERT_LE(0, cookieTagMap.getMap());
+    int sock = socket(AF_INET6, SOCK_STREAM, 0);
+    ASSERT_LE(0, sock);
+    uint64_t cookie = getSocketCookie(sock);
+    ASSERT_NE(NONEXISTENT_COOKIE, cookie);
+    ASSERT_EQ(0, qtaguid_tagSocket(sock, TEST_TAG, TEST_UID));
+    StatusOr<UidTag> tagResult = cookieTagMap.readValue(cookie);
+    ASSERT_TRUE(isOk(tagResult));
+    ASSERT_EQ(TEST_UID, tagResult.value().uid);
+    ASSERT_EQ(TEST_TAG, tagResult.value().tag);
+    ASSERT_EQ(0, close(sock));
+    // Check map periodically until sk destroy handler have done its job.
+    for (int i = 0; i < 10; i++) {
+        tagResult = cookieTagMap.readValue(cookie);
+        if (!isOk(tagResult)) {
+            ASSERT_EQ(ENOENT, tagResult.status().code());
+            return;
+        }
+        usleep(50);
+    }
+    FAIL() << "socket tag still exist after 500ms";
+}
+
 TEST_F(BpfBasicTest, TestChangeCounterSet) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
@@ -125,6 +152,8 @@ TEST_F(BpfBasicTest, TestDeleteTagData) {
     ASSERT_LE(0, uidStatsMap.getMap());
     BpfMap<StatsKey, StatsValue> tagStatsMap(mapRetrieve(TAG_STATS_MAP_PATH, 0));
     ASSERT_LE(0, tagStatsMap.getMap());
+    BpfMap<uint32_t, StatsValue> appUidStatsMap(mapRetrieve(APP_UID_STATS_MAP_PATH, 0));
+    ASSERT_LE(0, appUidStatsMap.getMap());
 
     StatsKey key = {.uid = TEST_UID, .tag = TEST_TAG, .counterSet = TEST_COUNTERSET,
                     .ifaceIndex = 1};
@@ -132,8 +161,12 @@ TEST_F(BpfBasicTest, TestDeleteTagData) {
     EXPECT_TRUE(isOk(tagStatsMap.writeValue(key, statsMapValue, BPF_ANY)));
     key.tag = 0;
     EXPECT_TRUE(isOk(uidStatsMap.writeValue(key, statsMapValue, BPF_ANY)));
+    EXPECT_TRUE(isOk(appUidStatsMap.writeValue(TEST_UID, statsMapValue, BPF_ANY)));
     ASSERT_EQ(0, qtaguid_deleteTagData(0, TEST_UID));
     StatusOr<StatsValue> statsResult = uidStatsMap.readValue(key);
+    ASSERT_FALSE(isOk(statsResult));
+    ASSERT_EQ(ENOENT, statsResult.status().code());
+    statsResult = appUidStatsMap.readValue(TEST_UID);
     ASSERT_FALSE(isOk(statsResult));
     ASSERT_EQ(ENOENT, statsResult.status().code());
     key.tag = TEST_TAG;

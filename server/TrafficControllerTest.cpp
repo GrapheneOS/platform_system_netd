@@ -72,6 +72,7 @@ class TrafficControllerTest : public ::testing::Test {
     TrafficController mTc;
     BpfMap<uint64_t, UidTag> mFakeCookieTagMap;
     BpfMap<uint32_t, uint8_t> mFakeUidCounterSetMap;
+    BpfMap<uint32_t, StatsValue> mFakeAppUidStatsMap;
     BpfMap<StatsKey, StatsValue> mFakeUidStatsMap;
     BpfMap<StatsKey, StatsValue> mFakeTagStatsMap;
     BpfMap<uint32_t, uint8_t> mFakeDozableUidMap;
@@ -89,6 +90,10 @@ class TrafficControllerTest : public ::testing::Test {
         mFakeUidCounterSetMap.reset(
             createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(uint8_t), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakeUidCounterSetMap.getMap());
+
+        mFakeAppUidStatsMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t),
+                                            sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
+        ASSERT_LE(0, mFakeAppUidStatsMap.getMap());
 
         mFakeUidStatsMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey),
                                          sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
@@ -114,6 +119,7 @@ class TrafficControllerTest : public ::testing::Test {
 
         mTc.mCookieTagMap.reset(mFakeCookieTagMap.getMap());
         mTc.mUidCounterSetMap.reset(mFakeUidCounterSetMap.getMap());
+        mTc.mAppUidStatsMap.reset(mFakeAppUidStatsMap.getMap());
         mTc.mUidStatsMap.reset(mFakeUidStatsMap.getMap());
         mTc.mTagStatsMap.reset(mFakeTagStatsMap.getMap());
         mTc.mDozableUidMap.reset(mFakeDozableUidMap.getMap());
@@ -151,6 +157,7 @@ class TrafficControllerTest : public ::testing::Test {
         EXPECT_TRUE(isOk(mFakeTagStatsMap.writeValue(*key, statsMapValue, BPF_ANY)));
         key->tag = 0;
         EXPECT_TRUE(isOk(mFakeUidStatsMap.writeValue(*key, statsMapValue, BPF_ANY)));
+        EXPECT_TRUE(isOk(mFakeAppUidStatsMap.writeValue(uid, statsMapValue, BPF_ANY)));
         // put tag information back to statsKey
         key->tag = tag;
     }
@@ -217,6 +224,7 @@ class TrafficControllerTest : public ::testing::Test {
         std::lock_guard<std::mutex> ownerGuard(mTc.mOwnerMatchMutex);
         mFakeCookieTagMap.reset();
         mFakeUidCounterSetMap.reset();
+        mFakeAppUidStatsMap.reset();
         mFakeUidStatsMap.reset();
         mFakeTagStatsMap.reset();
         mTc.mDozableUidMap.reset();
@@ -331,6 +339,10 @@ TEST_F(TrafficControllerTest, TestDeleteTagData) {
     ASSERT_TRUE(isOk(statsMapResult));
     ASSERT_EQ((uint64_t)1, statsMapResult.value().rxPackets);
     ASSERT_EQ((uint64_t)100, statsMapResult.value().rxBytes);
+    auto appStatsResult = mFakeAppUidStatsMap.readValue(TEST_UID);
+    ASSERT_TRUE(isOk(appStatsResult));
+    ASSERT_EQ((uint64_t)1, appStatsResult.value().rxPackets);
+    ASSERT_EQ((uint64_t)100, appStatsResult.value().rxBytes);
 }
 
 TEST_F(TrafficControllerTest, TestDeleteAllUidData) {
@@ -347,6 +359,7 @@ TEST_F(TrafficControllerTest, TestDeleteAllUidData) {
     ASSERT_FALSE(isOk(mFakeTagStatsMap.readValue(tagStatsMapKey)));
     tagStatsMapKey.tag = 0;
     ASSERT_FALSE(isOk(mFakeUidStatsMap.readValue(tagStatsMapKey)));
+    ASSERT_FALSE(isOk(mFakeAppUidStatsMap.readValue(TEST_UID)));
 }
 
 TEST_F(TrafficControllerTest, TestDeleteDataWithTwoTags) {
@@ -401,15 +414,21 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoUids) {
     ASSERT_FALSE(isOk(mFakeTagStatsMap.readValue(tagStatsMapKey2)));
     tagStatsMapKey2.tag = 0;
     ASSERT_FALSE(isOk(mFakeUidStatsMap.readValue(tagStatsMapKey2)));
+    ASSERT_FALSE(isOk(mFakeAppUidStatsMap.readValue(uid2)));
     tagStatsMapKey1.tag = 0;
     StatusOr<StatsValue> statsMapResult = mFakeUidStatsMap.readValue(tagStatsMapKey1);
     ASSERT_TRUE(isOk(statsMapResult));
     ASSERT_EQ((uint64_t)1, statsMapResult.value().rxPackets);
     ASSERT_EQ((uint64_t)100, statsMapResult.value().rxBytes);
+    auto appStatsResult = mFakeAppUidStatsMap.readValue(uid1);
+    ASSERT_TRUE(isOk(appStatsResult));
+    ASSERT_EQ((uint64_t)1, appStatsResult.value().rxPackets);
+    ASSERT_EQ((uint64_t)100, appStatsResult.value().rxBytes);
 
     // Delete the stats of the other uid.
     ASSERT_EQ(0, mTc.deleteTagData(0, uid1));
     ASSERT_FALSE(isOk(mFakeUidStatsMap.readValue(tagStatsMapKey1)));
+    ASSERT_FALSE(isOk(mFakeAppUidStatsMap.readValue(uid1)));
 }
 
 TEST_F(TrafficControllerTest, TestUpdateOwnerMapEntry) {
