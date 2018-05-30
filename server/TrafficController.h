@@ -132,6 +132,13 @@ class TrafficController {
     BpfMap<uint32_t, uint8_t> mUidCounterSetMap;
 
     /*
+     * mAppUidStatsMap: Store the total traffic stats for a uid regardless of
+     * tag, counterSet and iface. The stats is used by TrafficStats.getUidStats
+     * API to return persistent stats for a specific uid since device boot.
+     */
+    BpfMap<uint32_t, StatsValue> mAppUidStatsMap;
+
+    /*
      * mUidStatsMap: Store the traffic statistics for a specific combination of
      * uid, iface and counterSet. We maintain this map in addition to
      * mTagStatsMap because we want to be able to track per-UID data usage even

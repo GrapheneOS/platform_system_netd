@@ -65,15 +65,20 @@ constexpr uint64_t TEST_PACKET1 = 200;
 constexpr const char IFACE_NAME1[] = "lo";
 constexpr const char IFACE_NAME2[] = "wlan0";
 constexpr const char IFACE_NAME3[] = "rmnet_data0";
+// A iface name that the size is bigger then IFNAMSIZ
+constexpr const char LONG_IFACE_NAME[] = "wlanWithALongName";
+constexpr const char TRUNCATED_IFACE_NAME[] = "wlanWithALongNa";
 constexpr uint32_t IFACE_INDEX1 = 1;
 constexpr uint32_t IFACE_INDEX2 = 2;
 constexpr uint32_t IFACE_INDEX3 = 3;
+constexpr uint32_t IFACE_INDEX4 = 4;
 constexpr uint32_t UNKNOWN_IFACE = 0;
 
 class BpfNetworkStatsHelperTest : public testing::Test {
   protected:
     BpfNetworkStatsHelperTest() {}
     BpfMap<uint64_t, UidTag> mFakeCookieTagMap;
+    BpfMap<uint32_t, StatsValue> mFakeAppUidStatsMap;
     BpfMap<StatsKey, StatsValue> mFakeUidStatsMap;
     BpfMap<StatsKey, StatsValue> mFakeTagStatsMap;
     BpfMap<uint32_t, IfaceValue> mFakeIfaceIndexNameMap;
@@ -83,6 +88,10 @@ class BpfNetworkStatsHelperTest : public testing::Test {
         mFakeCookieTagMap = BpfMap<uint64_t, UidTag>(createMap(
             BPF_MAP_TYPE_HASH, sizeof(uint64_t), sizeof(struct UidTag), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakeCookieTagMap.getMap());
+
+        mFakeAppUidStatsMap = BpfMap<uint32_t, StatsValue>(createMap(
+            BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
+        ASSERT_LE(0, mFakeAppUidStatsMap.getMap());
 
         mFakeUidStatsMap =
             BpfMap<StatsKey, StatsValue>(createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey),
@@ -208,24 +217,26 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetUidStatsTotal) {
                          .rxPackets = TEST_PACKET0,
                          .txBytes = TEST_BYTES1,
                          .txPackets = TEST_PACKET1,};
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeUidStatsMap);
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX2, TEST_COUNTERSET1, value1, mFakeUidStatsMap);
-    populateFakeStats(TEST_UID2, 0, IFACE_INDEX3, TEST_COUNTERSET1, value1, mFakeUidStatsMap);
-    Stats result1 = {};
-    ASSERT_EQ(0, bpfGetUidStatsInternal(TEST_UID1, &result1, mFakeUidStatsMap));
-    StatsValue uid1Value = {
+    StatsValue value2 = {
         .rxBytes = TEST_BYTES0 * 2,
         .rxPackets = TEST_PACKET0 * 2,
         .txBytes = TEST_BYTES1 * 2,
         .txPackets = TEST_PACKET1 * 2,
     };
-    expectStatsEqual(uid1Value, result1);
+    ASSERT_TRUE(isOk(mFakeAppUidStatsMap.writeValue(TEST_UID1, value1, BPF_ANY)));
+    ASSERT_TRUE(isOk(mFakeAppUidStatsMap.writeValue(TEST_UID2, value2, BPF_ANY)));
+    Stats result1 = {};
+    ASSERT_EQ(0, bpfGetUidStatsInternal(TEST_UID1, &result1, mFakeAppUidStatsMap));
+    expectStatsEqual(value1, result1);
 
     Stats result2 = {};
-    ASSERT_EQ(0, bpfGetUidStatsInternal(TEST_UID2, &result2, mFakeUidStatsMap));
-    expectStatsEqual(value1, result2);
+    ASSERT_EQ(0, bpfGetUidStatsInternal(TEST_UID2, &result2, mFakeAppUidStatsMap));
+    expectStatsEqual(value2, result2);
     std::vector<stats_line> lines;
     std::vector<std::string> ifaces;
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeUidStatsMap);
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX2, TEST_COUNTERSET1, value1, mFakeUidStatsMap);
+    populateFakeStats(TEST_UID2, 0, IFACE_INDEX3, TEST_COUNTERSET1, value1, mFakeUidStatsMap);
     ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, TEST_UID1,
                                                     mFakeUidStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)2, lines.size());
@@ -395,6 +406,7 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetIfaceStatsDetail) {
     updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
     updateIfaceMap(IFACE_NAME2, IFACE_INDEX2);
     updateIfaceMap(IFACE_NAME3, IFACE_INDEX3);
+    updateIfaceMap(LONG_IFACE_NAME, IFACE_INDEX4);
     StatsValue value1 = {
         .rxBytes = TEST_BYTES0,
         .rxPackets = TEST_PACKET0,
@@ -413,16 +425,20 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetIfaceStatsDetail) {
     EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY)));
     ifaceStatsKey = IFACE_INDEX3;
     EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY)));
+    ifaceStatsKey = IFACE_INDEX4;
+    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY)));
     std::vector<stats_line> lines;
     ASSERT_EQ(0,
               parseBpfNetworkStatsDevInternal(&lines, mFakeIfaceStatsMap, mFakeIfaceIndexNameMap));
-    ASSERT_EQ((unsigned long)3, lines.size());
+    ASSERT_EQ((unsigned long)4, lines.size());
     std::sort(lines.begin(), lines.end(), [](const auto& line1, const auto& line2)-> bool {
         return strcmp(line1.iface, line2.iface) < 0;
     });
     expectStatsLineEqual(value1, IFACE_NAME1, UID_ALL, SET_ALL, TAG_NONE, lines[0]);
     expectStatsLineEqual(value1, IFACE_NAME3, UID_ALL, SET_ALL, TAG_NONE, lines[1]);
     expectStatsLineEqual(value2, IFACE_NAME2, UID_ALL, SET_ALL, TAG_NONE, lines[2]);
+    ASSERT_EQ(0, strcmp(TRUNCATED_IFACE_NAME, lines[3].iface));
+    expectStatsLineEqual(value2, TRUNCATED_IFACE_NAME, UID_ALL, SET_ALL, TAG_NONE, lines[3]);
 }
 }  // namespace bpf
 }  // namespace android

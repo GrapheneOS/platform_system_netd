@@ -75,19 +75,29 @@ struct IfaceValue {
 #define BPF_PATH "/sys/fs/bpf"
 
 // Since we cannot garbage collect the stats map since device boot, we need to make these maps as
-// large as possible. The current rlimit of MEM_LOCK allows at most 10000 map entries for each
-// stats map. In the old qtaguid module, we don't have a total limit for data entries but only have
-// limitation of tags each uid can have. (default is 1024 in kernel);
-// cookie_tag_map:      key:  8 bytes, value:  8 bytes, total:10000*8*2 bytes         =  160Kbytes
-// uid_counter_set_map: key:  4 bytes, value:  1 bytes, total:2000*5 bytes            =   10Kbytes
-// uid_stats_map:       key: 16 bytes, value: 32 bytes, total:10000*16+10000*32 bytes =  480Kbytes
-// tag_stats_map:       key: 16 bytes, value: 32 bytes, total:10000*16+10000*32 bytes =  480Kbytes
-// iface_index_name_map:key:  4 bytes, value: 32 bytes, total:1000*36 bytes           =   36Kbytes
-// iface_stats_map:     key:  4 bytes, value: 32 bytes, total:1000*36 bytes           =   36Kbytes
-// dozable_uid_map:     key:  4 bytes, value:  1 bytes, total:2000*5 bytes            =   10Kbytes
-// standby_uid_map:     key:  4 bytes, value:  1 bytes, total:2000*5 bytes            =   10Kbytes
-// powersave_uid_map:   key:  4 bytes, value:  1 bytes, total:2000*5 bytes            =   10Kbytes
-// total:                                                                               1232Kbytes
+// large as possible. The maximum size of number of map entries we can have is depend on the rlimit
+// of MEM_LOCK granted to netd. The memory space needed by each map can be calculated by the
+// following fomula:
+//      elem_size = 40 + roundup(key_size, 8) + roundup(value_size, 8)
+//      cost = roundup_pow_of_two(max_entries) * 16 + elem_size * max_entries +
+//              elem_size * number_of_CPU
+// And the cost of each map currently used is(assume the device have 8 CPUs):
+// cookie_tag_map:      key:  8 bytes, value:  8 bytes, cost:  822592 bytes    =   823Kbytes
+// uid_counter_set_map: key:  4 bytes, value:  1 bytes, cost:  145216 bytes    =   145Kbytes
+// app_uid_stats_map:   key:  4 bytes, value: 32 bytes, cost: 1062784 bytes    =  1063Kbytes
+// uid_stats_map:       key: 16 bytes, value: 32 bytes, cost: 1142848 bytes    =  1143Kbytes
+// tag_stats_map:       key: 16 bytes, value: 32 bytes, cost: 1142848 bytes    =  1143Kbytes
+// iface_index_name_map:key:  4 bytes, value: 16 bytes, cost:   80896 bytes    =    81Kbytes
+// iface_stats_map:     key:  4 bytes, value: 32 bytes, cost:   97024 bytes    =    97Kbytes
+// dozable_uid_map:     key:  4 bytes, value:  1 bytes, cost:  145216 bytes    =   145Kbytes
+// standby_uid_map:     key:  4 bytes, value:  1 bytes, cost:  145216 bytes    =   145Kbytes
+// powersave_uid_map:   key:  4 bytes, value:  1 bytes, cost:  145216 bytes    =   145Kbytes
+// total:                                                                         4930Kbytes
+// It takes maximum 4.9MB kernel memory space if all maps are full, which requires any devices
+// running this module to have a memlock rlimit to be larger then 5MB. In the old qtaguid module,
+// we don't have a total limit for data entries but only have limitation of tags each uid can have.
+// (default is 1024 in kernel);
+
 constexpr const int COOKIE_UID_MAP_SIZE = 10000;
 constexpr const int UID_COUNTERSET_MAP_SIZE = 2000;
 constexpr const int UID_STATS_MAP_SIZE = 10000;
@@ -105,6 +115,7 @@ constexpr const char* CGROUP_ROOT_PATH = "/dev/cg2_bpf";
 
 constexpr const char* COOKIE_TAG_MAP_PATH = BPF_PATH "/traffic_cookie_tag_map";
 constexpr const char* UID_COUNTERSET_MAP_PATH = BPF_PATH "/traffic_uid_counterSet_map";
+constexpr const char* APP_UID_STATS_MAP_PATH = BPF_PATH "/traffic_app_uid_stats_map";
 constexpr const char* UID_STATS_MAP_PATH = BPF_PATH "/traffic_uid_stats_map";
 constexpr const char* TAG_STATS_MAP_PATH = BPF_PATH "/traffic_tag_stats_map";
 constexpr const char* IFACE_INDEX_NAME_MAP_PATH = BPF_PATH "/traffic_iface_index_name_map";
