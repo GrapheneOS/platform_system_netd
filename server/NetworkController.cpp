@@ -192,6 +192,19 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
     Fwmark fwmark;
     fwmark.protectedFromVpn = true;
     fwmark.permission = PERMISSION_SYSTEM;
+
+    // Common case: there is no VPN that applies to the user, and the query did not specify a netId.
+    // Therefore, it is safe to set the explicit bit on this query and skip all the complex logic
+    // below. While this looks like a special case, it is actually the one that handles the vast
+    // majority of DNS queries.
+    // TODO: untangle this code.
+    if (*netId == NETID_UNSET && getVirtualNetworkForUserLocked(uid) == nullptr) {
+        *netId = mDefaultNetId;
+        fwmark.netId = *netId;
+        fwmark.explicitlySelected = true;
+        return fwmark.intValue;
+    }
+
     if (checkUserNetworkAccessLocked(uid, *netId) == 0) {
         // If a non-zero NetId was explicitly specified, and the user has permission for that
         // network, use that network's DNS servers. Do not fall through to the default network even
@@ -210,7 +223,8 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
     } else {
         // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
         // (possibly falling through to the default network if the VPN doesn't provide a route to
-        // them). Otherwise, use the default network's DNS servers.
+        // them). Otherwise, use the default network's DNS servers. We cannot set the explicit bit
+        // because we need to be able to fall through a split tunnel to the default network.
         VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
         if (virtualNetwork && virtualNetwork->getHasDns()) {
             *netId = virtualNetwork->getNetId();
