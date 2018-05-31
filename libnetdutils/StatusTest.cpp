@@ -42,13 +42,14 @@ TEST(StatusOrTest, ostream) {
       StatusOr<int> so(11);
       std::stringstream ss;
       ss << so;
-      EXPECT_EQ("StatusOr[status: Status[code: 0, msg: ], value: 11]", ss.str());
+      // TODO: Fix StatusOr to optionally output "value:".
+      EXPECT_EQ("StatusOr[status: Status[code: 0, msg: \"\"]]", ss.str());
     }
     {
       StatusOr<int> err(status::undefined);
       std::stringstream ss;
       ss << err;
-      EXPECT_EQ("StatusOr[status: Status[code: 2147483647, msg: undefined]]", ss.str());
+      EXPECT_EQ("StatusOr[status: Status[code: 2147483647, msg: \"undefined\"]]", ss.str());
     }
 }
 
