@@ -260,11 +260,11 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
 }
 
 TEST_F(BinderTest, TestVirtualTunnelInterface) {
-    static const struct TestData {
-        const std::string& family;
-        const std::string& deviceName;
-        const std::string& localAddress;
-        const std::string& remoteAddress;
+    const struct TestData {
+        const std::string family;
+        const std::string deviceName;
+        const std::string localAddress;
+        const std::string remoteAddress;
         int32_t iKey;
         int32_t oKey;
     } kTestData[] = {
