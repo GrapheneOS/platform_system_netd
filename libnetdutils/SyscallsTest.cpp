@@ -62,6 +62,7 @@ TEST_F(SyscallsTest, open) {
     constexpr mode_t kMode = 37373;
     const auto& sys = sSyscalls.get();
     EXPECT_CALL(mSyscalls, open(kPath, kFlags, kMode)).WillOnce(Return(ByMove(UniqueFd(kFd))));
+    EXPECT_CALL(mSyscalls, close(kFd)).WillOnce(Return(status::ok));
     auto result = sys.open(kPath, kFlags, kMode);
     EXPECT_EQ(status::ok, result.status());
     EXPECT_EQ(kFd, result.value());
