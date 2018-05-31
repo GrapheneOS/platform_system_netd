@@ -23,6 +23,7 @@
 
 #define COOKIE_TAG_MAP 0xbfceaaffffffffff
 #define UID_COUNTERSET_MAP 0xbfdceeafffffffff
+#define APP_UID_STATS_MAP 0xbfa1daafffffffff
 #define UID_STATS_MAP 0xbfdaafffffffffff
 #define TAG_STATS_MAP 0xbfaaafffffffffff
 #define IFACE_STATS_MAP 0xbf1faceaafffffff

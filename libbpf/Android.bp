@@ -65,6 +65,7 @@ cc_test {
     name: "libbpf_test",
     srcs: [
         "BpfNetworkStatsTest.cpp",
+        "BpfMapTest.cpp",
     ],
     cflags: [
         "-Wall",
