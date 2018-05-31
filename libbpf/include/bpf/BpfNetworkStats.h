@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <bpf/BpfMap.h>
+
 namespace android {
 namespace bpf {
 
@@ -26,6 +28,12 @@ constexpr int SET_ALL = -1;
 constexpr int SET_DEFAULT = 0;
 constexpr int SET_FOREGROUND = 1;
 
+// The limit for stats received by a unknown interface;
+constexpr const int64_t MAX_UNKNOWN_IFACE_BYTES = 100 * 1000;
+
+// This is a JNI ABI and is used by
+// framework/base/core/jni/com_android_internal_net_NetworkStatsFactory.cpp
+// make sure it is consistent with the JNI code before changing this.
 struct stats_line {
     char iface[32];
     int32_t uid;
@@ -37,26 +45,60 @@ struct stats_line {
     int64_t txPackets;
 };
 // For test only
-int bpfGetUidStatsInternal(uid_t uid, struct Stats* stats, const base::unique_fd& map_fd);
+int bpfGetUidStatsInternal(uid_t uid, struct Stats* stats,
+                           const BpfMap<uint32_t, StatsValue>& appUidStatsMap);
 // For test only
 int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
-                             const base::unique_fd& ifaceStatsMapFd,
-                             const base::unique_fd& ifaceNameMapFd);
+                             const BpfMap<uint32_t, StatsValue>& ifaceStatsMap,
+                             const BpfMap<uint32_t, IfaceValue>& ifaceNameMap);
 // For test only
 int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
                                        const std::vector<std::string>& limitIfaces, int limitTag,
-                                       int limitUid, const base::unique_fd& statsMapFd,
-                                       const base::unique_fd& ifaceMapFd);
+                                       int limitUid, const BpfMap<StatsKey, StatsValue>& statsMap,
+                                       const BpfMap<uint32_t, IfaceValue>& ifaceMap);
 // For test only
 int cleanStatsMapInternal(const base::unique_fd& cookieTagMap, const base::unique_fd& tagStatsMap);
 // For test only
-int getIfaceNameFromMap(const base::unique_fd& ifaceMapFd, const base::unique_fd& statsMapFd,
-                        uint32_t ifaceIndex, char* ifname, void* curKey,
-                        int64_t* unknownIfaceBytesTotal);
+template <class Key>
+int getIfaceNameFromMap(const BpfMap<uint32_t, IfaceValue>& ifaceMap,
+                        const BpfMap<Key, StatsValue>& statsMap, uint32_t ifaceIndex, char* ifname,
+                        const Key& curKey, int64_t* unknownIfaceBytesTotal) {
+    auto iface = ifaceMap.readValue(ifaceIndex);
+    if (!isOk(iface)) {
+        maybeLogUnknownIface(ifaceIndex, statsMap, curKey, unknownIfaceBytesTotal);
+        return -ENODEV;
+    }
+    strlcpy(ifname, iface.value().name, sizeof(IfaceValue));
+    return 0;
+}
+
+template <class Key>
+void maybeLogUnknownIface(int ifaceIndex, const BpfMap<Key, StatsValue>& statsMap,
+                          const Key& curKey, int64_t* unknownIfaceBytesTotal) {
+    // Have we already logged an error?
+    if (*unknownIfaceBytesTotal == -1) {
+        return;
+    }
+
+    // Are we undercounting enough data to be worth logging?
+    auto statsEntry = statsMap.readValue(curKey);
+    if (!netdutils::isOk(statsEntry)) {
+        // No data is being undercounted.
+        return;
+    }
+
+    *unknownIfaceBytesTotal += (statsEntry.value().rxBytes + statsEntry.value().txBytes);
+    if (*unknownIfaceBytesTotal >= MAX_UNKNOWN_IFACE_BYTES) {
+        ALOGE("Unknown name for ifindex %d with more than %" PRId64 " bytes of traffic", ifaceIndex,
+              *unknownIfaceBytesTotal);
+        *unknownIfaceBytesTotal = -1;
+    }
+}
+
 // For test only
 int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
-                                    const base::unique_fd& statsMapFd,
-                                    const base::unique_fd& ifaceMapFd);
+                                    const BpfMap<uint32_t, StatsValue>& statsMap,
+                                    const BpfMap<uint32_t, IfaceValue>& ifaceMap);
 
 int bpfGetUidStats(uid_t uid, struct Stats* stats);
 int bpfGetIfaceStats(const char* iface, struct Stats* stats);

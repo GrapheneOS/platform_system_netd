@@ -40,8 +40,30 @@ using android::netdutils::Slice;
 using android::netdutils::statusFromErrno;
 using android::netdutils::StatusOr;
 
+#define ptr_to_u64(x) ((uint64_t)(uintptr_t)x)
+#define DEFAULT_LOG_LEVEL 1
+
 namespace android {
 namespace bpf {
+
+/*  The bpf_attr is a union which might have a much larger size then the struct we are using, while
+ *  The inline initializer only reset the field we are using and leave the reset of the memory as
+ *  is. The bpf kernel code will performs a much stricter check to ensure all unused field is 0. So
+ *  this syscall will normally fail with E2BIG if we don't do a memset to bpf_attr.
+ */
+bool operator==(const StatsKey& lhs, const StatsKey& rhs) {
+    return ((lhs.uid == rhs.uid) && (lhs.tag == rhs.tag) && (lhs.counterSet == rhs.counterSet) &&
+            (lhs.ifaceIndex == rhs.ifaceIndex));
+}
+
+bool operator==(const UidTag& lhs, const UidTag& rhs) {
+    return ((lhs.uid == rhs.uid) && (lhs.tag == rhs.tag));
+}
+
+bool operator==(const StatsValue& lhs, const StatsValue& rhs) {
+    return ((lhs.rxBytes == rhs.rxBytes) && (lhs.txBytes == rhs.txBytes) &&
+            (lhs.rxPackets == rhs.rxPackets) && (lhs.txPackets == rhs.txPackets));
+}
 
 int bpf(int cmd, Slice bpfAttr) {
     return syscall(__NR_bpf, cmd, bpfAttr.base(), bpfAttr.size());
@@ -96,6 +118,16 @@ int getNextMapKey(const base::unique_fd& map_fd, void* key, void* next_key) {
     attr.map_fd = map_fd.get();
     attr.key = ptr_to_u64(key);
     attr.next_key = ptr_to_u64(next_key);
+
+    return bpf(BPF_MAP_GET_NEXT_KEY, Slice(&attr, sizeof(attr)));
+}
+
+int getFirstMapKey(const base::unique_fd& map_fd, void* firstKey) {
+    bpf_attr attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.map_fd = map_fd.get();
+    attr.key = 0;
+    attr.next_key = ptr_to_u64(firstKey);
 
     return bpf(BPF_MAP_GET_NEXT_KEY, Slice(&attr, sizeof(attr)));
 }
@@ -172,36 +204,6 @@ uint64_t getSocketCookie(int sockFd) {
         return NONEXISTENT_COOKIE;
     }
     return sock_cookie;
-}
-
-StatusOr<unique_fd> setUpBPFMap(uint32_t key_size, uint32_t value_size, uint32_t map_size,
-                                const char* path, bpf_map_type map_type) {
-    int ret;
-    base::unique_fd map_fd;
-    ret = access(path, R_OK);
-    /* Check the pinned location first to check if the map is already there.
-     * otherwise create a new one.
-     */
-    if (ret == 0) {
-        map_fd = base::unique_fd(mapRetrieve(path, 0));
-        if (map_fd < 0) {
-            return statusFromErrno(errno, StringPrintf("pinned map not accessible or does not "
-                                                       "exist: (%s)\n",
-                                                       path));
-        }
-    } else if (ret < 0 && errno == ENOENT) {
-        map_fd = base::unique_fd(createMap(map_type, key_size, value_size, map_size, BPF_F_NO_PREALLOC));
-        if (map_fd < 0) {
-            return statusFromErrno(errno, StringPrintf("map create failed!: %s", path));
-        }
-        ret = mapPin(map_fd, path);
-        if (ret) {
-            return statusFromErrno(errno, StringPrintf("bpf map pin(%d, %s)", map_fd.get(), path));
-        }
-    } else {
-        return statusFromErrno(errno, StringPrintf("pinned map not accessible: %s", path));
-    }
-    return map_fd;
 }
 
 bool hasBpfSupport() {

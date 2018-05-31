@@ -44,7 +44,7 @@
 #include <netdutils/Misc.h>
 #include <netdutils/Syscalls.h>
 #include "TrafficController.h"
-#include "bpf/BpfUtils.h"
+#include "bpf/BpfMap.h"
 #include "bpf/bpf_shared.h"
 
 #include "DumpWriter.h"
@@ -116,73 +116,75 @@ TrafficController::TrafficController() {
     ebpfSupported = hasBpfSupport();
 }
 
-Status initialOwnerMap(const unique_fd& map_fd, const std::string mapName) {
+Status initialOwnerMap(BpfMap<uint32_t, uint8_t>& map) {
+    // Check and delete all the entries from the map in case it is a runtime
+    // restart
+    const auto deleteAllEntries = [](const uint32_t& key, BpfMap<uint32_t, uint8_t>& map) {
+        Status res = map.deleteValue(key);
+        if (!isOk(res) && (res.code() == ENOENT)) {
+            ALOGE("Failed to delete data(uid=%u): %s\n", key, strerror(res.code()));
+        }
+        return netdutils::status::ok;
+    };
+    // It is safe to delete from this map because nothing will concurrently iterate over it:
+    // - Nothing in netd will iterate over it because we're holding mOwnerMatchMutex.
+    // - Nothing outside netd iterates over it.
+    map.iterate(deleteAllEntries);
     uint32_t mapSettingKey = UID_MAP_ENABLED;
-    uint32_t defaultMapState = 0;
-    int ret = writeToMapEntry(map_fd, &mapSettingKey, &defaultMapState, BPF_NOEXIST);
-    // If it is already exist, it might be a runtime restart and we just keep
-    // the old state.
-    if (ret && errno != EEXIST) {
-        return statusFromErrno(errno, "Fail to set the initial state of " + mapName);
-    }
-    return netdutils::status::ok;
+    uint8_t defaultMapState = 0;
+    return map.writeValue(mapSettingKey, defaultMapState, BPF_NOEXIST);
 }
 
 Status TrafficController::initMaps() {
     std::lock_guard<std::mutex> ownerMapGuard(mOwnerMatchMutex);
-    std::lock_guard<std::mutex> statsMapGuard(mDeleteStatsMutex);
-    ASSIGN_OR_RETURN(mCookieTagMap,
-                     setUpBPFMap(sizeof(uint64_t), sizeof(struct UidTag), COOKIE_UID_MAP_SIZE,
-                                 COOKIE_TAG_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(
+        mCookieTagMap.getOrCreate(COOKIE_UID_MAP_SIZE, COOKIE_TAG_MAP_PATH, BPF_MAP_TYPE_HASH));
 
     RETURN_IF_NOT_OK(changeOwnerAndMode(COOKIE_TAG_MAP_PATH, AID_NET_BW_ACCT, "CookieTagMap",
                                         false));
 
-    ASSIGN_OR_RETURN(mUidCounterSetMap,
-                     setUpBPFMap(sizeof(uint32_t), sizeof(uint32_t), UID_COUNTERSET_MAP_SIZE,
-                                 UID_COUNTERSET_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mUidCounterSetMap.getOrCreate(UID_COUNTERSET_MAP_SIZE, UID_COUNTERSET_MAP_PATH,
+                                                   BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(UID_COUNTERSET_MAP_PATH, AID_NET_BW_ACCT,
                                         "UidCounterSetMap", false));
 
-    ASSIGN_OR_RETURN(mUidStatsMap,
-                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct StatsValue),
-                                 UID_STATS_MAP_SIZE, UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(
+        mAppUidStatsMap.getOrCreate(UID_STATS_MAP_SIZE, APP_UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(
+        changeOwnerAndMode(APP_UID_STATS_MAP_PATH, AID_NET_BW_STATS, "AppUidStatsMap", false));
+
+    RETURN_IF_NOT_OK(
+        mUidStatsMap.getOrCreate(UID_STATS_MAP_SIZE, UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(UID_STATS_MAP_PATH, AID_NET_BW_STATS, "UidStatsMap",
                                         false));
 
-    ASSIGN_OR_RETURN(mTagStatsMap,
-                     setUpBPFMap(sizeof(struct StatsKey), sizeof(struct StatsValue),
-                                 TAG_STATS_MAP_SIZE, TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(
+        mTagStatsMap.getOrCreate(TAG_STATS_MAP_SIZE, TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(TAG_STATS_MAP_PATH, AID_NET_BW_STATS, "TagStatsMap",
                                         false));
 
-    ASSIGN_OR_RETURN(mIfaceIndexNameMap,
-                     setUpBPFMap(sizeof(uint32_t), IFNAMSIZ, IFACE_INDEX_NAME_MAP_SIZE,
-                                 IFACE_INDEX_NAME_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mIfaceIndexNameMap.getOrCreate(IFACE_INDEX_NAME_MAP_SIZE,
+                                                    IFACE_INDEX_NAME_MAP_PATH, BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(IFACE_INDEX_NAME_MAP_PATH, AID_NET_BW_STATS,
                                         "IfaceIndexNameMap", false));
 
-    ASSIGN_OR_RETURN(mDozableUidMap,
-                     setUpBPFMap(sizeof(uint32_t), sizeof(uint8_t), UID_OWNER_MAP_SIZE,
-                                 DOZABLE_UID_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(
+        mDozableUidMap.getOrCreate(UID_OWNER_MAP_SIZE, DOZABLE_UID_MAP_PATH, BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(DOZABLE_UID_MAP_PATH, AID_ROOT, "DozableUidMap", true));
-    RETURN_IF_NOT_OK(initialOwnerMap(mDozableUidMap, "DozableUidMap"));
+    RETURN_IF_NOT_OK(initialOwnerMap(mDozableUidMap));
 
-    ASSIGN_OR_RETURN(mStandbyUidMap,
-                     setUpBPFMap(sizeof(uint32_t), sizeof(uint8_t), UID_OWNER_MAP_SIZE,
-                                 STANDBY_UID_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(
+        mStandbyUidMap.getOrCreate(UID_OWNER_MAP_SIZE, STANDBY_UID_MAP_PATH, BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(STANDBY_UID_MAP_PATH, AID_ROOT, "StandbyUidMap", true));
-    RETURN_IF_NOT_OK(initialOwnerMap(mStandbyUidMap, "StandbyUidMap"));
+    RETURN_IF_NOT_OK(initialOwnerMap(mStandbyUidMap));
 
-    ASSIGN_OR_RETURN(mPowerSaveUidMap,
-                     setUpBPFMap(sizeof(uint32_t), sizeof(uint8_t), UID_OWNER_MAP_SIZE,
-                                 POWERSAVE_UID_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mPowerSaveUidMap.getOrCreate(UID_OWNER_MAP_SIZE, POWERSAVE_UID_MAP_PATH,
+                                                  BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(POWERSAVE_UID_MAP_PATH, AID_ROOT, "PowerSaveUidMap", true));
-    RETURN_IF_NOT_OK(initialOwnerMap(mPowerSaveUidMap, "PowerSaveUidMap"));
+    RETURN_IF_NOT_OK(initialOwnerMap(mPowerSaveUidMap));
 
-    ASSIGN_OR_RETURN(mIfaceStatsMap,
-                     setUpBPFMap(sizeof(uint32_t), sizeof(struct StatsValue), IFACE_STATS_MAP_SIZE,
-                                 IFACE_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(
+        mIfaceStatsMap.getOrCreate(IFACE_STATS_MAP_SIZE, IFACE_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(IFACE_STATS_MAP_PATH, AID_NET_BW_STATS, "IfaceStatsMap",
                                         false));
     return netdutils::status::ok;
@@ -229,7 +231,7 @@ Status TrafficController::start() {
         uint64_t sock_cookie = static_cast<uint64_t>(diagmsg.id.idiag_cookie[0]) |
                                (static_cast<uint64_t>(diagmsg.id.idiag_cookie[1]) << 32);
 
-        deleteMapEntry(mCookieTagMap, &sock_cookie);
+        mCookieTagMap.deleteValue(sock_cookie);
     };
     expectOk(mSkDestroyListener->subscribe(kSockDiagMsgType, rxHandler));
 
@@ -294,13 +296,12 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
     // yet. And update the tag if there is already a tag stored. Since the eBPF
     // program in kernel only read this map, and is protected by rcu read lock. It
     // should be fine to cocurrently update the map while eBPF program is running.
-    int res = writeToMapEntry(mCookieTagMap, &sock_cookie, &newKey, BPF_ANY);
-    if (res < 0) {
-        res = -errno;
-        ALOGE("Failed to tag the socket: %s, fd: %d", strerror(errno), mCookieTagMap.get());
+    Status res = mCookieTagMap.writeValue(sock_cookie, newKey, BPF_ANY);
+    if (!isOk(res)) {
+        ALOGE("Failed to tag the socket: %s, fd: %d", strerror(res.code()),
+              mCookieTagMap.getMap().get());
     }
-
-    return res;
+    return -res.code();
 }
 
 int TrafficController::untagSocket(int sockFd) {
@@ -311,17 +312,16 @@ int TrafficController::untagSocket(int sockFd) {
     uint64_t sock_cookie = getSocketCookie(sockFd);
 
     if (sock_cookie == NONEXISTENT_COOKIE) return -errno;
-    int res = deleteMapEntry(mCookieTagMap, &sock_cookie);
-    if (res) {
-        res = -errno;
-        ALOGE("Failed to untag socket: %s\n", strerror(errno));
+    Status res = mCookieTagMap.deleteValue(sock_cookie);
+    if (!isOk(res)) {
+        ALOGE("Failed to untag socket: %s\n", strerror(res.code()));
     }
-    return res;
+    return -res.code();
 }
 
 int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
-    if (counterSetNum < 0 || counterSetNum >= COUNTERSETS_LIMIT) return -EINVAL;
-    int res;
+    if (counterSetNum < 0 || counterSetNum >= OVERFLOW_COUNTERSET) return -EINVAL;
+    Status res;
     if (!ebpfSupported) {
         if (legacy_setCounterSet(counterSetNum, uid)) return -errno;
         return 0;
@@ -330,134 +330,121 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
     // The default counter set for all uid is 0, so deleting the current counterset for that uid
     // will automatically set it to 0.
     if (counterSetNum == 0) {
-        res = deleteMapEntry(mUidCounterSetMap, &uid);
-        if (res == 0 || (res == -1 && errno == ENOENT)) {
+        Status res = mUidCounterSetMap.deleteValue(uid);
+        if (isOk(res) || (!isOk(res) && res.code() == ENOENT)) {
             return 0;
         } else {
-            ALOGE("Failed to delete the counterSet: %s\n", strerror(errno));
-            return -errno;
+            ALOGE("Failed to delete the counterSet: %s\n", strerror(res.code()));
+            return -res.code();
         }
     }
-
-    res = writeToMapEntry(mUidCounterSetMap, &uid, &counterSetNum, BPF_ANY);
-    if (res < 0) {
-        res = -errno;
-        ALOGE("Failed to set the counterSet: %s, fd: %d", strerror(errno), mUidCounterSetMap.get());
+    uint8_t tmpCounterSetNum = (uint8_t)counterSetNum;
+    res = mUidCounterSetMap.writeValue(uid, tmpCounterSetNum, BPF_ANY);
+    if (!isOk(res)) {
+        ALOGE("Failed to set the counterSet: %s, fd: %d", strerror(res.code()),
+              mUidCounterSetMap.getMap().get());
+        return -res.code();
     }
-    return res;
+    return 0;
 }
 
 int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
-    std::lock_guard<std::mutex> guard(mDeleteStatsMutex);
-    int res = 0;
 
     if (!ebpfSupported) {
         if (legacy_deleteTagData(tag, uid)) return -errno;
         return 0;
     }
 
-    uint64_t nonExistentCookie = NONEXISTENT_COOKIE;
     // First we go through the cookieTagMap to delete the target uid tag combination. Or delete all
     // the tags related to the uid if the tag is 0.
-    struct UidTag dummyUidTag;
-    auto deleteMatchedCookieEntry = [&uid, &tag](void *key, void *value,
-                                                 const base::unique_fd& map_fd) {
-        UidTag *tmp_uidtag = (UidTag *) value;
-        uint64_t cookie = *(uint64_t *)key;
-        if (tmp_uidtag->uid == uid && (tmp_uidtag->tag == tag || tag == 0)) {
-            int res = deleteMapEntry(map_fd, &cookie);
-            if (res == 0 || (res && errno == ENOENT)) {
-                return BPF_DELETED;
+    const auto deleteMatchedCookieEntries = [uid, tag](const uint64_t& key, const UidTag& value,
+                                                       BpfMap<uint64_t, UidTag>& map) {
+        if (value.uid == uid && (value.tag == tag || tag == 0)) {
+            Status res = map.deleteValue(key);
+            if (isOk(res) || (res.code() == ENOENT)) {
+                return netdutils::status::ok;
             }
-            ALOGE("Failed to delete data(cookie = %" PRIu64 "): %s\n", cookie,
-                  strerror(errno));
+            ALOGE("Failed to delete data(cookie = %" PRIu64 "): %s\n", key, strerror(res.code()));
         }
         // Move forward to next cookie in the map.
-        return BPF_CONTINUE;
+        return netdutils::status::ok;
     };
-    bpfIterateMapWithValue(nonExistentCookie, dummyUidTag, mCookieTagMap,
-                                 deleteMatchedCookieEntry);
+    mCookieTagMap.iterateWithValue(deleteMatchedCookieEntries);
     // Now we go through the Tag stats map and delete the data entry with correct uid and tag
     // combination. Or all tag stats under that uid if the target tag is 0.
-    struct StatsKey nonExistentStatsKey = NONEXISTENT_STATSKEY;
-    struct StatsValue dummyStatsValue;
-    auto deleteMatchedUidTagEntry = [&uid, &tag](void *key, const base::unique_fd& map_fd) {
-        StatsKey *keyInfo = (StatsKey *) key;
-        if (keyInfo->uid == uid && (keyInfo->tag == tag || tag == 0)) {
-            int res = deleteMapEntry(map_fd, key);
-            if (res == 0 || (res && (errno == ENOENT))) {
+    const auto deleteMatchedUidTagEntries = [uid, tag](const StatsKey& key,
+                                                       BpfMap<StatsKey, StatsValue>& map) {
+        if (key.uid == uid && (key.tag == tag || tag == 0)) {
+            Status res = map.deleteValue(key);
+            if (isOk(res) || (res.code() == ENOENT)) {
                 //Entry is deleted, use the current key to get a new nextKey;
-                return BPF_DELETED;
+                return netdutils::status::ok;
             }
-            ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", keyInfo->uid,
-                  keyInfo->tag, strerror(errno));
+            ALOGE("Failed to delete data(uid=%u, tag=%u): %s\n", key.uid, key.tag,
+                  strerror(res.code()));
         }
-        return BPF_CONTINUE;
+        return netdutils::status::ok;
     };
-    bpfIterateMap(nonExistentStatsKey, dummyStatsValue, mTagStatsMap,
-                  deleteMatchedUidTagEntry);
+    mTagStatsMap.iterate(deleteMatchedUidTagEntries);
     // If the tag is not zero, we already deleted all the data entry required. If tag is 0, we also
     // need to delete the stats stored in uidStatsMap and counterSet map.
     if (tag != 0) return 0;
 
-    res = deleteMapEntry(mUidCounterSetMap, &uid);
-    if (res < 0 && errno != ENOENT) {
-        ALOGE("Failed to delete counterSet data(uid=%u, tag=%u): %s\n", uid, tag, strerror(errno));
+    Status res = mUidCounterSetMap.deleteValue(uid);
+    if (!isOk(res) && res.code() != ENOENT) {
+        ALOGE("Failed to delete counterSet data(uid=%u, tag=%u): %s\n", uid, tag,
+              strerror(res.code()));
     }
-    return bpfIterateMap(nonExistentStatsKey, dummyStatsValue, mUidStatsMap,
-                         deleteMatchedUidTagEntry);
+    mUidStatsMap.iterate(deleteMatchedUidTagEntries);
+
+    auto deleteAppUidStatsEntry = [uid](const uint32_t& key, BpfMap<uint32_t, StatsValue>& map) {
+        if (key == uid) {
+            Status res = map.deleteValue(key);
+            if (isOk(res) || (res.code() == ENOENT)) {
+                return netdutils::status::ok;
+            }
+            ALOGE("Failed to delete data(uid=%u): %s", key, strerror(res.code()));
+        }
+        return netdutils::status::ok;
+    };
+    mAppUidStatsMap.iterate(deleteAppUidStatsEntry);
+    return 0;
 }
 
 int TrafficController::addInterface(const char* name, uint32_t ifaceIndex) {
-    int res = 0;
-    if (!ebpfSupported) return res;
+    if (!ebpfSupported) return 0;
 
-    char ifaceName[IFNAMSIZ];
+    IfaceValue iface;
     if (ifaceIndex == 0) {
-        ALOGE("Unknow interface %s(%d)", name, ifaceIndex);
+        ALOGE("Unknown interface %s(%d)", name, ifaceIndex);
         return -1;
     }
 
-    strlcpy(ifaceName, name, sizeof(ifaceName));
-    res = writeToMapEntry(mIfaceIndexNameMap, &ifaceIndex, ifaceName, BPF_ANY);
-    if (res) {
-        res = -errno;
-        ALOGE("Failed to add iface %s(%d): %s", name, ifaceIndex, strerror(errno));
+    strlcpy(iface.name, name, sizeof(IfaceValue));
+    Status res = mIfaceIndexNameMap.writeValue(ifaceIndex, iface, BPF_ANY);
+    if (!isOk(res)) {
+        ALOGE("Failed to add iface %s(%d): %s", name, ifaceIndex, strerror(res.code()));
+        return -res.code();
     }
-    return res;
+    return 0;
 }
 
-int TrafficController::updateOwnerMapEntry(const base::unique_fd& map_fd, uid_t uid,
-                                           FirewallRule rule, FirewallType type) {
-    int res = 0;
-    if (uid == NONEXISTENT_UID) {
-        ALOGE("This uid should never exist in maps: %u", uid);
-        return -EINVAL;
-    }
-
+Status TrafficController::updateOwnerMapEntry(BpfMap<uint32_t, uint8_t>& map, uid_t uid,
+                                              FirewallRule rule, FirewallType type) {
     if (uid == UID_MAP_ENABLED) {
-        ALOGE("This uid is reserved for map state");
-        return -EINVAL;
+        return statusFromErrno(-EINVAL, "This uid is reserved for map state");
     }
 
     if ((rule == ALLOW && type == WHITELIST) || (rule == DENY && type == BLACKLIST)) {
         uint8_t flag = (type == WHITELIST) ? BPF_PASS : BPF_DROP;
-        res = writeToMapEntry(map_fd, &uid, &flag, BPF_ANY);
-        if (res) {
-            res = -errno;
-            ALOGE("Failed to add owner rule(uid: %u): %s", uid, strerror(errno));
-        }
+        RETURN_IF_NOT_OK(map.writeValue(uid, flag, BPF_ANY));
     } else if ((rule == ALLOW && type == BLACKLIST) || (rule == DENY && type == WHITELIST)) {
-        res = deleteMapEntry(map_fd, &uid);
-        if (res) {
-            res = -errno;
-            ALOGE("Failed to delete owner rule(uid: %u): %s", uid, strerror(errno));
-        }
+        RETURN_IF_NOT_OK(map.deleteValue(uid));
     } else {
         //Cannot happen.
-        return -EINVAL;
+        return statusFromErrno(-EINVAL, "");
     }
-    return res;
+    return netdutils::status::ok;
 }
 
 int TrafficController::changeUidOwnerRule(ChildChain chain, uid_t uid, FirewallRule rule,
@@ -467,54 +454,51 @@ int TrafficController::changeUidOwnerRule(ChildChain chain, uid_t uid, FirewallR
         ALOGE("bpf is not set up, should use iptables rule");
         return -ENOSYS;
     }
+    Status res;
     switch (chain) {
         case DOZABLE:
-            return updateOwnerMapEntry(mDozableUidMap, uid, rule, type);
+            res = updateOwnerMapEntry(mDozableUidMap, uid, rule, type);
+            break;
         case STANDBY:
-            return updateOwnerMapEntry(mStandbyUidMap, uid, rule, type);
+            res = updateOwnerMapEntry(mStandbyUidMap, uid, rule, type);
+            break;
         case POWERSAVE:
-            return updateOwnerMapEntry(mPowerSaveUidMap, uid, rule, type);
+            res = updateOwnerMapEntry(mPowerSaveUidMap, uid, rule, type);
+            break;
         case NONE:
         default:
             return -EINVAL;
     }
+    if (!isOk(res)) {
+        ALOGE("change uid(%u) rule of %d failed: %s, rule: %d, type: %d", uid, chain,
+              res.msg().c_str(), rule, type);
+        return -res.code();
+    }
+    return 0;
 }
 
-int TrafficController::replaceUidsInMap(const base::unique_fd& map_fd,
-                                        const std::vector<int32_t> &uids,
-                                        FirewallRule rule, FirewallType type) {
+Status TrafficController::replaceUidsInMap(BpfMap<uint32_t, uint8_t>& map,
+                                           const std::vector<int32_t>& uids, FirewallRule rule,
+                                           FirewallType type) {
     std::set<int32_t> uidSet(uids.begin(), uids.end());
     std::vector<uint32_t> uidsToDelete;
-    auto getUidsToDelete = [&uidsToDelete, &uidSet](void *key, const base::unique_fd&) {
-        uint32_t uid = *(uint32_t *)key;
-        if (uid != UID_MAP_ENABLED && uidSet.find((int32_t)uid) == uidSet.end()) {
-            uidsToDelete.push_back(uid);
+    auto getUidsToDelete = [&uidsToDelete, &uidSet](const uint32_t& key,
+                                                    const BpfMap<uint32_t, uint8_t>&) {
+        if (key != UID_MAP_ENABLED && uidSet.find((int32_t)key) == uidSet.end()) {
+            uidsToDelete.push_back(key);
         }
-        return BPF_CONTINUE;
+        return netdutils::status::ok;
     };
-    uint32_t nonExistentKey = NONEXISTENT_UID;
-    uint8_t dummyValue;
-    int ret = bpfIterateMap(nonExistentKey, dummyValue, map_fd, getUidsToDelete);
-
-    if (ret)  return ret;
+    RETURN_IF_NOT_OK(map.iterate(getUidsToDelete));
 
     for(auto uid : uidsToDelete) {
-        if(deleteMapEntry(map_fd, &uid)) {
-            ret = -errno;
-            ALOGE("Delete uid(%u) from owner Map %d failed: %s", uid, map_fd.get(),
-                  strerror(errno));
-            return -errno;
-        }
+        RETURN_IF_NOT_OK(map.deleteValue(uid));
     }
 
     for (auto uid : uids) {
-        ret = updateOwnerMapEntry(map_fd, uid, rule, type);
-        if (ret) {
-            ALOGE("Failed to add owner rule(uid: %u, map: %d)", uid, map_fd.get());
-            return ret;
-        }
+        RETURN_IF_NOT_OK(updateOwnerMapEntry(map, uid, rule, type));
     }
-    return 0;
+    return netdutils::status::ok;
 }
 
 int TrafficController::replaceUidOwnerMap(const std::string& name, bool isWhitelist,
@@ -529,20 +513,20 @@ int TrafficController::replaceUidOwnerMap(const std::string& name, bool isWhitel
         type = BLACKLIST;
         rule = DENY;
     }
-    int ret;
+    Status res;
     if (!name.compare(FirewallController::LOCAL_DOZABLE)) {
-        ret = replaceUidsInMap(mDozableUidMap, uids, rule, type);
+        res = replaceUidsInMap(mDozableUidMap, uids, rule, type);
     } else if (!name.compare(FirewallController::LOCAL_STANDBY)) {
-        ret = replaceUidsInMap(mStandbyUidMap, uids, rule, type);
+        res = replaceUidsInMap(mStandbyUidMap, uids, rule, type);
     } else if (!name.compare(FirewallController::LOCAL_POWERSAVE)) {
-        ret = replaceUidsInMap(mPowerSaveUidMap, uids, rule, type);
+        res = replaceUidsInMap(mPowerSaveUidMap, uids, rule, type);
     } else {
         ALOGE("unknown chain name: %s", name.c_str());
         return -EINVAL;
     }
-    if (ret) {
-        ALOGE("Failed to clean up chain: %s: %s", name.c_str(), strerror(ret));
-        return ret;
+    if (!isOk(res)) {
+        ALOGE("Failed to clean up chain: %s: %s", name.c_str(), res.msg().c_str());
+        return -res.code();
     }
     return 0;
 }
@@ -551,25 +535,24 @@ int TrafficController::toggleUidOwnerMap(ChildChain chain, bool enable) {
     std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
     uint32_t keyUid = UID_MAP_ENABLED;
     uint8_t mapState = enable ? 1 : 0;
-    int ret;
+    Status res;
     switch (chain) {
         case DOZABLE:
-            ret = writeToMapEntry(mDozableUidMap, &keyUid, &mapState, BPF_EXIST);
+            res = mDozableUidMap.writeValue(keyUid, mapState, BPF_EXIST);
             break;
         case STANDBY:
-            ret = writeToMapEntry(mStandbyUidMap, &keyUid, &mapState, BPF_EXIST);
+            res = mStandbyUidMap.writeValue(keyUid, mapState, BPF_EXIST);
             break;
         case POWERSAVE:
-            ret = writeToMapEntry(mPowerSaveUidMap, &keyUid, &mapState, BPF_EXIST);
+            res = mPowerSaveUidMap.writeValue(keyUid, mapState, BPF_EXIST);
             break;
         default:
             return -EINVAL;
     }
-    if (ret) {
-        ret = -errno;
-        ALOGE("Failed to toggleUidOwnerMap(%d): %s", chain, strerror(errno));
+    if (!isOk(res)) {
+        ALOGE("Failed to toggleUidOwnerMap(%d): %s", chain, res.msg().c_str());
     }
-    return ret;
+    return -res.code();
 }
 
 bool TrafficController::checkBpfStatsEnable() {
@@ -587,7 +570,7 @@ std::string getProgramStatus(const char *path) {
     return StringPrintf("check Program %s error: %s", path, strerror(errno));
 }
 
-std::string getMapStatus(const unique_fd& map_fd, const char *path) {
+std::string getMapStatus(const base::unique_fd& map_fd, const char* path) {
     if (map_fd.get() < 0) {
         return StringPrintf("map fd lost");
     }
@@ -609,7 +592,6 @@ const String16 TrafficController::DUMP_KEYWORD = String16("trafficcontroller");
 
 void TrafficController::dump(DumpWriter& dw, bool verbose) {
     std::lock_guard<std::mutex> ownerMapGuard(mOwnerMatchMutex);
-    std::lock_guard<std::mutex> statsMapGuard(mDeleteStatsMutex);
     dw.incIndent();
     dw.println("TrafficController");
 
@@ -621,21 +603,25 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
 
     dw.blankline();
     dw.println("mCookieTagMap status: %s",
-               getMapStatus(mCookieTagMap, COOKIE_TAG_MAP_PATH).c_str());
+               getMapStatus(mCookieTagMap.getMap(), COOKIE_TAG_MAP_PATH).c_str());
     dw.println("mUidCounterSetMap status: %s",
-               getMapStatus(mUidCounterSetMap, UID_COUNTERSET_MAP_PATH).c_str());
-    dw.println("mUidStatsMap status: %s", getMapStatus(mUidStatsMap, UID_STATS_MAP_PATH).c_str());
-    dw.println("mTagStatsMap status: %s", getMapStatus(mTagStatsMap, TAG_STATS_MAP_PATH).c_str());
+               getMapStatus(mUidCounterSetMap.getMap(), UID_COUNTERSET_MAP_PATH).c_str());
+    dw.println("mAppUidStatsMap status: %s",
+               getMapStatus(mAppUidStatsMap.getMap(), APP_UID_STATS_MAP_PATH).c_str());
+    dw.println("mUidStatsMap status: %s",
+               getMapStatus(mUidStatsMap.getMap(), UID_STATS_MAP_PATH).c_str());
+    dw.println("mTagStatsMap status: %s",
+               getMapStatus(mTagStatsMap.getMap(), TAG_STATS_MAP_PATH).c_str());
     dw.println("mIfaceIndexNameMap status: %s",
-               getMapStatus(mIfaceIndexNameMap, IFACE_INDEX_NAME_MAP_PATH).c_str());
+               getMapStatus(mIfaceIndexNameMap.getMap(), IFACE_INDEX_NAME_MAP_PATH).c_str());
     dw.println("mIfaceStatsMap status: %s",
-               getMapStatus(mIfaceStatsMap, IFACE_STATS_MAP_PATH).c_str());
+               getMapStatus(mIfaceStatsMap.getMap(), IFACE_STATS_MAP_PATH).c_str());
     dw.println("mDozableUidMap status: %s",
-               getMapStatus(mDozableUidMap, DOZABLE_UID_MAP_PATH).c_str());
+               getMapStatus(mDozableUidMap.getMap(), DOZABLE_UID_MAP_PATH).c_str());
     dw.println("mStandbyUidMap status: %s",
-               getMapStatus(mStandbyUidMap, STANDBY_UID_MAP_PATH).c_str());
+               getMapStatus(mStandbyUidMap.getMap(), STANDBY_UID_MAP_PATH).c_str());
     dw.println("mPowerSaveUidMap status: %s",
-               getMapStatus(mPowerSaveUidMap, POWERSAVE_UID_MAP_PATH).c_str());
+               getMapStatus(mPowerSaveUidMap.getMap(), POWERSAVE_UID_MAP_PATH).c_str());
 
     dw.blankline();
     dw.println("Cgroup ingress program status: %s",
@@ -655,124 +641,119 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
 
     // Print CookieTagMap content.
     dumpBpfMap("mCookieTagMap", dw, "");
-    const uint64_t nonExistentCookie = NONEXISTENT_COOKIE;
-    UidTag dummyUidTag;
-    auto printCookieTagInfo = [&dw](void *key, void *value, const base::unique_fd&) {
-        UidTag uidTagEntry = *(UidTag *) value;
-        uint64_t cookie = *(uint64_t *) key;
-        dw.println("cookie=%" PRIu64 " tag=0x%x uid=%u", cookie, uidTagEntry.tag, uidTagEntry.uid);
-        return BPF_CONTINUE;
+    const auto printCookieTagInfo = [&dw](const uint64_t& key, const UidTag& value,
+                                          const BpfMap<uint64_t, UidTag>&) {
+        dw.println("cookie=%" PRIu64 " tag=0x%x uid=%u", key, value.tag, value.uid);
+        return netdutils::status::ok;
     };
-    int ret = bpfIterateMapWithValue(nonExistentCookie, dummyUidTag, mCookieTagMap,
-                                     printCookieTagInfo);
-    if (ret) {
-        dw.println("mCookieTagMap print end with error: %s", strerror(-ret));
+    Status res = mCookieTagMap.iterateWithValue(printCookieTagInfo);
+    if (!isOk(res)) {
+        dw.println("mCookieTagMap print end with error: %s", res.msg().c_str());
     }
 
     // Print UidCounterSetMap Content
     dumpBpfMap("mUidCounterSetMap", dw, "");
-    const uint32_t nonExistentUid = NONEXISTENT_UID;
-    uint32_t dummyUidInfo;
-    auto printUidInfo = [&dw](void *key, void *value, const base::unique_fd&) {
-        uint8_t setting = *(uint8_t *) value;
-        uint32_t uid = *(uint32_t *) key;
-        dw.println("%u %u", uid, setting);
-        return BPF_CONTINUE;
+    const auto printUidInfo = [&dw](const uint32_t& key, const uint8_t& value,
+                                    const BpfMap<uint32_t, uint8_t>&) {
+        dw.println("%u %u", key, value);
+        return netdutils::status::ok;
     };
-    ret = bpfIterateMapWithValue(nonExistentUid, dummyUidInfo, mUidCounterSetMap, printUidInfo);
-    if (ret) {
-       dw.println("mUidCounterSetMap print end with error: %s", strerror(-ret));
+    res = mUidCounterSetMap.iterateWithValue(printUidInfo);
+    if (!isOk(res)) {
+        dw.println("mUidCounterSetMap print end with error: %s", res.msg().c_str());
+    }
+
+    // Print AppUidStatsMap content
+    std::string appUidStatsHeader = StringPrintf("uid rxBytes rxPackets txBytes txPackets");
+    dumpBpfMap("mAppUidStatsMap:", dw, appUidStatsHeader);
+    auto printAppUidStatsInfo = [&dw](const uint32_t& key, const StatsValue& value,
+                                      const BpfMap<uint32_t, StatsValue>&) {
+        dw.println("%u %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64, key, value.rxBytes,
+                   value.rxPackets, value.txBytes, value.txPackets);
+        return netdutils::status::ok;
+    };
+    res = mAppUidStatsMap.iterateWithValue(printAppUidStatsInfo);
+    if (!res.ok()) {
+        dw.println("mAppUidStatsMap print end with error: %s", res.msg().c_str());
     }
 
     // Print uidStatsMap content
     std::string statsHeader = StringPrintf("ifaceIndex ifaceName tag_hex uid_int cnt_set rxBytes"
                                            " rxPackets txBytes txPackets");
     dumpBpfMap("mUidStatsMap", dw, statsHeader);
-    const struct StatsKey nonExistentStatsKey = NONEXISTENT_STATSKEY;
-    struct StatsValue dummyStatsValue;
-    auto printStatsInfo = [&dw, this](void *key, void *value, const base::unique_fd&) {
-        StatsValue statsEntry = *(StatsValue *) value;
-        StatsKey keyInfo = *(StatsKey *) key;
-        char ifname[IFNAMSIZ];
-        uint32_t ifIndex = keyInfo.ifaceIndex;
-        if (bpf::findMapEntry(mIfaceIndexNameMap, &ifIndex, &ifname) < 0) {
-            strlcpy(ifname, "unknown", sizeof(ifname));
+    const auto printStatsInfo = [&dw, this](const StatsKey& key, const StatsValue& value,
+                                            const BpfMap<StatsKey, StatsValue>&) {
+        uint32_t ifIndex = key.ifaceIndex;
+        auto ifname = mIfaceIndexNameMap.readValue(ifIndex);
+        if (!isOk(ifname)) {
+            strlcpy(ifname.value().name, "unknown", sizeof(IfaceValue));
         }
-        dw.println("%u %s 0x%x %u %u %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64, ifIndex, ifname,
-                   keyInfo.tag, keyInfo.uid, keyInfo.counterSet, statsEntry.rxBytes,
-                   statsEntry.rxPackets, statsEntry.txBytes, statsEntry.txPackets);
-        return BPF_CONTINUE;
+        dw.println("%u %s 0x%x %u %u %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64, ifIndex,
+                   ifname.value().name, key.tag, key.uid, key.counterSet, value.rxBytes,
+                   value.rxPackets, value.txBytes, value.txPackets);
+        return netdutils::status::ok;
     };
-    ret = bpfIterateMapWithValue(nonExistentStatsKey, dummyStatsValue, mUidStatsMap,
-                                 printStatsInfo);
-    if (ret) {
-        dw.println("mUidStatsMap print end with error: %s", strerror(-ret));
+    res = mUidStatsMap.iterateWithValue(printStatsInfo);
+    if (!isOk(res)) {
+        dw.println("mUidStatsMap print end with error: %s", res.msg().c_str());
     }
 
     // Print TagStatsMap content.
     dumpBpfMap("mTagStatsMap", dw, statsHeader);
-    ret = bpfIterateMapWithValue(nonExistentStatsKey, dummyStatsValue, mTagStatsMap,
-                                 printStatsInfo);
-    if (ret) {
-        dw.println("mTagStatsMap print end with error: %s", strerror(-ret));
+    res = mTagStatsMap.iterateWithValue(printStatsInfo);
+    if (!isOk(res)) {
+        dw.println("mTagStatsMap print end with error: %s", res.msg().c_str());
     }
 
     // Print ifaceIndexToNameMap content.
     dumpBpfMap("mIfaceIndexNameMap", dw, "");
-    uint32_t nonExistentIface = NONEXISTENT_IFACE_STATS_KEY;
-    char dummyIface[IFNAMSIZ];
-    auto printIfaceNameInfo = [&dw](void *key, void *value, const base::unique_fd&) {
-        char *ifname = (char *) value;
-        uint32_t ifaceIndex = *(uint32_t *)key;
-        dw.println("ifaceIndex=%u ifaceName=%s", ifaceIndex, ifname);
-        return BPF_CONTINUE;
+    const auto printIfaceNameInfo = [&dw](const uint32_t& key, const IfaceValue& value,
+                                          const BpfMap<uint32_t, IfaceValue>&) {
+        const char* ifname = value.name;
+        dw.println("ifaceIndex=%u ifaceName=%s", key, ifname);
+        return netdutils::status::ok;
     };
-    ret = bpfIterateMapWithValue(nonExistentIface, dummyIface, mIfaceIndexNameMap,
-                               printIfaceNameInfo);
-    if (ret) {
-        dw.println("mIfaceIndexNameMap print end with error: %s", strerror(-ret));
+    res = mIfaceIndexNameMap.iterateWithValue(printIfaceNameInfo);
+    if (!isOk(res)) {
+        dw.println("mIfaceIndexNameMap print end with error: %s", res.msg().c_str());
     }
 
     // Print ifaceStatsMap content
     std::string ifaceStatsHeader = StringPrintf("ifaceIndex ifaceName rxBytes rxPackets txBytes"
                                                 " txPackets");
     dumpBpfMap("mIfaceStatsMap:", dw, ifaceStatsHeader);
-    auto printIfaceStatsInfo = [&dw, this] (void *key, void *value, const base::unique_fd&) {
-        StatsValue statsEntry = *(StatsValue *) value;
-        uint32_t ifaceIndex = *(uint32_t *) key;
-        char ifname[IFNAMSIZ];
-        if (bpf::findMapEntry(mIfaceIndexNameMap, key, ifname) < 0) {
-            strlcpy(ifname, "unknown", sizeof(ifname));
+    const auto printIfaceStatsInfo = [&dw, this](const uint32_t& key, const StatsValue& value,
+                                                 const BpfMap<uint32_t, StatsValue>&) {
+        auto ifname = mIfaceIndexNameMap.readValue(key);
+        if (!isOk(ifname)) {
+            strlcpy(ifname.value().name, "unknown", sizeof(IfaceValue));
         }
-        dw.println("%u %s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64, ifaceIndex, ifname,
-                   statsEntry.rxBytes, statsEntry.rxPackets, statsEntry.txBytes,
-                   statsEntry.txPackets);
-        return BPF_CONTINUE;
+        dw.println("%u %s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64, key, ifname.value().name,
+                   value.rxBytes, value.rxPackets, value.txBytes, value.txPackets);
+        return netdutils::status::ok;
     };
-    ret = bpfIterateMapWithValue(nonExistentIface, dummyStatsValue, mIfaceStatsMap,
-                                 printIfaceStatsInfo);
-    if (ret) {
-        dw.println("mIfaceStatsMap print end with error: %s", strerror(-ret));
+    res = mIfaceStatsMap.iterateWithValue(printIfaceStatsInfo);
+    if (!isOk(res)) {
+        dw.println("mIfaceStatsMap print end with error: %s", res.msg().c_str());
     }
 
     // Print owner match uid maps
-    uint8_t dummyOwnerInfo;
     dumpBpfMap("mDozableUidMap", dw, "");
-    ret = bpfIterateMapWithValue(nonExistentUid, dummyOwnerInfo, mDozableUidMap, printUidInfo);
-    if (ret) {
-        dw.println("mDozableUidMap print end with error: %s", strerror(-ret));
+    res = mDozableUidMap.iterateWithValue(printUidInfo);
+    if (!isOk(res)) {
+        dw.println("mDozableUidMap print end with error: %s", res.msg().c_str());
     }
 
     dumpBpfMap("mStandbyUidMap", dw, "");
-    ret = bpfIterateMapWithValue(nonExistentUid, dummyOwnerInfo, mStandbyUidMap, printUidInfo);
-    if (ret) {
-        dw.println("mDozableUidMap print end with error: %s", strerror(-ret));
+    res = mStandbyUidMap.iterateWithValue(printUidInfo);
+    if (!isOk(res)) {
+        dw.println("mDozableUidMap print end with error: %s", res.msg().c_str());
     }
 
     dumpBpfMap("mPowerSaveUidMap", dw, "");
-    ret = bpfIterateMapWithValue(nonExistentUid, dummyOwnerInfo, mPowerSaveUidMap, printUidInfo);
-    if (ret) {
-        dw.println("mDozableUidMap print end with error: %s", strerror(-ret));
+    res = mPowerSaveUidMap.iterateWithValue(printUidInfo);
+    if (!isOk(res)) {
+        dw.println("mDozableUidMap print end with error: %s", res.msg().c_str());
     }
 
     dw.decIndent();
