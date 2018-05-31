@@ -181,6 +181,29 @@ TEST_F(BpfNetworkStatsHelperTest, TestIterateMapWithDeletion) {
     EXPECT_EQ(headOfMap, nextCookie);
 }
 
+TEST_F(BpfNetworkStatsHelperTest, TestBpfIterateMap) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    for (int i = 0; i < 5; i++) {
+        uint64_t cookie = i + 1;
+        struct UidTag tag = {.uid = TEST_UID1, .tag = TEST_TAG};
+        EXPECT_EQ(0, writeToMapEntry(mFakeCookieTagMap, &cookie, &tag, BPF_ANY));
+    }
+    int totalCount = 0;
+    int totalSum = 0;
+    uint64_t dummyCookie;
+    auto iterateMapWithoutDeletion = [&totalCount, &totalSum](void* key, const base::unique_fd&) {
+        uint64_t cookie = *(uint64_t*)key;
+        EXPECT_GE((uint64_t)5, cookie);
+        totalCount++;
+        totalSum += cookie;
+        return BPF_CONTINUE;
+    };
+    EXPECT_EQ(0, bpfIterateMap(dummyCookie, mFakeCookieTagMap, iterateMapWithoutDeletion));
+    EXPECT_EQ(5, totalCount);
+    EXPECT_EQ(1 + 2 + 3 + 4 + 5, totalSum);
+}
+
 TEST_F(BpfNetworkStatsHelperTest, TestGetUidStatsTotal) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
@@ -333,25 +356,6 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsWithSkippedIface) {
     ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, TEST_UID1,
                                                     mFakeUidStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)2, lines.size());
-}
-
-TEST_F(BpfNetworkStatsHelperTest, TestGetStatsWithNoExistKey) {
-    SKIP_IF_BPF_NOT_SUPPORTED;
-
-    updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
-    StatsValue value1 = {
-        .rxBytes = TEST_BYTES0,
-        .rxPackets = TEST_PACKET0,
-        .txBytes = TEST_BYTES1,
-        .txPackets = TEST_PACKET1,
-    };
-    populateFakeStats(DEFAULT_OVERFLOWUID, 0, 0, 0, &value1, mFakeUidStatsMap);
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, &value1, mFakeUidStatsMap);
-    std::vector<stats_line> lines;
-    std::vector<std::string> ifaces;
-    ASSERT_EQ(-EUCLEAN,
-              parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL, mFakeUidStatsMap,
-                                                 mFakeIfaceIndexNameMap));
 }
 
 TEST_F(BpfNetworkStatsHelperTest, TestUnkownIfaceError) {
