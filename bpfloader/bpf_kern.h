@@ -14,6 +14,20 @@
  * limitations under the License.
  */
 
+/*
+ * This h file together with bpf_kern.c is used for compiling the eBPF kernel
+ * program. To generate the bpf_kern.o file manually, use the clang prebuilt in
+ * this android tree to compile the files with --target=bpf options. For
+ * example, in system/netd/ directory, execute the following command:
+ * $: ANDROID_BASE_DIRECTORY/prebuilts/clang/host/linux-x86/clang-4691093/bin/clang  \
+ *    -I ANDROID_BASE_DIRECTORY/bionic/libc/kernel/uapi/ \
+ *    -I ANDROID_BASE_DIRECTORY/system/netd/bpfloader/ \
+ *    -I ANDROID_BASE_DIRECTORY/bionic/libc/kernel/android/uapi/ \
+ *    -I ANDROID_BASE_DIRECTORY/bionic/libc/include \
+ *    -I ANDROID_BASE_DIRECTORY/system/netd/libbpf/include  \
+ *    --target=bpf -O2 -c bpfloader/bpf_kern.c -o bpfloader/bpf_kern.o
+ */
+
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>
@@ -171,9 +185,8 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
 
     struct stats_key key = {.uid = uid, .tag = tag, .counterSet = 0, .ifaceIndex = skb->ifindex};
 
-    uint32_t* counterSet;
-    counterSet = find_map_entry(UID_COUNTERSET_MAP, &uid);
-    if (counterSet) key.counterSet = *counterSet;
+    uint8_t* counterSet = find_map_entry(UID_COUNTERSET_MAP, &uid);
+    if (counterSet) key.counterSet = (uint32_t)*counterSet;
 
     if (tag) {
         bpf_update_stats(skb, TAG_STATS_MAP, direction, &key);
@@ -181,5 +194,6 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
 
     key.tag = 0;
     bpf_update_stats(skb, UID_STATS_MAP, direction, &key);
+    bpf_update_stats(skb, APP_UID_STATS_MAP, direction, &uid);
     return match;
 }
