@@ -182,7 +182,7 @@ size_t fillNlAttrU32(__u16 nlaType, int32_t value, nlattr* nlAttr, uint32_t* u32
 }
 
 // returns the address family, placing the string in the provided buffer
-StatusOr<uint16_t> convertStringAddress(std::string addr, uint8_t* buffer) {
+StatusOr<uint16_t> convertStringAddress(const std::string& addr, uint8_t* buffer) {
     if (inet_pton(AF_INET, addr.c_str(), buffer) == 1) {
         return AF_INET;
     } else if (inet_pton(AF_INET6, addr.c_str(), buffer) == 1) {
