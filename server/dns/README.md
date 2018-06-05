@@ -57,9 +57,9 @@ socket thread can read the datagram off the other end.
 
 We need to pass messages between threads using a pipe, and not a condition variable
 or a thread-safe queue, because the socket thread has to be blocked
-in `select` waiting for data from the server, but also has to be woken
+in `poll()` waiting for data from the server, but also has to be woken
 up on inputs from the query threads.  Therefore, inputs from the query
-threads have to arrive on a socket, so that `select()` can listen for them.
+threads have to arrive on a socket, so that `poll()` can listen for them.
 (There can only be a single thread because [you can't use different threads
 to read and write in OpenSSL](https://www.openssl.org/blog/blog/2017/02/21/threads/)).
 
