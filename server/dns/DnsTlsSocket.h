@@ -105,8 +105,8 @@ private:
 
     // SOCK_SEQPACKET socket pair used for sending queries from myriad query
     // threads to the SSL thread.  EOF indicates a close request.
-    // We have to use a socket pair (i.e. a pipe) because the SSL thread needs to wait in
-    // select() for input from either a remote server or a query thread.
+    // We have to use a socket pair (i.e. a pipe) because the SSL thread needs
+    // to wait in poll() for input from either a remote server or a query thread.
     base::unique_fd mIpcInFd;
     base::unique_fd mIpcOutFd GUARDED_BY(mLock);
 
