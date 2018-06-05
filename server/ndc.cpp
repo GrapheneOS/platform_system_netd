@@ -22,8 +22,8 @@
 #include <errno.h>
 #include <fcntl.h>
 
+#include <sys/poll.h>
 #include <sys/socket.h>
-#include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
@@ -121,27 +121,20 @@ static int do_monitor(int sock, int stop_after_cmd) {
         printf("[Connected to Netd]\n");
 
     while(1) {
-        fd_set read_fds;
-        struct timeval to;
         int rc = 0;
-
-        to.tv_sec = 10;
-        to.tv_usec = 0;
-
-        FD_ZERO(&read_fds);
-        FD_SET(sock, &read_fds);
-
-        rc = TEMP_FAILURE_RETRY(select(sock +1, &read_fds, NULL, NULL, &to));
+        struct pollfd fds = { .fd = sock, .events = POLLIN };
+        const int timeout_msecs = 10 * 1000;
+        rc = TEMP_FAILURE_RETRY(poll(&fds, 1, timeout_msecs));
         if (rc < 0) {
             int res = errno;
-            fprintf(stderr, "Error in select (%s)\n", strerror(res));
+            fprintf(stderr, "Error in poll(): %s\n", strerror(res));
             free(buffer);
             return res;
         }
         if (rc == 0) {
             continue;
         }
-        if (!FD_ISSET(sock, &read_fds)) {
+        if (!(fds.revents & (POLLIN | POLLERR))) {
             continue;
         }
 
