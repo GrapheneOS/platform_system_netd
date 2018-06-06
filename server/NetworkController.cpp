@@ -690,7 +690,7 @@ void NetworkController::dump(DumpWriter& dw) {
     dw.incIndent();
     for (const auto& i : mNetworks) {
         Network* network = i.second;
-        dw.println(network->toString().c_str());
+        dw.println(network->toString());
         if (network->getType() == Network::PHYSICAL) {
             dw.incIndent();
             Permission permission = reinterpret_cast<PhysicalNetwork*>(network)->getPermission();

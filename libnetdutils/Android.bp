@@ -2,6 +2,7 @@ cc_library {
     name: "libnetdutils",
     srcs: [
         "Fd.cpp",
+        "Log.cpp",
         "Netfilter.cpp",
         "Netlink.cpp",
         "Slice.cpp",
@@ -30,6 +31,7 @@ cc_test {
     srcs: [
         "BackoffSequenceTest.cpp",
         "FdTest.cpp",
+        "LogTest.cpp",
         "MemBlockTest.cpp",
         "OperationLimiterTest.cpp",
         "SliceTest.cpp",
@@ -42,9 +44,11 @@ cc_test {
         "-Werror",
         "-Wno-error=unused-variable",
     ],
-    static_libs: ["libgmock"],
+    static_libs: [
+        "libgmock",
+        "libnetdutils",
+    ],
     shared_libs: [
         "libbase",
-        "libnetdutils",
     ],
 }
