@@ -68,7 +68,7 @@ FILE *IptablesBaseTest::fake_popen(const char * /* cmd */, const char *type) {
 
     std::string realCmd = StringPrintf("echo '%s'", sPopenContents.front().c_str());
     sPopenContents.pop_front();
-    return popen(realCmd.c_str(), "r");
+    return popen(realCmd.c_str(), "r");  // NOLINT(cert-env33-c)
 }
 
 int IptablesBaseTest::fakeExecIptablesRestoreWithOutput(IptablesTarget target,

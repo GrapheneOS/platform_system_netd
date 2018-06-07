@@ -159,7 +159,7 @@ ACTION_P(SetArg3IntValue, value) { *static_cast<int*>(arg3) = value; }
 
 TEST_F(XfrmControllerTest, TestFchown) {
     XfrmController ctrl;
-    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM, 0));
+    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
 
     EXPECT_CALL(mockSyscalls, getsockopt(Fd(sockFd), IPPROTO_UDP, UDP_ENCAP, _, _))
         .WillOnce(DoAll(SetArg3IntValue(UDP_ENCAP_ESPINUDP), Return(netdutils::status::ok)));
@@ -181,7 +181,7 @@ TEST_F(XfrmControllerTest, TestFchownInvalidFd) {
 
 TEST_F(XfrmControllerTest, TestFchownIncorrectCallerUid) {
     XfrmController ctrl;
-    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM, 0));
+    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
 
     netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(sockFd, 1001, 1001);
     EXPECT_EQ(netdutils::statusFromErrno(EPERM, "fchown disabled for non-owner calls"), res);
@@ -189,7 +189,7 @@ TEST_F(XfrmControllerTest, TestFchownIncorrectCallerUid) {
 
 TEST_F(XfrmControllerTest, TestFchownNonSocketFd) {
     XfrmController ctrl;
-    unique_fd fd(open("/dev/null", 0));
+    unique_fd fd(open("/dev/null", O_CLOEXEC));
 
     netdutils::Status res = ctrl.ipSecSetEncapSocketOwner(fd, 1001, getuid());
     EXPECT_EQ(netdutils::statusFromErrno(EINVAL, "File descriptor was not a socket"), res);
@@ -197,7 +197,7 @@ TEST_F(XfrmControllerTest, TestFchownNonSocketFd) {
 
 TEST_F(XfrmControllerTest, TestFchownNonUdp) {
     XfrmController ctrl;
-    unique_fd sockFd(socket(AF_INET, SOCK_STREAM, 0));
+    unique_fd sockFd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
 
     EXPECT_CALL(mockSyscalls, getsockopt(Fd(sockFd), IPPROTO_UDP, UDP_ENCAP, _, _))
         .WillOnce(DoAll(SetArg3IntValue(0), Return(netdutils::status::ok)));
@@ -208,7 +208,7 @@ TEST_F(XfrmControllerTest, TestFchownNonUdp) {
 
 TEST_F(XfrmControllerTest, TestFchownNonUdpEncap) {
     XfrmController ctrl;
-    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM, 0));
+    unique_fd sockFd(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
 
     EXPECT_CALL(mockSyscalls, getsockopt(Fd(sockFd), IPPROTO_UDP, UDP_ENCAP, _, _))
         .WillOnce(DoAll(SetArg3IntValue(0), Return(netdutils::status::ok)));
@@ -410,7 +410,7 @@ TEST_F(XfrmControllerTest, TestIpSecApplyTransportModeTransformChecksFamily) {
     struct sockaddr socketaddr;
     socketaddr.sa_family = AF_INET;
 
-    unique_fd sock(socket(AF_INET, SOCK_STREAM, 0));
+    unique_fd sock(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
 
     EXPECT_CALL(mockSyscalls, getsockname(Fd(sock), _, _))
         .WillOnce(DoAll(SetArgPointee<1>(socketaddr), Return(netdutils::status::ok)));
@@ -441,7 +441,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
     struct sockaddr socketaddr;
     socketaddr.sa_family = sockFamily;
 
-    unique_fd sock(socket(sockFamily, SOCK_STREAM, 0));
+    unique_fd sock(socket(sockFamily, SOCK_STREAM | SOCK_CLOEXEC, 0));
 
     EXPECT_CALL(mockSyscalls, getsockname(_, _, _))
         .WillOnce(DoAll(SetArgPointee<1>(socketaddr), Return(netdutils::status::ok)));
@@ -477,7 +477,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecRemoveTransportModeTransform) {
     struct sockaddr socketaddr;
     socketaddr.sa_family = family;
 
-    unique_fd sock(socket(family, SOCK_STREAM, 0));
+    unique_fd sock(socket(family, SOCK_STREAM | SOCK_CLOEXEC, 0));
 
     EXPECT_CALL(mockSyscalls, getsockname(_, _, _))
         .WillOnce(DoAll(SetArgPointee<1>(socketaddr), Return(netdutils::status::ok)));
