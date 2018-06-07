@@ -38,7 +38,6 @@
 
 const size_t SHA256_SIZE = EVP_MD_size(EVP_sha256());
 
-const char * const OEM_SCRIPT_PATH = "/system/bin/oem-iptables-init.sh";
 const char * const ADD = "add";
 const char * const DEL = "del";
 
