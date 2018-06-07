@@ -180,6 +180,7 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
     }
 }
 
+// NOLINTNEXTLINE(cert-dcl50-cpp): Grandfathered C-style variadic function.
 void NetlinkHandler::notify(int code, const char *format, ...) {
     char *msg;
     va_list args;

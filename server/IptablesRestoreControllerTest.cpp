@@ -81,7 +81,7 @@ public:
     // We can't readlink /proc/PID/exe, because zombie processes don't have it.
     // Parse /proc/PID/stat instead.
     std::string statPath = StringPrintf("/proc/%d/stat", pid);
-    int fd = open(statPath.c_str(), O_RDONLY);
+    int fd = open(statPath.c_str(), O_RDONLY | O_CLOEXEC);
     if (fd == -1) {
       // ENOENT means the process is gone (expected).
       ASSERT_EQ(errno, ENOENT)
@@ -131,7 +131,7 @@ public:
   }
 
   int acquireIptablesLock() {
-    mIptablesLock = open(XT_LOCK_NAME, O_CREAT, 0600);
+    mIptablesLock = open(XT_LOCK_NAME, O_CREAT | O_CLOEXEC, 0600);
     if (mIptablesLock == -1) return mIptablesLock;
     int attempts;
     for (attempts = 0; attempts < XT_LOCK_ATTEMPTS; attempts++) {

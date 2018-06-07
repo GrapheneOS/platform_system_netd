@@ -59,6 +59,7 @@ void DumpWriter::println(const std::string& line) {
     ::write(mFd, "\n", 1);
 }
 
+// NOLINTNEXTLINE(cert-dcl50-cpp): Grandfathered C-style variadic function.
 void DumpWriter::println(const char* fmt, ...) {
     std::string line;
     va_list ap;

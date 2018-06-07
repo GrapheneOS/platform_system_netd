@@ -247,7 +247,7 @@ int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule)
     }
 
     std::string command = "*filter\n";
-    for (std::string chainName : chainNames) {
+    for (const std::string& chainName : chainNames) {
         StringAppendF(&command, "%s %s -m owner --uid-owner %d -j %s\n",
                       op, chainName.c_str(), uid, target);
     }
