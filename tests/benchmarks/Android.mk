@@ -19,8 +19,6 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_MODULE := netd_benchmark
 LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
-# Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
-LOCAL_CFLAGS += -Wno-varargs
 
 EXTRA_LDLIBS := -lpthread
 LOCAL_SHARED_LIBRARIES += libbase libbinder liblog libnetd_client libnetdutils

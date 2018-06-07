@@ -36,9 +36,6 @@ LOCAL_TIDY := true
 LOCAL_TIDY_FLAGS := $(common_local_tidy_flags)
 LOCAL_TIDY_CHECKS := $(common_local_tidy_checks)
 
-# Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
-LOCAL_CPPFLAGS += -Wno-varargs
-
 ifeq ($(TARGET_ARCH), x86)
 ifneq ($(TARGET_PRODUCT), gce_x86_phone)
         LOCAL_CPPFLAGS += -D NETLINK_COMPAT32
@@ -153,8 +150,6 @@ LOCAL_MODULE := netd_unit_test
 LOCAL_COMPATIBILITY_SUITE := device-tests
 LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter -Wthread-safety
-# Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
-LOCAL_CFLAGS += -Wno-varargs
 LOCAL_TIDY := true
 LOCAL_TIDY_FLAGS := $(common_local_tidy_flags)
 LOCAL_TIDY_CHECKS := $(common_local_tidy_checks)
