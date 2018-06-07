@@ -56,6 +56,7 @@
 #include "FirewallController.h" /* For makeCriticalCommands */
 #include "Fwmark.h"
 #include "NetdConstants.h"
+#include "TrafficController.h"
 #include "bpf/BpfUtils.h"
 
 /* Alphabetical */
@@ -71,9 +72,13 @@ auto BandwidthController::iptablesRestoreFunction = execIptablesRestoreWithOutpu
 using android::base::Join;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
+using android::bpf::XT_BPF_BLACKLIST_PROG_PATH;
 using android::bpf::XT_BPF_EGRESS_PROG_PATH;
 using android::bpf::XT_BPF_INGRESS_PROG_PATH;
+using android::bpf::XT_BPF_WHITELIST_PROG_PATH;
+using android::net::gCtls;
 using android::netdutils::StatusOr;
+using android::netdutils::Status;
 using android::netdutils::UniqueFile;
 
 namespace {
@@ -149,6 +154,11 @@ const char NICE_CHAIN[] = "bw_happy_box";
 const std::string COMMIT_AND_CLOSE = "COMMIT\n";
 const std::string HAPPY_BOX_WHITELIST_COMMAND = StringPrintf(
     "-I bw_happy_box -m owner --uid-owner %d-%d --jump RETURN", 0, MAX_SYSTEM_UID);
+const std::string BPF_HAPPY_BOX_WHITELIST_COMMAND =
+    StringPrintf("-I bw_happy_box -m bpf --object-pinned %s -j RETURN", XT_BPF_WHITELIST_PROG_PATH);
+const std::string BPF_PENALTY_BOX_BLACKLIST_COMMAND =
+    StringPrintf("-I bw_penalty_box -m bpf --object-pinned %s -j REJECT",
+                 XT_BPF_BLACKLIST_PROG_PATH);
 
 static const std::vector<std::string> IPT_FLUSH_COMMANDS = {
     /*
@@ -206,8 +216,7 @@ static const uint32_t uidBillingMask = Fwmark::getUidBillingMask();
  * See go/ipsec-data-accounting for more information.
  */
 
-const std::vector<std::string> getBasicAccountingCommands() {
-    bool useBpf = BandwidthController::getBpfStatsStatus();
+const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
     const std::vector<std::string> ipt_basic_accounting_commands = {
         "*filter",
         // Prevents IPSec double counting (ESP and UDP-encap-ESP respectively)
@@ -224,10 +233,11 @@ const std::vector<std::string> getBasicAccountingCommands() {
         "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
         "-A bw_costly_shared --jump bw_penalty_box",
+        useBpf ? BPF_PENALTY_BOX_BLACKLIST_COMMAND : "",
         "-A bw_penalty_box --jump bw_happy_box",
         "-A bw_happy_box --jump bw_data_saver",
         "-A bw_data_saver -j RETURN",
-        HAPPY_BOX_WHITELIST_COMMAND,
+        useBpf ? BPF_HAPPY_BOX_WHITELIST_COMMAND : HAPPY_BOX_WHITELIST_COMMAND,
         "COMMIT",
 
         "*raw",
@@ -237,7 +247,7 @@ const std::vector<std::string> getBasicAccountingCommands() {
         "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN",
         "-A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
         useBpf ? StringPrintf("-A bw_raw_PREROUTING -m bpf --object-pinned %s",
-                              XT_BPF_INGRESS_PROG_PATH):"",
+                              XT_BPF_INGRESS_PROG_PATH) : "",
         "COMMIT",
 
         "*mangle",
@@ -249,7 +259,7 @@ const std::vector<std::string> getBasicAccountingCommands() {
         StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x",
                      uidBillingMask), // Clear the mark before sending this packet
         useBpf ? StringPrintf("-A bw_mangle_POSTROUTING -m bpf --object-pinned %s",
-                              XT_BPF_EGRESS_PROG_PATH):"",
+                              XT_BPF_EGRESS_PROG_PATH) : "",
         COMMIT_AND_CLOSE
     };
     return ipt_basic_accounting_commands;
@@ -266,9 +276,11 @@ std::vector<std::string> toStrVec(int num, char* strs[]) {
 
 }  // namespace
 
-bool BandwidthController::getBpfStatsStatus() {
+bool BandwidthController::getBpfStatus() {
     return (access(XT_BPF_INGRESS_PROG_PATH, F_OK) != -1) &&
-           (access(XT_BPF_EGRESS_PROG_PATH, F_OK) != -1);
+           (access(XT_BPF_EGRESS_PROG_PATH, F_OK) != -1) &&
+           (access(XT_BPF_WHITELIST_PROG_PATH, F_OK) != -1) &&
+           (access(XT_BPF_BLACKLIST_PROG_PATH, F_OK) != -1);
 }
 
 BandwidthController::BandwidthController() {
@@ -306,7 +318,8 @@ int BandwidthController::enableBandwidthControl(bool force) {
 
     flushCleanTables(false);
 
-    std::string commands = Join(getBasicAccountingCommands(), '\n');
+    mBpfSupported = getBpfStatus();
+    std::string commands = Join(getBasicAccountingCommands(mBpfSupported), '\n');
     return iptablesRestoreFunction(V4V6, commands, nullptr);
 }
 
@@ -360,6 +373,13 @@ int BandwidthController::removeNiceApps(int numUids, char *appUids[]) {
 int BandwidthController::manipulateSpecialApps(const std::vector<std::string>& appStrUids,
                                                const std::string& chain, IptJumpOp jumpHandling,
                                                IptOp op) {
+    if (mBpfSupported) {
+      Status status = gCtls->trafficCtrl.updateBandwidthUidMap(appStrUids, jumpHandling, op);
+      if (!isOk(status)) {
+          ALOGE("unable to update the Bandwidth Uid Map: %s", toString(status).c_str());
+      }
+      return status.code();
+    }
     std::string cmd = "*filter\n";
     for (const auto& appStrUid : appStrUids) {
         StringAppendF(&cmd, "%s %s -m owner --uid-owner %s%s\n", opToString(op), chain.c_str(),

@@ -33,7 +33,7 @@ public:
     BandwidthController();
 
     int setupIptablesHooks();
-    static bool getBpfStatsStatus();
+    static bool getBpfStatus();
 
     int enableBandwidthControl(bool force);
     int disableBandwidthControl();
@@ -69,6 +69,9 @@ public:
     static const char LOCAL_RAW_PREROUTING[];
     static const char LOCAL_MANGLE_POSTROUTING[];
 
+    enum IptJumpOp { IptJumpReject, IptJumpReturn, IptJumpNoAdd };
+    enum IptOp { IptOpInsert, IptOpDelete };
+
   private:
     struct QuotaInfo {
         int64_t quota;
@@ -77,8 +80,6 @@ public:
 
     enum IptIpVer { IptIpV4, IptIpV6 };
     enum IptFullOp { IptFullOpInsert, IptFullOpDelete, IptFullOpAppend };
-    enum IptJumpOp { IptJumpReject, IptJumpReturn, IptJumpNoAdd };
-    enum IptOp { IptOpInsert, IptOpDelete };
     enum QuotaType { QuotaUnique, QuotaShared };
     enum RunCmdErrHandling { RunCmdFailureBad, RunCmdFailureOk };
 #if LOG_NDEBUG
@@ -124,6 +125,8 @@ public:
 
     static const char *opToString(IptOp op);
     static const char *jumpToString(IptJumpOp jumpHandling);
+
+    bool mBpfSupported;
 
     int64_t mSharedQuotaBytes = 0;
     int64_t mSharedAlertBytes = 0;

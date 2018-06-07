@@ -32,12 +32,29 @@ ELF_SEC(XT_BPF_EGRESS_PROG_NAME)
 int xt_bpf_egress_prog(struct __sk_buff* skb) {
     uint32_t key = skb->ifindex;
     bpf_update_stats(skb, IFACE_STATS_MAP, BPF_EGRESS, &key);
-    return BPF_PASS;
+    return BPF_MATCH;
 }
 
 ELF_SEC(XT_BPF_INGRESS_PROG_NAME)
 int xt_bpf_ingress_prog(struct __sk_buff* skb) {
     uint32_t key = skb->ifindex;
     bpf_update_stats(skb, IFACE_STATS_MAP, BPF_INGRESS, &key);
-    return BPF_PASS;
+    return BPF_MATCH;
+}
+
+ELF_SEC(XT_BPF_WHITELIST_PROG_NAME)
+int xt_bpf_whitelist_prog(struct __sk_buff* skb) {
+    uint32_t sock_uid = get_socket_uid(skb);
+    if (is_system_uid(sock_uid)) return BPF_MATCH;
+    uint8_t* whitelistMatch = find_map_entry(BANDWIDTH_UID_MAP, &sock_uid);
+    if (whitelistMatch) return *whitelistMatch & WHITELISTMATCH;
+    return BPF_NOMATCH;
+}
+
+ELF_SEC(XT_BPF_BLACKLIST_PROG_NAME)
+int xt_bpf_blacklist_prog(struct __sk_buff* skb) {
+    uint32_t sock_uid = get_socket_uid(skb);
+    uint8_t* blacklistMatch = find_map_entry(BANDWIDTH_UID_MAP, &sock_uid);
+    if (blacklistMatch) return *blacklistMatch & BLACKLISTMATCH;
+    return BPF_NOMATCH;
 }

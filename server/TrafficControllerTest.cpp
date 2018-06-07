@@ -78,6 +78,7 @@ class TrafficControllerTest : public ::testing::Test {
     BpfMap<uint32_t, uint8_t> mFakeDozableUidMap;
     BpfMap<uint32_t, uint8_t> mFakeStandbyUidMap;
     BpfMap<uint32_t, uint8_t> mFakePowerSaveUidMap;
+    BpfMap<uint32_t, uint8_t> mFakeBandwidthUidMap;
 
     void SetUp() {
         std::lock_guard<std::mutex> ownerGuard(mTc.mOwnerMatchMutex);
@@ -114,6 +115,10 @@ class TrafficControllerTest : public ::testing::Test {
         mFakePowerSaveUidMap.reset(
             createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(uint8_t), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakePowerSaveUidMap.getMap());
+
+        mFakeBandwidthUidMap.reset(
+            createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(uint8_t), TEST_MAP_SIZE, 0));
+        ASSERT_LE(0, mFakeBandwidthUidMap.getMap());
         // Make sure trafficController use the eBPF code path.
         mTc.ebpfSupported = true;
 
@@ -125,6 +130,7 @@ class TrafficControllerTest : public ::testing::Test {
         mTc.mDozableUidMap.reset(mFakeDozableUidMap.getMap());
         mTc.mStandbyUidMap.reset(mFakeStandbyUidMap.getMap());
         mTc.mPowerSaveUidMap.reset(mFakePowerSaveUidMap.getMap());
+        mTc.mBandwidthUidMap.reset(mFakeBandwidthUidMap.getMap());
     }
 
     int setUpSocketAndTag(int protocol, uint64_t* cookie, uint32_t tag, uid_t uid) {
@@ -218,6 +224,18 @@ class TrafficControllerTest : public ::testing::Test {
         isWhitelist = false;
         EXPECT_EQ(0, mTc.replaceUidOwnerMap(name, isWhitelist, uids));
         checkEachUidValue(uids, BPF_DROP, targetMap);
+    }
+
+    void expectBandwidthMapValues(const std::vector<std::string>& appStrUids,
+                                  uint8_t expectedValue) {
+        for (std::string strUid : appStrUids) {
+            uint32_t uid = stoi(strUid);
+            StatusOr<uint8_t> value = mFakeBandwidthUidMap.readValue(uid);
+            EXPECT_TRUE(isOk(value));
+            EXPECT_EQ(expectedValue, value.value()) <<
+                "Expected value for UID " << uid << " to be " << expectedValue <<
+                ", but was " << value.value();
+        }
     }
 
     void TearDown() {
@@ -478,5 +496,72 @@ TEST_F(TrafficControllerTest, TestReplaceUidOwnerMap) {
     ASSERT_EQ(-EINVAL, mTc.replaceUidOwnerMap("unknow", true, uids));
 }
 
+TEST_F(TrafficControllerTest, TestBlacklistUidMatch) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    std::vector<std::string> appStrUids = {"1000", "1001", "10012"};
+    ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReject,
+                                               BandwidthController::IptOpInsert)));
+    expectBandwidthMapValues(appStrUids, BLACKLISTMATCH);
+    ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReject,
+                                               BandwidthController::IptOpDelete)));
+    ASSERT_FALSE(isOk(mFakeBandwidthUidMap.getFirstKey()));
+}
+
+TEST_F(TrafficControllerTest, TestWhitelistUidMatch) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    std::vector<std::string> appStrUids = {"1000", "1001", "10012"};
+    ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReturn,
+                                               BandwidthController::IptOpInsert)));
+    expectBandwidthMapValues(appStrUids, WHITELISTMATCH);
+    ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReturn,
+                                               BandwidthController::IptOpDelete)));
+    ASSERT_FALSE(isOk(mFakeBandwidthUidMap.getFirstKey()));
+}
+
+TEST_F(TrafficControllerTest, TestReplaceMatchUid) {
+    std::vector<std::string> appStrUids = {"1000", "1001", "10012"};
+    // Add appStrUids to the blacklist and expect that their values are all BLACKLISTMATCH.
+    ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReject,
+                                               BandwidthController::IptOpInsert)));
+    expectBandwidthMapValues(appStrUids, BLACKLISTMATCH);
+
+    // Add the same UIDs to the whitelist and expect that we get BLACKLISTMATCH | WHITELISTMATCH.
+    ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReturn,
+                                               BandwidthController::IptOpInsert)));
+    expectBandwidthMapValues(appStrUids, WHITELISTMATCH | BLACKLISTMATCH);
+
+    // Remove the same UIDs from the whitelist and check the BLACKLISTMATCH is still there.
+    ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReturn,
+                                               BandwidthController::IptOpDelete)));
+    expectBandwidthMapValues(appStrUids, BLACKLISTMATCH);
+
+    // Remove the same UIDs from the blacklist and check the map is empty.
+    ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReject,
+                                               BandwidthController::IptOpDelete)));
+    ASSERT_FALSE(isOk(mFakeBandwidthUidMap.getFirstKey()));
+}
+
+TEST_F(TrafficControllerTest, TestDeleteWrongMatchSilentlyFails) {
+    std::vector<std::string> appStrUids = {"1000", "1001", "10012"};
+    // If the uid does not exist in the map, trying to delete a rule about it will fail.
+    ASSERT_FALSE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReject,
+                                                BandwidthController::IptOpDelete)));
+    ASSERT_FALSE(isOk(mFakeBandwidthUidMap.getFirstKey()));
+
+    // Add blacklist rules for appStrUids.
+    ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReturn,
+                                               BandwidthController::IptOpInsert)));
+    expectBandwidthMapValues(appStrUids, WHITELISTMATCH);
+
+    // Delete (non-existent) blacklist rules for appStrUids, and check that this silently does
+    // nothing if the uid is in the map but does not have blacklist match. This is required because
+    // NetworkManagementService will try to remove a uid from blacklist after adding it to the
+    // whitelist and if the remove fails it will not update the uid status.
+    ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReject,
+                                                BandwidthController::IptOpDelete)));
+    expectBandwidthMapValues(appStrUids, WHITELISTMATCH);
+}
 }  // namespace net
 }  // namespace android
