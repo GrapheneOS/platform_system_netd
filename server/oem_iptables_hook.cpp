@@ -22,12 +22,18 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <string>
+
 #define LOG_TAG "OemIptablesHook"
 #include <log/log.h>
 #include <logwrap/logwrap.h>
 #include "NetdConstants.h"
 
-static bool oemCleanupHooks() {
+namespace {
+
+const char OEM_SCRIPT_PATH[] = "/system/bin/oem-iptables-init.sh";
+
+bool oemCleanupHooks() {
     std::string cmd =
         "*filter\n"
         ":oem_out -\n"
@@ -40,8 +46,8 @@ static bool oemCleanupHooks() {
     return (execIptablesRestore(V4V6, cmd) == 0);
 }
 
-static bool oemInitChains() {
-    int ret = system(OEM_SCRIPT_PATH);
+bool oemInitChains() {
+    int ret = system(OEM_SCRIPT_PATH);  // NOLINT(cert-env33-c)
     if ((-1 == ret) || (0 != WEXITSTATUS(ret))) {
         ALOGE("%s failed: %s", OEM_SCRIPT_PATH, strerror(errno));
         oemCleanupHooks();
@@ -50,6 +56,7 @@ static bool oemInitChains() {
     return true;
 }
 
+}  // namespace
 
 void setupOemIptablesHook() {
     if (0 == access(OEM_SCRIPT_PATH, R_OK | X_OK)) {

@@ -34,7 +34,6 @@ const int MAX_SYSTEM_UID = AID_APP - 1;
 
 extern const size_t SHA256_SIZE;
 
-extern const char * const OEM_SCRIPT_PATH;
 extern const char * const ADD;
 extern const char * const DEL;
 

@@ -128,7 +128,7 @@ class TrafficControllerTest : public ::testing::Test {
     }
 
     int setUpSocketAndTag(int protocol, uint64_t* cookie, uint32_t tag, uid_t uid) {
-        int sock = socket(protocol, SOCK_STREAM, 0);
+        int sock = socket(protocol, SOCK_STREAM | SOCK_CLOEXEC, 0);
         EXPECT_LE(0, sock);
         *cookie = getSocketCookie(sock);
         EXPECT_NE(NONEXISTENT_COOKIE, *cookie);
@@ -293,7 +293,7 @@ TEST_F(TrafficControllerTest, TestUntagInvalidSocket) {
 
     int invalidSocket = -1;
     ASSERT_GT(0, mTc.untagSocket(invalidSocket));
-    int v4socket = socket(AF_INET, SOCK_STREAM, 0);
+    int v4socket = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
     ASSERT_GT(0, mTc.untagSocket(v4socket));
     expectTagMapEmpty();
 }
