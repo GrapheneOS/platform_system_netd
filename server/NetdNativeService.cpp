@@ -38,6 +38,7 @@
 #include "InterfaceController.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
+#include "Process.h"
 #include "RouteController.h"
 #include "SockDiag.h"
 #include "UidRanges.h"
@@ -139,6 +140,7 @@ status_t NetdNativeService::dump(int fd, const Vector<String16> &args) {
         return NO_ERROR;
     }
 
+    process::dump(dw);
     dw.blankline();
     gCtls->netCtrl.dump(dw);
     dw.blankline();

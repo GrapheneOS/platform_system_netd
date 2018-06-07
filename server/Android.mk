@@ -92,6 +92,7 @@ LOCAL_SRC_FILES := \
         NFLogListener.cpp \
         PhysicalNetwork.cpp \
         PppController.cpp \
+        Process.cpp \
         ResolverController.cpp \
         RouteController.cpp \
         SockDiag.cpp \
