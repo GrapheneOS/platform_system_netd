@@ -45,6 +45,7 @@
 #include "NetdHwService.h"
 #include "NetdNativeService.h"
 #include "NetlinkManager.h"
+#include "Process.h"
 #include "Stopwatch.h"
 
 using android::status_t;
@@ -61,12 +62,7 @@ using android::net::NetlinkManager;
 using android::net::NFLogListener;
 using android::net::makeNFLogListener;
 
-static void remove_pid_file();
-static bool write_pid_file();
-
 const char* const PID_FILE_PATH = "/data/misc/net/netd_pid";
-const int PID_FILE_FLAGS = O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_CLOEXEC;
-const mode_t PID_FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 0644, rw-r--r--
 
 android::RWLock android::net::gBigNetdLock;
 
@@ -75,9 +71,9 @@ int main() {
     Stopwatch s;
 
     ALOGI("Netd 1.0 starting");
-    remove_pid_file();
 
-    blockSigpipe();
+    android::net::process::removePidFile(PID_FILE_PATH);
+    android::net::process::blockSigPipe();
 
     // Before we do anything that could fork, mark CLOEXEC the UNIX sockets that we get from init.
     // FrameworkListener does this on initialization as well, but we only initialize these
@@ -160,7 +156,7 @@ int main() {
     }
     ALOGI("Starting CommandListener: %.1fms", subTime.getTimeAndReset());
 
-    write_pid_file();
+    android::net::process::ScopedPidFile pidFile(PID_FILE_PATH);
 
     // Now that netd is ready to process commands, advertise service
     // availability for HAL clients.
@@ -177,39 +173,5 @@ int main() {
 
     ALOGI("Netd exiting");
 
-    remove_pid_file();
-
     exit(0);
-}
-
-static bool write_pid_file() {
-    char pid_buf[INT32_STRLEN];
-    snprintf(pid_buf, sizeof(pid_buf), "%d\n", (int) getpid());
-
-    int fd = open(PID_FILE_PATH, PID_FILE_FLAGS, PID_FILE_MODE);
-    if (fd == -1) {
-        ALOGE("Unable to create pid file (%s)", strerror(errno));
-        return false;
-    }
-
-    // File creation is affected by umask, so make sure the right mode bits are set.
-    if (fchmod(fd, PID_FILE_MODE) == -1) {
-        ALOGE("failed to set mode 0%o on %s (%s)", PID_FILE_MODE, PID_FILE_PATH, strerror(errno));
-        close(fd);
-        remove_pid_file();
-        return false;
-    }
-
-    if (write(fd, pid_buf, strlen(pid_buf)) != (ssize_t)strlen(pid_buf)) {
-        ALOGE("Unable to write to pid file (%s)", strerror(errno));
-        close(fd);
-        remove_pid_file();
-        return false;
-    }
-    close(fd);
-    return true;
-}
-
-static void remove_pid_file() {
-    unlink(PID_FILE_PATH);
 }

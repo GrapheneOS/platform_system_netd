@@ -38,11 +38,12 @@ class Cleanup {
   public:
     Cleanup() = delete;
     Cleanup(FnT fn) : mFn(fn) {}
-    ~Cleanup() { mFn(); }
+    ~Cleanup() { if (!mReleased) mFn(); }
 
-    void release() { mFn = {}; }
+    void release() { mReleased = true; }
 
   private:
+    bool mReleased{false};
     FnT mFn;
 };
 
