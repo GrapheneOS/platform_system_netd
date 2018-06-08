@@ -45,6 +45,15 @@ public:
 
     static int Init(unsigned localNetId) WARN_UNUSED_RESULT;
 
+    // Returns an ifindex given the interface name, by looking up in sInterfaceToTable.
+    // This is currently only used by NetworkController::addInterfaceToNetwork
+    // and should probabaly be changed to passing the ifindex into RouteController instead.
+    // We do this instead of calling if_nametoindex because the same interface name can
+    // correspond to different interface indices over time. This way, even if the interface
+    // index has changed, we can still free any map entries indexed by the ifindex that was
+    // used to add them.
+    static uint32_t getIfIndex(const char* interface);
+
     static int addInterfaceToLocalNetwork(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
     static int removeInterfaceFromLocalNetwork(unsigned netId,
                                                const char* interface) WARN_UNUSED_RESULT;

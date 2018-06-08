@@ -154,6 +154,18 @@ uint32_t RouteController::getRouteTableForInterfaceLocked(const char* interface)
     return iter->second;
 }
 
+uint32_t RouteController::getIfIndex(const char* interface) {
+    android::RWLock::AutoRLock lock(sInterfaceToTableLock);
+
+    auto iter = sInterfaceToTable.find(interface);
+    if (iter == sInterfaceToTable.end()) {
+        ALOGE("getIfIndex: cannot find interface %s", interface);
+        return 0;
+    }
+
+    return iter->second - ROUTE_TABLE_OFFSET_FROM_INDEX;
+}
+
 uint32_t RouteController::getRouteTableForInterface(const char* interface) {
     android::RWLock::AutoRLock lock(sInterfaceToTableLock);
     return getRouteTableForInterfaceLocked(interface);
