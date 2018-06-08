@@ -47,10 +47,10 @@ public:
     int getInterfaceQuota(const std::string& iface, int64_t* bytes);
     int removeInterfaceQuota(const std::string& iface);
 
-    int addNaughtyApps(int numUids, char *appUids[]);
-    int removeNaughtyApps(int numUids, char *appUids[]);
-    int addNiceApps(int numUids, char *appUids[]);
-    int removeNiceApps(int numUids, char *appUids[]);
+    int addNaughtyApps(int numUids, const char* const appUids[]);
+    int removeNaughtyApps(int numUids, const char* const appUids[]);
+    int addNiceApps(int numUids, const char* const appUids[]);
+    int removeNiceApps(int numUids, const char* const appUids[]);
 
     int setGlobalAlert(int64_t bytes);
     int removeGlobalAlert();

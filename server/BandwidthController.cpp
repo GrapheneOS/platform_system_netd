@@ -256,12 +256,8 @@ const std::vector<std::string> getBasicAccountingCommands() {
 }
 
 
-std::vector<std::string> toStrVec(int num, char* strs[]) {
-    std::vector<std::string> tmp;
-    for (int i = 0; i < num; ++i) {
-        tmp.emplace_back(strs[i]);
-    }
-    return tmp;
+std::vector<std::string> toStrVec(int num, const char* const strs[]) {
+    return std::vector<std::string>(strs, strs + num);
 }
 
 }  // namespace
@@ -337,22 +333,22 @@ int BandwidthController::enableDataSaver(bool enable) {
     return ret;
 }
 
-int BandwidthController::addNaughtyApps(int numUids, char *appUids[]) {
+int BandwidthController::addNaughtyApps(int numUids, const char* const appUids[]) {
     return manipulateSpecialApps(toStrVec(numUids, appUids), NAUGHTY_CHAIN,
                                  IptJumpReject, IptOpInsert);
 }
 
-int BandwidthController::removeNaughtyApps(int numUids, char *appUids[]) {
+int BandwidthController::removeNaughtyApps(int numUids, const char* const appUids[]) {
     return manipulateSpecialApps(toStrVec(numUids, appUids), NAUGHTY_CHAIN,
                                  IptJumpReject, IptOpDelete);
 }
 
-int BandwidthController::addNiceApps(int numUids, char *appUids[]) {
+int BandwidthController::addNiceApps(int numUids, const char* const appUids[]) {
     return manipulateSpecialApps(toStrVec(numUids, appUids), NICE_CHAIN,
                                  IptJumpReturn, IptOpInsert);
 }
 
-int BandwidthController::removeNiceApps(int numUids, char *appUids[]) {
+int BandwidthController::removeNiceApps(int numUids, const char* const appUids[]) {
     return manipulateSpecialApps(toStrVec(numUids, appUids), NICE_CHAIN,
                                  IptJumpReturn, IptOpDelete);
 }

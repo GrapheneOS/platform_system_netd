@@ -14,10 +14,16 @@
 
 LOCAL_PATH := $(call my-dir)
 
+common_local_tidy_flags := -warnings-as-errors=android-*,clang-analyzer-security*,cert-*
+common_local_tidy_checks := \
+        android-*,clang-analyzer-security*,cert-*,-cert-err34-c,-cert-err58-cpp,-google-runtime-int
+
 ###
 ### netd daemon.
 ###
 include $(CLEAR_VARS)
+
+LOCAL_MODULE := netd
 
 LOCAL_C_INCLUDES := \
         $(call include-path-for, libhardware_legacy)/hardware_legacy \
@@ -26,10 +32,9 @@ LOCAL_C_INCLUDES := \
         system/netd/include \
 
 LOCAL_CPPFLAGS := -Wall -Werror -Wthread-safety -Wnullable-to-nonnull-conversion
-LOCAL_MODULE := netd
-
-# Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
-LOCAL_CPPFLAGS +=  -Wno-varargs \
+LOCAL_TIDY := true
+LOCAL_TIDY_FLAGS := $(common_local_tidy_flags)
+LOCAL_TIDY_CHECKS := $(common_local_tidy_checks)
 
 ifeq ($(TARGET_ARCH), x86)
 ifneq ($(TARGET_PRODUCT), gce_x86_phone)
@@ -92,6 +97,7 @@ LOCAL_SRC_FILES := \
         NFLogListener.cpp \
         PhysicalNetwork.cpp \
         PppController.cpp \
+        Process.cpp \
         ResolverController.cpp \
         RouteController.cpp \
         SockDiag.cpp \
@@ -124,10 +130,13 @@ include $(BUILD_EXECUTABLE)
 ###
 include $(CLEAR_VARS)
 
+LOCAL_MODULE := ndc
 LOCAL_CFLAGS := -Wall -Werror -Wthread-safety
 LOCAL_SANITIZE := unsigned-integer-overflow
-LOCAL_CLANG := true
-LOCAL_MODULE := ndc
+LOCAL_TIDY := true
+LOCAL_TIDY_FLAGS := $(common_local_tidy_flags)
+LOCAL_TIDY_CHECKS := $(common_local_tidy_checks)
+
 LOCAL_SHARED_LIBRARIES := libcutils
 LOCAL_SRC_FILES := ndc.cpp
 
@@ -137,12 +146,14 @@ include $(BUILD_EXECUTABLE)
 ### netd unit tests.
 ###
 include $(CLEAR_VARS)
+
 LOCAL_MODULE := netd_unit_test
 LOCAL_COMPATIBILITY_SUITE := device-tests
 LOCAL_SANITIZE := unsigned-integer-overflow
 LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter -Wthread-safety
-# Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
-LOCAL_CFLAGS += -Wno-varargs
+LOCAL_TIDY := true
+LOCAL_TIDY_FLAGS := $(common_local_tidy_flags)
+LOCAL_TIDY_CHECKS := $(common_local_tidy_checks)
 
 LOCAL_C_INCLUDES := \
         bionic/libc/dns/include \

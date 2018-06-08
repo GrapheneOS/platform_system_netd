@@ -107,8 +107,9 @@ int writeValueToPath(
 }
 
 // Run @fn on each interface as well as 'default' in the path @dirname.
-void forEachInterface(const std::string& dirname,
-                      std::function<void(const std::string& path, const std::string& iface)> fn) {
+void forEachInterface(
+        const std::string& dirname,
+        const std::function<void(const std::string& path, const std::string& iface)>& fn) {
     // Run on default, which controls the behavior of any interfaces that are created in the future.
     fn(dirname, "default");
     DIR* dir = opendir(dirname.c_str());
@@ -190,7 +191,9 @@ Status setProperty(const std::string& key, const std::string& val) {
 }  // namespace
 
 android::netdutils::Status InterfaceController::enableStablePrivacyAddresses(
-        const std::string& iface, GetPropertyFn getProperty, SetPropertyFn setProperty) {
+        const std::string& iface,
+        const GetPropertyFn& getProperty,
+        const SetPropertyFn& setProperty) {
     const auto& sys = sSyscalls.get();
     const std::string procTarget = std::string(ipv6_proc_path) + "/" + iface + "/stable_secret";
     auto procFd = sys.open(procTarget, O_CLOEXEC | O_WRONLY);

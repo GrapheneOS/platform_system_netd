@@ -298,11 +298,13 @@ bool TetherController::isTetheringStarted() {
     return (mDaemonPid == 0 ? false : true);
 }
 
-#define MAX_CMD_SIZE 1024
+// dnsmasq can't parse commands larger than this due to the fixed-size buffer
+// in check_android_listeners(). The receiving buffer is 1024 bytes long, but
+// dnsmasq reads up to 1023 bytes.
+#define MAX_CMD_SIZE 1023
 
 int TetherController::setDnsForwarders(unsigned netId, char **servers, int numServers) {
     int i;
-    char daemonCmd[MAX_CMD_SIZE] = {};
 
     Fwmark fwmark;
     fwmark.netId = netId;
@@ -310,8 +312,7 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
     fwmark.protectedFromVpn = true;
     fwmark.permission = PERMISSION_SYSTEM;
 
-    snprintf(daemonCmd, sizeof(daemonCmd), "update_dns%s0x%x", SEPARATOR, fwmark.intValue);
-    int cmdLen = strlen(daemonCmd);
+    std::string daemonCmd = StringPrintf("update_dns%s0x%x", SEPARATOR, fwmark.intValue);
 
     mDnsForwarders.clear();
     for (i = 0; i < numServers; i++) {
@@ -327,19 +328,18 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
             return -1;
         }
 
-        cmdLen += (strlen(servers[i]) + 1);
-        if (cmdLen + 1 >= MAX_CMD_SIZE) {
-            ALOGD("Too many DNS servers listed");
+        if (daemonCmd.size() + 1 + strlen(servers[i]) >= MAX_CMD_SIZE) {
+            ALOGE("Too many DNS servers listed");
             break;
         }
 
-        strcat(daemonCmd, SEPARATOR);
-        strcat(daemonCmd, servers[i]);
+        daemonCmd += SEPARATOR;
+        daemonCmd += servers[i];
         mDnsForwarders.push_back(servers[i]);
     }
 
     mDnsNetId = netId;
-    mDnsmasqState.update_dns_cmd = std::string(daemonCmd);
+    mDnsmasqState.update_dns_cmd = std::move(daemonCmd);
     if (mDaemonFd != -1) {
         if (mDnsmasqState.sendAllState(mDaemonFd) != 0) {
             mDnsForwarders.clear();
@@ -359,28 +359,24 @@ const std::list<std::string> &TetherController::getDnsForwarders() const {
 }
 
 bool TetherController::applyDnsInterfaces() {
-    char daemonCmd[MAX_CMD_SIZE] = {};
-
-    strcpy(daemonCmd, "update_ifaces");
-    int cmdLen = strlen(daemonCmd);
+    std::string daemonCmd = "update_ifaces";
     bool haveInterfaces = false;
 
-    for (const auto &ifname : mInterfaces) {
-        cmdLen += (ifname.size() + 1);
-        if (cmdLen + 1 >= MAX_CMD_SIZE) {
-            ALOGD("Too many DNS ifaces listed");
+    for (const auto& ifname : mInterfaces) {
+        if (daemonCmd.size() + 1 + ifname.size() >= MAX_CMD_SIZE) {
+            ALOGE("Too many DNS servers listed");
             break;
         }
 
-        strcat(daemonCmd, SEPARATOR);
-        strcat(daemonCmd, ifname.c_str());
+        daemonCmd += SEPARATOR;
+        daemonCmd += ifname;
         haveInterfaces = true;
     }
 
     if (!haveInterfaces) {
         mDnsmasqState.update_ifaces_cmd.clear();
     } else {
-        mDnsmasqState.update_ifaces_cmd = std::string(daemonCmd);
+        mDnsmasqState.update_ifaces_cmd = std::move(daemonCmd);
         if (mDaemonFd != -1) return (mDnsmasqState.sendAllState(mDaemonFd) == 0);
     }
     return true;
