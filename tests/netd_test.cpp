@@ -121,7 +121,6 @@ class AddrInfo {
 
     const addrinfo& operator*() const { return *ai_; }
     const addrinfo* get() const { return ai_; }
-    const addrinfo* operator&() const { return ai_; }
     int error() const { return error_; }
 
   private:
@@ -784,7 +783,7 @@ TEST_F(ResolverTest, GetHostByName_TlsBroken) {
     std::vector<std::string> servers = { listen_addr };
 
     // Bind the specified private DNS socket but don't respond to any client sockets yet.
-    int s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
     ASSERT_TRUE(s >= 0);
     struct sockaddr_in tlsServer = {
         .sin_family = AF_INET,
@@ -801,7 +800,7 @@ TEST_F(ResolverTest, GetHostByName_TlsBroken) {
 
     struct sockaddr_storage cliaddr;
     socklen_t sin_size = sizeof(cliaddr);
-    int new_fd = accept(s, reinterpret_cast<struct sockaddr *>(&cliaddr), &sin_size);
+    int new_fd = accept4(s, reinterpret_cast<struct sockaddr *>(&cliaddr), &sin_size, SOCK_CLOEXEC);
     ASSERT_TRUE(new_fd > 0);
 
     // We've received the new file descriptor but not written to it or closed, so the
