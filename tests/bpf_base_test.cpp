@@ -87,7 +87,7 @@ TEST_F(BpfBasicTest, TestTagSocket) {
 
     BpfMap<uint64_t, UidTag> cookieTagMap(mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
     ASSERT_LE(0, cookieTagMap.getMap());
-    int sock = socket(AF_INET6, SOCK_STREAM, 0);
+    int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
     ASSERT_LE(0, sock);
     uint64_t cookie = getSocketCookie(sock);
     ASSERT_NE(NONEXISTENT_COOKIE, cookie);
@@ -107,7 +107,7 @@ TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
 
     BpfMap<uint64_t, UidTag> cookieTagMap(mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
     ASSERT_LE(0, cookieTagMap.getMap());
-    int sock = socket(AF_INET6, SOCK_STREAM, 0);
+    int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
     ASSERT_LE(0, sock);
     uint64_t cookie = getSocketCookie(sock);
     ASSERT_NE(NONEXISTENT_COOKIE, cookie);

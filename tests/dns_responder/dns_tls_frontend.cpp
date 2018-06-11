@@ -277,7 +277,7 @@ void DnsTlsFrontend::requestHandler() {
         socklen_t len = sizeof(addr);
 
         ALOGD("Trying to accept a client");
-        int client = accept(socket_, reinterpret_cast<sockaddr*>(&addr), &len);
+        int client = accept4(socket_, reinterpret_cast<sockaddr*>(&addr), &len, SOCK_CLOEXEC);
         ALOGD("Got client socket %d", client);
         if (client < 0) {
             // Stop
