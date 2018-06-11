@@ -621,12 +621,12 @@ bool DNSResponder::startServer() {
         return false;
     }
 
-    int ep_fd = epoll_create(1);
+    int ep_fd = epoll_create1(EPOLL_CLOEXEC);
     if (ep_fd < 0) {
         char error_msg[512] = { 0 };
         if (strerror_r(errno, error_msg, sizeof(error_msg)))
             strncpy(error_msg, "UNKNOWN", sizeof(error_msg));
-        APLOGI("epoll_create() failed: %s", error_msg);
+        APLOGI("epoll_create1() failed: %s", error_msg);
         close(s);
         return false;
     }
