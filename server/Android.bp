@@ -10,32 +10,18 @@ filegroup {
     srcs: ["binder/android/net/metrics/INetdEventListener.aidl"],
 }
 
-cc_defaults {
-    tidy: true,
-    tidy_checks: [
-        "android-*",
-        "cert-*",
-        "clang-analyzer-security*",
-    ],
-    tidy_flags: [
-        "-warnings-as-errors=android-*,clang-analyzer-security*,cert-*"
-    ],
-}
-
 cc_library {
     name: "libnetdaidl",
-
+    defaults: ["netd_defaults"],
     cflags: [
         "-Wall",
         "-Werror",
         "-Wthread-safety",
     ],
-
     shared_libs: [
         "libbinder",
         "libutils",
     ],
-
     aidl: {
         export_aidl_headers: true,
         local_include_dirs: ["binder"],
@@ -45,6 +31,5 @@ cc_library {
         "binder/android/net/INetd.aidl",
         "binder/android/net/UidRange.cpp",
     ],
-
     export_include_dirs: ["binder"],
 }
