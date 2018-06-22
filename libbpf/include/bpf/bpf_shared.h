@@ -20,6 +20,8 @@
 #define BPF_CGROUP_EGRESS_PROG_NAME "cgroup_egress_prog"
 #define XT_BPF_INGRESS_PROG_NAME "xt_ingress_prog"
 #define XT_BPF_EGRESS_PROG_NAME "xt_egress_prog"
+#define XT_BPF_WHITELIST_PROG_NAME "xt_whitelist_prog"
+#define XT_BPF_BLACKLIST_PROG_NAME "xt_blacklist_prog"
 
 #define COOKIE_TAG_MAP 0xbfceaaffffffffff
 #define UID_COUNTERSET_MAP 0xbfdceeafffffffff
@@ -30,6 +32,10 @@
 #define DOZABLE_UID_MAP 0Xbfd0ab1e1dafffff
 #define STANDBY_UID_MAP 0Xbfadb1daffffffff
 #define POWERSAVE_UID_MAP 0Xbf0eae1dafffffff
+#define BANDWIDTH_UID_MAP 0xbfbad1d1daffffff
+
+enum BandwithMatchType { NO_MATCH, WHITELISTMATCH, BLACKLISTMATCH };
+
 // These are also defined in NetdConstants.h, but we want to minimize the number of headers
 // included by the BPF kernel program.
 // TODO: refactor the the following constant into a seperate file so
