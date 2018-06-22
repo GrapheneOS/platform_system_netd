@@ -20,12 +20,14 @@
 #include <linux/bpf.h>
 
 #include <netdutils/StatusOr.h>
+#include "BandwidthController.h"
 #include "FirewallController.h"
 #include "NetlinkListener.h"
 #include "Network.h"
 #include "android-base/thread_annotations.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
+#include "bpf/bpf_shared.h"
 
 using android::bpf::BpfMap;
 using android::bpf::IfaceValue;
@@ -106,6 +108,9 @@ class TrafficController {
                                        const std::vector<int32_t>& uids, FirewallRule rule,
                                        FirewallType type);
 
+    netdutils::Status updateBandwidthUidMap(const std::vector<std::string>& appStrUids,
+                                            BandwidthController::IptJumpOp jumpHandling,
+                                            BandwidthController::IptOp op);
     static const String16 DUMP_KEYWORD;
 
     int toggleUidOwnerMap(ChildChain chain, bool enable);
@@ -192,6 +197,11 @@ class TrafficController {
      */
     BpfMap<uint32_t, uint8_t> mPowerSaveUidMap GUARDED_BY(mOwnerMatchMutex);
 
+    /*
+     * mBandwidthUidMap: Store uids that are used for bandwidth control uid match.
+     */
+    BpfMap<uint32_t, uint8_t> mBandwidthUidMap;
+
     std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
 
     bool ebpfSupported;
@@ -202,6 +212,8 @@ class TrafficController {
                                            base::unique_fd& cg_fd);
 
     netdutils::Status initMaps();
+
+    BandwithMatchType jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling);
     // For testing
     friend class TrafficControllerTest;
 };

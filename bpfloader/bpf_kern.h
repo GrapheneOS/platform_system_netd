@@ -29,6 +29,7 @@
  */
 
 #include <linux/bpf.h>
+#include <linux/if.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>
 #include <linux/in6.h>
@@ -67,8 +68,15 @@ static uint64_t (*get_socket_cookie)(struct __sk_buff* skb) = (void*)BPF_FUNC_ge
 static uint32_t (*get_socket_uid)(struct __sk_buff* skb) = (void*)BPF_FUNC_get_socket_uid;
 static int (*bpf_skb_load_bytes)(struct __sk_buff* skb, int off, void* to,
                                  int len) = (void*)BPF_FUNC_skb_load_bytes;
+
+// This is defined for cgroup bpf filter only.
 #define BPF_PASS 1
 #define BPF_DROP 0
+
+// This is used for xt_bpf program only.
+#define BPF_NOMATCH 0
+#define BPF_MATCH 1
+
 #define BPF_EGRESS 0
 #define BPF_INGRESS 1
 
@@ -77,6 +85,10 @@ static int (*bpf_skb_load_bytes)(struct __sk_buff* skb, int off, void* to,
 #define IPPROTO_IHL_OFF 0
 #define TCP_FLAG_OFF 13
 #define RST_OFFSET 2
+
+static __always_inline int is_system_uid(uint32_t uid) {
+    return (uid <= MAX_SYSTEM_UID) && (uid >= MIN_SYSTEM_UID);
+}
 
 static __always_inline inline void bpf_update_stats(struct __sk_buff* skb, uint64_t map,
                                                     int direction, void *key) {

@@ -46,8 +46,10 @@ using ::testing::_;
 
 using android::base::Join;
 using android::base::StringPrintf;
+using android::bpf::XT_BPF_BLACKLIST_PROG_PATH;
 using android::bpf::XT_BPF_EGRESS_PROG_PATH;
 using android::bpf::XT_BPF_INGRESS_PROG_PATH;
+using android::bpf::XT_BPF_WHITELIST_PROG_PATH;
 using android::net::TunInterface;
 using android::netdutils::status::ok;
 using android::netdutils::UniqueFile;
@@ -180,7 +182,7 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
     std::string expectedClean = "";
 
     uint32_t uidBillingMask = Fwmark::getUidBillingMask();
-    bool useBpf = BandwidthController::getBpfStatsStatus();
+    bool useBpf = BandwidthController::getBpfStatus();
     std::string expectedAccounting =
         "*filter\n"
         "-A bw_INPUT -p esp -j RETURN\n" +
@@ -191,11 +193,24 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
         "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN\n"
         "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN\n"
         "-A bw_OUTPUT -m owner --socket-exists\n"
-        "-A bw_costly_shared --jump bw_penalty_box\n"
-        "-A bw_penalty_box --jump bw_happy_box\n"
-        "-A bw_happy_box --jump bw_data_saver\n"
-        "-A bw_data_saver -j RETURN\n"
-        "-I bw_happy_box -m owner --uid-owner 0-9999 --jump RETURN\n"
+        "-A bw_costly_shared --jump bw_penalty_box\n";
+    if (useBpf) {
+        expectedAccounting +=
+            StringPrintf("-I bw_penalty_box -m bpf --object-pinned %s -j REJECT\n",
+                         XT_BPF_BLACKLIST_PROG_PATH) +
+            "-A bw_penalty_box --jump bw_happy_box\n" +
+            "-A bw_happy_box --jump bw_data_saver\n"
+            "-A bw_data_saver -j RETURN\n" +
+            StringPrintf("-I bw_happy_box -m bpf --object-pinned %s -j RETURN\n",
+                         XT_BPF_WHITELIST_PROG_PATH);
+    } else {
+        expectedAccounting +=
+            "\n-A bw_penalty_box --jump bw_happy_box\n"
+            "-A bw_happy_box --jump bw_data_saver\n"
+            "-A bw_data_saver -j RETURN\n"
+            "-I bw_happy_box -m owner --uid-owner 0-9999 --jump RETURN\n";
+    }
+    expectedAccounting +=
         "COMMIT\n"
         "*raw\n"
         "-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN\n"
@@ -506,6 +521,7 @@ TEST_F(BandwidthControllerTest, CostlyAlert) {
 }
 
 TEST_F(BandwidthControllerTest, ManipulateSpecialApps) {
+    if (BandwidthController::getBpfStatus()) return;
     std::vector<const char *> appUids = { "1000", "1001", "10012" };
 
     std::vector<std::string> expected = {

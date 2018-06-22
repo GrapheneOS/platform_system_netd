@@ -45,7 +45,6 @@
 #include <netdutils/Syscalls.h>
 #include "TrafficController.h"
 #include "bpf/BpfMap.h"
-#include "bpf/bpf_shared.h"
 
 #include "DumpWriter.h"
 #include "FirewallController.h"
@@ -117,19 +116,7 @@ TrafficController::TrafficController() {
 }
 
 Status initialOwnerMap(BpfMap<uint32_t, uint8_t>& map) {
-    // Check and delete all the entries from the map in case it is a runtime
-    // restart
-    const auto deleteAllEntries = [](const uint32_t& key, BpfMap<uint32_t, uint8_t>& map) {
-        Status res = map.deleteValue(key);
-        if (!isOk(res) && (res.code() == ENOENT)) {
-            ALOGE("Failed to delete data(uid=%u): %s\n", key, strerror(res.code()));
-        }
-        return netdutils::status::ok;
-    };
-    // It is safe to delete from this map because nothing will concurrently iterate over it:
-    // - Nothing in netd will iterate over it because we're holding mOwnerMatchMutex.
-    // - Nothing outside netd iterates over it.
-    map.iterate(deleteAllEntries);
+    map.clear();
     uint32_t mapSettingKey = UID_MAP_ENABLED;
     uint8_t defaultMapState = 0;
     return map.writeValue(mapSettingKey, defaultMapState, BPF_NOEXIST);
@@ -187,6 +174,11 @@ Status TrafficController::initMaps() {
         mIfaceStatsMap.getOrCreate(IFACE_STATS_MAP_SIZE, IFACE_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(IFACE_STATS_MAP_PATH, AID_NET_BW_STATS, "IfaceStatsMap",
                                         false));
+
+    RETURN_IF_NOT_OK(mBandwidthUidMap.getOrCreate(UID_OWNER_MAP_SIZE, BANDWIDTH_UID_MAP_PATH,
+                                                  BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(BANDWIDTH_UID_MAP_PATH, AID_ROOT, "BandwidthUidMap", true));
+    mBandwidthUidMap.clear();
     return netdutils::status::ok;
 }
 
@@ -264,6 +256,14 @@ Status TrafficController::start() {
     ret = access(XT_BPF_EGRESS_PROG_PATH, R_OK);
     if (ret != 0 && errno == ENOENT) {
         prog_args.push_back((char*)"-m");
+    }
+    ret = access(XT_BPF_WHITELIST_PROG_PATH, R_OK);
+    if (ret != 0 && errno == ENOENT) {
+        prog_args.push_back((char*)"-w");
+    }
+    ret = access(XT_BPF_BLACKLIST_PROG_PATH, R_OK);
+    if (ret != 0 && errno == ENOENT) {
+        prog_args.push_back((char*)"-b");
     }
 
     if (prog_args.size() == 1) {
@@ -447,6 +447,59 @@ Status TrafficController::updateOwnerMapEntry(BpfMap<uint32_t, uint8_t>& map, ui
     return netdutils::status::ok;
 }
 
+BandwithMatchType TrafficController::jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling) {
+    switch (jumpHandling) {
+        case BandwidthController::IptJumpReject:
+            return BLACKLISTMATCH;
+        case BandwidthController::IptJumpReturn:
+            return WHITELISTMATCH;
+        case BandwidthController::IptJumpNoAdd:
+            return NO_MATCH;
+    }
+}
+
+Status TrafficController::updateBandwidthUidMap(const std::vector<std::string>& appStrUids,
+                                                BandwidthController::IptJumpOp jumpHandling,
+                                                BandwidthController::IptOp op) {
+    uint8_t command = jumpOpToMatch(jumpHandling);
+    if (command == NO_MATCH) {
+        return statusFromErrno(EINVAL, StringPrintf("invalid IptJumpOp: %d, command: %d",
+                                                    jumpHandling, command));
+    }
+    for (const auto& appStrUid : appStrUids) {
+        char* endPtr;
+        long uid = strtol(appStrUid.c_str(), &endPtr, 10);
+        if ((errno == ERANGE && (uid == LONG_MAX || uid == LONG_MIN)) ||
+            (endPtr == appStrUid.c_str()) || (*endPtr != '\0')) {
+               return statusFromErrno(errno, "invalid uid string:" + appStrUid);
+        }
+
+        auto match = mBandwidthUidMap.readValue(uid);
+        if (op == BandwidthController::IptOpDelete) {
+            if(!isOk(match)) {
+                return statusFromErrno(EINVAL, StringPrintf("uid(%ld): %s does not exist in map",
+                                                            uid, appStrUid.c_str()));
+            }
+            uint8_t newValue = match.value() & ~command;
+            if (newValue == 0) {
+                RETURN_IF_NOT_OK(mBandwidthUidMap.deleteValue((uint32_t)uid));
+            } else {
+                RETURN_IF_NOT_OK(mBandwidthUidMap.writeValue((uint32_t)uid, newValue, BPF_ANY));
+            }
+        } else if (op == BandwidthController::IptOpInsert) {
+            uint8_t newValue = command;
+            if (isOk(match)) {
+                newValue |= match.value();
+            }
+            RETURN_IF_NOT_OK(mBandwidthUidMap.writeValue((uint32_t)uid, newValue, BPF_ANY));
+        } else {
+            // Cannot happen.
+            return statusFromErrno(EINVAL, StringPrintf("invalid IptOp: %d, %d", op, command));
+        }
+    }
+    return netdutils::status::ok;
+}
+
 int TrafficController::changeUidOwnerRule(ChildChain chain, uid_t uid, FirewallRule rule,
                                           FirewallType type) {
     std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
@@ -622,6 +675,8 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
                getMapStatus(mStandbyUidMap.getMap(), STANDBY_UID_MAP_PATH).c_str());
     dw.println("mPowerSaveUidMap status: %s",
                getMapStatus(mPowerSaveUidMap.getMap(), POWERSAVE_UID_MAP_PATH).c_str());
+    dw.println("mBandwidthUidMap status: %s",
+               getMapStatus(mBandwidthUidMap.getMap(), BANDWIDTH_UID_MAP_PATH).c_str());
 
     dw.blankline();
     dw.println("Cgroup ingress program status: %s",
@@ -631,6 +686,10 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
                getProgramStatus(XT_BPF_INGRESS_PROG_PATH).c_str());
     dw.println("xt_bpf egress program status: %s",
                getProgramStatus(XT_BPF_EGRESS_PROG_PATH).c_str());
+    dw.println("xt_bpf bandwidth whitelist program status: %s",
+               getProgramStatus(XT_BPF_WHITELIST_PROG_PATH).c_str());
+    dw.println("xt_bpf bandwidth blacklist program status: %s",
+               getProgramStatus(XT_BPF_BLACKLIST_PROG_PATH).c_str());
 
     if(!verbose) return;
 
@@ -756,6 +815,11 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
         dw.println("mDozableUidMap print end with error: %s", res.msg().c_str());
     }
 
+    dumpBpfMap("mBandwidthUidMap", dw, "");
+    res = mBandwidthUidMap.iterateWithValue(printUidInfo);
+    if (!isOk(res)) {
+        dw.println("mBandwidthUidMap print end with error: %s", res.msg().c_str());
+    }
     dw.decIndent();
 
     dw.decIndent();
