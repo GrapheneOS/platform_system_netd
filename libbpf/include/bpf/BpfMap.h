@@ -212,6 +212,20 @@ class BpfMap {
 
     bool isValid() const { return mMapFd != -1; }
 
+    // It is only safe to call this method if it is guaranteed that nothing will concurrently
+    // iterate over the map in any process.
+    netdutils::Status clear() {
+        const auto deleteAllEntries = [](const Key& key, BpfMap<Key, Value>& map) {
+            netdutils::Status res = map.deleteValue(key);
+            if (!isOk(res) && (res.code() != ENOENT)) {
+                ALOGE("Failed to delete data(uid=%u): %s\n", key, strerror(res.code()));
+            }
+            return netdutils::status::ok;
+        };
+        iterate(deleteAllEntries);
+        return netdutils::status::ok;
+    }
+
     const_iterator begin() const { return const_iterator(this); }
 
     const_iterator end() const { return const_iterator(nullptr); }

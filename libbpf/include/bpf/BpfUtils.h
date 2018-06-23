@@ -110,6 +110,8 @@ constexpr const char* BPF_EGRESS_PROG_PATH = BPF_PATH "/egress_prog";
 constexpr const char* BPF_INGRESS_PROG_PATH = BPF_PATH "/ingress_prog";
 constexpr const char* XT_BPF_INGRESS_PROG_PATH = BPF_PATH "/xt_bpf_ingress_prog";
 constexpr const char* XT_BPF_EGRESS_PROG_PATH = BPF_PATH "/xt_bpf_egress_prog";
+constexpr const char* XT_BPF_WHITELIST_PROG_PATH = BPF_PATH "/xt_bpf_whitelist_prog";
+constexpr const char* XT_BPF_BLACKLIST_PROG_PATH = BPF_PATH "/xt_bpf_blacklist_prog";
 
 constexpr const char* CGROUP_ROOT_PATH = "/dev/cg2_bpf";
 
@@ -123,6 +125,7 @@ constexpr const char* IFACE_STATS_MAP_PATH = BPF_PATH "/traffic_iface_stats_map"
 constexpr const char* DOZABLE_UID_MAP_PATH = BPF_PATH "/traffic_dozable_uid_map";
 constexpr const char* STANDBY_UID_MAP_PATH = BPF_PATH "/traffic_standby_uid_map";
 constexpr const char* POWERSAVE_UID_MAP_PATH = BPF_PATH "/traffic_powersave_uid_map";
+constexpr const char* BANDWIDTH_UID_MAP_PATH = BPF_PATH "/traffic_bandwidth_uid_map";
 
 constexpr const int OVERFLOW_COUNTERSET = 2;
 
