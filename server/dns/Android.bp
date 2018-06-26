@@ -1,0 +1,26 @@
+cc_library_static {
+    name: "libnetddns",
+    defaults: ["netd_defaults"],
+    srcs: [
+        "DnsTlsDispatcher.cpp",
+        "DnsTlsQueryMap.cpp",
+        "DnsTlsTransport.cpp",
+        "DnsTlsServer.cpp",
+        "DnsTlsSessionCache.cpp",
+        "DnsTlsSocket.cpp",
+    ],
+    shared_libs: [
+        "libbase",
+        "libnetutils",
+        "libssl",
+    ],
+    static_libs: [
+        "libnetdutils",
+    ],
+    include_dirs: [
+        "system/netd/include",
+        // This is so that #include "dns/Foo.h" still works
+        // TODO: Decide how to reorganize dns headers
+        "system/netd/server",
+    ],
+}
