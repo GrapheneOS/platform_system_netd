@@ -13,8 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_library {
+cc_test_library {
     name: "libnetd_test_tun_interface",
+    defaults: ["netd_defaults"],
     srcs: [
         "tun_interface.cpp"
     ],
@@ -25,3 +26,64 @@ cc_library {
     ],
 }
 
+cc_test {
+    name: "netd_integration_test",
+    test_suites: ["device-tests"],
+    defaults: ["netd_defaults"],
+    cflags: [
+        "-Wunused-parameter",
+    ],
+    srcs: [
+        ":netd_integration_test_shared",
+        ":netd_metrics_aidl",
+        "binder_test.cpp",
+        "bpf_base_test.cpp",
+        "dns_responder/dns_responder.cpp",
+        "dns_tls_test.cpp",
+        "netd_integration_test.cpp",
+        "netd_test.cpp",
+    ],
+    include_dirs: [
+        "system/netd/include",
+        "system/netd/server",
+        "system/core/logwrapper/include",
+        "system/netd/tests/dns_responder",
+        "system/core/libnetutils/include",
+        "bionic/libc/dns/include",
+    ],
+    aidl: {
+        include_dirs: [
+            "system/netd/server/binder",
+        ],
+    },
+    shared_libs: [
+        "libbase",
+        "libbinder",
+        "libbpf",
+        "libcrypto",
+        "libcutils",
+        "liblog",
+        "libnetd_client",
+        "libnetutils",
+        "libssl",
+        "libutils",
+    ],
+    static_libs: [
+        "libnetd_test_dnsresponder",
+        "libnetddns",
+        "liblogwrap",
+        "libnetdaidl",
+        "libnetdutils",
+        "libnetd_test_tun_interface",
+        "libbpf",
+    ],
+    compile_multilib: "both",
+    multilib: {
+        lib32: {
+            suffix: "32",
+        },
+        lib64: {
+            suffix: "64",
+        },
+    },
+}
