@@ -1,0 +1,36 @@
+cc_library_static {
+    name: "libnetd_test_dnsresponder",
+    defaults: ["netd_defaults"],
+    cflags: [
+        "-Wunused-parameter",
+        "-Wthread-safety",
+    ],
+    shared_libs: [
+        "libbase",
+        "libbinder",
+        "liblog",
+        "libnetd_client",
+        "libnetdaidl",
+        "libnetdutils",
+        "libssl",
+    ],
+    static_libs: ["libutils"],
+    aidl: {
+        include_dirs: [
+            "frameworks/native/aidl/binder",
+            "system/netd/server/binder",
+        ],
+    },
+    include_dirs: [
+        "system/netd/include",
+        "system/netd/server",
+        "system/netd/server/binder",
+        "system/netd/tests/dns_responder",
+        "bionic/libc/dns/include",
+    ],
+    srcs: [
+        "dns_responder.cpp",
+        "dns_responder_client.cpp",
+        "dns_tls_frontend.cpp",
+    ],
+}

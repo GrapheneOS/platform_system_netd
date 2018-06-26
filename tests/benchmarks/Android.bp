@@ -1,0 +1,40 @@
+// APCT build target for metrics tests
+
+cc_benchmark {
+    name: "netd_benchmark",
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wunused-parameter",
+    ],
+    shared_libs: [
+        "libbase",
+        "libbinder",
+        "liblog",
+        "libnetd_client",
+        "libnetdaidl",
+        "libnetdutils",
+    ],
+    static_libs: [
+        "libnetd_test_dnsresponder",
+        "libutils",
+    ],
+
+    aidl: {
+        include_dirs: ["system/netd/server/binder"],
+    },
+    include_dirs: [
+        "system/netd/include",
+        "system/netd/client",
+        "system/netd/server",
+        "system/netd/server/binder",
+        "system/netd/tests/dns_responder",
+        "bionic/libc/dns/include",
+    ],
+    srcs: [
+        ":netd_metrics_aidl",
+        "main.cpp",
+        "connect_benchmark.cpp",
+        "dns_benchmark.cpp",
+    ],
+}
