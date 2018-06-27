@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
+#include <android-base/stringprintf.h>
 #include <benchmark/benchmark.h>
 
 #include "bpf/BpfMap.h"
 #include "bpf/BpfUtils.h"
+
 constexpr uint32_t TEST_MAP_SIZE = 10000;
 
+using android::base::StringPrintf;
 using android::bpf::BpfMap;
 
 class BpfBenchMark : public ::benchmark::Fixture {
@@ -51,7 +54,18 @@ BENCHMARK_DEFINE_F(BpfBenchMark, MapDeleteAddEntry)(benchmark::State& state) {
     }
 }
 
+BENCHMARK_DEFINE_F(BpfBenchMark, WaitForRcu)(benchmark::State& state) {
+    for (auto _ : state) {
+        int ret = android::bpf::synchronizeKernelRCU();
+        if (ret) {
+            state.SkipWithError(
+                    StringPrintf("synchronizeKernelRCU() failed with errno=%d", -ret).c_str());
+        }
+    }
+}
+
 BENCHMARK_REGISTER_F(BpfBenchMark, MapUpdateEntry)->Arg(1);
 BENCHMARK_REGISTER_F(BpfBenchMark, MapWriteNewEntry)->Arg(1);
 BENCHMARK_REGISTER_F(BpfBenchMark, MapDeleteAddEntry)->Arg(1);
+BENCHMARK_REGISTER_F(BpfBenchMark, WaitForRcu)->Arg(1);
 BENCHMARK_MAIN();
