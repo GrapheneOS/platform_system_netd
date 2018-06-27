@@ -46,59 +46,6 @@ namespace bpf {
 template <class Key, class Value>
 class BpfMap {
   public:
-    class const_iterator {
-      public:
-        netdutils::Status start() {
-            if (mMap == nullptr) {
-                return netdutils::statusFromErrno(EINVAL, "Invalid map iterator");
-            }
-            auto firstKey = mMap->getFirstKey();
-            if (isOk(firstKey)) {
-                mCurKey = firstKey.value();
-            } else if (firstKey.status().code() == ENOENT) {
-                // The map is empty.
-                mMap = nullptr;
-                memset(&mCurKey, 0, sizeof(Key));
-            } else {
-                return firstKey.status();
-            }
-            return netdutils::status::ok;
-        }
-
-        netdutils::StatusOr<Key> next() {
-            if (mMap == nullptr) {
-                return netdutils::statusFromErrno(ENOENT, "Iterating past end of map");
-            }
-            auto nextKey = mMap->getNextKey(mCurKey);
-            if (isOk(nextKey)) {
-                mCurKey = nextKey.value();
-            } else if (nextKey.status().code() == ENOENT) {
-                // iterator reached the end of map
-                mMap = nullptr;
-                memset(&mCurKey, 0, sizeof(Key));
-            } else {
-                return nextKey.status();
-            }
-            return mCurKey;
-        }
-
-        const Key operator*() { return mCurKey; }
-
-        bool operator==(const const_iterator& other) const {
-            return (mMap == other.mMap) && (mCurKey == other.mCurKey);
-        }
-
-        bool operator!=(const const_iterator& other) const { return !(*this == other); }
-
-        const_iterator(const BpfMap<Key, Value>* map) : mMap(map) {
-            memset(&mCurKey, 0, sizeof(Key));
-        }
-
-      private:
-        const BpfMap<Key, Value> * mMap;
-        Key mCurKey;
-    };
-
     BpfMap<Key, Value>() : mMapFd(-1){};
     BpfMap<Key, Value>(int fd) : mMapFd(fd){};
     BpfMap<Key, Value>(bpf_map_type map_type, uint32_t max_entries, uint32_t map_flags) {
@@ -226,9 +173,13 @@ class BpfMap {
         return netdutils::status::ok;
     }
 
-    const_iterator begin() const { return const_iterator(this); }
-
-    const_iterator end() const { return const_iterator(nullptr); }
+    netdutils::StatusOr<bool> isEmpty() const {
+        auto key = this->getFirstKey();
+        // Return error code ENOENT means the map is empty
+        if (!isOk(key) && key.status().code() == ENOENT) return true;
+        RETURN_IF_NOT_OK(key);
+        return false;
+    }
 
   private:
     base::unique_fd mMapFd;
@@ -276,63 +227,55 @@ template <class Key, class Value>
 netdutils::Status BpfMap<Key, Value>::iterate(
     const std::function<netdutils::Status(const Key& key, const BpfMap<Key, Value>& map)>& filter)
     const {
-    const_iterator itr = this->begin();
-    RETURN_IF_NOT_OK(itr.start());
-    while (itr != this->end()) {
-        Key prevKey = *itr;
-        netdutils::Status advanceStatus = itr.next();
-        RETURN_IF_NOT_OK(filter(prevKey, *this));
-        RETURN_IF_NOT_OK(advanceStatus);
+    netdutils::StatusOr<Key> curKey = getFirstKey();
+    while (isOk(curKey)) {
+        const netdutils::StatusOr<Key>& nextKey = getNextKey(curKey.value());
+        RETURN_IF_NOT_OK(filter(curKey.value(), *this));
+        curKey = nextKey;
     }
-    return netdutils::status::ok;
+    return curKey.status().code() == ENOENT ? netdutils::status::ok : curKey.status();
 }
 
 template <class Key, class Value>
 netdutils::Status BpfMap<Key, Value>::iterateWithValue(
     const std::function<netdutils::Status(const Key& key, const Value& value,
                                           const BpfMap<Key, Value>& map)>& filter) const {
-    const_iterator itr = this->begin();
-    RETURN_IF_NOT_OK(itr.start());
-    while (itr != this->end()) {
-        Key prevKey = *itr;
-        Value prevValue;
-        ASSIGN_OR_RETURN(prevValue, this->readValue(prevKey));
-        netdutils::Status advanceStatus = itr.next();
-        RETURN_IF_NOT_OK(filter(prevKey, prevValue, *this));
-        RETURN_IF_NOT_OK(advanceStatus);
+    netdutils::StatusOr<Key> curKey = getFirstKey();
+    while (isOk(curKey)) {
+        const netdutils::StatusOr<Key>& nextKey = getNextKey(curKey.value());
+        Value curValue;
+        ASSIGN_OR_RETURN(curValue, this->readValue(curKey.value()));
+        RETURN_IF_NOT_OK(filter(curKey.value(), curValue, *this));
+        curKey = nextKey;
     }
-    return netdutils::status::ok;
+    return curKey.status().code() == ENOENT ? netdutils::status::ok : curKey.status();
 }
 
 template <class Key, class Value>
 netdutils::Status BpfMap<Key, Value>::iterate(
     const std::function<netdutils::Status(const Key& key, BpfMap<Key, Value>& map)>& filter) {
-    const_iterator itr = this->begin();
-    RETURN_IF_NOT_OK(itr.start());
-    while (itr != this->end()) {
-        Key prevKey = *itr;
-        netdutils::Status advanceStatus = itr.next();
-        RETURN_IF_NOT_OK(filter(prevKey, *this));
-        RETURN_IF_NOT_OK(advanceStatus);
+    netdutils::StatusOr<Key> curKey = getFirstKey();
+    while (isOk(curKey)) {
+        const netdutils::StatusOr<Key>& nextKey = getNextKey(curKey.value());
+        RETURN_IF_NOT_OK(filter(curKey.value(), *this));
+        curKey = nextKey;
     }
-    return netdutils::status::ok;
+    return curKey.status().code() == ENOENT ? netdutils::status::ok : curKey.status();
 }
 
 template <class Key, class Value>
 netdutils::Status BpfMap<Key, Value>::iterateWithValue(
     const std::function<netdutils::Status(const Key& key, const Value& value,
                                           BpfMap<Key, Value>& map)>& filter) {
-    const_iterator itr = this->begin();
-    RETURN_IF_NOT_OK(itr.start());
-    while (itr != this->end()) {
-        Key prevKey = *itr;
-        Value prevValue;
-        ASSIGN_OR_RETURN(prevValue, this->readValue(prevKey));
-        netdutils::Status advanceStatus = itr.next();
-        RETURN_IF_NOT_OK(filter(prevKey, prevValue, *this));
-        RETURN_IF_NOT_OK(advanceStatus);
+    netdutils::StatusOr<Key> curKey = getFirstKey();
+    while (isOk(curKey)) {
+        const netdutils::StatusOr<Key>& nextKey = getNextKey(curKey.value());
+        Value curValue;
+        ASSIGN_OR_RETURN(curValue, this->readValue(curKey.value()));
+        RETURN_IF_NOT_OK(filter(curKey.value(), curValue, *this));
+        curKey = nextKey;
     }
-    return netdutils::status::ok;
+    return curKey.status().code() == ENOENT ? netdutils::status::ok : curKey.status();
 }
 
 }  // namespace bpf
