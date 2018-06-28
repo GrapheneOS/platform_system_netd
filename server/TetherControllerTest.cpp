@@ -127,6 +127,10 @@ protected:
             "COMMIT\n", intIf);
 
         std::vector<std::string> v4Cmds = {
+            "*raw",
+            StringPrintf("-A tetherctrl_raw_PREROUTING -p tcp --dport 21 -i %s -j CT --helper ftp",
+                         intIf),
+            "COMMIT",
             "*filter",
             StringPrintf("-A tetherctrl_FORWARD -i %s -o %s -m state --state"
                          " ESTABLISHED,RELATED -g tetherctrl_counters", extIf, intIf),
@@ -195,6 +199,10 @@ protected:
             "COMMIT\n", intIf);
 
         std::vector<std::string> v4Cmds = {
+            "*raw",
+            StringPrintf("-D tetherctrl_raw_PREROUTING -p tcp --dport 21 -i %s -j CT --helper ftp",
+                         intIf),
+            "COMMIT",
             "*filter",
             StringPrintf("-D tetherctrl_FORWARD -i %s -o %s -m state --state"
                          " ESTABLISHED,RELATED -g tetherctrl_counters", extIf, intIf),
