@@ -20,9 +20,10 @@
 #include "NetdConstants.h"
 #include "Permission.h"
 
-#include <map>
-#include <sys/types.h>
 #include <linux/netlink.h>
+#include <sys/types.h>
+#include <map>
+#include <shared_mutex>
 
 namespace android {
 namespace net {
@@ -110,9 +111,8 @@ public:
 
 private:
     friend class RouteControllerTest;
-
     // Protects access to interfaceToTable.
-    static android::RWLock sInterfaceToTableLock;
+    static std::shared_mutex sInterfaceToTableLock;
     static std::map<std::string, uint32_t> sInterfaceToTable;
 
     static int configureDummyNetwork();
