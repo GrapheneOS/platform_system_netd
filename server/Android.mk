@@ -68,6 +68,9 @@ LOCAL_SHARED_LIBRARIES := \
         libpcap \
         libqtaguid \
 
+LOCAL_STATIC_LIBRARIES := \
+        libnetddns
+
 LOCAL_SRC_FILES := \
         BandwidthController.cpp \
         ClatdController.cpp \
@@ -113,12 +116,6 @@ LOCAL_SRC_FILES := \
         oem_iptables_hook.cpp \
         binder/android/net/UidRange.cpp \
         binder/android/net/metrics/INetdEventListener.aidl \
-        dns/DnsTlsDispatcher.cpp \
-        dns/DnsTlsQueryMap.cpp \
-        dns/DnsTlsTransport.cpp \
-        dns/DnsTlsServer.cpp \
-        dns/DnsTlsSessionCache.cpp \
-        dns/DnsTlsSocket.cpp \
 
 LOCAL_AIDL_INCLUDES := $(LOCAL_PATH)/binder
 
@@ -186,14 +183,13 @@ LOCAL_SRC_FILES := \
         binder/android/net/UidRange.cpp \
         binder/android/net/metrics/INetdEventListener.aidl \
         ../tests/tun_interface.cpp \
-        dns/DnsTlsDispatcher.cpp \
-        dns/DnsTlsTransport.cpp \
-        dns/DnsTlsServer.cpp \
-        dns/DnsTlsSessionCache.cpp \
-        dns/DnsTlsSocket.cpp \
 
 LOCAL_MODULE_TAGS := tests
-LOCAL_STATIC_LIBRARIES := libgmock libpcap
+LOCAL_STATIC_LIBRARIES := \
+        libgmock \
+        libnetddns \
+        libpcap \
+
 LOCAL_SHARED_LIBRARIES := \
         libbpf    \
         libnetdaidl \

@@ -10,6 +10,18 @@ filegroup {
     srcs: ["binder/android/net/metrics/INetdEventListener.aidl"],
 }
 
+// These are used in netd_integration_test
+// TODO: fold these into a cc_library_static after converting netd/server to Android.bp
+filegroup {
+    name: "netd_integration_test_shared",
+    srcs: [
+        "NetdConstants.cpp",
+        "InterfaceController.cpp",
+        "NetlinkCommands.cpp",
+        "XfrmController.cpp",
+    ],
+}
+
 cc_library {
     name: "libnetdaidl",
     defaults: ["netd_defaults"],

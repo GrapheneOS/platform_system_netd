@@ -151,8 +151,6 @@ class TrafficControllerTest : public ::testing::Test {
 
     void expectNoTag(uint64_t cookie) { EXPECT_FALSE(isOk(mFakeCookieTagMap.readValue(cookie))); }
 
-    void expectTagMapEmpty() { EXPECT_FALSE(isOk(mFakeCookieTagMap.getFirstKey())); }
-
     void populateFakeStats(uint64_t cookie, uint32_t uid, uint32_t tag, StatsKey* key) {
         UidTag cookieMapkey = {.uid = (uint32_t)uid, .tag = tag};
         EXPECT_TRUE(isOk(mFakeCookieTagMap.writeValue(cookie, cookieMapkey, BPF_ANY)));
@@ -238,6 +236,18 @@ class TrafficControllerTest : public ::testing::Test {
         }
     }
 
+    void expectMapEmpty(BpfMap<uint64_t, UidTag>& map) {
+        auto isEmpty = map.isEmpty();
+        EXPECT_TRUE(isOk(isEmpty));
+        EXPECT_TRUE(isEmpty.value());
+    }
+
+    void expectMapEmpty(BpfMap<uint32_t, uint8_t>& map) {
+        auto isEmpty = map.isEmpty();
+        ASSERT_TRUE(isOk(isEmpty));
+        ASSERT_TRUE(isEmpty.value());
+    }
+
     void TearDown() {
         std::lock_guard<std::mutex> ownerGuard(mTc.mOwnerMatchMutex);
         mFakeCookieTagMap.reset();
@@ -259,7 +269,7 @@ TEST_F(TrafficControllerTest, TestTagSocketV4) {
     expectUidTag(sockCookie, TEST_UID, TEST_TAG);
     ASSERT_EQ(0, mTc.untagSocket(v4socket));
     expectNoTag(sockCookie);
-    expectTagMapEmpty();
+    expectMapEmpty(mFakeCookieTagMap);
 }
 
 TEST_F(TrafficControllerTest, TestReTagSocket) {
@@ -295,7 +305,7 @@ TEST_F(TrafficControllerTest, TestTagSocketV6) {
     expectUidTag(sockCookie, TEST_UID, TEST_TAG);
     ASSERT_EQ(0, mTc.untagSocket(v6socket));
     expectNoTag(sockCookie);
-    expectTagMapEmpty();
+    expectMapEmpty(mFakeCookieTagMap);
 }
 
 TEST_F(TrafficControllerTest, TestTagInvalidSocket) {
@@ -303,7 +313,7 @@ TEST_F(TrafficControllerTest, TestTagInvalidSocket) {
 
     int invalidSocket = -1;
     ASSERT_GT(0, mTc.tagSocket(invalidSocket, TEST_TAG, TEST_UID));
-    expectTagMapEmpty();
+    expectMapEmpty(mFakeCookieTagMap);
 }
 
 TEST_F(TrafficControllerTest, TestUntagInvalidSocket) {
@@ -313,7 +323,7 @@ TEST_F(TrafficControllerTest, TestUntagInvalidSocket) {
     ASSERT_GT(0, mTc.untagSocket(invalidSocket));
     int v4socket = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
     ASSERT_GT(0, mTc.untagSocket(v4socket));
-    expectTagMapEmpty();
+    expectMapEmpty(mFakeCookieTagMap);
 }
 
 TEST_F(TrafficControllerTest, TestSetCounterSet) {
@@ -326,7 +336,7 @@ TEST_F(TrafficControllerTest, TestSetCounterSet) {
     ASSERT_EQ(TEST_COUNTERSET, counterSetResult.value());
     ASSERT_EQ(0, mTc.setCounterSet(DEFAULT_COUNTERSET, TEST_UID));
     ASSERT_FALSE(isOk(mFakeUidCounterSetMap.readValue(uid)));
-    ASSERT_FALSE(isOk(mFakeUidCounterSetMap.getFirstKey()));
+    expectMapEmpty(mFakeUidCounterSetMap);
 }
 
 TEST_F(TrafficControllerTest, TestSetInvalidCounterSet) {
@@ -335,7 +345,7 @@ TEST_F(TrafficControllerTest, TestSetInvalidCounterSet) {
     ASSERT_GT(0, mTc.setCounterSet(OVERFLOW_COUNTERSET, TEST_UID));
     uid_t uid = TEST_UID;
     ASSERT_FALSE(isOk(mFakeUidCounterSetMap.readValue(uid)));
-    ASSERT_FALSE(isOk(mFakeUidCounterSetMap.getFirstKey()));
+    expectMapEmpty(mFakeUidCounterSetMap);
 }
 
 TEST_F(TrafficControllerTest, TestDeleteTagData) {
@@ -505,7 +515,7 @@ TEST_F(TrafficControllerTest, TestBlacklistUidMatch) {
     expectBandwidthMapValues(appStrUids, BLACKLISTMATCH);
     ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReject,
                                                BandwidthController::IptOpDelete)));
-    ASSERT_FALSE(isOk(mFakeBandwidthUidMap.getFirstKey()));
+    expectMapEmpty(mFakeBandwidthUidMap);
 }
 
 TEST_F(TrafficControllerTest, TestWhitelistUidMatch) {
@@ -517,7 +527,7 @@ TEST_F(TrafficControllerTest, TestWhitelistUidMatch) {
     expectBandwidthMapValues(appStrUids, WHITELISTMATCH);
     ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReturn,
                                                BandwidthController::IptOpDelete)));
-    ASSERT_FALSE(isOk(mFakeBandwidthUidMap.getFirstKey()));
+    expectMapEmpty(mFakeBandwidthUidMap);
 }
 
 TEST_F(TrafficControllerTest, TestReplaceMatchUid) {
@@ -548,7 +558,7 @@ TEST_F(TrafficControllerTest, TestDeleteWrongMatchSilentlyFails) {
     // If the uid does not exist in the map, trying to delete a rule about it will fail.
     ASSERT_FALSE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReject,
                                                 BandwidthController::IptOpDelete)));
-    ASSERT_FALSE(isOk(mFakeBandwidthUidMap.getFirstKey()));
+    expectMapEmpty(mFakeBandwidthUidMap);
 
     // Add blacklist rules for appStrUids.
     ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReturn,

@@ -105,6 +105,12 @@ class BpfMapTest : public testing::Test {
             EXPECT_TRUE(isOk(map.writeValue(key, value, BPF_ANY)));
         }
     }
+
+    void expectMapEmpty(BpfMap<uint32_t, uint32_t>& map) {
+        auto isEmpty = map.isEmpty();
+        ASSERT_TRUE(isOk(isEmpty));
+        ASSERT_TRUE(isEmpty.value());
+    }
 };
 
 TEST_F(BpfMapTest, constructor) {
@@ -157,66 +163,6 @@ TEST_F(BpfMapTest, moveConstructor) {
     writeToMapAndCheck(testMap2, key, value);
 }
 
-TEST_F(BpfMapTest, iterateEmptyMap) {
-    BpfMap<uint32_t, uint32_t> testMap(mMapFd);
-    auto itr = testMap.begin();
-    ASSERT_NE(testMap.end(), itr);
-    itr.start();
-    ASSERT_EQ(testMap.end(), itr);
-    ASSERT_FALSE(isOk(itr.next()));
-    ASSERT_EQ(testMap.end(), itr);
-}
-
-TEST_F(BpfMapTest, iterator) {
-    BpfMap<uint32_t, uint32_t> testMap(mMapFd);
-    for (uint32_t key = 0; key < TEST_MAP_SIZE; key++) {
-        uint32_t value = key * 10;
-        ASSERT_TRUE(isOk(testMap.writeValue(key, value, BPF_ANY)));
-    }
-    std::vector<uint32_t> valueList;
-    auto itr = testMap.begin();
-    for (itr.start(); itr != testMap.end(); itr.next()) {
-        uint32_t readKey = *itr;
-        StatusOr<uint32_t> readValue = testMap.readValue(readKey);
-        ASSERT_TRUE(isOk(readValue.status()));
-        valueList.push_back(readValue.value());
-    }
-    ASSERT_EQ((size_t)TEST_MAP_SIZE, valueList.size());
-    std::sort(valueList.begin(), valueList.end());
-    for (uint32_t key = 0; key < TEST_MAP_SIZE; key++) {
-        EXPECT_EQ(key * 10, valueList[key]);
-    }
-}
-
-TEST_F(BpfMapTest, twoIterator) {
-    BpfMap<uint32_t, uint32_t> testMap(mMapFd);
-    for (uint32_t key = 0; key < TEST_MAP_SIZE; key++) {
-        uint32_t value = key * 10;
-        ASSERT_TRUE(isOk(testMap.writeValue(key, value, BPF_ANY)));
-    }
-    auto itr1 = testMap.begin();
-    auto itr2 = testMap.begin();
-    ASSERT_EQ(itr1, itr2);
-    ASSERT_TRUE(isOk(itr1.start()));
-    ASSERT_NE(itr1, itr2);
-    ASSERT_TRUE(isOk(itr2.start()));
-    ASSERT_EQ(itr1, itr2);
-    uint32_t count = 0;
-    while (itr1 != testMap.end()) {
-        ASSERT_TRUE(isOk(itr1.next()));
-        count++;
-    }
-    ASSERT_EQ(testMap.end(), itr1);
-    ASSERT_EQ(TEST_MAP_SIZE, count);
-    while (count != 0) {
-        ASSERT_NE(testMap.end(), itr2);
-        count--;
-        ASSERT_TRUE(isOk(itr2.next()));
-    }
-    ASSERT_EQ(itr1, itr2);
-    ASSERT_EQ(testMap.end(), itr2);
-}
-
 TEST_F(BpfMapTest, pinnedToPath) {
     BpfMap<uint32_t, uint32_t> testMap1(mMapFd);
     EXPECT_TRUE(isOk(testMap1.pinToPath(PINNED_MAP_PATH)));
@@ -263,7 +209,7 @@ TEST_F(BpfMapTest, iterate) {
     EXPECT_TRUE(isOk(testMap.iterate(iterateWithDeletion)));
     EXPECT_EQ((int)TEST_MAP_SIZE, totalCount);
     EXPECT_EQ(((1 + TEST_MAP_SIZE - 1) * (TEST_MAP_SIZE - 1)) / 2, (uint32_t)totalSum);
-    EXPECT_FALSE(isOk(testMap.getFirstKey()));
+    expectMapEmpty(testMap);
 }
 
 TEST_F(BpfMapTest, iterateWithValue) {
@@ -283,7 +229,46 @@ TEST_F(BpfMapTest, iterateWithValue) {
     EXPECT_TRUE(isOk(testMap.iterateWithValue(iterateWithDeletion)));
     EXPECT_EQ((int)TEST_MAP_SIZE, totalCount);
     EXPECT_EQ(((1 + TEST_MAP_SIZE - 1) * (TEST_MAP_SIZE - 1)) * 5, (uint32_t)totalSum);
-    EXPECT_FALSE(isOk(testMap.getFirstKey()));
+    expectMapEmpty(testMap);
+}
+
+TEST_F(BpfMapTest, mapIsEmpty) {
+    BpfMap<uint32_t, uint32_t> testMap(mMapFd);
+    expectMapEmpty(testMap);
+    uint32_t key = TEST_KEY1;
+    uint32_t value_write = TEST_VALUE1;
+    writeToMapAndCheck(testMap, key, value_write);
+    auto isEmpty = testMap.isEmpty();
+    ASSERT_TRUE(isOk(isEmpty));
+    ASSERT_FALSE(isEmpty.value());
+    ASSERT_TRUE(isOk(testMap.deleteValue(key)));
+    ASSERT_GT(0, findMapEntry(testMap.getMap(), &key, &value_write));
+    ASSERT_EQ(ENOENT, errno);
+    expectMapEmpty(testMap);
+    int entriesSeen = 0;
+    testMap.iterate([&entriesSeen](const unsigned int&,
+                                   const BpfMap<unsigned int, unsigned int>&) -> netdutils::Status {
+        entriesSeen++;
+        return netdutils::status::ok;
+    });
+    EXPECT_EQ(0, entriesSeen);
+    testMap.iterateWithValue(
+            [&entriesSeen](const unsigned int&, const unsigned int&,
+                           const BpfMap<unsigned int, unsigned int>&) -> netdutils::Status {
+                entriesSeen++;
+                return netdutils::status::ok;
+            });
+    EXPECT_EQ(0, entriesSeen);
+}
+
+TEST_F(BpfMapTest, mapClear) {
+    BpfMap<uint32_t, uint32_t> testMap(mMapFd);
+    populateMap(TEST_MAP_SIZE, testMap);
+    auto isEmpty = testMap.isEmpty();
+    ASSERT_TRUE(isOk(isEmpty));
+    ASSERT_FALSE(isEmpty.value());
+    ASSERT_TRUE(isOk(testMap.clear()));
+    expectMapEmpty(testMap);
 }
 
 }  // namespace bpf
