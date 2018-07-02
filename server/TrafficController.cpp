@@ -52,7 +52,7 @@
 #include "NetlinkListener.h"
 #include "qtaguid/qtaguid.h"
 
-using namespace android::bpf;
+using namespace android::bpf;  // NOLINT(google-build-using-namespace): grandfathered
 
 namespace android {
 namespace net {
