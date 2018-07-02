@@ -143,6 +143,10 @@ bool DnsTlsFrontend::startServer() {
     SSL_load_error_strings();
     OpenSSL_add_ssl_algorithms();
 
+    // reset queries_ to 0 every time startServer called
+    // which would help us easy to check queries_ via calling waitForQueries
+    queries_ = 0;
+
     ctx_.reset(SSL_CTX_new(TLS_server_method()));
     if (!ctx_) {
         ALOGE("SSL context creation failed");
