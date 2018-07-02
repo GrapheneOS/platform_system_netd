@@ -40,7 +40,7 @@
 #include "TrafficController.h"
 #include "bpf/BpfUtils.h"
 
-using namespace android::bpf;
+using namespace android::bpf;  // NOLINT(google-build-using-namespace): grandfathered
 
 using ::testing::_;
 using ::testing::ByMove;
@@ -226,7 +226,7 @@ class TrafficControllerTest : public ::testing::Test {
 
     void expectBandwidthMapValues(const std::vector<std::string>& appStrUids,
                                   uint8_t expectedValue) {
-        for (std::string strUid : appStrUids) {
+        for (const std::string& strUid : appStrUids) {
             uint32_t uid = stoi(strUid);
             StatusOr<uint8_t> value = mFakeBandwidthUidMap.readValue(uid);
             EXPECT_TRUE(isOk(value));

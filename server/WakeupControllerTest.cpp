@@ -44,10 +44,10 @@ using netdutils::status::ok;
 
 class MockNetdEventListener {
   public:
-    MOCK_METHOD10(onWakeupEvent, void(
-            const std::string& prefix, int uid, int ether, int ipNextHeader,
-            std::vector<uint8_t> dstHw, const std::string& srcIp, const std::string& dstIp,
-            int srcPort, int dstPort, uint64_t timestampNs));
+    MOCK_METHOD10(onWakeupEvent,
+                  void(const std::string& prefix, int uid, int ether, int ipNextHeader,
+                       const std::vector<uint8_t>& dstHw, const std::string& srcIp,
+                       const std::string& dstIp, int srcPort, int dstPort, uint64_t timestampNs));
 };
 
 class MockIptablesRestore : public IptablesRestoreInterface {

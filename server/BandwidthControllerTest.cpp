@@ -115,13 +115,11 @@ protected:
         return mBw.runIptablesAlertFwdCmd(a, b, c);
     }
 
-    int setCostlyAlert(const std::string a, int64_t b, int64_t *c) {
+    int setCostlyAlert(const std::string& a, int64_t b, int64_t* c) {
         return mBw.setCostlyAlert(a, b, c);
     }
 
-    int removeCostlyAlert(const std::string a, int64_t *b) {
-        return mBw.removeCostlyAlert(a, b);
-    }
+    int removeCostlyAlert(const std::string& a, int64_t* b) { return mBw.removeCostlyAlert(a, b); }
 
     void expectUpdateQuota(uint64_t quota) {
         uintptr_t dummy;
