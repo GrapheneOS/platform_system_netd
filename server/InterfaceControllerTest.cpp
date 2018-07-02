@@ -94,7 +94,7 @@ class StablePrivacyTest : public testing::Test {
     }
 
     void expectSetProperty(const std::string& key, const std::string& val, Status status) {
-        EXPECT_CALL(mProperties, set(key, val)).WillOnce(Return(status));
+        EXPECT_CALL(mProperties, set(key, val)).WillOnce(Return(std::move(status)));
     }
 
     void expectWriteToFile(const Fd fd, const std::string& val, int err) {
