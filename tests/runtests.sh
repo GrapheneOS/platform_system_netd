@@ -56,13 +56,20 @@ function runOneTest() {
     echo "# $test"
     echo "###"
 
-    local testbin="$ANDROID_TARGET_OUT_TESTCASES/$test/$TARGET_ARCH/$test"
+    runCmd "$SOONG_BIN" --make-mode "$test" || return $?
+    local prefix="$ANDROID_TARGET_OUT_TESTCASES/$test/$TARGET_ARCH/$test"
+    for bits in '' 32 64; do
+            local testbin="${prefix}${bits}"
+            if [ -f "$testbin" ]; then
+                runCmd adb push "$testbin" "$TEST_DEVICE_PATH/$test" &&
+                    runCmd adb shell "$TEST_DEVICE_PATH/$test" &&
+                    runCmd adb shell "rm $TEST_DEVICE_PATH/$test"
+                return $?
+            fi
+    done
 
-    runCmd "$SOONG_BIN" --make-mode "$test" && \
-        runCmd adb push "$testbin" "$TEST_DEVICE_PATH/$test" &&
-        runCmd adb shell "$TEST_DEVICE_PATH/$test" &&
-        runCmd adb shell "rm $TEST_DEVICE_PATH/$test"
-    return $?
+    logToStdErr "Couldn't find test binary '$prefix'"
+    return 1
 }
 
 function main() {

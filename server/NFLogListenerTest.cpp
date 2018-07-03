@@ -78,7 +78,7 @@ class NFLogListenerTest : public testing::Test {
 
     static StatusOr<size_t> sendOk(const Slice buf) { return buf.size(); }
 
-    void subscribe(uint16_t type, NFLogListenerInterface::DispatchFn fn) {
+    void subscribe(uint16_t type, const NFLogListenerInterface::DispatchFn& fn) {
         // Two sends for cfgCmdBind() & cfgMode(), one send at destruction time for cfgCmdUnbind()
         EXPECT_CALL(*mNLListener, send(_)).Times(Exactly(3)).WillRepeatedly(Invoke(sendOk));
         mListener->subscribe(type, fn);
