@@ -18,7 +18,9 @@
 // bpfLoad binary
 //
 cc_binary {
+    name: "bpfloader",
 
+    defaults: ["netd_defaults"],
     cflags: [
         "-Wall",
         "-Werror",
@@ -28,7 +30,6 @@ cc_binary {
         integer_overflow: true,
     },
     clang: true,
-    name: "bpfloader",
     shared_libs: [
         "libcutils",
         "libbpf",

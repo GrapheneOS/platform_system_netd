@@ -28,6 +28,7 @@ cc_library {
         "system/netd/include",
     ],
 
+    defaults: ["netd_defaults"],
     cflags: [
         "-Wall",
         "-Werror",

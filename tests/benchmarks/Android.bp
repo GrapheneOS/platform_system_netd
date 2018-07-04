@@ -2,6 +2,7 @@
 
 cc_benchmark {
     name: "netd_benchmark",
+    defaults: ["netd_defaults"],
     cflags: [
         "-Wall",
         "-Werror",

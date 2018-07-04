@@ -69,7 +69,7 @@ std::string SERVERNAME2 = "dns.example.org";
 
 // BaseTest just provides constants that are useful for the tests.
 class BaseTest : public ::testing::Test {
-protected:
+  protected:
     BaseTest() {
         parseServer("192.0.2.1", 853, &V4ADDR1);
         parseServer("192.0.2.2", 853, &V4ADDR2);
@@ -108,7 +108,7 @@ const bytevec QUERY = make_query(ID, SIZE);
 
 template <class T>
 class FakeSocketFactory : public IDnsTlsSocketFactory {
-public:
+  public:
     FakeSocketFactory() {}
     std::unique_ptr<IDnsTlsSocket> createDnsTlsSocket(
             const DnsTlsServer& server ATTRIBUTE_UNUSED,
@@ -130,14 +130,15 @@ bytevec make_echo(uint16_t id, const Slice query) {
 
 // Simplest possible fake server.  This just echoes the query as the response.
 class FakeSocketEcho : public IDnsTlsSocket {
-public:
-    FakeSocketEcho(IDnsTlsSocketObserver* observer) : mObserver(observer) {}
+  public:
+    explicit FakeSocketEcho(IDnsTlsSocketObserver* observer) : mObserver(observer) {}
     bool query(uint16_t id, const Slice query) override {
         // Return the response immediately (asynchronously).
         std::thread(&IDnsTlsSocketObserver::onResponse, mObserver, make_echo(id, query)).detach();
         return true;
     }
-private:
+
+  private:
     IDnsTlsSocketObserver* const mObserver;
 };
 
@@ -183,8 +184,8 @@ TEST_F(TransportTest, RacingQueries_10000) {
 
 // A server that waits until sDelay queries are queued before responding.
 class FakeSocketDelay : public IDnsTlsSocket {
-public:
-    FakeSocketDelay(IDnsTlsSocketObserver* observer) : mObserver(observer) {}
+  public:
+    explicit FakeSocketDelay(IDnsTlsSocketObserver* observer) : mObserver(observer) {}
     ~FakeSocketDelay() { std::lock_guard<std::mutex> guard(mLock); }
     static size_t sDelay;
     static bool sReverse;
@@ -205,7 +206,8 @@ public:
         }
         return true;
     }
-private:
+
+  private:
     void sendResponses() {
         std::lock_guard<std::mutex> guard(mLock);
         if (sReverse) {
@@ -365,7 +367,7 @@ TEST_F(TransportTest, ReverseOrder_Max) {
 
 // Returning null from the factory indicates a connection failure.
 class NullSocketFactory : public IDnsTlsSocketFactory {
-public:
+  public:
     NullSocketFactory() {}
     std::unique_ptr<IDnsTlsSocket> createDnsTlsSocket(
             const DnsTlsServer& server ATTRIBUTE_UNUSED,
@@ -388,15 +390,16 @@ TEST_F(TransportTest, ConnectFail) {
 // Simulate a socket that connects but then immediately receives a server
 // close notification.
 class FakeSocketClose : public IDnsTlsSocket {
-public:
-    FakeSocketClose(IDnsTlsSocketObserver* observer) :
-            mCloser(&IDnsTlsSocketObserver::onClosed, observer) {}
+  public:
+    explicit FakeSocketClose(IDnsTlsSocketObserver* observer)
+        : mCloser(&IDnsTlsSocketObserver::onClosed, observer) {}
     ~FakeSocketClose() { mCloser.join(); }
     bool query(uint16_t id ATTRIBUTE_UNUSED,
                const Slice query ATTRIBUTE_UNUSED) override {
         return true;
     }
-private:
+
+  private:
     std::thread mCloser;
 };
 
@@ -412,11 +415,11 @@ TEST_F(TransportTest, CloseRetryFail) {
 // Simulate a server that occasionally closes the connection and silently
 // drops some queries.
 class FakeSocketLimited : public IDnsTlsSocket {
-public:
+  public:
     static int sLimit;  // Number of queries to answer per socket.
     static size_t sMaxSize;  // Silently discard queries greater than this size.
-    FakeSocketLimited(IDnsTlsSocketObserver* observer) :
-            mObserver(observer), mQueries(0) {}
+    explicit FakeSocketLimited(IDnsTlsSocketObserver* observer)
+        : mObserver(observer), mQueries(0) {}
     ~FakeSocketLimited() {
         {
             ALOGD("~FakeSocketLimited acquiring mLock");
@@ -454,7 +457,8 @@ public:
         }
         return mQueries <= sLimit;
     }
-private:
+
+  private:
     void sendClose() {
         {
             ALOGD("FakeSocketLimited::sendClose acquiring mLock");
@@ -526,8 +530,8 @@ TEST_F(TransportTest, PartialDrop) {
 // responses to queries that were not asked.  This will cause wrong answers but
 // must not crash the Transport.
 class FakeSocketGarbage : public IDnsTlsSocket {
-public:
-    FakeSocketGarbage(IDnsTlsSocketObserver* observer) : mObserver(observer) {
+  public:
+    explicit FakeSocketGarbage(IDnsTlsSocketObserver* observer) : mObserver(observer) {
         // Inject a garbage event.
         mThreads.emplace_back(&IDnsTlsSocketObserver::onResponse, mObserver, make_query(ID + 1, SIZE));
     }
@@ -547,7 +551,8 @@ public:
         mThreads.emplace_back(&IDnsTlsSocketObserver::onResponse, mObserver, make_query(id + 1, query.size() + 2));
         return true;
     }
-private:
+
+  private:
     std::mutex mLock;
     std::vector<std::thread> mThreads GUARDED_BY(mLock);
     IDnsTlsSocketObserver* const mObserver;
@@ -596,7 +601,7 @@ TEST_F(DispatcherTest, AnswerTooLarge) {
 
 template<class T>
 class TrackingFakeSocketFactory : public IDnsTlsSocketFactory {
-public:
+  public:
     TrackingFakeSocketFactory() {}
     std::unique_ptr<IDnsTlsSocket> createDnsTlsSocket(
             const DnsTlsServer& server,
@@ -608,7 +613,8 @@ public:
         return std::make_unique<T>(observer);
     }
     std::multiset<std::pair<unsigned, DnsTlsServer>> keys;
-private:
+
+  private:
     std::mutex mLock;
 };
 
