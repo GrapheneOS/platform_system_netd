@@ -3,10 +3,14 @@
 set -e
 set -u
 
-readonly ALL_TESTS="
+readonly DEFAULT_TESTS="
     netdutils_test
     netd_unit_test
     netd_integration_test
+"
+
+readonly EXTENDED_TESTS="
+    netd_benchmark
 "
 
 readonly TEST_DEVICE_PATH="/data/local/tmp"
@@ -105,9 +109,14 @@ function main() {
         esac
     done
 
+    # Try becoming root, in case the tests will be run on a device
+    # with a userdebug build. Failure to become root is not fatal
+    # for all (in fact, not even most) tests so don't exit on error.
+    runCmd adb root || logToStdErr "WARNING: unable to 'adb root'"
+
     local failures=0
     local skipped=0
-    for testName in $ALL_TESTS; do
+    for testName in $DEFAULT_TESTS; do
         if [[ -z "$test_regex" || "$testName" =~ "$test_regex" ]]; then
             runOneTest "$testName" || failures=$((failures + 1))
         else
@@ -115,6 +124,16 @@ function main() {
             skipped=$((skipped + 1))
         fi
     done
+
+    # If something has been specified, also check the extended tests for
+    # a possible match (i.e. in order to run benchmarks, etc).
+    if [[ -n "$test_regex" ]]; then
+        for testName in $EXTENDED_TESTS; do
+            if [[ "$testName" =~ "$test_regex" ]]; then
+                runOneTest "$testName" || failures=$((failures + 1))
+            fi
+        done
+    fi
 
     echo "Number of tests failing: $failures"
     [[ $skipped -gt 0 ]] && echo "Number of tests skipped: $skipped"

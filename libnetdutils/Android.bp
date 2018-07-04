@@ -12,6 +12,7 @@ cc_library {
         "UniqueFd.cpp",
         "UniqueFile.cpp",
     ],
+    defaults: ["netd_defaults"],
     cflags: ["-Wall", "-Werror"],
     shared_libs: [
         "libbase",
@@ -35,6 +36,7 @@ cc_test {
         "StatusTest.cpp",
         "SyscallsTest.cpp",
     ],
+    defaults: ["netd_defaults"],
     cflags: [
         "-Wall",
         "-Werror",

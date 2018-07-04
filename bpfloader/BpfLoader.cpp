@@ -130,7 +130,7 @@ MemBlock getProgFromMem(Slice buffer, Elf64_Shdr* section) {
 }
 
 void parseProgramsFromFile(const char* path) {
-    int fd = open(path, O_RDONLY);
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd == -1) {
         FAIL("Failed to open %s program: %s", path, strerror(errno));
     }
@@ -230,8 +230,7 @@ int loadProg(Slice prog, bpf_prog_type type, const std::vector<ReplacePattern>& 
 }
 
 int loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
-                         std::vector<ReplacePattern> mapPatterns) {
-
+                         const std::vector<ReplacePattern>& mapPatterns) {
     unique_fd fd;
     if (type == BPF_CGROUP_INET_INGRESS) {
         fd.reset(loadProg(cgroupIngressProg, BPF_PROG_TYPE_CGROUP_SKB, mapPatterns));
