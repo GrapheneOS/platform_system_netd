@@ -31,7 +31,7 @@ LOCAL_C_INCLUDES := \
         external/mdnsresponder/mDNSShared \
         system/netd/include \
 
-LOCAL_CPPFLAGS := -Wall -Werror -Wthread-safety -Wnullable-to-nonnull-conversion
+LOCAL_CPPFLAGS := -Wall -Werror -Wthread-safety -Wnullable-to-nonnull-conversion -std=c++17
 LOCAL_TIDY := true
 LOCAL_TIDY_FLAGS := $(common_local_tidy_flags)
 LOCAL_TIDY_CHECKS := $(common_local_tidy_checks)
@@ -147,7 +147,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := netd_unit_test
 LOCAL_COMPATIBILITY_SUITE := device-tests
 LOCAL_SANITIZE := unsigned-integer-overflow
-LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter -Wthread-safety
+LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter -Wthread-safety -std=c++17
 LOCAL_TIDY := true
 LOCAL_TIDY_FLAGS := $(common_local_tidy_flags)
 LOCAL_TIDY_CHECKS := $(common_local_tidy_checks)
