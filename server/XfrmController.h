@@ -243,11 +243,18 @@ public:
 
 private:
 /*
+ * This is a workaround for a kernel bug in the 32bit netlink compat layer
+ * that has been present on x86_64 kernels since 2010 with no fix on the
+ * horizon.
+ *
  * Below is a redefinition of the xfrm_usersa_info struct that is part
  * of the Linux uapi <linux/xfrm.h> to align the structures to a 64-bit
  * boundary.
+ *
+ * Note that we turn this on for all x86 32bit targets, under the assumption
+ * that nowadays all x86 targets are running 64bit kernels.
  */
-#ifdef NETLINK_COMPAT32
+#if defined(__i386__)
     // Shadow the kernel definition of xfrm_usersa_info with a 64-bit aligned version
     struct xfrm_usersa_info : ::xfrm_usersa_info {
     } __attribute__((aligned(8)));
