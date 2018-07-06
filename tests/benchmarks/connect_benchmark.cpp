@@ -119,7 +119,7 @@ static int bindAndListen(int s) {
 }
 
 static void ipv4_loopback(benchmark::State& state, const bool waitBetweenRuns) {
-    const int listensocket = socket(AF_INET6, SOCK_STREAM, 0);
+    const int listensocket = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
     const int port = bindAndListen(listensocket);
     if (port == -1) {
         state.SkipWithError("Unable to bind server socket");
@@ -131,7 +131,7 @@ static void ipv4_loopback(benchmark::State& state, const bool waitBetweenRuns) {
     uint64_t iterations = 0;
 
     while (state.KeepRunning()) {
-        int sock = socket(AF_INET, SOCK_STREAM, 0);
+        int sock = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
         if (sock < 0) {
             state.SkipWithError(StringPrintf("socket() failed with errno=%d", errno).c_str());
             break;
@@ -155,7 +155,7 @@ static void ipv4_loopback(benchmark::State& state, const bool waitBetweenRuns) {
 
         sockaddr_in6 client;
         socklen_t clientlen = sizeof(client);
-        int accepted = accept(listensocket, (sockaddr *) &client, &clientlen);
+        int accepted = accept4(listensocket, (sockaddr*) &client, &clientlen, SOCK_CLOEXEC);
         if (accepted < 0) {
             state.SkipWithError(StringPrintf("accept() failed with errno=%d", errno).c_str());
             close(sock);
@@ -176,7 +176,7 @@ static void ipv4_loopback(benchmark::State& state, const bool waitBetweenRuns) {
 }
 
 static void ipv6_loopback(benchmark::State& state, const bool waitBetweenRuns) {
-    const int listensocket = socket(AF_INET6, SOCK_STREAM, 0);
+    const int listensocket = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
     const int port = bindAndListen(listensocket);
     if (port == -1) {
         state.SkipWithError("Unable to bind server socket");
@@ -188,7 +188,7 @@ static void ipv6_loopback(benchmark::State& state, const bool waitBetweenRuns) {
     uint64_t iterations = 0;
 
     while (state.KeepRunning()) {
-        int sock = socket(AF_INET6, SOCK_STREAM, 0);
+        int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
         if (sock < 0) {
             state.SkipWithError(StringPrintf("socket() failed with errno=%d", errno).c_str());
             break;
@@ -212,7 +212,7 @@ static void ipv6_loopback(benchmark::State& state, const bool waitBetweenRuns) {
 
         sockaddr_in6 client;
         socklen_t clientlen = sizeof(client);
-        int accepted = accept(listensocket, (sockaddr *) &client, &clientlen);
+        int accepted = accept4(listensocket, (sockaddr*) &client, &clientlen, SOCK_CLOEXEC);
         if (accepted < 0) {
             state.SkipWithError(StringPrintf("accept() failed with errno=%d", errno).c_str());
             close(sock);
@@ -247,7 +247,7 @@ static void run_at_reporting_level(decltype(ipv4_loopback) benchmarkFunction,
 
     // SETUP
     if (isMaster) {
-        for (const auto setting : savedSettings) {
+        for (const auto& setting : savedSettings) {
             const char* prevEnvStr = getenv(setting.c_str());
             if (prevEnvStr != nullptr) {
                 prevSettings[setting.c_str()] = prevEnvStr;
@@ -273,7 +273,7 @@ static void run_at_reporting_level(decltype(ipv4_loopback) benchmarkFunction,
 
     // TEARDOWN
     if (isMaster) {
-        for (const auto setting : savedSettings) {
+        for (const auto& setting : savedSettings) {
             if (prevSettings.count(setting)) {
                 setenv(setting.c_str(), prevSettings[setting].c_str(), 1);
             } else {
