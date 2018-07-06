@@ -36,12 +36,6 @@ LOCAL_TIDY := true
 LOCAL_TIDY_FLAGS := $(common_local_tidy_flags)
 LOCAL_TIDY_CHECKS := $(common_local_tidy_checks)
 
-ifeq ($(TARGET_ARCH), x86)
-ifneq ($(TARGET_PRODUCT), gce_x86_phone)
-        LOCAL_CPPFLAGS += -D NETLINK_COMPAT32
-endif
-endif
-
 LOCAL_INIT_RC := netd.rc
 
 LOCAL_SHARED_LIBRARIES := \
