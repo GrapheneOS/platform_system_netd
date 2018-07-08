@@ -30,9 +30,6 @@ cc_test {
     name: "netd_integration_test",
     test_suites: ["device-tests"],
     defaults: ["netd_defaults"],
-    cflags: [
-        "-Wunused-parameter",
-    ],
     srcs: [
         ":netd_integration_test_shared",
         ":netd_metrics_aidl",
@@ -70,12 +67,12 @@ cc_test {
     ],
     static_libs: [
         "libnetd_test_dnsresponder",
-        "libnetddns",
-        "liblogwrap",
-        "libnetdaidl",
-        "libnetdutils",
         "libnetd_test_tun_interface",
         "libbpf",
+        "liblogwrap",
+        "libnetdaidl",
+        "libnetddns",
+        "libnetdutils",
     ],
     compile_multilib: "both",
     multilib: {

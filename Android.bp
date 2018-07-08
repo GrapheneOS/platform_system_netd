@@ -6,6 +6,13 @@ cc_library_headers {
 cc_defaults {
     name: "netd_defaults",
     cpp_std: "c++17",
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wnullable-to-nonnull-conversion",
+        "-Wthread-safety",
+        "-Wunused-parameter",
+    ],
     tidy: true,
     tidy_checks: [
         "android-*",
@@ -13,7 +20,10 @@ cc_defaults {
         "clang-analyzer-security*",
     ],
     tidy_flags: [
-        "-warnings-as-errors=android-*,clang-analyzer-security*,cert-*"
+        // Disabling cert-err34-c for now because it complains about each use
+        // of atoi() and sscanf() in protocol parsers.
+        // TODO: re-aneble cert-err34-c once we move to Binder.
+        "-warnings-as-errors=android-*,clang-analyzer-security*,cert-*,-cert-err34-c"
     ],
 }
 
