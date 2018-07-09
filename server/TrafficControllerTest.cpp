@@ -531,6 +531,8 @@ TEST_F(TrafficControllerTest, TestWhitelistUidMatch) {
 }
 
 TEST_F(TrafficControllerTest, TestReplaceMatchUid) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     std::vector<std::string> appStrUids = {"1000", "1001", "10012"};
     // Add appStrUids to the blacklist and expect that their values are all BLACKLISTMATCH.
     ASSERT_TRUE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReject,
@@ -554,6 +556,8 @@ TEST_F(TrafficControllerTest, TestReplaceMatchUid) {
 }
 
 TEST_F(TrafficControllerTest, TestDeleteWrongMatchSilentlyFails) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     std::vector<std::string> appStrUids = {"1000", "1001", "10012"};
     // If the uid does not exist in the map, trying to delete a rule about it will fail.
     ASSERT_FALSE(isOk(mTc.updateBandwidthUidMap(appStrUids, BandwidthController::IptJumpReject,
