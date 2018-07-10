@@ -23,19 +23,41 @@ namespace android {
 namespace net {
 
 class DumpWriter {
-public:
+  public:
     DumpWriter(int fd);
 
     void incIndent();
     void decIndent();
 
     void println(const std::string& line);
-    void println(const char* fmt, ...);
+    template <size_t n>
+    void println(const char line[n]) { println(std::string(line)); }
+    // Hint to the compiler that it should apply printf validation of
+    // arguments (beginning at position 3) of the format (specified in
+    // position 2). Note that position 1 is the implicit "this" argument.
+    void println(const char* fmt, ...) __attribute__((__format__(__printf__, 2, 3)));
     void blankline() { println(""); }
 
-private:
+  private:
     uint8_t mIndentLevel;
     int mFd;
+};
+
+class ScopedIndent {
+  public:
+    ScopedIndent() = delete;
+    ScopedIndent(const ScopedIndent&) = delete;
+    ScopedIndent(ScopedIndent&&) = delete;
+    explicit ScopedIndent(DumpWriter& dw) : mDw(dw) { mDw.incIndent(); }
+    ~ScopedIndent() { mDw.decIndent(); }
+    ScopedIndent& operator=(const ScopedIndent&) = delete;
+    ScopedIndent& operator=(ScopedIndent&&) = delete;
+
+    // TODO: consider additional {inc,dec}Indent methods and a counter that
+    // can be used to unwind all pending increments on exit.
+
+  private:
+    DumpWriter& mDw;
 };
 
 }  // namespace net

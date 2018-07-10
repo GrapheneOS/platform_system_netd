@@ -67,10 +67,10 @@ const char* const PID_FILE_PATH = "/data/misc/net/netd_pid";
 android::RWLock android::net::gBigNetdLock;
 
 int main() {
+    using android::net::gLog;
     using android::net::gCtls;
     Stopwatch s;
-
-    ALOGI("Netd 1.0 starting");
+    gLog.info("netd 1.0 starting");
 
     android::net::process::removePidFile(PID_FILE_PATH);
     android::net::process::blockSigPipe();
@@ -112,7 +112,7 @@ int main() {
         logListener = std::move(result.value());
         auto status = gCtls->wakeupCtrl.init(logListener.get());
         if (!isOk(result)) {
-            ALOGE("Unable to init WakeupController: %s", toString(result).c_str());
+            gLog.error("Unable to init WakeupController: %s", toString(result).c_str());
             // We can still continue without wakeup packet logging.
         }
     }
@@ -144,7 +144,7 @@ int main() {
         ALOGE("Unable to start NetdNativeService: %d", ret);
         exit(1);
     }
-    ALOGI("Registering NetdNativeService: %.1fms", subTime.getTimeAndReset());
+    gLog.info("Registering NetdNativeService: %.1fms", subTime.getTimeAndReset());
 
     /*
      * Now that we're up, we can respond to commands. Starting the listener also tells
@@ -154,7 +154,7 @@ int main() {
         ALOGE("Unable to start CommandListener (%s)", strerror(errno));
         exit(1);
     }
-    ALOGI("Starting CommandListener: %.1fms", subTime.getTimeAndReset());
+    gLog.info("Starting CommandListener: %.1fms", subTime.getTimeAndReset());
 
     android::net::process::ScopedPidFile pidFile(PID_FILE_PATH);
 
@@ -165,13 +165,13 @@ int main() {
         ALOGE("Unable to start NetdHwService: %d", ret);
         exit(1);
     }
-    ALOGI("Registering NetdHwService: %.1fms", subTime.getTimeAndReset());
+    gLog.info("Registering NetdHwService: %.1fms", subTime.getTimeAndReset());
 
-    ALOGI("Netd started in %dms", static_cast<int>(s.timeTaken()));
+    gLog.info("Netd started in %dms", static_cast<int>(s.timeTaken()));
 
     IPCThreadState::self()->joinThreadPool();
 
-    ALOGI("Netd exiting");
+    gLog.info("netd exiting");
 
     exit(0);
 }
