@@ -100,7 +100,7 @@ void TcpSocketMonitor::dump(DumpWriter& dw) {
     std::lock_guard<std::mutex> guard(mLock);
 
     dw.println("TcpSocketMonitor");
-    dw.incIndent();
+    ScopedIndent tcpSocketMonitorDetails(dw);
 
     const auto now = steady_clock::now();
     const auto d = duration_cast<milliseconds>(now - mLastPoll);
@@ -110,25 +110,25 @@ void TcpSocketMonitor::dump(DumpWriter& dw) {
     if (!mNetworkStats.empty()) {
         dw.blankline();
         dw.println("Network stats:");
-        for (auto const& stats : mNetworkStats) {
+        for (const auto& stats : mNetworkStats) {
             if (stats.second.nSockets == 0) {
                 continue;
             }
-            dw.println("netId=%d sent=%d lost=%d rttMs=%gms sentAckDiff=%gms",
-                    stats.first,
-                    stats.second.sent,
-                    stats.second.lost,
-                    stats.second.rttUs / 1000.0 / stats.second.nSockets,
-                    stats.second.sentAckDiffMs / stats.second.nSockets);
+            dw.println("netId=%d sent=%d lost=%d rttMs=%gms sentAckDiff=%dms",
+                       stats.first,
+                       stats.second.sent,
+                       stats.second.lost,
+                       stats.second.rttUs / 1000.0 / stats.second.nSockets,
+                       stats.second.sentAckDiffMs / stats.second.nSockets);
         }
     }
 
     if (!mSocketEntries.empty()) {
         dw.blankline();
         dw.println("Socket entries:");
-        for (auto const& stats : mSocketEntries) {
-            dw.println("netId=%u uid=%u cookie=%ld",
-                    stats.second.mark.netId, stats.second.uid, stats.first);
+        for (const auto& stats : mSocketEntries) {
+            dw.println("netId=%u uid=%u cookie=%llu",
+                    stats.second.mark.netId, stats.second.uid, (unsigned long long) stats.first);
         }
     }
 
@@ -147,8 +147,6 @@ void TcpSocketMonitor::dump(DumpWriter& dw) {
     } else {
         ALOGE("Error opening sock diag for dumping TCP socket info");
     }
-
-    dw.decIndent();
 }
 
 void TcpSocketMonitor::setPollingInterval(milliseconds nextSleepDurationMs) {

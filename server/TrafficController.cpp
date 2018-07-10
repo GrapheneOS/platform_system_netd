@@ -636,8 +636,8 @@ std::string getMapStatus(const base::unique_fd& map_fd, const char* path) {
 void dumpBpfMap(const std::string& mapName, DumpWriter& dw, const std::string& header) {
     dw.blankline();
     dw.println("%s:", mapName.c_str());
-    if(!header.empty()) {
-        dw.println(header.c_str());
+    if (!header.empty()) {
+        dw.println(header);
     }
 }
 
@@ -645,14 +645,15 @@ const String16 TrafficController::DUMP_KEYWORD = String16("trafficcontroller");
 
 void TrafficController::dump(DumpWriter& dw, bool verbose) {
     std::lock_guard<std::mutex> ownerMapGuard(mOwnerMatchMutex);
-    dw.incIndent();
+    ScopedIndent indentTop(dw);
     dw.println("TrafficController");
 
-    dw.incIndent();
+    ScopedIndent indentPreBpfModule(dw);
     dw.println("BPF module status: %s", ebpfSupported? "ON" : "OFF");
 
-    if (!ebpfSupported)
+    if (!ebpfSupported) {
         return;
+    }
 
     dw.blankline();
     dw.println("mCookieTagMap status: %s",
@@ -691,12 +692,14 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     dw.println("xt_bpf bandwidth blacklist program status: %s",
                getProgramStatus(XT_BPF_BLACKLIST_PROG_PATH).c_str());
 
-    if(!verbose) return;
+    if (!verbose) {
+        return;
+    }
 
     dw.blankline();
     dw.println("BPF map content:");
 
-    dw.incIndent();
+    ScopedIndent indentForMapContent(dw);
 
     // Print CookieTagMap content.
     dumpBpfMap("mCookieTagMap", dw, "");
@@ -820,12 +823,6 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     if (!isOk(res)) {
         dw.println("mBandwidthUidMap print end with error: %s", res.msg().c_str());
     }
-    dw.decIndent();
-
-    dw.decIndent();
-
-    dw.decIndent();
-
 }
 
 }  // namespace net
