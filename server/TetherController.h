@@ -29,8 +29,6 @@
 namespace android {
 namespace net {
 
-using android::netdutils::StatusOr;
-
 class TetherController {
 private:
     struct ForwardingDownstream {
@@ -66,8 +64,7 @@ private:
         int sendAllState(int daemonFd) const;
     } mDnsmasqState{};
 
-public:
-
+  public:
     TetherController();
     ~TetherController() = default;
 
@@ -122,7 +119,7 @@ public:
 
     typedef std::vector<TetherStats> TetherStatsList;
 
-    StatusOr<TetherStatsList> getTetherStats();
+    netdutils::StatusOr<TetherStatsList> getTetherStats();
 
     /*
      * extraProcessingInfo: contains raw parsed data, and error info.
