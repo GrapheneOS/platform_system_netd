@@ -53,7 +53,7 @@ class MemBlock {
     Slice get() const noexcept { return Slice(mData.get(), mLen); }
 
     // Implicit cast to Slice.
-    const operator Slice() const noexcept { return get(); }
+    operator const Slice() const noexcept { return get(); }
 
   private:
     std::unique_ptr<uint8_t[]> mData;
