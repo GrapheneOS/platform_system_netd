@@ -40,6 +40,7 @@
 #include <log/log.h>
 #include <netdutils/StatusOr.h>
 
+#include "Controllers.h"
 #include "Fwmark.h"
 #include "NetdConstants.h"
 #include "Permission.h"
@@ -49,10 +50,10 @@
 #include "TetherController.h"
 
 using android::base::Join;
-using android::base::StringPrintf;
 using android::base::StringAppendF;
-using android::netdutils::StatusOr;
+using android::base::StringPrintf;
 using android::netdutils::statusFromErrno;
+using android::netdutils::StatusOr;
 
 namespace {
 
@@ -126,10 +127,10 @@ const std::string GET_TETHER_STATS_COMMAND = StringPrintf(
 int TetherController::DnsmasqState::sendCmd(int daemonFd, const std::string& cmd) {
     if (cmd.empty()) return 0;
 
-    ALOGD("Sending update msg to dnsmasq [%s]", cmd.c_str());
+    gLog.log("Sending update msg to dnsmasq [%s]", cmd.c_str());
     // Send the trailing \0 as well.
     if (write(daemonFd, cmd.c_str(), cmd.size() + 1) < 0) {
-        ALOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
+        gLog.error("Failed to send update command to dnsmasq (%s)", strerror(errno));
         errno = EREMOTEIO;
         return -1;
     }

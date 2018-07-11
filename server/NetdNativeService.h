@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <binder/BinderService.h>
+#include <netdutils/Log.h>
 
 #include "android/net/BnNetd.h"
 #include "android/net/UidRange.h"
