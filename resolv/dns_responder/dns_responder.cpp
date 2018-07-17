@@ -32,6 +32,7 @@
 #include <vector>
 
 #define LOG_TAG "DNSResponder"
+#include <android-base/strings.h>
 #include <log/log.h>
 #include <netdutils/SocketOption.h>
 
@@ -848,6 +849,37 @@ bool DNSResponder::addAnswerRecords(const DNSQuestion& question,
             ALOGI("inet_pton(AF_INET6, %s) failed", it->second.c_str());
             return false;
         }
+    } else if (question.qtype == ns_type::ns_t_ptr) {
+        constexpr char delimiter = '.';
+        std::string name = it->second;
+        std::vector<char> rdata;
+
+        // PTRDNAME field
+        // The "name" should be an absolute domain name which ends in a dot.
+        if (name.back() != delimiter) {
+            ALOGI("invalid absolute domain name");
+            return false;
+        }
+        name.pop_back();  // remove the dot in tail
+
+        for (const std::string& label : android::base::Split(name, {delimiter})) {
+            // The length of label is limited to 63 octets or less. See RFC 1035 section 3.1.
+            if (label.length() == 0 || label.length() > 63) {
+                ALOGI("invalid label length");
+                return false;
+            }
+
+            rdata.push_back(label.length());
+            rdata.insert(rdata.end(), label.begin(), label.end());
+        }
+        rdata.push_back(0);  // Length byte of zero terminates the label list
+
+        // The length of domain name is limited to 255 octets or less. See RFC 1035 section 3.1.
+        if (rdata.size() > 255) {
+            ALOGI("invalid name length");
+            return false;
+        }
+        record.rdata = move(rdata);
     } else {
         ALOGI("unhandled qtype %s", dnstype2str(question.qtype));
         return false;

@@ -205,6 +205,7 @@ class IPPrefix {
     IPAddress ip() const noexcept { return IPAddress(mData); }
     constexpr int length() const noexcept { return mData.cidrlen; }
 
+    bool isUninitialized() const noexcept;
     std::string toString() const noexcept;
 
     friend std::ostream& operator<<(std::ostream& os, const IPPrefix& prefix) {

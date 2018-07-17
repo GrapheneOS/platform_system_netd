@@ -1179,4 +1179,18 @@ interface INetd {
     *         cause of the the failure.
     */
     void setTcpRWmemorySize(in @utf8InCpp String rmemValues, in @utf8InCpp String wmemValues);
+
+    /**
+     * Get NAT64 prefix in format Pref64::/n which is described in RFC6147 section 2. This
+     * interface is used for internal test only. Don't use it for other purposes because doing so
+     * would cause race conditions with the NAT64 prefix notifications.
+     *
+     * @param netId the network ID of the network to get the prefix
+     * @return the NAT64 prefix if the query operation was successful
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *         cause of the the failure.
+     *
+     * TODO: Remove this once the tests have been updated to listen for onNat64PrefixEvent.
+     */
+    @utf8InCpp String getPrefix64(int netId);
 }

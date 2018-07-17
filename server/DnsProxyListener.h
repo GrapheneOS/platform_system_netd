@@ -66,9 +66,11 @@ class DnsProxyListener : public FrameworkListener {
         void run();
 
       private:
+        void doDns64Synthesis(int32_t* rv, struct addrinfo** res);
+
         SocketClient* mClient;  // ref counted
-        char* mHost;    // owned
-        char* mService; // owned
+        char* mHost;            // owned. TODO: convert to std::string.
+        char* mService;         // owned. TODO: convert to std::string.
         struct addrinfo* mHints;  // owned
         struct android_net_context mNetContext;
         const int mReportingLevel;
@@ -99,8 +101,10 @@ class DnsProxyListener : public FrameworkListener {
         void run();
 
       private:
+        void doDns64Synthesis(int32_t* rv, struct hostent** hpp);
+
         SocketClient* mClient; //ref counted
-        char* mName; // owned
+        char* mName;           // owned. TODO: convert to std::string.
         int mAf;
         android_net_context mNetContext;
         const int mReportingLevel;
@@ -130,6 +134,8 @@ class DnsProxyListener : public FrameworkListener {
         void run();
 
       private:
+        void doDns64ReverseLookup(struct hostent** hpp);
+
         SocketClient* mClient;  // ref counted
         void* mAddress;    // address to lookup; owned
         int mAddressLen; // length of address to look up
