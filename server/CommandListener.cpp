@@ -119,7 +119,7 @@ CommandListener::CommandListener() : FrameworkListener(SOCKET_NAME, true) {
     registerLockingCmd(new FirewallCmd(), gCtls->firewallCtrl.lock);
     registerLockingCmd(new ClatdCmd());
     registerLockingCmd(new NetworkCommand());
-    registerLockingCmd(new StrictCmd());
+    registerLockingCmd(new StrictCmd(), gCtls->strictCtrl.lock);
 }
 
 CommandListener::InterfaceCmd::InterfaceCmd() :
@@ -1212,15 +1212,6 @@ int CommandListener::StrictCmd::runCommand(SocketClient *cli, int argc,
     if (argc < 2) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing command", false);
         return 0;
-    }
-
-    if (!strcmp(argv[1], "enable")) {
-        int res = gCtls->strictCtrl.enableStrict();
-        return sendGenericOkFail(cli, res);
-    }
-    if (!strcmp(argv[1], "disable")) {
-        int res = gCtls->strictCtrl.disableStrict();
-        return sendGenericOkFail(cli, res);
     }
 
     if (!strcmp(argv[1], "set_uid_cleartext_policy")) {
