@@ -88,7 +88,7 @@ binder::Status checkPermission(const char *permission) {
 
 #define NETD_LOCKING_RPC(permission, lock)                  \
     ENFORCE_PERMISSION(permission);                         \
-    android::RWLock::AutoWLock _lock(lock);
+    std::lock_guard<std::mutex> _lock(lock);
 
 #define NETD_BIG_LOCK_RPC(permission) NETD_LOCKING_RPC((permission), gBigNetdLock)
 
@@ -376,7 +376,7 @@ binder::Status NetdNativeService::getResolverInfo(int32_t netId,
 }
 
 binder::Status NetdNativeService::tetherApplyDnsInterfaces(bool *ret) {
-    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock)
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
 
     *ret = gCtls->tetherCtrl.applyDnsInterfaces();
     return binder::Status::ok();
@@ -404,7 +404,7 @@ void tetherAddStats(PersistableBundle *bundle, const TetherController::TetherSta
 }  // namespace
 
 binder::Status NetdNativeService::tetherGetStats(PersistableBundle *bundle) {
-    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock)
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
 
     const auto& statsList = gCtls->tetherCtrl.getTetherStats();
     if (!isOk(statsList)) {

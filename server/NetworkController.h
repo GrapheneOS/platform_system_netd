@@ -17,16 +17,18 @@
 #ifndef NETD_SERVER_NETWORK_CONTROLLER_H
 #define NETD_SERVER_NETWORK_CONTROLLER_H
 
+
+#include <android-base/thread_annotations.h>
 #include <android/multinetwork.h>
+
 #include "NetdConstants.h"
 #include "Permission.h"
 
-#include "utils/RWLock.h"
-
+#include <sys/types.h>
 #include <list>
 #include <map>
 #include <set>
-#include <sys/types.h>
+#include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -35,6 +37,9 @@ struct android_net_context;
 
 namespace android {
 namespace net {
+
+typedef std::shared_lock<std::shared_mutex> ScopedRLock;
+typedef std::lock_guard<std::shared_mutex> ScopedWLock;
 
 constexpr uint32_t kHandleMagic = 0xcafed00d;
 
@@ -146,7 +151,6 @@ private:
     unsigned getNetworkForInterfaceLocked(const char* interface) const;
     bool canProtectLocked(uid_t uid) const;
     bool isVirtualNetworkLocked(unsigned netId) const;
-
     VirtualNetwork* getVirtualNetworkForUserLocked(uid_t uid) const;
     Permission getPermissionForUserLocked(uid_t uid) const;
     int checkUserNetworkAccessLocked(uid_t uid, unsigned netId) const;
@@ -162,7 +166,7 @@ private:
 
     // mRWLock guards all accesses to mDefaultNetId, mNetworks, mUsers, mProtectableUsers,
     // mIfindexToLastNetId and mAddressToIfindices.
-    mutable android::RWLock mRWLock;
+    mutable std::shared_mutex mRWLock;
     unsigned mDefaultNetId;
     std::map<unsigned, Network*> mNetworks;  // Map keys are NetIds.
     std::map<uid_t, Permission> mUsers;
