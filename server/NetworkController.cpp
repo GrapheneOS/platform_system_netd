@@ -629,7 +629,9 @@ bool NetworkController::removeInterfaceAddress(unsigned ifindex, const char* add
     std::unordered_set<unsigned>& ifindices = ifindicesIter->second;
     if (ifindices.erase(ifindex) > 0) {
         if (ifindices.size() == 0) {
-            mAddressToIfindices.erase(ifindicesIter);
+            mAddressToIfindices.erase(ifindicesIter);  // Invalidates ifindices
+            // The address is no longer configured on any interface.
+            return true;
         }
     } else {
         ALOGE("No record of address %s on interface %u", address, ifindex);
