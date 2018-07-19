@@ -39,6 +39,7 @@ cc_test {
         "SyscallsTest.cpp",
     ],
     defaults: ["netd_defaults"],
+    test_suites: ["device-tests"],
     cflags: [
         "-Wall",
         "-Werror",
