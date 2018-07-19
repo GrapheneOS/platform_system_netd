@@ -17,8 +17,9 @@
 #ifndef _COMMANDLISTENER_H__
 #define _COMMANDLISTENER_H__
 
+#include <mutex>
+
 #include <sysutils/FrameworkListener.h>
-#include "utils/RWLock.h"
 
 #include "NetdCommand.h"
 #include "NetdConstants.h"
@@ -44,7 +45,7 @@ public:
     static constexpr const char* SOCKET_NAME = "netd";
 
 private:
-    void registerLockingCmd(FrameworkCommand *cmd, android::RWLock& lock);
+    void registerLockingCmd(FrameworkCommand *cmd, std::mutex& lock);
     void registerLockingCmd(FrameworkCommand *cmd) {
         registerLockingCmd(cmd, android::net::gBigNetdLock);
     }

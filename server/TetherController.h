@@ -26,6 +26,7 @@
 
 #include "NetdConstants.h"
 
+
 namespace android {
 namespace net {
 
@@ -137,7 +138,7 @@ private:
     static constexpr const char* LOCAL_RAW_PREROUTING        = "tetherctrl_raw_PREROUTING";
     static constexpr const char* LOCAL_TETHER_COUNTERS_CHAIN = "tetherctrl_counters";
 
-    android::RWLock lock;
+    std::mutex lock;
 
 private:
     bool setIpFwdEnabled();

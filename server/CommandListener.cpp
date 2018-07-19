@@ -84,25 +84,25 @@ unsigned stringToNetId(const char* arg) {
 
 class LockingFrameworkCommand : public FrameworkCommand {
 public:
-    LockingFrameworkCommand(FrameworkCommand *wrappedCmd, android::RWLock& lock) :
+    LockingFrameworkCommand(FrameworkCommand *wrappedCmd, std::mutex& lock) :
             FrameworkCommand(wrappedCmd->getCommand()),
             mWrappedCmd(wrappedCmd),
             mLock(lock) {}
 
     int runCommand(SocketClient *c, int argc, char **argv) {
-        android::RWLock::AutoWLock lock(mLock);
+        std::lock_guard<std::mutex> lock(mLock);
         return mWrappedCmd->runCommand(c, argc, argv);
     }
 
 private:
     FrameworkCommand *mWrappedCmd;
-    android::RWLock& mLock;
+    std::mutex& mLock;
 };
 
 
 }  // namespace
 
-void CommandListener::registerLockingCmd(FrameworkCommand *cmd, android::RWLock& lock) {
+void CommandListener::registerLockingCmd(FrameworkCommand *cmd, std::mutex& lock) {
     registerCmd(new LockingFrameworkCommand(cmd, lock));
 }
 

@@ -17,11 +17,10 @@
 #ifndef _FIREWALL_CONTROLLER_H
 #define _FIREWALL_CONTROLLER_H
 
+#include <mutex>
 #include <set>
 #include <string>
 #include <vector>
-
-#include <utils/RWLock.h>
 
 #include "NetdConstants.h"
 
@@ -75,7 +74,7 @@ public:
 
     static const char* ICMPV6_TYPES[];
 
-    android::RWLock lock;
+    std::mutex lock;
 
 protected:
     friend class FirewallControllerTest;
