@@ -19,6 +19,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <string.h>
+#include <mutex>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -29,7 +30,6 @@
 #define LOG_TAG "Netd"
 
 #include "log/log.h"
-#include "utils/RWLock.h"
 
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
@@ -64,7 +64,7 @@ using android::net::makeNFLogListener;
 
 const char* const PID_FILE_PATH = "/data/misc/net/netd_pid";
 
-android::RWLock android::net::gBigNetdLock;
+std::mutex android::net::gBigNetdLock;
 
 int main() {
     using android::net::gLog;

@@ -17,6 +17,7 @@
 #ifndef _NETD_CONSTANTS_H
 #define _NETD_CONSTANTS_H
 
+#include <mutex>
 #include <string>
 #include <list>
 #include <ifaddrs.h>
@@ -26,8 +27,6 @@
 #include <chrono>
 
 #include <private/android_filesystem_config.h>
-
-#include "utils/RWLock.h"
 
 const int PROTECT_MARK = 0x1;
 const int MAX_SYSTEM_UID = AID_APP - 1;
@@ -93,7 +92,7 @@ namespace net {
  * CommandListener has only one user (NetworkManagementService), which is connected through a
  * FrameworkListener that passes in commands one at a time.
  */
-extern android::RWLock gBigNetdLock;
+extern std::mutex gBigNetdLock;
 
 }  // namespace net
 }  // namespace android
