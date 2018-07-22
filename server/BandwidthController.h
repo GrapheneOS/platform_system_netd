@@ -21,14 +21,13 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <utils/RWLock.h>
+#include <mutex>
 
 #include "NetdConstants.h"
 
 class BandwidthController {
 public:
-    android::RWLock lock;
+    std::mutex lock;
 
     BandwidthController();
 
