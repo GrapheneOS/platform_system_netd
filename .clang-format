@@ -1,4 +1,5 @@
 # https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+# Please keep this file in sync with system/core/.clang-format-4
 #
 BasedOnStyle: Google
 AccessModifierOffset: -2
@@ -13,4 +14,3 @@ PointerAlignment: Left
 SpaceAfterCStyleCast: true
 TabWidth: 4
 UseTab: Never
-PenaltyExcessCharacter: 32
