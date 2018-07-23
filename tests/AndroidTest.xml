@@ -13,6 +13,14 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
+<!--
+    To run test manually:
+        make -j netd_integration_test && \
+        tradefed.sh run template/local_min -\-template:map test=netd_integration_test
+
+    For a list of options, see:
+        tools/tradefederation/core/src/com/android/tradefed/testtype/GTest.java
+-->
 <configuration description="Config for netd_integration_test">
     <target_preparer class="com.android.tradefed.targetprep.PushFilePreparer">
         <option name="cleanup" value="true" />
@@ -22,5 +30,14 @@
     <test class="com.android.tradefed.testtype.GTest" >
         <option name="native-test-device-path" value="/data/local/tmp" />
         <option name="module-name" value="netd_integration_test" />
+        <!--
+            On 2018-07-14, TransportTest.SerialQueries_100000 suddenly jumped
+            from ~20s to ~80s runtime in APCT continuous integration, causing
+            netd_integration_test to flake with the default 60s timeout.
+            We're not sure what caused the regression, but it's not due to a change
+            in the Android image and unlikely to affect users.
+            Just bump the timeout to 120s for now.
+        -->
+        <option name="native-test-timeout" value="120000" />
     </test>
 </configuration>
