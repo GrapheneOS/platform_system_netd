@@ -563,4 +563,32 @@ interface INetd {
     * running on the device.
     */
     boolean trafficCheckBpfStatsEnable();
+
+   /**
+    * Add idletimer for specific interface
+    *
+    * @param ifName Name of target interface
+    * @param timeout The time in seconds that will trigger idletimer
+    * @param classLabel The unique identifier for this idletimer
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void idletimerAddInterface(
+            in @utf8InCpp String ifName,
+            int timeout,
+            in @utf8InCpp String classLabel);
+
+   /**
+    * Remove idletimer for specific interface
+    *
+    * @param ifName Name of target interface
+    * @param timeout The time in seconds that will trigger idletimer
+    * @param classLabel The unique identifier for this idletimer
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void idletimerRemoveInterface(
+            in @utf8InCpp String ifName,
+            int timeout,
+            in @utf8InCpp String classLabel);
 }
