@@ -33,6 +33,9 @@ using android::base::Join;
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 
+namespace android {
+namespace net {
+
 class FirewallControllerTest : public IptablesBaseTest {
 protected:
     FirewallControllerTest() {
@@ -50,7 +53,6 @@ protected:
         return mFw.createChain(a, b);
     }
 };
-
 
 TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
     std::vector<std::string> expectedRestore4 = {
@@ -241,16 +243,16 @@ TEST_F(FirewallControllerTest, TestFirewall) {
     };
     std::vector<std::string> noCommands = {};
 
-    EXPECT_EQ(0, mFw.disableFirewall());
+    EXPECT_EQ(0, mFw.resetFirewall());
     expectIptablesRestoreCommands(disableCommands);
 
-    EXPECT_EQ(0, mFw.disableFirewall());
+    EXPECT_EQ(0, mFw.resetFirewall());
     expectIptablesRestoreCommands(disableCommands);
 
-    EXPECT_EQ(0, mFw.enableFirewall(BLACKLIST));
+    EXPECT_EQ(0, mFw.setFirewallType(BLACKLIST));
     expectIptablesRestoreCommands(disableCommands);
 
-    EXPECT_EQ(0, mFw.enableFirewall(BLACKLIST));
+    EXPECT_EQ(0, mFw.setFirewallType(BLACKLIST));
     expectIptablesRestoreCommands(noCommands);
 
     std::vector<std::string> disableEnableCommands;
@@ -259,7 +261,7 @@ TEST_F(FirewallControllerTest, TestFirewall) {
     disableEnableCommands.insert(
             disableEnableCommands.end(), enableCommands.begin(), enableCommands.end());
 
-    EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
+    EXPECT_EQ(0, mFw.setFirewallType(WHITELIST));
     expectIptablesRestoreCommands(disableEnableCommands);
 
     std::vector<std::string> ifaceCommands = {
@@ -286,15 +288,15 @@ TEST_F(FirewallControllerTest, TestFirewall) {
     EXPECT_EQ(0, mFw.setInterfaceRule("rmnet_data0", DENY));
     expectIptablesRestoreCommands(noCommands);
 
-    EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
+    EXPECT_EQ(0, mFw.setFirewallType(WHITELIST));
     expectIptablesRestoreCommands(noCommands);
 
-    EXPECT_EQ(0, mFw.disableFirewall());
+    EXPECT_EQ(0, mFw.resetFirewall());
     expectIptablesRestoreCommands(disableCommands);
 
-    // TODO: calling disableFirewall and then enableFirewall(WHITELIST) does
+    // TODO: calling resetFirewall and then setFirewallType(WHITELIST) does
     // nothing. This seems like a clear bug.
-    EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
+    EXPECT_EQ(0, mFw.setFirewallType(WHITELIST));
     expectIptablesRestoreCommands(noCommands);
 }
 
@@ -344,3 +346,6 @@ TEST_F(FirewallControllerTest, TestDiscoverMaximumValidUid) {
     EXPECT_NE(0, access(tempFile.c_str(), F_OK));
     EXPECT_EQ(4294967294, FirewallController::discoverMaximumValidUid(tempFile));
 }
+
+}  // namespace net
+}  // namespace android
