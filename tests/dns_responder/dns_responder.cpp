@@ -501,7 +501,7 @@ const char* DNSHeader::readHeader(const char* buffer, const char* buffer_end,
                                   unsigned* qdcount, unsigned* ancount,
                                   unsigned* nscount, unsigned* arcount) {
     if (buffer + sizeof(Header) > buffer_end)
-        return 0;
+        return nullptr;
     const auto& header = *reinterpret_cast<const Header*>(buffer);
     // bytes 0-1
     id = ntohs(header.id);

@@ -164,7 +164,7 @@ void logHex(const char* desc16, const char* buf, size_t len) {
 
 void logIov(const std::vector<iovec>& iov) {
     for (const iovec& row : iov) {
-        logHex(0, reinterpret_cast<char*>(row.iov_base), row.iov_len);
+        logHex(nullptr, reinterpret_cast<char*>(row.iov_base), row.iov_len);
     }
 }
 
@@ -408,7 +408,7 @@ netdutils::Status XfrmController::flushInterfaces() {
 netdutils::Status XfrmController::flushSaDb(const XfrmSocket& s) {
     struct xfrm_usersa_flush flushUserSa = {.proto = IPSEC_PROTO_ANY};
 
-    std::vector<iovec> iov = {{NULL, 0}, // reserved for the eventual addition of a NLMSG_HDR
+    std::vector<iovec> iov = {{nullptr, 0}, // reserved for the eventual addition of a NLMSG_HDR
                               {&flushUserSa, sizeof(flushUserSa)}, // xfrm_usersa_flush structure
                               {kPadBytes, NLMSG_ALIGN(sizeof(flushUserSa)) - sizeof(flushUserSa)}};
 
@@ -416,7 +416,7 @@ netdutils::Status XfrmController::flushSaDb(const XfrmSocket& s) {
 }
 
 netdutils::Status XfrmController::flushPolicyDb(const XfrmSocket& s) {
-    std::vector<iovec> iov = {{NULL, 0}}; // reserved for the eventual addition of a NLMSG_HDR
+    std::vector<iovec> iov = {{nullptr, 0}}; // reserved for the eventual addition of a NLMSG_HDR
     return s.sendMessage(XFRM_MSG_FLUSHPOLICY, NETLINK_REQUEST_FLAGS, 0, &iov);
 }
 
@@ -736,7 +736,7 @@ XfrmController::ipSecRemoveTransportModeTransform(const android::base::unique_fd
     // Kernel will delete the security policy on this socket for both direction
     // if optval is set to NULL and optlen is set to 0.
     netdutils::Status status =
-        getSyscallInstance().setsockopt(Fd(socket), sockLayer, sockOpt, NULL, 0);
+        getSyscallInstance().setsockopt(Fd(socket), sockLayer, sockOpt, nullptr, 0);
     if (!isOk(status)) {
         ALOGE("Error removing socket option for XFRM! (%s)", toString(status).c_str());
     }
@@ -837,7 +837,7 @@ netdutils::Status XfrmController::updateSecurityAssociation(const XfrmSaInfo& re
     };
 
     std::vector<iovec> iov = {
-        {NULL, 0},            // reserved for the eventual addition of a NLMSG_HDR
+        {nullptr, 0},            // reserved for the eventual addition of a NLMSG_HDR
         {&usersa, 0},         // main usersa_info struct
         {kPadBytes, 0},       // up to NLMSG_ALIGNTO pad bytes of padding
         {&crypt, 0},          // adjust size if crypt algo is present
@@ -1002,7 +1002,7 @@ netdutils::Status XfrmController::deleteSecurityAssociation(const XfrmId& record
     enum { NLMSG_HDR, USERSAID, USERSAID_PAD, MARK, MARK_PAD };
 
     std::vector<iovec> iov = {
-        {NULL, 0},      // reserved for the eventual addition of a NLMSG_HDR
+        {nullptr, 0},      // reserved for the eventual addition of a NLMSG_HDR
         {&said, 0},     // main usersa_info struct
         {kPadBytes, 0}, // up to NLMSG_ALIGNTO pad bytes of padding
         {&xfrmmark, 0}, // adjust size if xfrm mark is present
@@ -1027,7 +1027,7 @@ netdutils::Status XfrmController::allocateSpi(const XfrmSaInfo& record, uint32_t
     enum { NLMSG_HDR, USERSAID, USERSAID_PAD };
 
     std::vector<iovec> iov = {
-        {NULL, 0},      // reserved for the eventual addition of a NLMSG_HDR
+        {nullptr, 0},      // reserved for the eventual addition of a NLMSG_HDR
         {&spiInfo, 0},  // main userspi_info struct
         {kPadBytes, 0}, // up to NLMSG_ALIGNTO pad bytes of padding
     };
@@ -1086,7 +1086,7 @@ netdutils::Status XfrmController::updateTunnelModeSecurityPolicy(const XfrmSaInf
     };
 
     std::vector<iovec> iov = {
-        {NULL, 0},        // reserved for the eventual addition of a NLMSG_HDR
+        {nullptr, 0},        // reserved for the eventual addition of a NLMSG_HDR
         {&userpolicy, 0}, // main xfrm_userpolicy_info struct
         {kPadBytes, 0},   // up to NLMSG_ALIGNTO pad bytes of padding
         {&usertmpl, 0},   // adjust size if xfrm_user_tmpl struct is present
@@ -1123,7 +1123,7 @@ netdutils::Status XfrmController::deleteTunnelModeSecurityPolicy(const XfrmSaInf
     };
 
     std::vector<iovec> iov = {
-        {NULL, 0},      // reserved for the eventual addition of a NLMSG_HDR
+        {nullptr, 0},      // reserved for the eventual addition of a NLMSG_HDR
         {&policyid, 0}, // main xfrm_userpolicy_id struct
         {kPadBytes, 0}, // up to NLMSG_ALIGNTO pad bytes of padding
         {&xfrmmark, 0}, // adjust size if xfrm mark is present
@@ -1309,7 +1309,7 @@ int XfrmController::addVirtualTunnelInterface(const std::string& deviceName,
                                         &iflaLinkInfo);
 
     iovec iov[] = {
-        {NULL, 0},
+        {nullptr, 0},
         {&ifInfoMsg, sizeof(ifInfoMsg)},
 
         {&iflaIfName, sizeof(iflaIfName)},
@@ -1379,7 +1379,7 @@ int XfrmController::removeVirtualTunnelInterface(const std::string& deviceName) 
     size_t iflaIfNamePad = fillNlAttr(IFLA_IFNAME, iflaIfNameLength, &iflaIfName);
 
     iovec iov[] = {
-        {NULL, 0},
+        {nullptr, 0},
         {&ifInfoMsg, sizeof(ifInfoMsg)},
 
         {&iflaIfName, sizeof(iflaIfName)},

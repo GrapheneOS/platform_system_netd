@@ -99,7 +99,7 @@ int ClatdController::startClatd(char* interface) {
             netIdString,
             (char *) "-m",
             fwmarkString,
-            NULL
+            nullptr
         };
 
         if (execv(kClatdPath, args)) {
@@ -127,7 +127,7 @@ int ClatdController::stopClatd(char* interface) {
     ALOGD("Stopping clatd pid=%d on %s", pid, interface);
 
     kill(pid, SIGTERM);
-    waitpid(pid, NULL, 0);
+    waitpid(pid, nullptr, 0);
     mClatdPids.erase(interface);
 
     ALOGD("clatd on %s stopped", interface);
@@ -141,7 +141,7 @@ bool ClatdController::isClatdStarted(char* interface) {
     if (pid == 0) {
         return false;
     }
-    waitpid_status = waitpid(pid, NULL, WNOHANG);
+    waitpid_status = waitpid(pid, nullptr, WNOHANG);
     if (waitpid_status != 0) {
         mClatdPids.erase(interface);  // child exited, don't call waitpid on it again
     }
