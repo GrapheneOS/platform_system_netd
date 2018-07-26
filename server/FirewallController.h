@@ -17,6 +17,7 @@
 #ifndef _FIREWALL_CONTROLLER_H
 #define _FIREWALL_CONTROLLER_H
 
+#include <sys/types.h>
 #include <mutex>
 #include <set>
 #include <string>
@@ -61,6 +62,7 @@ public:
     int replaceUidChain(const std::string&, bool, const std::vector<int32_t>&);
 
     static std::string makeCriticalCommands(IptablesTarget target, const char* chainName);
+    static uid_t discoverMaximumValidUid(const std::string& fileName);
 
     static const char* TABLE;
 
@@ -83,13 +85,19 @@ protected:
     static int (*execIptablesRestore)(IptablesTarget target, const std::string& commands);
 
 private:
-    FirewallType mFirewallType;
-    bool mUseBpfOwnerMatch;
-    std::set<std::string> mIfaceRules;
-    int attachChain(const char*, const char*);
-    int detachChain(const char*, const char*);
-    int createChain(const char*, FirewallType);
-    FirewallType getFirewallType(ChildChain);
+  // Netd supports two cases, in both of which mMaxUid that derives from the uid mapping is const:
+  //  - netd runs in a root namespace which contains all UIDs.
+  //  - netd runs in a user namespace where the uid mapping is written once before netd starts.
+  //    In that case, an attempt to write more than once to a uid_map file in a user namespace
+  //    fails with EPERM. Netd can therefore assumes the max valid uid to be const.
+  const uid_t mMaxUid;
+  FirewallType mFirewallType;
+  bool mUseBpfOwnerMatch;
+  std::set<std::string> mIfaceRules;
+  int attachChain(const char*, const char*);
+  int detachChain(const char*, const char*);
+  int createChain(const char*, FirewallType);
+  FirewallType getFirewallType(ChildChain);
 };
 
 #endif
