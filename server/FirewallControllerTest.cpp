@@ -22,14 +22,16 @@
 
 #include <gtest/gtest.h>
 
-#include <android-base/strings.h>
+#include <android-base/file.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
 #include "FirewallController.h"
 #include "IptablesBaseTest.h"
 
 using android::base::Join;
 using android::base::StringPrintf;
+using android::base::WriteStringToFile;
 
 class FirewallControllerTest : public IptablesBaseTest {
 protected:
@@ -294,4 +296,51 @@ TEST_F(FirewallControllerTest, TestFirewall) {
     // nothing. This seems like a clear bug.
     EXPECT_EQ(0, mFw.enableFirewall(WHITELIST));
     expectIptablesRestoreCommands(noCommands);
+}
+
+TEST_F(FirewallControllerTest, TestDiscoverMaximumValidUid) {
+    struct {
+        const std::string description;
+        const std::string content;
+        const uint32_t expected;
+    } testCases[] = {
+            {
+                    .description = "root namespace case",
+                    .content = "         0          0 4294967295",
+                    .expected = 4294967294,
+            },
+            {
+                    .description = "container namespace case",
+                    .content = "         0     655360       5000\n"
+                               "      5000        600         50\n"
+                               "      5050     660410    1994950\n",
+                    .expected = 1999999,
+            },
+            {
+                    .description = "garbage content case",
+                    .content = "garbage",
+                    .expected = 4294967294,
+            },
+            {
+                    .description = "no content case",
+                    .content = "",
+                    .expected = 4294967294,
+            },
+    };
+
+    const std::string tempFile = "/data/local/tmp/fake_uid_mapping";
+
+    for (const auto& test : testCases) {
+        EXPECT_TRUE(WriteStringToFile(test.content, tempFile, false));
+        uint32_t got = FirewallController::discoverMaximumValidUid(tempFile);
+        EXPECT_EQ(0, remove(tempFile.c_str()));
+        if (got != test.expected) {
+            FAIL() << test.description << ":\n"
+                   << test.content << "\ngot " << got << ", but expected " << test.expected;
+        }
+    }
+
+    // Also check when the file is not defined
+    EXPECT_NE(0, access(tempFile.c_str(), F_OK));
+    EXPECT_EQ(4294967294, FirewallController::discoverMaximumValidUid(tempFile));
 }
