@@ -16,17 +16,19 @@
 
 #include <set>
 
-#include <cstdint>
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cstdint>
 
 #define LOG_TAG "FirewallController"
 #define LOG_NDEBUG 0
 
-#include <android-base/strings.h>
+#include <android-base/file.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <log/log.h>
 
 #include "Controllers.h"
@@ -35,12 +37,30 @@
 #include "bpf/BpfUtils.h"
 
 using android::base::Join;
+using android::base::ReadFileToString;
+using android::base::Split;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
 using android::bpf::DOZABLE_UID_MAP_PATH;
 using android::bpf::POWERSAVE_UID_MAP_PATH;
 using android::bpf::STANDBY_UID_MAP_PATH;
 using android::net::gCtls;
+
+namespace {
+
+// Default maximum valid uid in a normal root user namespace. The maximum valid uid is used in
+// rules that exclude all possible UIDs in the namespace in order to match packets that have
+// no socket associated with them.
+constexpr const uid_t kDefaultMaximumUid = UID_MAX - 1;  // UID_MAX defined as UINT_MAX
+
+// Proc file containing the uid mapping for the user namespace of the current process.
+const char kUidMapProcFile[] = "/proc/self/uid_map";
+
+bool getBpfOwnerStatus() {
+    return gCtls->trafficCtrl.checkBpfStatsEnable();
+}
+
+}  // namespace
 
 auto FirewallController::execIptablesRestore = ::execIptablesRestore;
 
@@ -66,11 +86,7 @@ const char* FirewallController::ICMPV6_TYPES[] = {
     "redirect",
 };
 
-bool getBpfOwnerStatus() {
-    return gCtls->trafficCtrl.checkBpfStatsEnable();
-}
-
-FirewallController::FirewallController(void) {
+FirewallController::FirewallController(void) : mMaxUid(discoverMaximumValidUid(kUidMapProcFile)) {
     // If no rules are set, it's in BLACKLIST mode
     mFirewallType = BLACKLIST;
     mIfaceRules = {};
@@ -292,7 +308,7 @@ std::string FirewallController::makeUidRules(IptablesTarget target, const char *
         // This rule inverts the match for all UIDs; ie, if there is no UID match here,
         // there is no socket to be found
         StringAppendF(&commands,
-                "-A %s -m owner ! --uid-owner %d-%u -j RETURN\n", name, 0, UINT32_MAX-1);
+                "-A %s -m owner ! --uid-owner %d-%u -j RETURN\n", name, 0, mMaxUid);
 
         // Always whitelist traffic with protocol ESP, or no known socket - required for IPSec
         StringAppendF(&commands, "-A %s -p esp -j RETURN\n", name);
@@ -336,4 +352,47 @@ int FirewallController::replaceUidChain(
    std::string commands4 = makeUidRules(V4, name.c_str(), isWhitelist, uids);
    std::string commands6 = makeUidRules(V6, name.c_str(), isWhitelist, uids);
    return execIptablesRestore(V4, commands4.c_str()) | execIptablesRestore(V6, commands6.c_str());
+}
+
+/* static */
+uid_t FirewallController::discoverMaximumValidUid(const std::string& fileName) {
+    std::string content;
+    if (!ReadFileToString(fileName, &content, false)) {
+        // /proc/self/uid_map only exists if a uid mapping has been set.
+        ALOGD("Could not read %s, max uid defaulting to %u", fileName.c_str(), kDefaultMaximumUid);
+        return kDefaultMaximumUid;
+    }
+
+    std::vector<std::string> lines = Split(content, "\n");
+    if (lines.empty()) {
+        ALOGD("%s was empty, max uid defaulting to %u", fileName.c_str(), kDefaultMaximumUid);
+        return kDefaultMaximumUid;
+    }
+
+    uint32_t maxUid = 0;
+    for (const auto& line : lines) {
+        if (line.empty()) {
+            continue;
+        }
+
+        // Choose the end of the largest range found in the file.
+        uint32_t start;
+        uint32_t ignored;
+        uint32_t rangeLength;
+        int items = sscanf(line.c_str(), "%u %u %u", &start, &ignored, &rangeLength);
+        if (items != 3) {
+            // uid_map lines must have 3 items, see the man page of 'user_namespaces' for details.
+            ALOGD("Format of %s unrecognized, max uid defaulting to %u", fileName.c_str(),
+                  kDefaultMaximumUid);
+            return kDefaultMaximumUid;
+        }
+        maxUid = std::max(maxUid, start + rangeLength - 1);
+    }
+
+    if (maxUid == 0) {
+        ALOGD("No max uid found, max uid defaulting to %u", kDefaultMaximumUid);
+        return kDefaultMaximumUid;
+    }
+
+    return maxUid;
 }
