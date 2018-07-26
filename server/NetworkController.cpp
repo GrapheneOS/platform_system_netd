@@ -387,7 +387,7 @@ int NetworkController::createPhysicalNetwork(unsigned netId, Permission permissi
 }
 
 int NetworkController::createPhysicalOemNetwork(Permission permission, unsigned *pNetId) {
-    if (pNetId == NULL) {
+    if (pNetId == nullptr) {
         return -EINVAL;
     }
 
@@ -731,7 +731,7 @@ bool NetworkController::isValidNetworkLocked(unsigned netId) const {
 
 Network* NetworkController::getNetworkLocked(unsigned netId) const {
     auto iter = mNetworks.find(netId);
-    return iter == mNetworks.end() ? NULL : iter->second;
+    return iter == mNetworks.end() ? nullptr : iter->second;
 }
 
 VirtualNetwork* NetworkController::getVirtualNetworkForUserLocked(uid_t uid) const {
@@ -743,7 +743,7 @@ VirtualNetwork* NetworkController::getVirtualNetworkForUserLocked(uid_t uid) con
             }
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 Permission NetworkController::getPermissionForUserLocked(uid_t uid) const {

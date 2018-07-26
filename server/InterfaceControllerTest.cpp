@@ -183,7 +183,7 @@ TEST_F(GetIfaceListTest, IfaceNames) {
     EXPECT_EQ(ok, ifaceNames.status());
     struct ifaddrs *ifaddr, *ifa;
     EXPECT_EQ(0, getifaddrs(&ifaddr));
-    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+    for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
         const auto val = std::find(
                 ifaceNames.value().begin(), ifaceNames.value().end(), ifa->ifa_name);
         EXPECT_NE(ifaceNames.value().end(), val);
@@ -196,7 +196,7 @@ TEST_F(GetIfaceListTest, IfaceExist) {
     EXPECT_EQ(ok, ifaceMap.status());
     struct ifaddrs *ifaddr, *ifa;
     EXPECT_EQ(0, getifaddrs(&ifaddr));
-    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+    for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
         uint32_t ifaceIndex = if_nametoindex(ifa->ifa_name);
         const auto ifacePair = ifaceMap.value().find(ifa->ifa_name);
         EXPECT_NE(ifaceMap.value().end(), ifacePair);

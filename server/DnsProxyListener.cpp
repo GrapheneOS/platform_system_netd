@@ -95,7 +95,7 @@ void tryThreadOrError(SocketClient* cli, T* handler) {
         return;
     }
 
-    char* msg = NULL;
+    char* msg = nullptr;
     asprintf(&msg, "%s (%d)", strerror(-rval), -rval);
     cli->sendMsg(ResponseCode::OperationFailed, msg, false);
     free(msg);
@@ -287,13 +287,13 @@ static bool sendLenAndData(SocketClient* c, const int len, const void* data) {
 static bool sendhostent(SocketClient *c, struct hostent *hp) {
     bool success = true;
     int i;
-    if (hp->h_name != NULL) {
+    if (hp->h_name != nullptr) {
         success &= sendLenAndData(c, strlen(hp->h_name)+1, hp->h_name);
     } else {
         success &= sendLenAndData(c, 0, "") == 0;
     }
 
-    for (i=0; hp->h_aliases[i] != NULL; i++) {
+    for (i=0; hp->h_aliases[i] != nullptr; i++) {
         success &= sendLenAndData(c, strlen(hp->h_aliases[i])+1, hp->h_aliases[i]);
     }
     success &= sendLenAndData(c, 0, ""); // null to indicate we're done
@@ -304,7 +304,7 @@ static bool sendhostent(SocketClient *c, struct hostent *hp) {
     buf = htonl(hp->h_length);
     success &= c->sendData(&buf, sizeof(buf)) == 0;
 
-    for (i=0; hp->h_addr_list[i] != NULL; i++) {
+    for (i=0; hp->h_addr_list[i] != nullptr; i++) {
         success &= sendLenAndData(c, 16, hp->h_addr_list[i]);
     }
     success &= sendLenAndData(c, 0, ""); // null to indicate we're done
@@ -355,7 +355,7 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
                 mNetContext.uid, mNetContext.flags);
     }
 
-    struct addrinfo* result = NULL;
+    struct addrinfo* result = nullptr;
     Stopwatch s;
     maybeFixupNetContext(&mNetContext);
     const uid_t uid = mClient->getUid();
@@ -449,7 +449,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     if (DBG) logArguments(argc, argv);
 
     if (argc != 8) {
-        char* msg = NULL;
+        char* msg = nullptr;
         asprintf( &msg, "Invalid number of arguments to getaddrinfo: %i", argc);
         ALOGW("%s", msg);
         cli->sendMsg(ResponseCode::CommandParameterError, msg, false);
@@ -459,24 +459,24 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
 
     char* name = argv[1];
     if (strcmp("^", name) == 0) {
-        name = NULL;
+        name = nullptr;
     } else {
         name = strdup(name);
     }
 
     char* service = argv[2];
     if (strcmp("^", service) == 0) {
-        service = NULL;
+        service = nullptr;
     } else {
         service = strdup(service);
     }
 
-    struct addrinfo* hints = NULL;
+    struct addrinfo* hints = nullptr;
     int ai_flags = atoi(argv[3]);
     int ai_family = atoi(argv[4]);
     int ai_socktype = atoi(argv[5]);
     int ai_protocol = atoi(argv[6]);
-    unsigned netId = strtoul(argv[7], NULL, 10);
+    unsigned netId = strtoul(argv[7], nullptr, 10);
     const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
     const uid_t uid = cli->getUid();
 
@@ -526,7 +526,7 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
     if (DBG) logArguments(argc, argv);
 
     if (argc != 4) {
-        char* msg = NULL;
+        char* msg = nullptr;
         asprintf(&msg, "Invalid number of arguments to gethostbyname: %i", argc);
         ALOGW("%s", msg);
         cli->sendMsg(ResponseCode::CommandParameterError, msg, false);
@@ -535,13 +535,13 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
     }
 
     uid_t uid = cli->getUid();
-    unsigned netId = strtoul(argv[1], NULL, 10);
+    unsigned netId = strtoul(argv[1], nullptr, 10);
     const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
     char* name = argv[2];
     int af = atoi(argv[3]);
 
     if (strcmp(name, "^") == 0) {
-        name = NULL;
+        name = nullptr;
     } else {
         name = strdup(name);
     }
@@ -605,7 +605,7 @@ void DnsProxyListener::GetHostByNameHandler::run() {
         success = mClient->sendCode(ResponseCode::DnsProxyQueryResult) == 0;
         success &= sendhostent(mClient, hp);
     } else {
-        success = mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, NULL, 0) == 0;
+        success = mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, nullptr, 0) == 0;
     }
 
     if (!success) {
@@ -618,14 +618,14 @@ void DnsProxyListener::GetHostByNameHandler::run() {
         if (mReportingLevel == INetdEventListener::REPORTING_LEVEL_FULL) {
             if (hp != nullptr && hp->h_addrtype == AF_INET) {
                 in_addr** list = (in_addr**) hp->h_addr_list;
-                for (int i = 0; list[i] != NULL; i++) {
+                for (int i = 0; list[i] != nullptr; i++) {
                     sockaddr_in sin = { .sin_family = AF_INET, .sin_addr = *list[i] };
                     addIpAddrWithinLimit(ip_addrs, (sockaddr*) &sin, sizeof(sin));
                     total_ip_addr_count++;
                 }
             } else if (hp != nullptr && hp->h_addrtype == AF_INET6) {
                 in6_addr** list = (in6_addr**) hp->h_addr_list;
-                for (int i = 0; list[i] != NULL; i++) {
+                for (int i = 0; list[i] != nullptr; i++) {
                     sockaddr_in6 sin6 = { .sin6_family = AF_INET6, .sin6_addr = *list[i] };
                     addIpAddrWithinLimit(ip_addrs, (sockaddr*) &sin6, sizeof(sin6));
                     total_ip_addr_count++;
@@ -669,7 +669,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     if (DBG) logArguments(argc, argv);
 
     if (argc != 5) {
-        char* msg = NULL;
+        char* msg = nullptr;
         asprintf(&msg, "Invalid number of arguments to gethostbyaddr: %i", argc);
         ALOGW("%s", msg);
         cli->sendMsg(ResponseCode::CommandParameterError, msg, false);
@@ -681,14 +681,14 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     int addrLen = atoi(argv[2]);
     int addrFamily = atoi(argv[3]);
     uid_t uid = cli->getUid();
-    unsigned netId = strtoul(argv[4], NULL, 10);
+    unsigned netId = strtoul(argv[4], nullptr, 10);
     const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
 
     void* addr = malloc(sizeof(struct in6_addr));
     errno = 0;
     int result = inet_pton(addrFamily, addrStr, addr);
     if (result <= 0) {
-        char* msg = NULL;
+        char* msg = nullptr;
         asprintf(&msg, "inet_pton(\"%s\") failed %s", addrStr, strerror(errno));
         ALOGW("%s", msg);
         cli->sendMsg(ResponseCode::OperationFailed, msg, false);
@@ -754,7 +754,7 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
         success = mClient->sendCode(ResponseCode::DnsProxyQueryResult) == 0;
         success &= sendhostent(mClient, hp);
     } else {
-        success = mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, NULL, 0) == 0;
+        success = mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, nullptr, 0) == 0;
     }
 
     if (!success) {

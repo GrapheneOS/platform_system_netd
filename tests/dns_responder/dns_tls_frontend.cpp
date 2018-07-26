@@ -38,7 +38,7 @@ namespace {
 
 // Copied from DnsTlsTransport.
 bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
-    int spki_len = i2d_X509_PUBKEY(X509_get_X509_PUBKEY(cert), NULL);
+    int spki_len = i2d_X509_PUBKEY(X509_get_X509_PUBKEY(cert), nullptr);
     unsigned char spki[spki_len];
     unsigned char* temp = spki;
     if (spki_len != i2d_X509_PUBKEY(X509_get_X509_PUBKEY(cert), &temp)) {
@@ -47,7 +47,7 @@ bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
     }
     out->resize(test::SHA256_SIZE);
     unsigned int digest_len = 0;
-    int ret = EVP_Digest(spki, spki_len, out->data(), &digest_len, EVP_sha256(), NULL);
+    int ret = EVP_Digest(spki, spki_len, out->data(), &digest_len, EVP_sha256(), nullptr);
     if (ret != 1) {
         ALOGE("Server cert digest extraction failed");
         return false;
@@ -92,7 +92,7 @@ bssl::UniquePtr<EVP_PKEY> make_private_key() {
         ALOGE("RSA_new failed");
         return nullptr;
     }
-    if (!RSA_generate_key_ex(rsa.get(), 2048, e.get(), NULL)) {
+    if (!RSA_generate_key_ex(rsa.get(), 2048, e.get(), nullptr)) {
         ALOGE("RSA_generate_key_ex failed");
         return nullptr;
     }
