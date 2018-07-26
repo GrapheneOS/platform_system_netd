@@ -59,7 +59,7 @@ static long parseIfIndex(const char* ifIndex) {
     if (ifIndex == nullptr) {
         return 0;
     }
-    long ifaceIndex = strtol(ifIndex, NULL, 10);
+    long ifaceIndex = strtol(ifIndex, nullptr, 10);
     // strtol returns 0 on error, which is fine because 0 is not a valid ifindex.
     if (errno == ERANGE && (ifaceIndex == LONG_MAX || ifaceIndex == LONG_MIN)) {
         return 0;
@@ -220,10 +220,10 @@ void NetlinkHandler::notifyInterfaceClassActivity(const char *name,
                                                   bool isActive,
                                                   const char *timestamp,
                                                   const char *uid) {
-    if (timestamp == NULL)
+    if (timestamp == nullptr)
         notify(ResponseCode::InterfaceClassActivity,
            "IfaceClass %s %s", isActive ? "active" : "idle", name);
-    else if (uid != NULL && isActive)
+    else if (uid != nullptr && isActive)
         notify(ResponseCode::InterfaceClassActivity,
            "IfaceClass active %s %s %s", name, timestamp, uid);
     else

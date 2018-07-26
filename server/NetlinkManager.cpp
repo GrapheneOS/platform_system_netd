@@ -48,7 +48,7 @@ const int NetlinkManager::NFLOG_QUOTA_GROUP = 1;
 const int NetlinkManager::NETFILTER_STRICT_GROUP = 2;
 const int NetlinkManager::NFLOG_WAKEUP_GROUP = 3;
 
-NetlinkManager *NetlinkManager::sInstance = NULL;
+NetlinkManager *NetlinkManager::sInstance = nullptr;
 
 NetlinkManager *NetlinkManager::Instance() {
     if (!sInstance)
@@ -57,7 +57,7 @@ NetlinkManager *NetlinkManager::Instance() {
 }
 
 NetlinkManager::NetlinkManager() {
-    mBroadcaster = NULL;
+    mBroadcaster = nullptr;
 }
 
 NetlinkManager::~NetlinkManager() {
@@ -78,7 +78,7 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
 
     if ((*sock = socket(PF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, netlinkFamily)) < 0) {
         ALOGE("Unable to create netlink socket: %s", strerror(errno));
-        return NULL;
+        return nullptr;
     }
 
     // When running in a net/user namespace, SO_RCVBUFFORCE will fail because
@@ -88,33 +88,33 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
         setsockopt(*sock, SOL_SOCKET, SO_RCVBUF, &sz, sizeof(sz)) < 0) {
         ALOGE("Unable to set uevent socket SO_RCVBUF option: %s", strerror(errno));
         close(*sock);
-        return NULL;
+        return nullptr;
     }
 
     if (setsockopt(*sock, SOL_SOCKET, SO_PASSCRED, &on, sizeof(on)) < 0) {
         SLOGE("Unable to set uevent socket SO_PASSCRED option: %s", strerror(errno));
         close(*sock);
-        return NULL;
+        return nullptr;
     }
 
     if (bind(*sock, (struct sockaddr *) &nladdr, sizeof(nladdr)) < 0) {
         ALOGE("Unable to bind netlink socket: %s", strerror(errno));
         close(*sock);
-        return NULL;
+        return nullptr;
     }
 
     if (configNflog) {
         if (android_nflog_send_config_cmd(*sock, 0, NFULNL_CFG_CMD_PF_UNBIND, AF_INET) < 0) {
             ALOGE("Failed NFULNL_CFG_CMD_PF_UNBIND: %s", strerror(errno));
-            return NULL;
+            return nullptr;
         }
         if (android_nflog_send_config_cmd(*sock, 0, NFULNL_CFG_CMD_PF_BIND, AF_INET) < 0) {
             ALOGE("Failed NFULNL_CFG_CMD_PF_BIND: %s", strerror(errno));
-            return NULL;
+            return nullptr;
         }
         if (android_nflog_send_config_cmd(*sock, 0, NFULNL_CFG_CMD_BIND, AF_UNSPEC) < 0) {
             ALOGE("Failed NFULNL_CFG_CMD_BIND: %s", strerror(errno));
-            return NULL;
+            return nullptr;
         }
     }
 
@@ -122,7 +122,7 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
     if (handler->start()) {
         ALOGE("Unable to start NetlinkHandler: %s", strerror(errno));
         close(*sock);
-        return NULL;
+        return nullptr;
     }
 
     return handler;
@@ -130,7 +130,7 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
 
 int NetlinkManager::start() {
     if ((mUeventHandler = setupSocket(&mUeventSock, NETLINK_KOBJECT_UEVENT,
-         0xffffffff, NetlinkListener::NETLINK_FORMAT_ASCII, false)) == NULL) {
+         0xffffffff, NetlinkListener::NETLINK_FORMAT_ASCII, false)) == nullptr) {
         return -1;
     }
 
@@ -140,18 +140,18 @@ int NetlinkManager::start() {
                                      RTMGRP_IPV6_IFADDR |
                                      RTMGRP_IPV6_ROUTE |
                                      (1 << (RTNLGRP_ND_USEROPT - 1)),
-         NetlinkListener::NETLINK_FORMAT_BINARY, false)) == NULL) {
+         NetlinkListener::NETLINK_FORMAT_BINARY, false)) == nullptr) {
         return -1;
     }
 
     if ((mQuotaHandler = setupSocket(&mQuotaSock, NETLINK_NFLOG,
-            NFLOG_QUOTA_GROUP, NetlinkListener::NETLINK_FORMAT_BINARY, false)) == NULL) {
+            NFLOG_QUOTA_GROUP, NetlinkListener::NETLINK_FORMAT_BINARY, false)) == nullptr) {
         ALOGW("Unable to open qlog quota socket, check if xt_quota2 can send via UeventHandler");
         // TODO: return -1 once the emulator gets a new kernel.
     }
 
     if ((mStrictHandler = setupSocket(&mStrictSock, NETLINK_NETFILTER,
-            0, NetlinkListener::NETLINK_FORMAT_BINARY_UNICAST, true)) == NULL) {
+            0, NetlinkListener::NETLINK_FORMAT_BINARY_UNICAST, true)) == nullptr) {
         ALOGE("Unable to open strict socket");
         // TODO: return -1 once the emulator gets a new kernel.
     }
@@ -168,7 +168,7 @@ int NetlinkManager::stop() {
     }
 
     delete mUeventHandler;
-    mUeventHandler = NULL;
+    mUeventHandler = nullptr;
 
     close(mUeventSock);
     mUeventSock = -1;
@@ -179,7 +179,7 @@ int NetlinkManager::stop() {
     }
 
     delete mRouteHandler;
-    mRouteHandler = NULL;
+    mRouteHandler = nullptr;
 
     close(mRouteSock);
     mRouteSock = -1;
@@ -191,7 +191,7 @@ int NetlinkManager::stop() {
         }
 
         delete mQuotaHandler;
-        mQuotaHandler = NULL;
+        mQuotaHandler = nullptr;
 
         close(mQuotaSock);
         mQuotaSock = -1;
@@ -204,7 +204,7 @@ int NetlinkManager::stop() {
         }
 
         delete mStrictHandler;
-        mStrictHandler = NULL;
+        mStrictHandler = nullptr;
 
         close(mStrictSock);
         mStrictSock = -1;

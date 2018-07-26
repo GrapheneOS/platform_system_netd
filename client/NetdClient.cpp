@@ -42,9 +42,9 @@ typedef unsigned (*NetIdForResolvFunctionType)(unsigned);
 
 // These variables are only modified at startup (when libc.so is loaded) and never afterwards, so
 // it's okay that they are read later at runtime without a lock.
-Accept4FunctionType libcAccept4 = 0;
-ConnectFunctionType libcConnect = 0;
-SocketFunctionType libcSocket = 0;
+Accept4FunctionType libcAccept4 = nullptr;
+ConnectFunctionType libcConnect = nullptr;
+SocketFunctionType libcSocket = nullptr;
 
 int closeFdAndSetErrno(int fd, int error) {
     close(fd);

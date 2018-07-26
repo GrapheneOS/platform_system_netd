@@ -54,8 +54,8 @@ int TunInterface::init() {
     sockaddr_in6 src6 = { .sin6_family = AF_INET6, .sin6_addr = mSrcAddr, };
     sockaddr_in6 dst6 = { .sin6_family = AF_INET6, .sin6_addr = mDstAddr, };
     int flags = NI_NUMERICHOST;
-    if (getnameinfo((sockaddr *) &src6, sizeof(src6), srcStr, sizeof(srcStr), NULL, 0, flags) ||
-        getnameinfo((sockaddr *) &dst6, sizeof(dst6), dstStr, sizeof(dstStr), NULL, 0, flags)) {
+    if (getnameinfo((sockaddr *) &src6, sizeof(src6), srcStr, sizeof(srcStr), nullptr, 0, flags) ||
+        getnameinfo((sockaddr *) &dst6, sizeof(dst6), dstStr, sizeof(dstStr), nullptr, 0, flags)) {
         return -EINVAL;
     }
 
