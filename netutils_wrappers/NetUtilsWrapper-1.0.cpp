@@ -45,7 +45,7 @@ const char *netcmds[] = {
     "ndc",
     "tc",
     "ip",
-    NULL,
+    nullptr,
 };
 
 // List of regular expressions of expected commands.
@@ -105,7 +105,7 @@ bool checkExpectedCommand(int argc, char **argv) {
 // This is the only gateway for vendor programs to reach net utils.
 int doMain(int argc, char **argv) {
     char *progname = argv[0];
-    char *basename = NULL;
+    char *basename = nullptr;
 
     basename = strrchr(progname, '/');
     basename = basename ? basename + 1 : progname;

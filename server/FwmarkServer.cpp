@@ -249,7 +249,7 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
                 netdEventListener->onConnectEvent(fwmark.netId, connectInfo.error,
                         connectInfo.latencyMs,
                         (ret == 0) ? String16(addrstr) : String16(""),
-                        (ret == 0) ? strtoul(portstr, NULL, 10) : 0, client->getUid());
+                        (ret == 0) ? strtoul(portstr, nullptr, 10) : 0, client->getUid());
             }
             break;
         }

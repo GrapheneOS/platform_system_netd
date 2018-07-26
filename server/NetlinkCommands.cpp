@@ -185,7 +185,7 @@ WARN_UNUSED_RESULT int rtNetlinkFlush(uint16_t getAction, uint16_t deleteAction,
             .rtm_family = static_cast<uint8_t>(family),
         };
         iovec iov[] = {
-            { NULL,  0 },
+            { nullptr,  0 },
             { &rule, sizeof(rule) },
         };
         uint16_t flags = NETLINK_DUMP_FLAGS;
