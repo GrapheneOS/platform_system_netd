@@ -286,7 +286,7 @@ int TetherController::stopTethering() {
     ALOGD("Stopping tethering services");
 
     kill(mDaemonPid, SIGTERM);
-    waitpid(mDaemonPid, NULL, 0);
+    waitpid(mDaemonPid, nullptr, 0);
     mDaemonPid = 0;
     close(mDaemonFd);
     mDaemonFd = -1;
@@ -320,7 +320,7 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
         ALOGD("setDnsForwarders(0x%x %d = '%s')", fwmark.intValue, i, servers[i]);
 
         addrinfo *res, hints = { .ai_flags = AI_NUMERICHOST };
-        int ret = getaddrinfo(servers[i], NULL, &hints, &res);
+        int ret = getaddrinfo(servers[i], nullptr, &hints, &res);
         freeaddrinfo(res);
         if (ret) {
             ALOGE("Failed to parse DNS server '%s'", servers[i]);

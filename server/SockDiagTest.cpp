@@ -215,8 +215,8 @@ inet_diag_msg makeDiagMessage(__u8 family,  const sockaddr *src, const sockaddr 
 
 inet_diag_msg makeDiagMessage(const char* srcstr, const char* dststr) {
     addrinfo hints = { .ai_flags = AI_NUMERICHOST }, *src, *dst;
-    EXPECT_EQ(0, getaddrinfo(srcstr, NULL, &hints, &src));
-    EXPECT_EQ(0, getaddrinfo(dststr, NULL, &hints, &dst));
+    EXPECT_EQ(0, getaddrinfo(srcstr, nullptr, &hints, &src));
+    EXPECT_EQ(0, getaddrinfo(dststr, nullptr, &hints, &dst));
     EXPECT_EQ(src->ai_addr->sa_family, dst->ai_addr->sa_family);
     inet_diag_msg msg = makeDiagMessage(src->ai_addr->sa_family, src->ai_addr, dst->ai_addr);
     freeaddrinfo(src);

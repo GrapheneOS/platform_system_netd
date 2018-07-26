@@ -76,7 +76,7 @@ static int do_cmd(int sock, int argc, char **argv) {
     } else {
         final_cmd = strdup("");
     }
-    if (final_cmd == NULL) {
+    if (final_cmd == nullptr) {
         int res = errno;
         perror("strdup failed");
         return res;
