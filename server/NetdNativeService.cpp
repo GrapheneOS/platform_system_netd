@@ -70,7 +70,7 @@ binder::Status checkPermission(const char *permission) {
 
 #define ENFORCE_DEBUGGABLE() {                              \
     char value[PROPERTY_VALUE_MAX + 1];                     \
-    if (property_get("ro.debuggable", value, NULL) != 1     \
+    if (property_get("ro.debuggable", value, nullptr) != 1  \
             || value[0] != '1') {                           \
         return binder::Status::fromExceptionCode(           \
             binder::Status::EX_SECURITY,                    \

@@ -181,7 +181,7 @@ class RealSyscalls final : public Syscalls {
 
     StatusOr<UniqueFile> fopen(const std::string& path, const std::string& mode) const override {
         UniqueFile file(::fopen(path.c_str(), mode.c_str()));
-        if (file == NULL) {
+        if (file == nullptr) {
             return statusFromErrno(errno, "fopen(\"" + path + "\", \"" + mode + "\") failed");
         }
         return file;

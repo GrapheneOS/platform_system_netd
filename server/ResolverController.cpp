@@ -63,7 +63,7 @@ namespace {
 std::string addrToString(const sockaddr_storage* addr) {
     char out[INET6_ADDRSTRLEN] = {0};
     getnameinfo((const sockaddr*)addr, sizeof(sockaddr_storage), out,
-            INET6_ADDRSTRLEN, NULL, 0, NI_NUMERICHOST);
+            INET6_ADDRSTRLEN, nullptr, 0, NI_NUMERICHOST);
     return std::string(out);
 }
 
@@ -402,7 +402,7 @@ ResolverController::getPrivateDnsStatus(unsigned netId) const {
 }
 
 int ResolverController::clearDnsServers(unsigned netId) {
-    _resolv_set_nameservers_for_net(netId, NULL, 0, "", NULL);
+    _resolv_set_nameservers_for_net(netId, nullptr, 0, "", nullptr);
     if (DBG) {
         ALOGD("clearDnsServers netId = %u\n", netId);
     }
