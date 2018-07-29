@@ -41,7 +41,7 @@ IptablesBaseTest::IptablesBaseTest() {
 int IptablesBaseTest::fake_android_fork_exec(int argc, char* argv[], int *status, bool, bool) {
     std::string cmd = argv[0];
     for (int i = 1; i < argc; i++) {
-        if (argv[i] == NULL) break;
+        if (argv[i] == nullptr) break;
         cmd += " ";
         cmd += argv[i];
     }
@@ -63,7 +63,7 @@ int IptablesBaseTest::fake_android_fork_exec(int argc, char* argv[], int *status
 
 FILE *IptablesBaseTest::fake_popen(const char * /* cmd */, const char *type) {
     if (sPopenContents.empty() || strcmp(type, "r") != 0) {
-        return NULL;
+        return nullptr;
     }
 
     std::string realCmd = StringPrintf("echo '%s'", sPopenContents.front().c_str());

@@ -90,7 +90,7 @@ private:
             Context *mContext;
             int mReady;
             Element(int id, Context *context)
-                    : mId(id), mNext(NULL), mContext(context), mReady(0) {}
+                    : mId(id), mNext(nullptr), mContext(context), mReady(0) {}
             virtual ~Element() { delete(mContext); }
         };
         Element *mHead;
