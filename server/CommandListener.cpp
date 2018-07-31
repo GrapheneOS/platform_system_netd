@@ -114,7 +114,7 @@ CommandListener::CommandListener() : FrameworkListener(SOCKET_NAME, true) {
     registerLockingCmd(new ListTtysCmd());
     registerLockingCmd(new PppdCmd());
     registerLockingCmd(new BandwidthControlCmd(), gCtls->bandwidthCtrl.lock);
-    registerLockingCmd(new IdletimerControlCmd());
+    registerLockingCmd(new IdletimerControlCmd(), gCtls->idletimerCtrl.lock);
     registerLockingCmd(new ResolverCmd());
     registerLockingCmd(new FirewallCmd(), gCtls->firewallCtrl.lock);
     registerLockingCmd(new ClatdCmd());
@@ -972,23 +972,6 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
 
     ALOGV("idletimerctrlcmd: argc=%d %s %s ...", argc, argv[0], argv[1]);
 
-    if (!strcmp(argv[1], "enable")) {
-      if (0 != gCtls->idletimerCtrl.enableIdletimerControl()) {
-        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-      } else {
-        cli->sendMsg(ResponseCode::CommandOkay, "Enable success", false);
-      }
-      return 0;
-
-    }
-    if (!strcmp(argv[1], "disable")) {
-      if (0 != gCtls->idletimerCtrl.disableIdletimerControl()) {
-        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-      } else {
-        cli->sendMsg(ResponseCode::CommandOkay, "Disable success", false);
-      }
-      return 0;
-    }
     if (!strcmp(argv[1], "add")) {
         if (argc != 5) {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
