@@ -747,5 +747,33 @@ binder::Status NetdNativeService::trafficCheckBpfStatsEnable(bool* ret) {
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::idletimerAddInterface(const std::string& ifName, int32_t timeout,
+                                                        const std::string& classLabel) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->idletimerCtrl.lock);
+    auto entry = gLog.newEntry()
+                         .prettyFunction(__PRETTY_FUNCTION__)
+                         .arg(ifName)
+                         .arg(timeout)
+                         .arg(classLabel);
+    int res =
+            gCtls->idletimerCtrl.addInterfaceIdletimer(ifName.c_str(), timeout, classLabel.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::idletimerRemoveInterface(const std::string& ifName,
+                                                           int32_t timeout,
+                                                           const std::string& classLabel) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->idletimerCtrl.lock);
+    auto entry = gLog.newEntry()
+                         .prettyFunction(__PRETTY_FUNCTION__)
+                         .arg(ifName)
+                         .arg(timeout)
+                         .arg(classLabel);
+    int res = gCtls->idletimerCtrl.removeInterfaceIdletimer(ifName.c_str(), timeout,
+                                                            classLabel.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
 }  // namespace net
 }  // namespace android
