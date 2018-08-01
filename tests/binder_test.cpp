@@ -57,6 +57,8 @@
 #define IP6TABLES_PATH "/system/bin/ip6tables"
 #define IPTABLES_PATH "/system/bin/iptables"
 #define TUN_DEV "/dev/tun"
+#define RAW_TABLE "raw"
+#define MANGLE_TABLE "mangle"
 
 using namespace android;
 using namespace android::base;
@@ -150,7 +152,6 @@ static int randomUid() {
 
 static std::vector<std::string> runCommand(const std::string& command) {
     std::vector<std::string> lines;
-
     FILE *f = popen(command.c_str(), "r");  // NOLINT(cert-env33-c)
     if (f == nullptr) {
         perror("popen");
@@ -958,3 +959,78 @@ TEST_F(BinderTest, TestTetherGetStats) {
 
     expectNoTestCounterRules();
 }
+namespace {
+
+constexpr char chainName_LOCAL_RAW_PREROUTING[] = "idletimer_raw_PREROUTING";
+constexpr char chainName_MANGLE_POSTROUTING[] = "idletimer_mangle_POSTROUTING";
+
+static std::vector<std::string> listIptablesRuleByTable(const char* binary, const char* table,
+                                                        const char* chainName) {
+    std::string command = StringPrintf("%s -t %s -w -n -v -L %s", binary, table, chainName);
+    return runCommand(command);
+}
+
+bool iptablesIdleTimerInterfcaeRuleExists(const char* binary, const char* chainName,
+                                          const std::string& expectedInterface,
+                                          const std::string& expectedRule, const char* table) {
+    std::vector<std::string> rules = listIptablesRuleByTable(binary, table, chainName);
+    for (const auto& rule : rules) {
+        if (rule.find(expectedInterface) != std::string::npos) {
+            if (rule.find(expectedRule) != std::string::npos) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void expectIdletimerInterfaceRuleExists(const std::string& ifname, int timeout,
+                                        const std::string& classLable) {
+    std::string IdletimerRule =
+            StringPrintf("timeout:%u label:%s send_nl_msg:1", timeout, classLable.c_str());
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesIdleTimerInterfcaeRuleExists(binary, chainName_LOCAL_RAW_PREROUTING,
+                                                         ifname, IdletimerRule, RAW_TABLE));
+        EXPECT_TRUE(iptablesIdleTimerInterfcaeRuleExists(binary, chainName_MANGLE_POSTROUTING,
+                                                         ifname, IdletimerRule, MANGLE_TABLE));
+    }
+}
+
+void expectIdletimerInterfaceRuleNotExists(const std::string& ifname, int timeout,
+                                           const std::string& classLable) {
+    std::string IdletimerRule =
+            StringPrintf("timeout:%u label:%s send_nl_msg:1", timeout, classLable.c_str());
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_FALSE(iptablesIdleTimerInterfcaeRuleExists(binary, chainName_LOCAL_RAW_PREROUTING,
+                                                          ifname, IdletimerRule, RAW_TABLE));
+        EXPECT_FALSE(iptablesIdleTimerInterfcaeRuleExists(binary, chainName_MANGLE_POSTROUTING,
+                                                          ifname, IdletimerRule, MANGLE_TABLE));
+    }
+}
+
+TEST_F(BinderTest, TestIdletimerAddRemoveInterface) {
+    // TODO: We will get error in if expectIdletimerInterfaceRuleNotExists if there are the same
+    // rule in the table. Because we only check the result after calling remove function. We might
+    // check the actual rule which is removed by our function (maybe compare the results between
+    // calling function before and after)
+    binder::Status status;
+    const struct TestData {
+        const std::string ifname;
+        int32_t timeout;
+        const std::string classLabel;
+    } idleTestData[] = {
+            {"wlan0", 1234, "happyday"},
+            {"rmnet_data0", 4567, "friday"},
+    };
+    for (const auto& td : idleTestData) {
+        status = mNetd->idletimerAddInterface(td.ifname, td.timeout, td.classLabel);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectIdletimerInterfaceRuleExists(td.ifname, td.timeout, td.classLabel);
+
+        status = mNetd->idletimerRemoveInterface(td.ifname, td.timeout, td.classLabel);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectIdletimerInterfaceRuleNotExists(td.ifname, td.timeout, td.classLabel);
+    }
+}
+
+}  // namespace
