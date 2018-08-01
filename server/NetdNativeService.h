@@ -194,6 +194,12 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             int32_t oKey);
 
     binder::Status removeVirtualTunnelInterface(const std::string& deviceName);
+
+    // Idletimer-related commands
+    binder::Status idletimerAddInterface(const std::string& ifName, int32_t timeout,
+                                         const std::string& classLabel) override;
+    binder::Status idletimerRemoveInterface(const std::string& ifName, int32_t timeout,
+                                            const std::string& classLabel) override;
 };
 
 }  // namespace net
