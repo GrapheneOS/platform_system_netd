@@ -798,6 +798,21 @@ binder::Status NetdNativeService::strictUidCleartextPenalty(int32_t uid, int32_t
     gLog.log(entry.returns(res).withAutomaticDuration());
     return statusFromErrcode(res);
 }
+binder::Status NetdNativeService::clatdStart(const std::string& ifName) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->clatdCtrl.mutex);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
+    int res = gCtls->clatdCtrl.startClatd(ifName.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::clatdStop(const std::string& ifName) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->clatdCtrl.mutex);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
+    int res = gCtls->clatdCtrl.stopClatd(ifName.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
 
 }  // namespace net
 }  // namespace android
