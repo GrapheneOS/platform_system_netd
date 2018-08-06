@@ -21,6 +21,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/capability.h>
 #include <unistd.h>
 
 #include <cutils/sockets.h>
@@ -1322,4 +1323,10 @@ TEST_F(ResolverTest, StrictMode_NoTlsServers) {
     addrinfo* ai_result = nullptr;
     EXPECT_NE(0, getaddrinfo(host_name, nullptr, nullptr, &ai_result));
     EXPECT_EQ(0U, GetNumQueries(dns, host_name));
+}
+
+TEST(NetUtilsWrapperTest, TestFileCapabilities) {
+    errno = 0;
+    ASSERT_EQ(NULL, cap_get_file("/system/bin/netutils-wrapper-1.0"));
+    ASSERT_EQ(ENODATA, errno);
 }
