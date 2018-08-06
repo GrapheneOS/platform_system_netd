@@ -66,6 +66,7 @@ cc_test {
         "libutils",
     ],
     static_libs: [
+        "libcap",
         "libnetd_test_dnsresponder",
         "libnetd_test_tun_interface",
         "libbpf",
