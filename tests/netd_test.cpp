@@ -173,7 +173,8 @@ protected:
             .min_samples = static_cast<uint8_t>(
                     params32[INetd::RESOLVER_PARAMS_MIN_SAMPLES]),
             .max_samples = static_cast<uint8_t>(
-                    params32[INetd::RESOLVER_PARAMS_MAX_SAMPLES])
+                    params32[INetd::RESOLVER_PARAMS_MAX_SAMPLES]),
+            .base_timeout_msec = params32[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
         };
         return ResolverStats::decodeAll(stats32, stats);
     }
@@ -271,7 +272,12 @@ protected:
     const std::vector<std::string> mDefaultSearchDomains = { "example.com" };
     // <sample validity in s> <success threshold in percent> <min samples> <max samples>
     const std::string mDefaultParams = "300 25 8 8";
-    const std::vector<int> mDefaultParams_Binder = { 300, 25, 8, 8 };
+    const std::vector<int> mDefaultParams_Binder = {
+            300,     // SAMPLE_VALIDITY
+            25,      // SUCCESS_THRESHOLD
+            8,   8,  // {MIN,MAX}_SAMPLES
+            100,     // BASE_TIMEOUT_MSEC
+    };
 };
 
 TEST_F(ResolverTest, GetHostByName) {
@@ -311,7 +317,8 @@ TEST_F(ResolverTest, TestBinderSerialization) {
         INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY,
         INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD,
         INetd::RESOLVER_PARAMS_MIN_SAMPLES,
-        INetd::RESOLVER_PARAMS_MAX_SAMPLES
+        INetd::RESOLVER_PARAMS_MAX_SAMPLES,
+        INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC,
     };
     int size = static_cast<int>(params_offsets.size());
     EXPECT_EQ(size, INetd::RESOLVER_PARAMS_COUNT);
@@ -362,6 +369,8 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
             res_params.success_threshold);
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+              res_params.base_timeout_msec);
     EXPECT_EQ(servers.size(), res_stats.size());
 
     EXPECT_TRUE(UnorderedCompareArray(res_servers, servers));
@@ -676,6 +685,8 @@ TEST_F(ResolverTest, EmptySetup) {
             res_params.success_threshold);
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+              res_params.base_timeout_msec);
 }
 
 TEST_F(ResolverTest, SearchPathChange) {

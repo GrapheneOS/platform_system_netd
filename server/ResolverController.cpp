@@ -497,7 +497,10 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         const std::vector<std::string>& tlsServers,
         const std::set<std::vector<uint8_t>>& tlsFingerprints) {
     using android::net::INetd;
-    if (params.size() != INetd::RESOLVER_PARAMS_COUNT) {
+    // TODO: make RESOLVER_PARAMS_BASE_TIMEOUT_MSEC a mandatory parameter once all callers
+    //       have been updated to specify it.
+    if (params.size() < INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC ||
+        params.size() > INetd::RESOLVER_PARAMS_COUNT) {
         ALOGE("%s: params.size()=%zu", __FUNCTION__, params.size());
         return -EINVAL;
     }
@@ -522,12 +525,14 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         }
     }
 
-    __res_params res_params;
+    __res_params res_params = {};
     res_params.sample_validity = params[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY];
     res_params.success_threshold = params[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD];
     res_params.min_samples = params[INetd::RESOLVER_PARAMS_MIN_SAMPLES];
     res_params.max_samples = params[INetd::RESOLVER_PARAMS_MAX_SAMPLES];
-
+    if (params.size() > INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC) {
+        res_params.base_timeout_msec = params[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC];
+    }
     return setDnsServers(netId, domains_str.c_str(), server_ptrs.data(), server_ptrs.size(),
             &res_params);
 }
@@ -552,6 +557,7 @@ int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>*
     (*params)[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD] = res_params.success_threshold;
     (*params)[INetd::RESOLVER_PARAMS_MIN_SAMPLES] = res_params.min_samples;
     (*params)[INetd::RESOLVER_PARAMS_MAX_SAMPLES] = res_params.max_samples;
+    (*params)[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC] = res_params.base_timeout_msec;
     return 0;
 }
 
@@ -560,7 +566,7 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
     using android::net::ResolverStats;
     std::vector<std::string> servers;
     std::vector<std::string> domains;
-    __res_params params;
+    __res_params params = {};
     std::vector<ResolverStats> stats;
     time_t now = time(nullptr);
     int rv = getDnsInfo(netId, &servers, &domains, &params, &stats);
@@ -599,11 +605,12 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
             dw.println("search domains: %s", domains_str.c_str());
         }
         if (params.sample_validity != 0) {
-            dw.println("DNS parameters: sample validity = %us, success threshold = %u%%, "
-                    "samples (min, max) = (%u, %u)", params.sample_validity,
-                    static_cast<unsigned>(params.success_threshold),
+            dw.println(
+                    "DNS parameters: sample validity = %us, success threshold = %u%%, "
+                    "samples (min, max) = (%u, %u), base_timeout = %dmsec",
+                    params.sample_validity, static_cast<unsigned>(params.success_threshold),
                     static_cast<unsigned>(params.min_samples),
-                    static_cast<unsigned>(params.max_samples));
+                    static_cast<unsigned>(params.max_samples), params.base_timeout_msec);
         }
 
         sPrivateDnsConfiguration.dump(dw, netId);
