@@ -41,9 +41,6 @@ using android::base::ReadFileToString;
 using android::base::Split;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
-using android::bpf::DOZABLE_UID_MAP_PATH;
-using android::bpf::POWERSAVE_UID_MAP_PATH;
-using android::bpf::STANDBY_UID_MAP_PATH;
 using android::net::gCtls;
 
 namespace {
