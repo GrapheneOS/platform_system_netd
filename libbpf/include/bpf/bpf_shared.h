@@ -29,12 +29,22 @@
 #define UID_STATS_MAP 0xbfdaafffffffffff
 #define TAG_STATS_MAP 0xbfaaafffffffffff
 #define IFACE_STATS_MAP 0xbf1faceaafffffff
-#define DOZABLE_UID_MAP 0Xbfd0ab1e1dafffff
-#define STANDBY_UID_MAP 0Xbfadb1daffffffff
-#define POWERSAVE_UID_MAP 0Xbf0eae1dafffffff
-#define BANDWIDTH_UID_MAP 0xbfbad1d1daffffff
+#define CONFIGURATION_MAP 0Xbfc0fa0affffffff
+#define UID_OWNER_MAP 0xbfbad1d1daffffff
 
-enum BandwithMatchType { NO_MATCH, WHITELISTMATCH, BLACKLISTMATCH };
+enum UidOwnerMatchType {
+    NO_MATCH,
+    HAPPY_BOX_MATCH = (1 << 0),
+    PENALTY_BOX_MATCH = (1 << 1),
+    DOZABLE_MATCH = (1 << 2),
+    STANDBY_MATCH = (1 << 3),
+    POWERSAVE_MATCH = (1 << 4),
+};
+
+// TODO: change the configuration object from an 8-bit bitmask to an object with clearer
+// semantics, like a struct.
+typedef uint8_t BpfConfig;
+const BpfConfig DEFAULT_CONFIG = 0;
 
 // These are also defined in NetdConstants.h, but we want to minimize the number of headers
 // included by the BPF kernel program.
@@ -42,4 +52,4 @@ enum BandwithMatchType { NO_MATCH, WHITELISTMATCH, BLACKLISTMATCH };
 // NetdConstants.h can also include it from there.
 #define MIN_SYSTEM_UID 0
 #define MAX_SYSTEM_UID 9999
-#define UID_MAP_ENABLED UINT32_MAX
+#define CONFIGURATION_KEY 1

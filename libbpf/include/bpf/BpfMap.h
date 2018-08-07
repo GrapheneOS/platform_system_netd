@@ -165,7 +165,7 @@ class BpfMap {
         const auto deleteAllEntries = [](const Key& key, BpfMap<Key, Value>& map) {
             netdutils::Status res = map.deleteValue(key);
             if (!isOk(res) && (res.code() != ENOENT)) {
-                ALOGE("Failed to delete data(uid=%u): %s\n", key, strerror(res.code()));
+                ALOGE("Failed to delete data %s\n", strerror(res.code()));
             }
             return netdutils::status::ok;
         };

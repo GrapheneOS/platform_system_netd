@@ -104,6 +104,7 @@ constexpr const int UID_STATS_MAP_SIZE = 10000;
 constexpr const int TAG_STATS_MAP_SIZE = 10000;
 constexpr const int IFACE_INDEX_NAME_MAP_SIZE = 1000;
 constexpr const int IFACE_STATS_MAP_SIZE = 1000;
+constexpr const int CONFIGURATION_MAP_SIZE = 1;
 constexpr const int UID_OWNER_MAP_SIZE = 2000;
 
 constexpr const char* BPF_EGRESS_PROG_PATH = BPF_PATH "/egress_prog";
@@ -122,10 +123,8 @@ constexpr const char* UID_STATS_MAP_PATH = BPF_PATH "/traffic_uid_stats_map";
 constexpr const char* TAG_STATS_MAP_PATH = BPF_PATH "/traffic_tag_stats_map";
 constexpr const char* IFACE_INDEX_NAME_MAP_PATH = BPF_PATH "/traffic_iface_index_name_map";
 constexpr const char* IFACE_STATS_MAP_PATH = BPF_PATH "/traffic_iface_stats_map";
-constexpr const char* DOZABLE_UID_MAP_PATH = BPF_PATH "/traffic_dozable_uid_map";
-constexpr const char* STANDBY_UID_MAP_PATH = BPF_PATH "/traffic_standby_uid_map";
-constexpr const char* POWERSAVE_UID_MAP_PATH = BPF_PATH "/traffic_powersave_uid_map";
-constexpr const char* BANDWIDTH_UID_MAP_PATH = BPF_PATH "/traffic_bandwidth_uid_map";
+constexpr const char* CONFIGURATION_MAP_PATH = BPF_PATH "/traffic_configuration_map";
+constexpr const char* UID_OWNER_MAP_PATH = BPF_PATH "/traffic_uid_owner_map";
 
 constexpr const int OVERFLOW_COUNTERSET = 2;
 
