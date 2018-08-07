@@ -35,6 +35,7 @@
 #include <linux/in6.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include "bpf/bpf_shared.h"
 
@@ -110,7 +111,7 @@ static __always_inline inline void bpf_update_stats(struct __sk_buff* skb, uint6
     }
 }
 
-static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid) {
+static inline bool skip_owner_match(struct __sk_buff* skb) {
     int offset = -1;
     int ret = 0;
     if (skb->protocol == ETH_P_IP) {
@@ -120,13 +121,13 @@ static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid) {
         ret = bpf_skb_load_bytes(skb, offset, &proto, 1);
         if (!ret) {
             if (proto == IPPROTO_ESP) {
-                return 1;
+                return true;
             } else if (proto == IPPROTO_TCP) {
                 ret = bpf_skb_load_bytes(skb, IPPROTO_IHL_OFF, &ihl, 1);
                 ihl = ihl & 0x0F;
                 ret = bpf_skb_load_bytes(skb, ihl * 4 + TCP_FLAG_OFF, &flag, 1);
                 if (ret == 0 && (flag >> RST_OFFSET & 1)) {
-                    return BPF_PASS;
+                    return true;
                 }
             }
         }
@@ -136,40 +137,48 @@ static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid) {
         ret = bpf_skb_load_bytes(skb, offset, &proto, 1);
         if (!ret) {
             if (proto == IPPROTO_ESP) {
-                return BPF_PASS;
+                return true;
             } else if (proto == IPPROTO_TCP) {
                 uint16_t flag;
                 ret = bpf_skb_load_bytes(skb, sizeof(struct ipv6hdr) + TCP_FLAG_OFF, &flag, 1);
                 if (ret == 0 && (flag >> RST_OFFSET & 1)) {
-                    return BPF_PASS;
+                    return true;
                 }
             }
         }
     }
+    return false;
+}
+
+static __always_inline BpfConfig getConfig() {
+    uint32_t mapSettingKey = CONFIGURATION_KEY;
+    BpfConfig* config = find_map_entry(CONFIGURATION_MAP, &mapSettingKey);
+    if (!config) {
+        // Couldn't read configuration entry. Assume everything is disabled.
+        return DEFAULT_CONFIG;
+    }
+    return *config;
+}
+
+static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid) {
+    if (skip_owner_match(skb)) return BPF_PASS;
 
     if ((uid <= MAX_SYSTEM_UID) && (uid >= MIN_SYSTEM_UID)) return BPF_PASS;
 
-    // In each of these maps, the entry with key UID_MAP_ENABLED tells us whether that
-    // map is enabled or not.
-    // TODO: replace this with a map of size one that contains a config structure defined in
-    // bpf_shared.h that can be written by userspace and read here.
-    uint32_t mapSettingKey = UID_MAP_ENABLED;
-    uint8_t* ownerMatch;
-    uint8_t* mapEnabled = find_map_entry(DOZABLE_UID_MAP, &mapSettingKey);
-    if (mapEnabled && *mapEnabled) {
-        ownerMatch = find_map_entry(DOZABLE_UID_MAP, &uid);
-        if (ownerMatch) return *ownerMatch;
+    BpfConfig enabledRules = getConfig();
+    if (!enabledRules) {
+        return BPF_PASS;
+    }
+
+    uint8_t* uidEntry = find_map_entry(UID_OWNER_MAP, &uid);
+    uint8_t uidRules = uidEntry ? *uidEntry : 0;
+    if ((enabledRules & DOZABLE_MATCH) && !(uidRules & DOZABLE_MATCH)) {
         return BPF_DROP;
     }
-    mapEnabled = find_map_entry(STANDBY_UID_MAP, &mapSettingKey);
-    if (mapEnabled && *mapEnabled) {
-        ownerMatch = find_map_entry(STANDBY_UID_MAP, &uid);
-        if (ownerMatch) return *ownerMatch;
+    if ((enabledRules & STANDBY_MATCH) && (uidRules & STANDBY_MATCH)) {
+        return BPF_DROP;
     }
-    mapEnabled = find_map_entry(POWERSAVE_UID_MAP, &mapSettingKey);
-    if (mapEnabled && *mapEnabled) {
-        ownerMatch = find_map_entry(POWERSAVE_UID_MAP, &uid);
-        if (ownerMatch) return *ownerMatch;
+    if ((enabledRules & POWERSAVE_MATCH) && !(uidRules & POWERSAVE_MATCH)) {
         return BPF_DROP;
     }
     return BPF_PASS;

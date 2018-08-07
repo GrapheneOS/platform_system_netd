@@ -40,9 +40,6 @@
 
 using android::base::Join;
 using android::base::StringPrintf;
-using android::bpf::DOZABLE_UID_MAP_PATH;
-using android::bpf::STANDBY_UID_MAP_PATH;
-using android::bpf::POWERSAVE_UID_MAP_PATH;
 using android::netdutils::ScopedMockSyscalls;
 using testing::Return;
 using testing::StrictMock;

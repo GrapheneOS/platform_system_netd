@@ -152,13 +152,12 @@ const char NICE_CHAIN[] = "bw_happy_box";
  */
 
 const std::string COMMIT_AND_CLOSE = "COMMIT\n";
-const std::string HAPPY_BOX_WHITELIST_COMMAND = StringPrintf(
-    "-I bw_happy_box -m owner --uid-owner %d-%d --jump RETURN", 0, MAX_SYSTEM_UID);
-const std::string BPF_HAPPY_BOX_WHITELIST_COMMAND =
-    StringPrintf("-I bw_happy_box -m bpf --object-pinned %s -j RETURN", XT_BPF_WHITELIST_PROG_PATH);
-const std::string BPF_PENALTY_BOX_BLACKLIST_COMMAND =
-    StringPrintf("-I bw_penalty_box -m bpf --object-pinned %s -j REJECT",
-                 XT_BPF_BLACKLIST_PROG_PATH);
+const std::string HAPPY_BOX_MATCH_WHITELIST_COMMAND =
+        StringPrintf("-I bw_happy_box -m owner --uid-owner %d-%d --jump RETURN", 0, MAX_SYSTEM_UID);
+const std::string BPF_HAPPY_BOX_MATCH_WHITELIST_COMMAND = StringPrintf(
+        "-I bw_happy_box -m bpf --object-pinned %s -j RETURN", XT_BPF_WHITELIST_PROG_PATH);
+const std::string BPF_PENALTY_BOX_MATCH_BLACKLIST_COMMAND = StringPrintf(
+        "-I bw_penalty_box -m bpf --object-pinned %s -j REJECT", XT_BPF_BLACKLIST_PROG_PATH);
 
 static const std::vector<std::string> IPT_FLUSH_COMMANDS = {
     /*
@@ -218,50 +217,50 @@ static const uint32_t uidBillingMask = Fwmark::getUidBillingMask();
 
 const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
     const std::vector<std::string> ipt_basic_accounting_commands = {
-        "*filter",
-        // Prevents IPSec double counting (ESP and UDP-encap-ESP respectively)
-        "-A bw_INPUT -p esp -j RETURN",
-        StringPrintf("-A bw_INPUT -m mark --mark 0x%x/0x%x -j RETURN",
-                     uidBillingMask, uidBillingMask),
-        "-A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
-        StringPrintf("-A bw_INPUT -j MARK --or-mark 0x%x", uidBillingMask),
+            "*filter",
+            // Prevents IPSec double counting (ESP and UDP-encap-ESP respectively)
+            "-A bw_INPUT -p esp -j RETURN",
+            StringPrintf("-A bw_INPUT -m mark --mark 0x%x/0x%x -j RETURN", uidBillingMask,
+                         uidBillingMask),
+            "-A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
+            StringPrintf("-A bw_INPUT -j MARK --or-mark 0x%x", uidBillingMask),
 
-        // Prevents IPSec double counting (Tunnel mode and Transport mode,
-        // respectively)
-        "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
-        "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
-        "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
+            // Prevents IPSec double counting (Tunnel mode and Transport mode,
+            // respectively)
+            "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
+            "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
+            "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
-        "-A bw_costly_shared --jump bw_penalty_box",
-        useBpf ? BPF_PENALTY_BOX_BLACKLIST_COMMAND : "",
-        "-A bw_penalty_box --jump bw_happy_box",
-        "-A bw_happy_box --jump bw_data_saver",
-        "-A bw_data_saver -j RETURN",
-        useBpf ? BPF_HAPPY_BOX_WHITELIST_COMMAND : HAPPY_BOX_WHITELIST_COMMAND,
-        "COMMIT",
+            "-A bw_costly_shared --jump bw_penalty_box",
+            useBpf ? BPF_PENALTY_BOX_MATCH_BLACKLIST_COMMAND : "",
+            "-A bw_penalty_box --jump bw_happy_box", "-A bw_happy_box --jump bw_data_saver",
+            "-A bw_data_saver -j RETURN",
+            useBpf ? BPF_HAPPY_BOX_MATCH_WHITELIST_COMMAND : HAPPY_BOX_MATCH_WHITELIST_COMMAND,
+            "COMMIT",
 
-        "*raw",
-        // Prevents IPSec double counting (Tunnel mode and Transport mode,
-        // respectively)
-        "-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN",
-        "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN",
-        "-A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
-        useBpf ? StringPrintf("-A bw_raw_PREROUTING -m bpf --object-pinned %s",
-                              XT_BPF_INGRESS_PROG_PATH) : "",
-        "COMMIT",
+            "*raw",
+            // Prevents IPSec double counting (Tunnel mode and Transport mode,
+            // respectively)
+            "-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN",
+            "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN",
+            "-A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
+            useBpf ? StringPrintf("-A bw_raw_PREROUTING -m bpf --object-pinned %s",
+                                  XT_BPF_INGRESS_PROG_PATH)
+                   : "",
+            "COMMIT",
 
-        "*mangle",
-        // Prevents IPSec double counting (Tunnel mode and Transport mode,
-        // respectively)
-        "-A bw_mangle_POSTROUTING -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
-        "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN",
-        "-A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
-        StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x",
-                     uidBillingMask), // Clear the mark before sending this packet
-        useBpf ? StringPrintf("-A bw_mangle_POSTROUTING -m bpf --object-pinned %s",
-                              XT_BPF_EGRESS_PROG_PATH) : "",
-        COMMIT_AND_CLOSE
-    };
+            "*mangle",
+            // Prevents IPSec double counting (Tunnel mode and Transport mode,
+            // respectively)
+            "-A bw_mangle_POSTROUTING -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
+            "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN",
+            "-A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
+            StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x",
+                         uidBillingMask),  // Clear the mark before sending this packet
+            useBpf ? StringPrintf("-A bw_mangle_POSTROUTING -m bpf --object-pinned %s",
+                                  XT_BPF_EGRESS_PROG_PATH)
+                   : "",
+            COMMIT_AND_CLOSE};
     return ipt_basic_accounting_commands;
 }
 
@@ -370,9 +369,9 @@ int BandwidthController::manipulateSpecialApps(const std::vector<std::string>& a
                                                const std::string& chain, IptJumpOp jumpHandling,
                                                IptOp op) {
     if (mBpfSupported) {
-      Status status = gCtls->trafficCtrl.updateBandwidthUidMap(appStrUids, jumpHandling, op);
-      if (!isOk(status)) {
-          ALOGE("unable to update the Bandwidth Uid Map: %s", toString(status).c_str());
+        Status status = gCtls->trafficCtrl.updateUidOwnerMap(appStrUids, jumpHandling, op);
+        if (!isOk(status)) {
+            ALOGE("unable to update the Bandwidth Uid Map: %s", toString(status).c_str());
       }
       return status.code();
     }

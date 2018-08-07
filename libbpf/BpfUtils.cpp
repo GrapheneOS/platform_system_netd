@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "BpfUtils"
+
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>

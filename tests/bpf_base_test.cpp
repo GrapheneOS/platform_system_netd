@@ -77,9 +77,8 @@ TEST_F(BpfBasicTest, TestTrafficControllerSetUp) {
     ASSERT_EQ(0, access(TAG_STATS_MAP_PATH, R_OK));
     ASSERT_EQ(0, access(IFACE_INDEX_NAME_MAP_PATH, R_OK));
     ASSERT_EQ(0, access(IFACE_STATS_MAP_PATH, R_OK));
-    ASSERT_EQ(0, access(DOZABLE_UID_MAP_PATH, R_OK));
-    ASSERT_EQ(0, access(STANDBY_UID_MAP_PATH, R_OK));
-    ASSERT_EQ(0, access(POWERSAVE_UID_MAP_PATH, R_OK));
+    ASSERT_EQ(0, access(CONFIGURATION_MAP_PATH, R_OK));
+    ASSERT_EQ(0, access(UID_OWNER_MAP_PATH, R_OK));
 }
 
 TEST_F(BpfBasicTest, TestTagSocket) {
