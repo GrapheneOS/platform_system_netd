@@ -46,15 +46,15 @@ ELF_SEC(XT_BPF_WHITELIST_PROG_NAME)
 int xt_bpf_whitelist_prog(struct __sk_buff* skb) {
     uint32_t sock_uid = get_socket_uid(skb);
     if (is_system_uid(sock_uid)) return BPF_MATCH;
-    uint8_t* whitelistMatch = find_map_entry(BANDWIDTH_UID_MAP, &sock_uid);
-    if (whitelistMatch) return *whitelistMatch & WHITELISTMATCH;
+    uint8_t* whitelistMatch = find_map_entry(UID_OWNER_MAP, &sock_uid);
+    if (whitelistMatch) return *whitelistMatch & HAPPY_BOX_MATCH;
     return BPF_NOMATCH;
 }
 
 ELF_SEC(XT_BPF_BLACKLIST_PROG_NAME)
 int xt_bpf_blacklist_prog(struct __sk_buff* skb) {
     uint32_t sock_uid = get_socket_uid(skb);
-    uint8_t* blacklistMatch = find_map_entry(BANDWIDTH_UID_MAP, &sock_uid);
-    if (blacklistMatch) return *blacklistMatch & BLACKLISTMATCH;
+    uint8_t* blacklistMatch = find_map_entry(UID_OWNER_MAP, &sock_uid);
+    if (blacklistMatch) return *blacklistMatch & PENALTY_BOX_MATCH;
     return BPF_NOMATCH;
 }

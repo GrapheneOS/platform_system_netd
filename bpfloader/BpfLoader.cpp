@@ -54,6 +54,7 @@ using android::netdutils::Slice;
 #define BPF_PROG_PATH "/system/etc/bpf"
 #define BPF_PROG_SRC BPF_PROG_PATH "/bpf_kern.o"
 #define MAP_LD_CMD_HEAD 0x18
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
 #define FAIL(...)      \
     do {               \
@@ -229,61 +230,19 @@ int loadProg(Slice prog, bpf_prog_type type, const std::vector<ReplacePattern>& 
     return bpfProgLoad(type, prog, "Apache 2.0", 0, bpfLog);
 }
 
-int loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
-                         const std::vector<ReplacePattern>& mapPatterns) {
-    unique_fd fd;
-    if (type == BPF_CGROUP_INET_INGRESS) {
-        fd.reset(loadProg(cgroupIngressProg, BPF_PROG_TYPE_CGROUP_SKB, mapPatterns));
-    } else if (type == BPF_CGROUP_INET_EGRESS) {
-        fd.reset(loadProg(cgroupEgressProg, BPF_PROG_TYPE_CGROUP_SKB, mapPatterns));
-    } else if (!strcmp(name, XT_BPF_INGRESS_PROG_NAME)) {
-        fd.reset(loadProg(xtIngressProg, BPF_PROG_TYPE_SOCKET_FILTER, mapPatterns));
-    } else if (!strcmp(name, XT_BPF_EGRESS_PROG_NAME)) {
-        fd.reset(loadProg(xtEgressProg, BPF_PROG_TYPE_SOCKET_FILTER, mapPatterns));
-    } else if (!strcmp(name, XT_BPF_WHITELIST_PROG_NAME)) {
-        fd.reset(loadProg(xtWhiteListProg, BPF_PROG_TYPE_SOCKET_FILTER, mapPatterns));
-    } else if (!strcmp(name, XT_BPF_BLACKLIST_PROG_NAME)) {
-        fd.reset(loadProg(xtBlackListProg, BPF_PROG_TYPE_SOCKET_FILTER, mapPatterns));
-    } else {
-        FAIL("Unrecognized program type: %s", name);
-    }
-
-    if (fd < 0) {
-        FAIL("load %s failed: %s", name, strerror(errno));
-    }
-    int ret = 0;
-    if (type == BPF_CGROUP_INET_EGRESS || type == BPF_CGROUP_INET_INGRESS) {
-        unique_fd cg_fd(open(CGROUP_ROOT_PATH, O_DIRECTORY | O_RDONLY | O_CLOEXEC));
-        if (cg_fd < 0) {
-            FAIL("Failed to open the cgroup directory");
-        }
-        ret = attachProgram(type, fd, cg_fd);
-        if (ret) {
-            FAIL("%s attach failed: %s", name, strerror(errno));
-        }
-    }
-
-    ret = mapPin(fd, path);
-    if (ret) {
-        FAIL("Pin %s as file %s failed: %s", name, path, strerror(errno));
-    }
-    return 0;
-}
-
 }  // namespace bpf
 }  // namespace android
 
 using android::bpf::APP_UID_STATS_MAP_PATH;
-using android::bpf::BANDWIDTH_UID_MAP_PATH;
 using android::bpf::BPF_EGRESS_PROG_PATH;
 using android::bpf::BPF_INGRESS_PROG_PATH;
+using android::bpf::CGROUP_ROOT_PATH;
+using android::bpf::CONFIGURATION_MAP_PATH;
 using android::bpf::COOKIE_TAG_MAP_PATH;
-using android::bpf::DOZABLE_UID_MAP_PATH;
 using android::bpf::IFACE_STATS_MAP_PATH;
-using android::bpf::POWERSAVE_UID_MAP_PATH;
-using android::bpf::STANDBY_UID_MAP_PATH;
 using android::bpf::TAG_STATS_MAP_PATH;
 using android::bpf::UID_COUNTERSET_MAP_PATH;
+using android::bpf::UID_OWNER_MAP_PATH;
 using android::bpf::UID_STATS_MAP_PATH;
 using android::bpf::XT_BPF_BLACKLIST_PROG_PATH;
 using android::bpf::XT_BPF_EGRESS_PROG_PATH;
@@ -291,20 +250,15 @@ using android::bpf::XT_BPF_INGRESS_PROG_PATH;
 using android::bpf::XT_BPF_WHITELIST_PROG_PATH;
 
 using android::bpf::ReplacePattern;
-using android::bpf::loadAndAttachProgram;
 
-static void usage(void) {
-    ALOGE(
-        "Usage: ./bpfloader [-i] [-e]\n"
-        "   -i load ingress bpf program\n"
-        "   -e load egress bpf program\n"
-        "   -p load prerouting xt_bpf program\n"
-        "   -m load mangle xt_bpf program\n"
-        "   -w load bandwidth whitelist program\n"
-        "   -b load bandwidth blacklist program\n");
-}
+using android::bpf::cgroupEgressProg;
+using android::bpf::cgroupIngressProg;
+using android::bpf::xtBlackListProg;
+using android::bpf::xtEgressProg;
+using android::bpf::xtIngressProg;
+using android::bpf::xtWhiteListProg;
 
-int main(int argc, char** argv) {
+int main() {
     int ret = 0;
     DECLARE_MAP(cookieTagMap, COOKIE_TAG_MAP_PATH);
     DECLARE_MAP(uidCounterSetMap, UID_COUNTERSET_MAP_PATH);
@@ -312,94 +266,66 @@ int main(int argc, char** argv) {
     DECLARE_MAP(uidStatsMap, UID_STATS_MAP_PATH);
     DECLARE_MAP(tagStatsMap, TAG_STATS_MAP_PATH);
     DECLARE_MAP(ifaceStatsMap, IFACE_STATS_MAP_PATH);
-    DECLARE_MAP(dozableUidMap, DOZABLE_UID_MAP_PATH);
-    DECLARE_MAP(standbyUidMap, STANDBY_UID_MAP_PATH);
-    DECLARE_MAP(powerSaveUidMap, POWERSAVE_UID_MAP_PATH);
-    DECLARE_MAP(bandwidthUidMap, BANDWIDTH_UID_MAP_PATH);
+    DECLARE_MAP(configurationMap, CONFIGURATION_MAP_PATH);
+    DECLARE_MAP(uidOwnerMap, UID_OWNER_MAP_PATH);
 
     const std::vector<ReplacePattern> mapPatterns = {
-        ReplacePattern(COOKIE_TAG_MAP, cookieTagMap.get()),
-        ReplacePattern(UID_COUNTERSET_MAP, uidCounterSetMap.get()),
-        ReplacePattern(APP_UID_STATS_MAP, appUidStatsMap.get()),
-        ReplacePattern(UID_STATS_MAP, uidStatsMap.get()),
-        ReplacePattern(TAG_STATS_MAP, tagStatsMap.get()),
-        ReplacePattern(IFACE_STATS_MAP, ifaceStatsMap.get()),
-        ReplacePattern(DOZABLE_UID_MAP, dozableUidMap.get()),
-        ReplacePattern(STANDBY_UID_MAP, standbyUidMap.get()),
-        ReplacePattern(POWERSAVE_UID_MAP, powerSaveUidMap.get()),
-        ReplacePattern(BANDWIDTH_UID_MAP, bandwidthUidMap.get()),
+            ReplacePattern(COOKIE_TAG_MAP, cookieTagMap.get()),
+            ReplacePattern(UID_COUNTERSET_MAP, uidCounterSetMap.get()),
+            ReplacePattern(APP_UID_STATS_MAP, appUidStatsMap.get()),
+            ReplacePattern(UID_STATS_MAP, uidStatsMap.get()),
+            ReplacePattern(TAG_STATS_MAP, tagStatsMap.get()),
+            ReplacePattern(IFACE_STATS_MAP, ifaceStatsMap.get()),
+            ReplacePattern(CONFIGURATION_MAP, configurationMap.get()),
+            ReplacePattern(UID_OWNER_MAP, uidOwnerMap.get()),
     };
-
-    int opt;
-    bool doIngress = false, doEgress = false, doPrerouting = false, doMangle = false;
-    bool doWhitelist = false, doBlacklist = false;
-    while ((opt = getopt(argc, argv, "iepmwb")) != -1) {
-        switch (opt) {
-            case 'i':
-                doIngress = true;
-                break;
-            case 'e':
-                doEgress = true;
-                break;
-            case 'p':
-                doPrerouting = true;
-                break;
-            case 'm':
-                doMangle = true;
-                break;
-            case 'w':
-                doWhitelist = true;
-                break;
-            case 'b':
-                doBlacklist = true;
-                break;
-            default:
-                usage();
-                FAIL("unknown argument %c", opt);
-        }
-    }
     android::bpf::parseProgramsFromFile(BPF_PROG_SRC);
 
-    if (doIngress) {
-        ret = loadAndAttachProgram(BPF_CGROUP_INET_INGRESS, BPF_INGRESS_PROG_PATH,
-                                   BPF_CGROUP_INGRESS_PROG_NAME, mapPatterns);
-        if (ret) {
-            FAIL("Failed to set up ingress program");
-        }
-    }
-    if (doEgress) {
-        ret = loadAndAttachProgram(BPF_CGROUP_INET_EGRESS, BPF_EGRESS_PROG_PATH,
-                                   BPF_CGROUP_EGRESS_PROG_NAME, mapPatterns);
-        if (ret) {
-            FAIL("Failed to set up ingress program");
-        }
-    }
-    if (doPrerouting) {
-        ret = loadAndAttachProgram(MAX_BPF_ATTACH_TYPE, XT_BPF_INGRESS_PROG_PATH,
-                                   XT_BPF_INGRESS_PROG_NAME, mapPatterns);
-        if (ret) {
-            FAIL("Failed to set up xt_bpf program");
-        }
-    }
-    if (doMangle) {
-        ret = loadAndAttachProgram(MAX_BPF_ATTACH_TYPE, XT_BPF_EGRESS_PROG_PATH,
-                                   XT_BPF_EGRESS_PROG_NAME, mapPatterns);
-        if (ret) {
-            FAIL("Failed to set up xt_bpf program");
-        }
-    }
-    if (doWhitelist) {
-        ret = loadAndAttachProgram(MAX_BPF_ATTACH_TYPE, XT_BPF_WHITELIST_PROG_PATH,
-                                   XT_BPF_WHITELIST_PROG_NAME, mapPatterns);
-        if (ret) {
-            FAIL("Failed to set up xt_bpf Whitelist program");
-        }
-    }
-    if (doBlacklist) {
-        ret = loadAndAttachProgram(MAX_BPF_ATTACH_TYPE, XT_BPF_BLACKLIST_PROG_PATH,
-                                   XT_BPF_BLACKLIST_PROG_NAME, mapPatterns);
-        if (ret) {
-            FAIL("Failed to set up xt_bpf blacklist program");
+    struct BpfProgInfo {
+        bpf_attach_type attachType;
+        const char* path;
+        const char* name;
+        bpf_prog_type loadType;
+        Slice progBlock;
+    } programs[] = {{BPF_CGROUP_INET_INGRESS, BPF_INGRESS_PROG_PATH, BPF_CGROUP_INGRESS_PROG_NAME,
+                     BPF_PROG_TYPE_CGROUP_SKB, cgroupIngressProg},
+                    {BPF_CGROUP_INET_EGRESS, BPF_EGRESS_PROG_PATH, BPF_CGROUP_EGRESS_PROG_NAME,
+                     BPF_PROG_TYPE_CGROUP_SKB, cgroupEgressProg},
+                    {MAX_BPF_ATTACH_TYPE, XT_BPF_INGRESS_PROG_PATH, XT_BPF_INGRESS_PROG_NAME,
+                     BPF_PROG_TYPE_SOCKET_FILTER, xtIngressProg},
+                    {MAX_BPF_ATTACH_TYPE, XT_BPF_EGRESS_PROG_PATH, XT_BPF_EGRESS_PROG_NAME,
+                     BPF_PROG_TYPE_SOCKET_FILTER, xtEgressProg},
+                    {MAX_BPF_ATTACH_TYPE, XT_BPF_WHITELIST_PROG_PATH, XT_BPF_WHITELIST_PROG_NAME,
+                     BPF_PROG_TYPE_SOCKET_FILTER, xtWhiteListProg},
+                    {MAX_BPF_ATTACH_TYPE, XT_BPF_BLACKLIST_PROG_PATH, XT_BPF_BLACKLIST_PROG_NAME,
+                     BPF_PROG_TYPE_SOCKET_FILTER, xtBlackListProg}};
+
+    for (size_t i = 0; i < ARRAY_SIZE(programs); i++) {
+        BpfProgInfo* prog = programs + i;
+        if (access(prog->path, R_OK) == -1) {
+            // Program doesn't exist. Try to load it.
+            unique_fd fd;
+            fd.reset(loadProg(prog->progBlock, prog->loadType, mapPatterns));
+            if (fd < 0) {
+                FAIL("load %s failed: %s", prog->name, strerror(errno));
+            }
+            int ret = 0;
+            if (prog->attachType == BPF_CGROUP_INET_EGRESS ||
+                prog->attachType == BPF_CGROUP_INET_INGRESS) {
+                unique_fd cg_fd(open(CGROUP_ROOT_PATH, O_DIRECTORY | O_RDONLY | O_CLOEXEC));
+                if (cg_fd < 0) {
+                    FAIL("Failed to open the cgroup directory");
+                }
+                ret = android::bpf::attachProgram(prog->attachType, fd, cg_fd);
+                if (ret) {
+                    FAIL("%s attach failed: %s", prog->name, strerror(errno));
+                }
+            }
+
+            ret = android::bpf::mapPin(fd, prog->path);
+            if (ret) {
+                FAIL("Pin %s as file %s failed: %s", prog->name, prog->path, strerror(errno));
+            }
         }
     }
     return ret;
