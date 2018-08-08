@@ -105,6 +105,18 @@ binder::Status checkPermission(const char *permission) {
 
 #define NETD_BIG_LOCK_RPC(permission) NETD_LOCKING_RPC((permission), gBigNetdLock)
 
+#define RETURN_BINDER_STATUS_IF_NOT_OK(logEntry, res) \
+    do {                                              \
+        if (!isOk((res))) {                           \
+            logErrorStatus((logEntry), (res));        \
+            return asBinderStatus((res));             \
+        }                                             \
+    } while (0)
+
+void logErrorStatus(netdutils::LogEntry& logEntry, const netdutils::Status& status) {
+    gLog.log(logEntry.returns(status.code()).withAutomaticDuration());
+}
+
 binder::Status asBinderStatus(const netdutils::Status& status) {
     if (isOk(status)) {
         return binder::Status::ok();
@@ -1044,6 +1056,101 @@ binder::Status NetdNativeService::ipfwdRemoveInterfaceForward(const std::string&
     ENFORCE_PERMISSION(NETWORK_STACK);
     auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(fromIface).arg(toIface);
     int res = RouteController::disableTethering(fromIface.c_str(), toIface.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+namespace {
+std::string addSquareBrackets(const std::string& s) {
+    return "[" + s + "]";
+}
+
+std::string addCurlyBrackets(const std::string& s) {
+    return "{" + s + "}";
+}
+
+}  // namespace
+binder::Status NetdNativeService::interfaceGetList(std::vector<std::string>* interfaceListResult) {
+    NETD_LOCKING_RPC(NETWORK_STACK, InterfaceController::mutex);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+
+    const auto& ifaceList = InterfaceController::getIfaceNames();
+    RETURN_BINDER_STATUS_IF_NOT_OK(entry, ifaceList);
+
+    interfaceListResult->clear();
+    interfaceListResult->reserve(ifaceList.value().size());
+    interfaceListResult->insert(end(*interfaceListResult), begin(ifaceList.value()),
+                                end(ifaceList.value()));
+
+    gLog.log(entry.returns(addSquareBrackets(base::Join(*interfaceListResult, ", ")))
+                     .withAutomaticDuration());
+    return binder::Status::ok();
+}
+
+std::string interfaceConfigurationParcelToString(const InterfaceConfigurationParcel& cfg) {
+    std::vector<std::string> result{cfg.ifName, cfg.hwAddr, cfg.ipv4Addr,
+                                    std::to_string(cfg.prefixLength)};
+    result.insert(end(result), begin(cfg.flags), end(cfg.flags));
+    return addCurlyBrackets(base::Join(result, ", "));
+}
+
+binder::Status NetdNativeService::interfaceGetCfg(
+        const std::string& ifName, InterfaceConfigurationParcel* interfaceGetCfgResult) {
+    NETD_LOCKING_RPC(NETWORK_STACK, InterfaceController::mutex);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
+
+    const auto& cfgRes = InterfaceController::getCfg(ifName);
+    RETURN_BINDER_STATUS_IF_NOT_OK(entry, cfgRes);
+
+    *interfaceGetCfgResult = cfgRes.value();
+    gLog.log(entry.returns(interfaceConfigurationParcelToString(*interfaceGetCfgResult))
+                     .withAutomaticDuration());
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::interfaceSetCfg(const InterfaceConfigurationParcel& cfg) {
+    NETD_LOCKING_RPC(NETWORK_STACK, InterfaceController::mutex);
+    auto entry = gLog.newEntry()
+                         .prettyFunction(__PRETTY_FUNCTION__)
+                         .arg(interfaceConfigurationParcelToString(cfg));
+
+    const auto& res = InterfaceController::setCfg(cfg);
+    RETURN_BINDER_STATUS_IF_NOT_OK(entry, res);
+
+    gLog.log(entry.withAutomaticDuration());
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::interfaceSetIPv6PrivacyExtensions(const std::string& ifName,
+                                                                    bool enable) {
+    NETD_LOCKING_RPC(NETWORK_STACK, InterfaceController::mutex);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).args(ifName, enable);
+    int res = InterfaceController::setIPv6PrivacyExtensions(ifName.c_str(), enable);
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::interfaceClearAddrs(const std::string& ifName) {
+    NETD_LOCKING_RPC(NETWORK_STACK, InterfaceController::mutex);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
+    int res = InterfaceController::clearAddrs(ifName.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::interfaceSetEnableIPv6(const std::string& ifName, bool enable) {
+    NETD_LOCKING_RPC(NETWORK_STACK, InterfaceController::mutex);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).args(ifName, enable);
+    int res = InterfaceController::setEnableIPv6(ifName.c_str(), enable);
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::interfaceSetMtu(const std::string& ifName, int32_t mtuValue) {
+    NETD_LOCKING_RPC(NETWORK_STACK, InterfaceController::mutex);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).args(ifName, mtuValue);
+    std::string mtu = std::to_string(mtuValue);
+    int res = InterfaceController::setMtu(ifName.c_str(), mtu.c_str());
     gLog.log(entry.returns(res).withAutomaticDuration());
     return statusFromErrcode(res);
 }

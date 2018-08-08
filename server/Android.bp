@@ -32,8 +32,15 @@ aidl_interface {
     srcs: [
         "binder/android/net/TetherStatsParcel.aidl",
         "binder/android/net/UidRangeParcel.aidl",
+        "binder/android/net/InterfaceConfigurationParcel.aidl",
     ],
     api_dir: "binder/api",
+    // NDK doesn't support array now.
+    backend: {
+        ndk: {
+            enabled: false,
+        },
+    },
 }
 
 cc_library {
