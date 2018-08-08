@@ -99,18 +99,16 @@ class TrafficController {
     int replaceUidOwnerMap(const std::string& name, bool isWhitelist,
                            const std::vector<int32_t>& uids);
 
-    netdutils::Status updateOwnerMapEntry(BpfMap<uint32_t, uint8_t>& map, uid_t uid,
-                                          FirewallRule rule, FirewallType type);
+    netdutils::Status updateOwnerMapEntry(UidOwnerMatchType match, uid_t uid, FirewallRule rule,
+                                          FirewallType type);
 
     void dump(DumpWriter& dw, bool verbose);
 
-    netdutils::Status replaceUidsInMap(BpfMap<uint32_t, uint8_t>& map,
-                                       const std::vector<int32_t>& uids, FirewallRule rule,
-                                       FirewallType type);
+    netdutils::Status replaceUidsInMap(UidOwnerMatchType match, const std::vector<int32_t>& uids);
 
-    netdutils::Status updateBandwidthUidMap(const std::vector<std::string>& appStrUids,
-                                            BandwidthController::IptJumpOp jumpHandling,
-                                            BandwidthController::IptOp op);
+    netdutils::Status updateUidOwnerMap(const std::vector<std::string>& appStrUids,
+                                        BandwidthController::IptJumpOp jumpHandling,
+                                        BandwidthController::IptOp op);
     static const String16 DUMP_KEYWORD;
 
     int toggleUidOwnerMap(ChildChain chain, bool enable);
@@ -180,29 +178,23 @@ class TrafficController {
     BpfMap<uint32_t, StatsValue> mIfaceStatsMap;
 
     /*
-     * mDozableUidMap: Store uids that have related rules in dozable mode owner match
-     * chain.
-     */
-    BpfMap<uint32_t, uint8_t> mDozableUidMap GUARDED_BY(mOwnerMatchMutex);
-
-    /*
-     * mStandbyUidMap: Store uids that have related rules in standby mode owner match
-     * chain.
-     */
-    BpfMap<uint32_t, uint8_t> mStandbyUidMap GUARDED_BY(mOwnerMatchMutex);
-
-    /*
      * mPowerSaveUidMap: Store uids that have related rules in power save mode owner match
      * chain.
      */
-    BpfMap<uint32_t, uint8_t> mPowerSaveUidMap GUARDED_BY(mOwnerMatchMutex);
+    BpfMap<uint32_t, uint8_t> mConfigurationMap GUARDED_BY(mOwnerMatchMutex);
 
     /*
-     * mBandwidthUidMap: Store uids that are used for bandwidth control uid match.
+     * mUidOwnerMap: Store uids that are used for bandwidth control uid match.
      */
-    BpfMap<uint32_t, uint8_t> mBandwidthUidMap;
+    BpfMap<uint32_t, uint8_t> mUidOwnerMap GUARDED_BY(mOwnerMatchMutex);
 
     std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
+
+    netdutils::Status removeMatch(BpfMap<uint32_t, uint8_t>& map, uint32_t uid,
+                                  UidOwnerMatchType match) REQUIRES(mOwnerMatchMutex);
+
+    netdutils::Status addMatch(BpfMap<uint32_t, uint8_t>& map, uint32_t uid,
+                               UidOwnerMatchType match) REQUIRES(mOwnerMatchMutex);
 
     bool ebpfSupported;
 
@@ -213,7 +205,7 @@ class TrafficController {
 
     netdutils::Status initMaps();
 
-    BandwithMatchType jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling);
+    UidOwnerMatchType jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling);
     // For testing
     friend class TrafficControllerTest;
 };
