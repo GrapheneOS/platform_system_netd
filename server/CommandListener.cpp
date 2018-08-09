@@ -446,6 +446,24 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
                 cli->sendMsg(ResponseCode::TetherDnsFwdTgtListResult, fwdr.c_str(), false);
             }
         }
+    } else if (!strcmp(argv[1], "start")) {
+        if (argc % 2 == 1) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Bad number of arguments", false);
+            return 0;
+        }
+
+        const int num_addrs = argc - 2;
+        // TODO: consider moving this validation into TetherController.
+        struct in_addr tmp_addr;
+        for (int arg_index = 2; arg_index < argc; arg_index++) {
+            if (!inet_aton(argv[arg_index], &tmp_addr)) {
+                cli->sendMsg(ResponseCode::CommandParameterError, "Invalid address", false);
+                return 0;
+            }
+        }
+
+        char** dhcp_ranges = num_addrs == 0 ? NULL : argv + 2;
+        rc = gCtls->tetherCtrl.startTethering(num_addrs, dhcp_ranges);
     } else {
         /*
          * These commands take a minimum of 4 arguments
@@ -455,24 +473,7 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
             return 0;
         }
 
-        if (!strcmp(argv[1], "start")) {
-            if (argc % 2 == 1) {
-                cli->sendMsg(ResponseCode::CommandSyntaxError, "Bad number of arguments", false);
-                return 0;
-            }
-
-            const int num_addrs = argc - 2;
-            // TODO: consider moving this validation into TetherController.
-            struct in_addr tmp_addr;
-            for (int arg_index = 2; arg_index < argc; arg_index++) {
-                if (!inet_aton(argv[arg_index], &tmp_addr)) {
-                    cli->sendMsg(ResponseCode::CommandParameterError, "Invalid address", false);
-                    return 0;
-                }
-            }
-
-            rc = gCtls->tetherCtrl.startTethering(num_addrs, &(argv[2]));
-        } else if (!strcmp(argv[1], "interface")) {
+        if (!strcmp(argv[1], "interface")) {
             if (!strcmp(argv[2], "add")) {
                 rc = gCtls->tetherCtrl.tetherInterface(argv[3]);
             } else if (!strcmp(argv[2], "remove")) {
