@@ -538,7 +538,7 @@ DNSResponder::~DNSResponder() {
 
 void DNSResponder::addMapping(const char* name, ns_type type,
         const char* addr) {
-    std::lock_guard<std::mutex> lock(mappings_mutex_);
+    std::lock_guard lock(mappings_mutex_);
     auto it = mappings_.find(QueryKey(name, type));
     if (it != mappings_.end()) {
         ALOGI("Overwriting mapping for (%s, %s), previous address %s, new "
@@ -553,7 +553,7 @@ void DNSResponder::addMapping(const char* name, ns_type type,
 }
 
 void DNSResponder::removeMapping(const char* name, ns_type type) {
-    std::lock_guard<std::mutex> lock(mappings_mutex_);
+    std::lock_guard lock(mappings_mutex_);
     auto it = mappings_.find(QueryKey(name, type));
     if (it != mappings_.end()) {
         ALOGI("Cannot remove mapping mapping from (%s, %s), not present", name,
@@ -641,7 +641,7 @@ bool DNSResponder::startServer() {
     epoll_fd_ = ep_fd;
     socket_ = s;
     {
-        std::lock_guard<std::mutex> lock(update_mutex_);
+        std::lock_guard lock(update_mutex_);
         handler_thread_ = std::thread(&DNSResponder::requestHandler, this);
     }
     ALOGI("server started successfully");
@@ -649,7 +649,7 @@ bool DNSResponder::startServer() {
 }
 
 bool DNSResponder::stopServer() {
-    std::lock_guard<std::mutex> lock(update_mutex_);
+    std::lock_guard lock(update_mutex_);
     if (!running()) {
         ALOGI("server not running");
         return false;
@@ -670,12 +670,12 @@ bool DNSResponder::stopServer() {
 }
 
 std::vector<std::pair<std::string, ns_type >> DNSResponder::queries() const {
-    std::lock_guard<std::mutex> lock(queries_mutex_);
+    std::lock_guard lock(queries_mutex_);
     return queries_;
 }
 
 void DNSResponder::clearQueries() {
-    std::lock_guard<std::mutex> lock(queries_mutex_);
+    std::lock_guard lock(queries_mutex_);
     queries_.clear();
 }
 
@@ -765,7 +765,7 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
                                  response_len);
     }
     {
-        std::lock_guard<std::mutex> lock(queries_mutex_);
+        std::lock_guard lock(queries_mutex_);
         for (const DNSQuestion& question : header.questions) {
             queries_.push_back(make_pair(question.qname.name,
                                          ns_type(question.qtype)));
@@ -808,7 +808,7 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
 
 bool DNSResponder::addAnswerRecords(const DNSQuestion& question,
                                     std::vector<DNSRecord>* answers) const {
-    std::lock_guard<std::mutex> guard(mappings_mutex_);
+    std::lock_guard guard(mappings_mutex_);
     auto it = mappings_.find(QueryKey(question.qname.name, question.qtype));
     if (it == mappings_.end()) {
         // TODO(imaipi): handle correctly

@@ -155,7 +155,7 @@ Status initialOwnerMap(BpfMap<uint32_t, uint8_t>& map) {
 }
 
 Status TrafficController::initMaps() {
-    std::lock_guard<std::mutex> ownerMapGuard(mOwnerMatchMutex);
+    std::lock_guard ownerMapGuard(mOwnerMatchMutex);
     RETURN_IF_NOT_OK(
         mCookieTagMap.getOrCreate(COOKIE_UID_MAP_SIZE, COOKIE_TAG_MAP_PATH, BPF_MAP_TYPE_HASH));
 
@@ -427,7 +427,7 @@ int TrafficController::addInterface(const char* name, uint32_t ifaceIndex) {
 
 Status TrafficController::updateOwnerMapEntry(UidOwnerMatchType match, uid_t uid, FirewallRule rule,
                                               FirewallType type) {
-    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    std::lock_guard guard(mOwnerMatchMutex);
     if ((rule == ALLOW && type == WHITELIST) || (rule == DENY && type == BLACKLIST)) {
         RETURN_IF_NOT_OK(addMatch(mUidOwnerMap, uid, match));
     } else if ((rule == ALLOW && type == BLACKLIST) || (rule == DENY && type == WHITELIST)) {
@@ -481,7 +481,7 @@ Status TrafficController::addMatch(BpfMap<uint32_t, uint8_t>& map, uint32_t uid,
 Status TrafficController::updateUidOwnerMap(const std::vector<std::string>& appStrUids,
                                             BandwidthController::IptJumpOp jumpHandling,
                                             BandwidthController::IptOp op) {
-    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    std::lock_guard guard(mOwnerMatchMutex);
     UidOwnerMatchType match = jumpOpToMatch(jumpHandling);
     if (match == NO_MATCH) {
         return statusFromErrno(
@@ -538,7 +538,7 @@ int TrafficController::changeUidOwnerRule(ChildChain chain, uid_t uid, FirewallR
 
 Status TrafficController::replaceUidsInMap(const UidOwnerMatchType match,
                                            const std::vector<int32_t>& uids) {
-    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    std::lock_guard guard(mOwnerMatchMutex);
     std::set<int32_t> uidSet(uids.begin(), uids.end());
     std::vector<uint32_t> uidsToDelete;
     auto getUidsToDelete = [&uidsToDelete, &uidSet](const uint32_t& key,
@@ -590,7 +590,7 @@ int TrafficController::replaceUidOwnerMap(const std::string& name, bool isWhitel
 }
 
 int TrafficController::toggleUidOwnerMap(ChildChain chain, bool enable) {
-    std::lock_guard<std::mutex> guard(mOwnerMatchMutex);
+    std::lock_guard guard(mOwnerMatchMutex);
     uint32_t key = CONFIGURATION_KEY;
     auto oldConfiguration = mConfigurationMap.readValue(key);
     if (!isOk(oldConfiguration)) {
@@ -659,7 +659,7 @@ void dumpBpfMap(const std::string& mapName, DumpWriter& dw, const std::string& h
 const String16 TrafficController::DUMP_KEYWORD = String16("trafficcontroller");
 
 void TrafficController::dump(DumpWriter& dw, bool verbose) {
-    std::lock_guard<std::mutex> ownerMapGuard(mOwnerMatchMutex);
+    std::lock_guard ownerMapGuard(mOwnerMatchMutex);
     ScopedIndent indentTop(dw);
     dw.println("TrafficController");
 

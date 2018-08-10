@@ -149,7 +149,7 @@ NFLogListener::NFLogListener(std::shared_ptr<NetlinkListenerInterface> listener)
     const auto rxHandler = [this](const nlmsghdr& nlmsg, const Slice msg) {
         nfgenmsg nfmsg = {};
         extract(msg, nfmsg);
-        std::lock_guard<std::mutex> guard(mMutex);
+        std::lock_guard guard(mMutex);
         const auto& fn = findWithDefault(mDispatchMap, ntohs(nfmsg.res_id), kDefaultDispatchFn);
         fn(nlmsg, nfmsg, drop(msg, sizeof(nfmsg)));
     };
@@ -183,7 +183,7 @@ Status NFLogListener::subscribe(
     const auto sendFn = [this](const Slice msg) { return mListener->send(msg); };
     // Install fn into the dispatch map BEFORE requesting delivery of messages
     {
-        std::lock_guard<std::mutex> guard(mMutex);
+        std::lock_guard guard(mMutex);
         mDispatchMap[nfLogGroup] = fn;
     }
     RETURN_IF_NOT_OK(cfgCmdBind(sendFn, nfLogGroup));
@@ -198,7 +198,7 @@ Status NFLogListener::unsubscribe(uint16_t nfLogGroup) {
     RETURN_IF_NOT_OK(cfgCmdUnbind(sendFn, nfLogGroup));
     // Remove from the dispatch map AFTER stopping message delivery.
     {
-        std::lock_guard<std::mutex> guard(mMutex);
+        std::lock_guard guard(mMutex);
         mDispatchMap.erase(nfLogGroup);
     }
     return ok;
