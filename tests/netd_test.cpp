@@ -173,7 +173,8 @@ protected:
             .min_samples = static_cast<uint8_t>(
                     params32[INetd::RESOLVER_PARAMS_MIN_SAMPLES]),
             .max_samples = static_cast<uint8_t>(
-                    params32[INetd::RESOLVER_PARAMS_MAX_SAMPLES])
+                    params32[INetd::RESOLVER_PARAMS_MAX_SAMPLES]),
+            .base_timeout_msec = params32[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
         };
         return ResolverStats::decodeAll(stats32, stats);
     }
@@ -270,8 +271,12 @@ protected:
 
     const std::vector<std::string> mDefaultSearchDomains = { "example.com" };
     // <sample validity in s> <success threshold in percent> <min samples> <max samples>
-    const std::string mDefaultParams = "300 25 8 8";
-    const std::vector<int> mDefaultParams_Binder = { 300, 25, 8, 8 };
+    const std::vector<int> mDefaultParams_Binder = {
+            300,     // SAMPLE_VALIDITY
+            25,      // SUCCESS_THRESHOLD
+            8,   8,  // {MIN,MAX}_SAMPLES
+            100,     // BASE_TIMEOUT_MSEC
+    };
 };
 
 TEST_F(ResolverTest, GetHostByName) {
@@ -279,7 +284,7 @@ TEST_F(ResolverTest, GetHostByName) {
     const char* listen_srv = "53";
     const char* host_name = "hello.example.com.";
     const char *nonexistent_host_name = "nonexistent.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
@@ -311,7 +316,8 @@ TEST_F(ResolverTest, TestBinderSerialization) {
         INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY,
         INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD,
         INetd::RESOLVER_PARAMS_MIN_SAMPLES,
-        INetd::RESOLVER_PARAMS_MAX_SAMPLES
+        INetd::RESOLVER_PARAMS_MAX_SAMPLES,
+        INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC,
     };
     int size = static_cast<int>(params_offsets.size());
     EXPECT_EQ(size, INetd::RESOLVER_PARAMS_COUNT);
@@ -362,6 +368,8 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
             res_params.success_threshold);
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+              res_params.base_timeout_msec);
     EXPECT_EQ(servers.size(), res_stats.size());
 
     EXPECT_TRUE(UnorderedCompareArray(res_servers, servers));
@@ -377,14 +385,12 @@ TEST_F(ResolverTest, GetAddrInfo) {
     const char* listen_addr2 = "127.0.0.5";
     const char* listen_srv = "53";
     const char* host_name = "howdy.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250,
-                           ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
     dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
     ASSERT_TRUE(dns.startServer());
 
-    test::DNSResponder dns2(listen_addr2, listen_srv, 250,
-                            ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns2.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
     dns2.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
     ASSERT_TRUE(dns2.startServer());
@@ -453,8 +459,7 @@ TEST_F(ResolverTest, GetAddrInfoV4) {
     const char* listen_addr = "127.0.0.5";
     const char* listen_srv = "53";
     const char* host_name = "hola.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250,
-                           ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.5");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
@@ -476,7 +481,7 @@ TEST_F(ResolverTest, GetHostByNameBrokenEdns) {
     const char* listen_addr = "127.0.0.3";
     const char* listen_srv = "53";
     const char* host_name = "edns.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
     dns.setFailOnEdns(true);  // This is the only change from the basic test.
     ASSERT_TRUE(dns.startServer());
@@ -501,8 +506,7 @@ TEST_F(ResolverTest, GetAddrInfoBrokenEdns) {
     const char* listen_addr = "127.0.0.5";
     const char* listen_srv = "53";
     const char* host_name = "edns2.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250,
-                           ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.5");
     dns.setFailOnEdns(true);  // This is the only change from the basic test.
     ASSERT_TRUE(dns.startServer());
@@ -526,8 +530,7 @@ TEST_F(ResolverTest, MultidomainResolution) {
     const char* listen_addr = "127.0.0.6";
     const char* listen_srv = "53";
     const char* host_name = "nihao.example2.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250,
-                           ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
@@ -551,10 +554,9 @@ TEST_F(ResolverTest, GetAddrInfoV6_failing) {
     const char* listen_addr1 = "127.0.0.8";
     const char* listen_srv = "53";
     const char* host_name = "ohayou.example.com.";
-    test::DNSResponder dns0(listen_addr0, listen_srv, 250,
-                            ns_rcode::ns_r_servfail, 0.0);
-    test::DNSResponder dns1(listen_addr1, listen_srv, 250,
-                            ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns0(listen_addr0, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns1(listen_addr1, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns0.setResponseProbability(0.0);
     dns0.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::5");
     dns1.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::6");
     ASSERT_TRUE(dns0.startServer());
@@ -593,18 +595,64 @@ TEST_F(ResolverTest, GetAddrInfoV6_failing) {
     }
 }
 
+TEST_F(ResolverTest, GetAddrInfoV6_nonresponsive) {
+    addrinfo* result = nullptr;
+
+    const char* listen_addr0 = "127.0.0.7";
+    const char* listen_addr1 = "127.0.0.8";
+    const char* listen_srv = "53";
+    const char* host_name1 = "ohayou.example.com.";
+    const char* host_name2 = "ciao.example.com.";
+
+    // dns0 does not respond with 100% probability, while
+    // dns1 responds normally, at least initially.
+    test::DNSResponder dns0(listen_addr0, listen_srv, 250, static_cast<ns_rcode>(-1));
+    test::DNSResponder dns1(listen_addr1, listen_srv, 250, static_cast<ns_rcode>(-1));
+    dns0.setResponseProbability(0.0);
+    dns0.addMapping(host_name1, ns_type::ns_t_aaaa, "2001:db8::5");
+    dns1.addMapping(host_name1, ns_type::ns_t_aaaa, "2001:db8::6");
+    dns0.addMapping(host_name2, ns_type::ns_t_aaaa, "2001:db8::5");
+    dns1.addMapping(host_name2, ns_type::ns_t_aaaa, "2001:db8::6");
+    ASSERT_TRUE(dns0.startServer());
+    ASSERT_TRUE(dns1.startServer());
+    std::vector<std::string> servers = {listen_addr0, listen_addr1};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET6;
+
+    // dns0 will ignore the request, and we'll fallback to dns1 after the first
+    // retry.
+    EXPECT_EQ(0, getaddrinfo(host_name1, nullptr, &hints, &result));
+    if (result) {
+        freeaddrinfo(result);
+        result = nullptr;
+    }
+    EXPECT_EQ(1U, GetNumQueries(dns0, host_name1));
+    EXPECT_EQ(1U, GetNumQueries(dns1, host_name1));
+
+    // Now make dns1 also ignore 100% requests... The resolve should alternate
+    // retries between the nameservers and fail after 4 attempts.
+    dns1.setResponseProbability(0.0);
+    EXPECT_EQ(EAI_NODATA, getaddrinfo(host_name2, nullptr, &hints, &result));
+    if (result) {
+        freeaddrinfo(result);
+        result = nullptr;
+    }
+    EXPECT_EQ(4U, GetNumQueries(dns0, host_name2));
+    EXPECT_EQ(4U, GetNumQueries(dns1, host_name2));
+}
+
 TEST_F(ResolverTest, GetAddrInfoV6_concurrent) {
     const char* listen_addr0 = "127.0.0.9";
     const char* listen_addr1 = "127.0.0.10";
     const char* listen_addr2 = "127.0.0.11";
     const char* listen_srv = "53";
     const char* host_name = "konbanha.example.com.";
-    test::DNSResponder dns0(listen_addr0, listen_srv, 250,
-                            ns_rcode::ns_r_servfail, 1.0);
-    test::DNSResponder dns1(listen_addr1, listen_srv, 250,
-                            ns_rcode::ns_r_servfail, 1.0);
-    test::DNSResponder dns2(listen_addr2, listen_srv, 250,
-                            ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns0(listen_addr0, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns1(listen_addr1, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns0.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::5");
     dns1.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::6");
     dns2.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::7");
@@ -676,6 +724,8 @@ TEST_F(ResolverTest, EmptySetup) {
             res_params.success_threshold);
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+              res_params.base_timeout_msec);
 }
 
 TEST_F(ResolverTest, SearchPathChange) {
@@ -685,8 +735,7 @@ TEST_F(ResolverTest, SearchPathChange) {
     const char* listen_srv = "53";
     const char* host_name1 = "test13.domain1.org.";
     const char* host_name2 = "test13.domain2.org.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250,
-                           ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name1, ns_type::ns_t_aaaa, "2001:db8::13");
     dns.addMapping(host_name2, ns_type::ns_t_aaaa, "2001:db8::1:13");
     ASSERT_TRUE(dns.startServer());
@@ -751,7 +800,7 @@ TEST_F(ResolverTest, GetHostByName_TlsMissing) {
     const char* listen_addr = "127.0.0.3";
     const char* listen_srv = "53";
     const char* host_name = "tlsmissing.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
@@ -777,7 +826,7 @@ TEST_F(ResolverTest, GetHostByName_TlsBroken) {
     const char* listen_srv = "53";
     const char* host_name1 = "tlsbroken1.example.com.";
     const char* host_name2 = "tlsbroken2.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name1, ns_type::ns_t_a, "1.2.3.1");
     dns.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.2");
     ASSERT_TRUE(dns.startServer());
@@ -836,7 +885,7 @@ TEST_F(ResolverTest, GetHostByName_Tls) {
     const char* host_name1 = "tls1.example.com.";
     const char* host_name2 = "tls2.example.com.";
     const char* host_name3 = "tls3.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name1, ns_type::ns_t_a, "1.2.3.1");
     dns.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.2");
     dns.addMapping(host_name3, ns_type::ns_t_a, "1.2.3.3");
@@ -887,7 +936,7 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
     const char* listen_addr = "127.0.0.3";
     const char* listen_udp = "53";
     const char* listen_tls = "853";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
     ASSERT_TRUE(dns.startServer());
     for (int chain_length = 1; chain_length <= 3; ++chain_length) {
         const char* host_name = StringPrintf("tlsfingerprint%d.example.com.", chain_length).c_str();
@@ -926,7 +975,7 @@ TEST_F(ResolverTest, GetHostByName_BadTlsFingerprint) {
     const char* listen_udp = "53";
     const char* listen_tls = "853";
     const char* host_name = "badtlsfingerprint.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
@@ -958,7 +1007,7 @@ TEST_F(ResolverTest, GetHostByName_TwoTlsFingerprints) {
     const char* listen_udp = "53";
     const char* listen_tls = "853";
     const char* host_name = "twotlsfingerprints.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
@@ -994,7 +1043,7 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprintGoesBad) {
     const char* listen_tls = "853";
     const char* host_name1 = "tlsfingerprintgoesbad1.example.com.";
     const char* host_name2 = "tlsfingerprintgoesbad2.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name1, ns_type::ns_t_a, "1.2.3.1");
     dns.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.2");
     ASSERT_TRUE(dns.startServer());
@@ -1039,8 +1088,8 @@ TEST_F(ResolverTest, GetHostByName_TlsFailover) {
     const char* listen_tls = "853";
     const char* host_name1 = "tlsfailover1.example.com.";
     const char* host_name2 = "tlsfailover2.example.com.";
-    test::DNSResponder dns1(listen_addr1, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
-    test::DNSResponder dns2(listen_addr2, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns1(listen_addr1, listen_udp, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns2(listen_addr2, listen_udp, 250, ns_rcode::ns_r_servfail);
     dns1.addMapping(host_name1, ns_type::ns_t_a, "1.2.3.1");
     dns1.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.2");
     dns2.addMapping(host_name1, ns_type::ns_t_a, "1.2.3.3");
@@ -1096,7 +1145,7 @@ TEST_F(ResolverTest, GetHostByName_BadTlsName) {
     const char* listen_udp = "53";
     const char* listen_tls = "853";
     const char* host_name = "badtlsname.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
@@ -1124,7 +1173,7 @@ TEST_F(ResolverTest, GetAddrInfo_Tls) {
     const char* listen_udp = "53";
     const char* listen_tls = "853";
     const char* host_name = "addrinfotls.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
     dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
     ASSERT_TRUE(dns.startServer());
@@ -1182,7 +1231,7 @@ TEST_F(ResolverTest, TlsBypass) {
     const char tls_port[] = "853";
     const std::vector<std::string> servers = { cleartext_addr };
 
-    test::DNSResponder dns(cleartext_addr, cleartext_port, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(cleartext_addr, cleartext_port, 250, ns_rcode::ns_r_servfail);
     ASSERT_TRUE(dns.startServer());
 
     test::DnsTlsFrontend tls(cleartext_addr, tls_port, cleartext_addr, cleartext_port);
@@ -1310,7 +1359,7 @@ TEST_F(ResolverTest, StrictMode_NoTlsServers) {
     const char cleartext_port[] = "53";
     const std::vector<std::string> servers = { cleartext_addr };
 
-    test::DNSResponder dns(cleartext_addr, cleartext_port, 250, ns_rcode::ns_r_servfail, 1.0);
+    test::DNSResponder dns(cleartext_addr, cleartext_port, 250, ns_rcode::ns_r_servfail);
     const char* host_name = "strictmode.notlsips.example.com.";
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
     dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");

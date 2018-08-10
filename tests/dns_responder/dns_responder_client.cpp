@@ -72,8 +72,7 @@ void DnsResponderClient::SetupDNSServers(unsigned num_servers, const std::vector
         auto& server = (*servers)[i];
         auto& d = (*dns)[i];
         server = StringPrintf("127.0.0.%u", i + 100);
-        d = std::make_unique<test::DNSResponder>(server, listen_srv, 250,
-                ns_rcode::ns_r_servfail, 1.0);
+        d = std::make_unique<test::DNSResponder>(server, listen_srv, 250, ns_rcode::ns_r_servfail);
         for (const auto& mapping : mappings) {
             d->addMapping(mapping.entry.c_str(), ns_type::ns_t_a, mapping.ip4.c_str());
             d->addMapping(mapping.entry.c_str(), ns_type::ns_t_aaaa, mapping.ip6.c_str());

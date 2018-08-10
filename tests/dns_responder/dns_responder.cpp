@@ -525,14 +525,12 @@ const char* DNSHeader::readHeader(const char* buffer, const char* buffer_end,
 
 /* DNS responder */
 
-DNSResponder::DNSResponder(std::string listen_address,
-                           std::string listen_service, int poll_timeout_ms,
-                           uint16_t error_rcode, double response_probability) :
-    listen_address_(std::move(listen_address)), listen_service_(std::move(listen_service)),
-    poll_timeout_ms_(poll_timeout_ms), error_rcode_(error_rcode),
-    response_probability_(response_probability),
-    fail_on_edns_(false),
-    socket_(-1), epoll_fd_(-1), terminate_(false) { }
+DNSResponder::DNSResponder(std::string listen_address, std::string listen_service,
+                           int poll_timeout_ms, ns_rcode error_rcode)
+    : listen_address_(std::move(listen_address)),
+      listen_service_(std::move(listen_service)),
+      poll_timeout_ms_(poll_timeout_ms),
+      error_rcode_(error_rcode) {}
 
 DNSResponder::~DNSResponder() {
     stopServer();
@@ -776,10 +774,15 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
 
     // Ignore requests with the preset probability.
     auto constexpr bound = std::numeric_limits<unsigned>::max();
-    if (arc4random_uniform(bound) > bound*response_probability_) {
-        ALOGI("returning SRVFAIL in accordance with probability distribution");
-        return makeErrorResponse(&header, ns_rcode::ns_r_servfail, response,
-                                 response_len);
+    if (arc4random_uniform(bound) > bound * response_probability_) {
+        if (error_rcode_ < 0) {
+            ALOGI("Returning no response");
+            return true;
+        } else {
+            ALOGI("returning RCODE %d in accordance with probability distribution",
+                  static_cast<int>(error_rcode_));
+            return makeErrorResponse(&header, error_rcode_, response, response_len);
+        }
     }
 
     for (const DNSQuestion& question : header.questions) {
