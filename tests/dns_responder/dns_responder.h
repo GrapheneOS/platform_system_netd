@@ -41,10 +41,9 @@ struct DNSRecord;
  * default error response code is returned.
  */
 class DNSResponder {
-public:
-    DNSResponder(std::string listen_address, std::string listen_service,
-                 int poll_timeout_ms, uint16_t error_rcode,
-                 double response_probability);
+  public:
+    DNSResponder(std::string listen_address, std::string listen_service, int poll_timeout_ms,
+                 ns_rcode error_rcode);
     ~DNSResponder();
     void addMapping(const char* name, ns_type type, const char* addr);
     void removeMapping(const char* name, ns_type type);
@@ -62,7 +61,7 @@ public:
     std::vector<std::pair<std::string, ns_type>> queries() const;
     void clearQueries();
 
-private:
+  private:
     // Key used for accessing mappings.
     struct QueryKey {
         std::string name;
@@ -108,14 +107,14 @@ private:
     // epoll_wait() timeout in ms.
     const int poll_timeout_ms_;
     // Error code to return for requests for an unknown name.
-    const uint16_t error_rcode_;
+    const ns_rcode error_rcode_;
     // Probability that a valid response is being sent instead of being sent
     // instead of returning error_rcode_.
-    std::atomic<double> response_probability_;
+    std::atomic<double> response_probability_ = 1.0;
 
     // If true, behave like an old DNS server that doesn't support EDNS.
     // Default false.
-    std::atomic<bool> fail_on_edns_;
+    std::atomic<bool> fail_on_edns_ = false;
 
     // Mappings from (name, type) to registered response and the
     // mutex protecting them.
@@ -127,11 +126,11 @@ private:
         GUARDED_BY(queries_mutex_);
     mutable std::mutex queries_mutex_;
     // Socket on which the server is listening.
-    int socket_;
+    int socket_ = -1;
     // File descriptor for epoll.
-    int epoll_fd_;
+    int epoll_fd_ = -1;
     // Signal for request handler termination.
-    std::atomic<bool> terminate_;
+    std::atomic<bool> terminate_ = false;
     // Thread for handling incoming threads.
     std::thread handler_thread_ GUARDED_BY(update_mutex_);
     std::mutex update_mutex_;
