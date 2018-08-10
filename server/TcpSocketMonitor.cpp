@@ -97,7 +97,7 @@ const String16 TcpSocketMonitor::DUMP_KEYWORD = String16("tcp_socket_info");
 const milliseconds TcpSocketMonitor::kDefaultPollingInterval = milliseconds(30000);
 
 void TcpSocketMonitor::dump(DumpWriter& dw) {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
 
     dw.println("TcpSocketMonitor");
     ScopedIndent tcpSocketMonitorDetails(dw);
@@ -150,7 +150,7 @@ void TcpSocketMonitor::dump(DumpWriter& dw) {
 }
 
 void TcpSocketMonitor::setPollingInterval(milliseconds nextSleepDurationMs) {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
 
     mNextSleepDurationMs = nextSleepDurationMs;
 
@@ -160,7 +160,7 @@ void TcpSocketMonitor::setPollingInterval(milliseconds nextSleepDurationMs) {
 void TcpSocketMonitor::resumePolling() {
     bool wasSuspended;
     {
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
 
         wasSuspended = mIsSuspended;
         mIsSuspended = false;
@@ -173,7 +173,7 @@ void TcpSocketMonitor::resumePolling() {
 }
 
 void TcpSocketMonitor::suspendPolling() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
 
     bool wasSuspended = mIsSuspended;
     mIsSuspended = true;
@@ -185,7 +185,7 @@ void TcpSocketMonitor::suspendPolling() {
 }
 
 void TcpSocketMonitor::poll() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
 
     if (mIsSuspended) {
         return;
@@ -252,7 +252,7 @@ void TcpSocketMonitor::waitForNextPoll() {
     bool isSuspended;
     milliseconds nextSleepDurationMs;
     {
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
         isSuspended = mIsSuspended;
         nextSleepDurationMs= mNextSleepDurationMs;
     }
@@ -266,7 +266,7 @@ void TcpSocketMonitor::waitForNextPoll() {
 }
 
 bool TcpSocketMonitor::isRunning() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     return mIsRunning;
 }
 
@@ -313,7 +313,7 @@ void TcpSocketMonitor::updateSocketStats(time_point now, Fwmark mark,
 }
 
 TcpSocketMonitor::TcpSocketMonitor() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
 
     mNextSleepDurationMs = kDefaultPollingInterval;
     mIsRunning = true;
@@ -329,7 +329,7 @@ TcpSocketMonitor::TcpSocketMonitor() {
 
 TcpSocketMonitor::~TcpSocketMonitor() {
     {
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
         mIsRunning = false;
         mIsSuspended = true;
     }

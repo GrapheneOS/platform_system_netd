@@ -85,13 +85,13 @@ Status NetlinkListener::send(const Slice msg) {
 }
 
 Status NetlinkListener::subscribe(uint16_t type, const DispatchFn& fn) {
-    std::lock_guard<std::mutex> guard(mMutex);
+    std::lock_guard guard(mMutex);
     mDispatchMap[type] = fn;
     return ok;
 }
 
 Status NetlinkListener::unsubscribe(uint16_t type) {
-    std::lock_guard<std::mutex> guard(mMutex);
+    std::lock_guard guard(mMutex);
     mDispatchMap.erase(type);
     return ok;
 }
@@ -100,7 +100,7 @@ Status NetlinkListener::run() {
     std::vector<char> rxbuf(4096);
 
     const auto rxHandler = [this](const nlmsghdr& nlmsg, const Slice& buf) {
-        std::lock_guard<std::mutex> guard(mMutex);
+        std::lock_guard guard(mMutex);
         const auto& fn = findWithDefault(mDispatchMap, nlmsg.nlmsg_type, kDefaultDispatchFn);
         fn(nlmsg, buf);
     };

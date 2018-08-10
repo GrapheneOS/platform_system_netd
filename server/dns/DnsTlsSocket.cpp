@@ -132,7 +132,7 @@ bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
 bool DnsTlsSocket::initialize() {
     // This method should only be called once, at the beginning, so locking should be
     // unnecessary.  This lock only serves to help catch bugs in code that calls this method.
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     if (mSslCtx) {
         // This is a bug in the caller.
         return false;
@@ -340,7 +340,7 @@ bool DnsTlsSocket::sslWrite(const Slice buffer) {
 }
 
 void DnsTlsSocket::loop() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     // Buffer at most one query.
     Query q;
 
@@ -413,7 +413,7 @@ DnsTlsSocket::~DnsTlsSocket() {
     mIpcInFd.reset();
     {
         // Wait for the orderly shutdown to complete.
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
         if (mLoopThread && std::this_thread::get_id() == mLoopThread->get_id()) {
             ALOGE("Violation of re-entrance precondition");
             return;

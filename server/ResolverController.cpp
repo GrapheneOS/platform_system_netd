@@ -133,7 +133,7 @@ class PrivateDnsConfiguration {
             tlsServers.insert(server);
         }
 
-        std::lock_guard<std::mutex> guard(mPrivateDnsLock);
+        std::lock_guard guard(mPrivateDnsLock);
         if (explicitlyConfigured) {
             mPrivateDnsModes[netId] = PrivateDnsMode::STRICT;
         } else if (!tlsServers.empty()) {
@@ -183,7 +183,7 @@ class PrivateDnsConfiguration {
         // If the overhead of mutex acquisition proves too high, we could reduce
         // it by maintaining an atomic_int32_t counter of TLS-enabled netids, or
         // by using an RWLock.
-        std::lock_guard<std::mutex> guard(mPrivateDnsLock);
+        std::lock_guard guard(mPrivateDnsLock);
 
         const auto mode = mPrivateDnsModes.find(netId);
         if (mode == mPrivateDnsModes.end()) return status;
@@ -205,13 +205,13 @@ class PrivateDnsConfiguration {
         if (DBG) {
             ALOGD("PrivateDnsConfiguration::clear(%u)", netId);
         }
-        std::lock_guard<std::mutex> guard(mPrivateDnsLock);
+        std::lock_guard guard(mPrivateDnsLock);
         mPrivateDnsModes.erase(netId);
         mPrivateDnsTransports.erase(netId);
     }
 
     void dump(DumpWriter& dw, unsigned netId) {
-        std::lock_guard<std::mutex> guard(mPrivateDnsLock);
+        std::lock_guard guard(mPrivateDnsLock);
 
         const auto& mode = mPrivateDnsModes.find(netId);
         dw.println("Private DNS mode: %s", getPrivateDnsModeString(
@@ -295,7 +295,7 @@ class PrivateDnsConfiguration {
         constexpr bool NEEDS_REEVALUATION = true;
         constexpr bool DONT_REEVALUATE = false;
 
-        std::lock_guard<std::mutex> guard(mPrivateDnsLock);
+        std::lock_guard guard(mPrivateDnsLock);
 
         auto netPair = mPrivateDnsTransports.find(netId);
         if (netPair == mPrivateDnsTransports.end()) {

@@ -36,7 +36,7 @@ namespace android {
 namespace net {
 
 std::future<DnsTlsTransport::Result> DnsTlsTransport::query(const netdutils::Slice query) {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
 
     auto record = mQueries.recordQuery(query);
     if (!record) {
@@ -89,7 +89,7 @@ void DnsTlsTransport::onResponse(std::vector<uint8_t> response) {
 }
 
 void DnsTlsTransport::onClosed() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     if (mClosing) {
         return;
     }
@@ -109,7 +109,7 @@ void DnsTlsTransport::onClosed() {
 }
 
 void DnsTlsTransport::doReconnect() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     if (mClosing) {
         return;
     }
@@ -126,7 +126,7 @@ void DnsTlsTransport::doReconnect() {
 DnsTlsTransport::~DnsTlsTransport() {
     ALOGV("Destructor");
     {
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
         ALOGV("Locked destruction procedure");
         mQueries.clear();
         mClosing = true;
