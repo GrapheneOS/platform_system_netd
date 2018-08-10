@@ -37,8 +37,8 @@ cc_test {
         "bpf_base_test.cpp",
         "dns_responder/dns_responder.cpp",
         "dns_tls_test.cpp",
-        "netd_integration_test.cpp",
         "netd_test.cpp",
+        "resolver_test.cpp",
     ],
     include_dirs: [
         "system/netd/include",
