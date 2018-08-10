@@ -347,7 +347,7 @@ bool IptablesRestoreController::drainAndWaitForAck(const std::unique_ptr<Iptable
 
 int IptablesRestoreController::execute(const IptablesTarget target, const std::string& command,
                                        std::string *output) {
-    std::lock_guard<std::mutex> lock(mLock);
+    std::lock_guard lock(mLock);
 
     std::string buffer;
     if (output == nullptr) {
