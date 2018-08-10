@@ -44,7 +44,7 @@ std::list<DnsTlsServer> DnsTlsDispatcher::getOrderedServerList(
     // Pull out any servers for which we might have existing connections and
     // place them at the from the list of servers to try.
     {
-        std::lock_guard<std::mutex> guard(sLock);
+        std::lock_guard guard(sLock);
 
         for (const auto& tlsServer : tlsServers) {
             const Key key = std::make_pair(mark, tlsServer);
@@ -113,7 +113,7 @@ DnsTlsTransport::Response DnsTlsDispatcher::query(const DnsTlsServer& server, un
     const Key key = std::make_pair(mark, server);
     Transport* xport;
     {
-        std::lock_guard<std::mutex> guard(sLock);
+        std::lock_guard guard(sLock);
         auto it = mStore.find(key);
         if (it == mStore.end()) {
             xport = new Transport(server, mark, mFactory.get());
@@ -144,7 +144,7 @@ DnsTlsTransport::Response DnsTlsDispatcher::query(const DnsTlsServer& server, un
 
     auto now = std::chrono::steady_clock::now();
     {
-        std::lock_guard<std::mutex> guard(sLock);
+        std::lock_guard guard(sLock);
         --xport->useCount;
         xport->lastUsed = now;
         cleanup(now);

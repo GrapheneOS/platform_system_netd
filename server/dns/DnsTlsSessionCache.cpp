@@ -54,7 +54,7 @@ int DnsTlsSessionCache::newSessionCallback(SSL* ssl, SSL_SESSION* session) {
 }
 
 void DnsTlsSessionCache::recordSession(SSL_SESSION* session) {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     mSessions.emplace_front(session);
     if (mSessions.size() > kMaxSize) {
         ALOGV("Too many sessions; trimming");
@@ -63,7 +63,7 @@ void DnsTlsSessionCache::recordSession(SSL_SESSION* session) {
 }
 
 bssl::UniquePtr<SSL_SESSION> DnsTlsSessionCache::getSession() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     if (mSessions.size() == 0) {
         ALOGV("No known sessions");
         return nullptr;
