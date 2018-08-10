@@ -256,7 +256,7 @@ bool DnsTlsFrontend::startServer() {
     freeaddrinfo(backend_ai_res);
 
     {
-        std::lock_guard<std::mutex> lock(update_mutex_);
+        std::lock_guard lock(update_mutex_);
         handler_thread_ = std::thread(&DnsTlsFrontend::requestHandler, this);
     }
     ALOGI("server started successfully");
@@ -356,7 +356,7 @@ bool DnsTlsFrontend::handleOneRequest(SSL* ssl) {
 }
 
 bool DnsTlsFrontend::stopServer() {
-    std::lock_guard<std::mutex> lock(update_mutex_);
+    std::lock_guard lock(update_mutex_);
     if (!running()) {
         ALOGI("server not running");
         return false;

@@ -155,7 +155,7 @@ uint32_t RouteController::getRouteTableForInterfaceLocked(const char* interface)
 }
 
 uint32_t RouteController::getIfIndex(const char* interface) {
-    std::lock_guard<std::mutex> lock(sInterfaceToTableLock);
+    std::lock_guard lock(sInterfaceToTableLock);
 
     auto iter = sInterfaceToTable.find(interface);
     if (iter == sInterfaceToTable.end()) {
@@ -167,7 +167,7 @@ uint32_t RouteController::getIfIndex(const char* interface) {
 }
 
 uint32_t RouteController::getRouteTableForInterface(const char* interface) {
-    std::lock_guard<std::mutex> lock(sInterfaceToTableLock);
+    std::lock_guard lock(sInterfaceToTableLock);
     return getRouteTableForInterfaceLocked(interface);
 }
 
@@ -191,7 +191,7 @@ void RouteController::updateTableNamesFile() {
     addTableName(ROUTE_TABLE_LEGACY_NETWORK, ROUTE_TABLE_NAME_LEGACY_NETWORK, &contents);
     addTableName(ROUTE_TABLE_LEGACY_SYSTEM,  ROUTE_TABLE_NAME_LEGACY_SYSTEM,  &contents);
 
-    std::lock_guard<std::mutex> lock(sInterfaceToTableLock);
+    std::lock_guard lock(sInterfaceToTableLock);
     for (const auto& entry : sInterfaceToTable) {
         addTableName(entry.second, entry.first, &contents);
     }
@@ -927,7 +927,7 @@ WARN_UNUSED_RESULT int RouteController::flushRoutes(uint32_t table) {
 
 // Returns 0 on success or negative errno on failure.
 WARN_UNUSED_RESULT int RouteController::flushRoutes(const char* interface) {
-    std::lock_guard<std::mutex> lock(sInterfaceToTableLock);
+    std::lock_guard lock(sInterfaceToTableLock);
 
     uint32_t table = getRouteTableForInterfaceLocked(interface);
     if (table == RT_TABLE_UNSPEC) {

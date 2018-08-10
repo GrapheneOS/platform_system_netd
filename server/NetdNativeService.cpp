@@ -88,7 +88,7 @@ binder::Status checkPermission(const char *permission) {
 
 #define NETD_LOCKING_RPC(permission, lock)                  \
     ENFORCE_PERMISSION(permission);                         \
-    std::lock_guard<std::mutex> _lock(lock);
+    std::lock_guard _lock(lock);
 
 #define NETD_BIG_LOCK_RPC(permission) NETD_LOCKING_RPC((permission), gBigNetdLock)
 
