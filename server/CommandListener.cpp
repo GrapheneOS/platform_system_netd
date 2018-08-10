@@ -90,7 +90,7 @@ public:
             mLock(lock) {}
 
     int runCommand(SocketClient *c, int argc, char **argv) {
-        std::lock_guard<std::mutex> lock(mLock);
+        std::lock_guard lock(mLock);
         return mWrappedCmd->runCommand(c, argc, argv);
     }
 
