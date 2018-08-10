@@ -658,7 +658,7 @@ bool CommandListener::ResolverCmd::parseAndExecuteSetNetDns(int netId, int argc,
         return false;
     }
     int end = argc;
-    __res_params params;
+    __res_params params = {};
     const __res_params* paramsPtr = nullptr;
     if (end > 6 && !strcmp(argv[end - 2], "--params")) {
         const char* paramsStr = argv[end - 1];
