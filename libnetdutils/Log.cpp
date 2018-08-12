@@ -202,7 +202,7 @@ void Log::record(Log::Level lvl, const std::string& entry) {
             break;
     }
 
-    std::lock_guard<std::shared_mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     mEntries.push_back(makeTimestampedEntry(entry));
     while (mEntries.size() > mMaxEntries) mEntries.pop_front();
 }

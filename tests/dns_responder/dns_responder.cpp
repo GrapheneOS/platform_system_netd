@@ -525,14 +525,12 @@ const char* DNSHeader::readHeader(const char* buffer, const char* buffer_end,
 
 /* DNS responder */
 
-DNSResponder::DNSResponder(std::string listen_address,
-                           std::string listen_service, int poll_timeout_ms,
-                           uint16_t error_rcode, double response_probability) :
-    listen_address_(std::move(listen_address)), listen_service_(std::move(listen_service)),
-    poll_timeout_ms_(poll_timeout_ms), error_rcode_(error_rcode),
-    response_probability_(response_probability),
-    fail_on_edns_(false),
-    socket_(-1), epoll_fd_(-1), terminate_(false) { }
+DNSResponder::DNSResponder(std::string listen_address, std::string listen_service,
+                           int poll_timeout_ms, ns_rcode error_rcode)
+    : listen_address_(std::move(listen_address)),
+      listen_service_(std::move(listen_service)),
+      poll_timeout_ms_(poll_timeout_ms),
+      error_rcode_(error_rcode) {}
 
 DNSResponder::~DNSResponder() {
     stopServer();
@@ -540,7 +538,7 @@ DNSResponder::~DNSResponder() {
 
 void DNSResponder::addMapping(const char* name, ns_type type,
         const char* addr) {
-    std::lock_guard<std::mutex> lock(mappings_mutex_);
+    std::lock_guard lock(mappings_mutex_);
     auto it = mappings_.find(QueryKey(name, type));
     if (it != mappings_.end()) {
         ALOGI("Overwriting mapping for (%s, %s), previous address %s, new "
@@ -555,7 +553,7 @@ void DNSResponder::addMapping(const char* name, ns_type type,
 }
 
 void DNSResponder::removeMapping(const char* name, ns_type type) {
-    std::lock_guard<std::mutex> lock(mappings_mutex_);
+    std::lock_guard lock(mappings_mutex_);
     auto it = mappings_.find(QueryKey(name, type));
     if (it != mappings_.end()) {
         ALOGI("Cannot remove mapping mapping from (%s, %s), not present", name,
@@ -643,7 +641,7 @@ bool DNSResponder::startServer() {
     epoll_fd_ = ep_fd;
     socket_ = s;
     {
-        std::lock_guard<std::mutex> lock(update_mutex_);
+        std::lock_guard lock(update_mutex_);
         handler_thread_ = std::thread(&DNSResponder::requestHandler, this);
     }
     ALOGI("server started successfully");
@@ -651,7 +649,7 @@ bool DNSResponder::startServer() {
 }
 
 bool DNSResponder::stopServer() {
-    std::lock_guard<std::mutex> lock(update_mutex_);
+    std::lock_guard lock(update_mutex_);
     if (!running()) {
         ALOGI("server not running");
         return false;
@@ -672,12 +670,12 @@ bool DNSResponder::stopServer() {
 }
 
 std::vector<std::pair<std::string, ns_type >> DNSResponder::queries() const {
-    std::lock_guard<std::mutex> lock(queries_mutex_);
+    std::lock_guard lock(queries_mutex_);
     return queries_;
 }
 
 void DNSResponder::clearQueries() {
-    std::lock_guard<std::mutex> lock(queries_mutex_);
+    std::lock_guard lock(queries_mutex_);
     queries_.clear();
 }
 
@@ -767,7 +765,7 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
                                  response_len);
     }
     {
-        std::lock_guard<std::mutex> lock(queries_mutex_);
+        std::lock_guard lock(queries_mutex_);
         for (const DNSQuestion& question : header.questions) {
             queries_.push_back(make_pair(question.qname.name,
                                          ns_type(question.qtype)));
@@ -776,10 +774,15 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
 
     // Ignore requests with the preset probability.
     auto constexpr bound = std::numeric_limits<unsigned>::max();
-    if (arc4random_uniform(bound) > bound*response_probability_) {
-        ALOGI("returning SRVFAIL in accordance with probability distribution");
-        return makeErrorResponse(&header, ns_rcode::ns_r_servfail, response,
-                                 response_len);
+    if (arc4random_uniform(bound) > bound * response_probability_) {
+        if (error_rcode_ < 0) {
+            ALOGI("Returning no response");
+            return true;
+        } else {
+            ALOGI("returning RCODE %d in accordance with probability distribution",
+                  static_cast<int>(error_rcode_));
+            return makeErrorResponse(&header, error_rcode_, response, response_len);
+        }
     }
 
     for (const DNSQuestion& question : header.questions) {
@@ -805,7 +808,7 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
 
 bool DNSResponder::addAnswerRecords(const DNSQuestion& question,
                                     std::vector<DNSRecord>* answers) const {
-    std::lock_guard<std::mutex> guard(mappings_mutex_);
+    std::lock_guard guard(mappings_mutex_);
     auto it = mappings_.find(QueryKey(question.qname.name, question.qtype));
     if (it == mappings_.end()) {
         // TODO(imaipi): handle correctly

@@ -25,7 +25,7 @@ namespace android {
 namespace net {
 
 std::unique_ptr<DnsTlsQueryMap::QueryFuture> DnsTlsQueryMap::recordQuery(const Slice query) {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
 
     // Store the query so it can be matched to the response or reissued.
     if (query.size() < 2) {
@@ -54,7 +54,7 @@ void DnsTlsQueryMap::expire(QueryPromise* p) {
 }
 
 void DnsTlsQueryMap::markTried(uint16_t newId) {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     auto it = mQueries.find(newId);
     if (it != mQueries.end()) {
         it->second.tries++;
@@ -62,7 +62,7 @@ void DnsTlsQueryMap::markTried(uint16_t newId) {
 }
 
 void DnsTlsQueryMap::cleanup() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     for (auto it = mQueries.begin(); it != mQueries.end();) {
         auto& p = it->second;
         if (p.tries >= kMaxTries) {
@@ -101,7 +101,7 @@ int32_t DnsTlsQueryMap::getFreeId() {
 }
 
 std::vector<DnsTlsQueryMap::Query> DnsTlsQueryMap::getAll() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     std::vector<DnsTlsQueryMap::Query> queries;
     for (auto& q : mQueries) {
         queries.push_back(q.second.query);
@@ -110,12 +110,12 @@ std::vector<DnsTlsQueryMap::Query> DnsTlsQueryMap::getAll() {
 }
 
 bool DnsTlsQueryMap::empty() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     return mQueries.empty();
 }
 
 void DnsTlsQueryMap::clear() {
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     for (auto& q : mQueries) {
         expire(&q.second);
     }
@@ -129,7 +129,7 @@ void DnsTlsQueryMap::onResponse(std::vector<uint8_t> response) {
         return;
     }
     uint16_t id = response[0] << 8 | response[1];
-    std::lock_guard<std::mutex> guard(mLock);
+    std::lock_guard guard(mLock);
     auto it = mQueries.find(id);
     if (it == mQueries.end()) {
         ALOGW("Discarding response: unknown ID %d", id);

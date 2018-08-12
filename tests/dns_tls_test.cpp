@@ -186,13 +186,13 @@ TEST_F(TransportTest, RacingQueries_10000) {
 class FakeSocketDelay : public IDnsTlsSocket {
   public:
     explicit FakeSocketDelay(IDnsTlsSocketObserver* observer) : mObserver(observer) {}
-    ~FakeSocketDelay() { std::lock_guard<std::mutex> guard(mLock); }
+    ~FakeSocketDelay() { std::lock_guard guard(mLock); }
     static size_t sDelay;
     static bool sReverse;
 
     bool query(uint16_t id, const Slice query) override {
         ALOGD("FakeSocketDelay got query with ID %d", int(id));
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
         // Check for duplicate IDs.
         EXPECT_EQ(0U, mIds.count(id));
         mIds.insert(id);
@@ -209,7 +209,7 @@ class FakeSocketDelay : public IDnsTlsSocket {
 
   private:
     void sendResponses() {
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
         if (sReverse) {
             std::reverse(std::begin(mResponses), std::end(mResponses));
         }
@@ -423,7 +423,7 @@ class FakeSocketLimited : public IDnsTlsSocket {
     ~FakeSocketLimited() {
         {
             ALOGD("~FakeSocketLimited acquiring mLock");
-            std::lock_guard<std::mutex> guard(mLock);
+            std::lock_guard guard(mLock);
             ALOGD("~FakeSocketLimited acquired mLock");
             for (auto& thread : mThreads) {
                 ALOGD("~FakeSocketLimited joining response thread");
@@ -441,7 +441,7 @@ class FakeSocketLimited : public IDnsTlsSocket {
     }
     bool query(uint16_t id, const Slice query) override {
         ALOGD("FakeSocketLimited::query acquiring mLock");
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
         ALOGD("FakeSocketLimited::query acquired mLock");
         ++mQueries;
 
@@ -462,7 +462,7 @@ class FakeSocketLimited : public IDnsTlsSocket {
     void sendClose() {
         {
             ALOGD("FakeSocketLimited::sendClose acquiring mLock");
-            std::lock_guard<std::mutex> guard(mLock);
+            std::lock_guard guard(mLock);
             ALOGD("FakeSocketLimited::sendClose acquired mLock");
             for (auto& thread : mThreads) {
                 ALOGD("FakeSocketLimited::sendClose joining response thread");
@@ -536,13 +536,13 @@ class FakeSocketGarbage : public IDnsTlsSocket {
         mThreads.emplace_back(&IDnsTlsSocketObserver::onResponse, mObserver, make_query(ID + 1, SIZE));
     }
     ~FakeSocketGarbage() {
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
         for (auto& thread : mThreads) {
             thread.join();
         }
     }
     bool query(uint16_t id, const Slice query) override {
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
         // Return the response twice.
         auto echo = make_echo(id, query);
         mThreads.emplace_back(&IDnsTlsSocketObserver::onResponse, mObserver, echo);
@@ -608,7 +608,7 @@ class TrackingFakeSocketFactory : public IDnsTlsSocketFactory {
             unsigned mark,
             IDnsTlsSocketObserver* observer,
             DnsTlsSessionCache* cache ATTRIBUTE_UNUSED) override {
-        std::lock_guard<std::mutex> guard(mLock);
+        std::lock_guard guard(mLock);
         keys.emplace(mark, server);
         return std::make_unique<T>(observer);
     }
