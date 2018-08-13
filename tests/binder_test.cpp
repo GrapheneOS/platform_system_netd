@@ -1034,3 +1034,70 @@ TEST_F(BinderTest, TestIdletimerAddRemoveInterface) {
 }
 
 }  // namespace
+
+namespace {
+
+constexpr char STRICT_OUTPUT[] = "st_OUTPUT";
+constexpr char STRICT_CLEAR_CAUGHT[] = "st_clear_caught";
+
+void expectStrictSetUidAccept(const int uid) {
+    std::string uidRule = StringPrintf("owner UID match %u", uid);
+    std::string perUidChain = StringPrintf("st_clear_caught_%u", uid);
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_FALSE(iptablesRuleExists(binary, STRICT_OUTPUT, uidRule.c_str()));
+        EXPECT_FALSE(iptablesRuleExists(binary, STRICT_CLEAR_CAUGHT, uidRule.c_str()));
+        EXPECT_EQ(0, iptablesRuleLineLength(binary, perUidChain.c_str()));
+    }
+}
+
+void expectStrictSetUidLog(const int uid) {
+    static const char logRule[] = "st_penalty_log  all";
+    std::string uidRule = StringPrintf("owner UID match %u", uid);
+    std::string perUidChain = StringPrintf("st_clear_caught_%u", uid);
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_OUTPUT, uidRule.c_str()));
+        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_CLEAR_CAUGHT, uidRule.c_str()));
+        EXPECT_TRUE(iptablesRuleExists(binary, perUidChain.c_str(), logRule));
+    }
+}
+
+void expectStrictSetUidReject(const int uid) {
+    static const char rejectRule[] = "st_penalty_reject  all";
+    std::string uidRule = StringPrintf("owner UID match %u", uid);
+    std::string perUidChain = StringPrintf("st_clear_caught_%u", uid);
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_OUTPUT, uidRule.c_str()));
+        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_CLEAR_CAUGHT, uidRule.c_str()));
+        EXPECT_TRUE(iptablesRuleExists(binary, perUidChain.c_str(), rejectRule));
+    }
+}
+
+TEST_F(BinderTest, TestStrictSetUidCleartextPenalty) {
+    binder::Status status;
+    int32_t uid = randomUid();
+
+    // setUidCleartextPenalty Policy:Log with randomUid
+    status = mNetd->strictUidCleartextPenalty(uid, INetd::PENALTY_POLICY_LOG);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectStrictSetUidLog(uid);
+
+    // setUidCleartextPenalty Policy:Accept with randomUid
+    status = mNetd->strictUidCleartextPenalty(uid, INetd::PENALTY_POLICY_ACCEPT);
+    expectStrictSetUidAccept(uid);
+
+    // setUidCleartextPenalty Policy:Reject with randomUid
+    status = mNetd->strictUidCleartextPenalty(uid, INetd::PENALTY_POLICY_REJECT);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectStrictSetUidReject(uid);
+
+    // setUidCleartextPenalty Policy:Accept with randomUid
+    status = mNetd->strictUidCleartextPenalty(uid, INetd::PENALTY_POLICY_ACCEPT);
+    expectStrictSetUidAccept(uid);
+
+    // test wrong policy
+    int32_t wrongPolicy = -123;
+    status = mNetd->strictUidCleartextPenalty(uid, wrongPolicy);
+    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+}
+
+}  // namespace

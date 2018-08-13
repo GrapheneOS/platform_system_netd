@@ -264,6 +264,12 @@ void Controllers::initIptablesRules() {
      */
     idletimerCtrl.setupIptablesHooks();
     gLog.info("Setting up IdletimerController hooks: %.1fms", s.getTimeAndReset());
+
+    /*
+     * Add rules for detecting IPv6/IPv4 TCP/UDP connections with TLS/DTLS header
+     */
+    strictCtrl.setupIptablesHooks();
+    gLog.info("Setting up StrictController hooks: %.1fms", s.getTimeAndReset());
 }
 
 void Controllers::init() {
