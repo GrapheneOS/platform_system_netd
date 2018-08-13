@@ -592,4 +592,18 @@ interface INetd {
             in @utf8InCpp String ifName,
             int timeout,
             in @utf8InCpp String classLabel);
+
+    const int PENALTY_POLICY_ACCEPT = 1;
+    const int PENALTY_POLICY_LOG = 2;
+    const int PENALTY_POLICY_REJECT = 3;
+
+   /**
+    * Offers to detect sockets sending data not wrapped inside a layer of SSL/TLS encryption.
+    *
+    * @param uid Uid of the app
+    * @param policyPenalty The penalty policy of the app
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void strictUidCleartextPenalty(int uid, int policyPenalty);
 }
