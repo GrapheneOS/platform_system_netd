@@ -33,7 +33,6 @@
 #include "log/log.h"
 #include "netdutils/SocketOption.h"
 #include "Fwmark.h"
-#undef ADD  // already defined in nameser.h
 #include "NetdConstants.h"
 #include "Permission.h"
 
