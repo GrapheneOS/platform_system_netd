@@ -606,4 +606,23 @@ interface INetd {
     *         cause of the the failure.
     */
     void strictUidCleartextPenalty(int uid, int policyPenalty);
+
+   /**
+    * Start clatd
+    *
+    * @param ifName interface name to start clatd
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void clatdStart(in @utf8InCpp String ifName);
+
+   /**
+    * Stop clatd
+    *
+    * @param ifName interface name to stop clatd
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void clatdStop(in @utf8InCpp String ifName);
+
 }
