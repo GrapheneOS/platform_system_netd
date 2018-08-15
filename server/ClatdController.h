@@ -25,18 +25,19 @@ namespace net {
 class NetworkController;
 
 class ClatdController {
-public:
+  public:
     explicit ClatdController(NetworkController* controller);
     virtual ~ClatdController();
 
-    int startClatd(char *interface);
-    int stopClatd(char* interface);
-    bool isClatdStarted(char* interface);
+    int startClatd(const char* interface);
+    int stopClatd(const char* interface);
 
-private:
+    std::mutex mutex;
+
+  private:
     NetworkController* const mNetCtrl;
     std::map<std::string, pid_t> mClatdPids;
-    pid_t getClatdPid(char* interface);
+    pid_t getClatdPid(const char* interface);
 };
 
 }  // namespace net

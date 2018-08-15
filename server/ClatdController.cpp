@@ -46,18 +46,18 @@ ClatdController::~ClatdController() {
 
 // Returns the PID of the clatd running on interface |interface|, or 0 if clatd is not running on
 // |interface|.
-pid_t ClatdController::getClatdPid(char* interface) {
+pid_t ClatdController::getClatdPid(const char* interface) {
     auto it = mClatdPids.find(interface);
     return (it == mClatdPids.end() ? 0 : it->second);
 }
 
-int ClatdController::startClatd(char* interface) {
+int ClatdController::startClatd(const char* interface) {
     pid_t pid = getClatdPid(interface);
 
     if (pid != 0) {
         ALOGE("clatd pid=%d already started on %s", pid, interface);
         errno = EBUSY;
-        return -1;
+        return -errno;
     }
 
     // Pass in the interface, a netid to use for DNS lookups, and a fwmark for outgoing packets.
@@ -65,7 +65,7 @@ int ClatdController::startClatd(char* interface) {
     if (netId == NETID_UNSET) {
         ALOGE("interface %s not assigned to any netId", interface);
         errno = ENODEV;
-        return -1;
+        return -errno;
     }
 
     char netIdString[UINT32_STRLEN];
@@ -80,27 +80,28 @@ int ClatdController::startClatd(char* interface) {
     char fwmarkString[UINT32_HEX_STRLEN];
     snprintf(fwmarkString, sizeof(fwmarkString), "0x%x", fwmark.intValue);
 
+    char* interfaceName = const_cast<char*>(interface);
+
     ALOGD("starting clatd on %s", interface);
 
     std::string progname("clatd-");
     progname += interface;
 
     if ((pid = fork()) < 0) {
+        int res = errno;
         ALOGE("fork failed (%s)", strerror(errno));
-        return -1;
+        return -res;
     }
 
     if (!pid) {
-        char *args[] = {
-            (char *) progname.c_str(),
-            (char *) "-i",
-            interface,
-            (char *) "-n",
-            netIdString,
-            (char *) "-m",
-            fwmarkString,
-            nullptr
-        };
+        char* args[] = {(char*) progname.c_str(),
+                        (char*) "-i",
+                        interfaceName,
+                        (char*) "-n",
+                        netIdString,
+                        (char*) "-m",
+                        fwmarkString,
+                        nullptr};
 
         if (execv(kClatdPath, args)) {
             ALOGE("execv failed (%s)", strerror(errno));
@@ -116,12 +117,12 @@ int ClatdController::startClatd(char* interface) {
     return 0;
 }
 
-int ClatdController::stopClatd(char* interface) {
+int ClatdController::stopClatd(const char* interface) {
     pid_t pid = getClatdPid(interface);
 
     if (pid == 0) {
         ALOGE("clatd already stopped");
-        return -1;
+        return -EREMOTEIO;
     }
 
     ALOGD("Stopping clatd pid=%d on %s", pid, interface);
@@ -133,19 +134,6 @@ int ClatdController::stopClatd(char* interface) {
     ALOGD("clatd on %s stopped", interface);
 
     return 0;
-}
-
-bool ClatdController::isClatdStarted(char* interface) {
-    pid_t waitpid_status;
-    pid_t pid = getClatdPid(interface);
-    if (pid == 0) {
-        return false;
-    }
-    waitpid_status = waitpid(pid, nullptr, WNOHANG);
-    if (waitpid_status != 0) {
-        mClatdPids.erase(interface);  // child exited, don't call waitpid on it again
-    }
-    return waitpid_status == 0; // 0 while child is running
 }
 
 }  // namespace net
