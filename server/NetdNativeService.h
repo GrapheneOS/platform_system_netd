@@ -200,8 +200,13 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
                                          const std::string& classLabel) override;
     binder::Status idletimerRemoveInterface(const std::string& ifName, int32_t timeout,
                                             const std::string& classLabel) override;
+
     // Strict-related commands
     binder::Status strictUidCleartextPenalty(int32_t uid, int32_t policyPenalty) override;
+
+    // Clatd-related commands
+    binder::Status clatdStart(const std::string& ifName) override;
+    binder::Status clatdStop(const std::string& ifName) override;
 };
 
 }  // namespace net
