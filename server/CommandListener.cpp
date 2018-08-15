@@ -117,7 +117,7 @@ CommandListener::CommandListener() : FrameworkListener(SOCKET_NAME, true) {
     registerLockingCmd(new IdletimerControlCmd(), gCtls->idletimerCtrl.lock);
     registerLockingCmd(new ResolverCmd());
     registerLockingCmd(new FirewallCmd(), gCtls->firewallCtrl.lock);
-    registerLockingCmd(new ClatdCmd());
+    registerLockingCmd(new ClatdCmd(), gCtls->clatdCtrl.mutex);
     registerLockingCmd(new NetworkCommand());
     registerLockingCmd(new StrictCmd(), gCtls->strictCtrl.lock);
 }
@@ -1160,13 +1160,6 @@ int CommandListener::ClatdCmd::runCommand(SocketClient *cli, int argc,
 
     if (!strcmp(argv[1], "stop")) {
         rc = gCtls->clatdCtrl.stopClatd(argv[2]);
-    } else if (!strcmp(argv[1], "status")) {
-        char *tmp = nullptr;
-        asprintf(&tmp, "Clatd status: %s", (gCtls->clatdCtrl.isClatdStarted(argv[2]) ?
-                                            "started" : "stopped"));
-        cli->sendMsg(ResponseCode::ClatdStatusResult, tmp, false);
-        free(tmp);
-        return 0;
     } else if (!strcmp(argv[1], "start")) {
         rc = gCtls->clatdCtrl.startClatd(argv[2]);
     } else {

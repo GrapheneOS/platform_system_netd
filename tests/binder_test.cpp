@@ -1101,3 +1101,23 @@ TEST_F(BinderTest, TestStrictSetUidCleartextPenalty) {
 }
 
 }  // namespace
+
+static bool processExists(const std::string& processName) {
+    std::string cmd = StringPrintf("ps -A | grep '%s'", processName.c_str());
+    return (runCommand(cmd.c_str()).size()) ? true : false;
+}
+
+TEST_F(BinderTest, TestClatdStartStop) {
+    binder::Status status;
+    // use dummy0 for test since it is set ready
+    static const char testIf[] = "dummy0";
+    const std::string clatdName = StringPrintf("clatd-%s", testIf);
+
+    status = mNetd->clatdStart(testIf);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    EXPECT_TRUE(processExists(clatdName));
+
+    mNetd->clatdStop(testIf);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    EXPECT_FALSE(processExists(clatdName));
+}
