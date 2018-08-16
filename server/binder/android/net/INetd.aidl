@@ -625,4 +625,52 @@ interface INetd {
     */
     void clatdStop(in @utf8InCpp String ifName);
 
+   /**
+    * Get status of IP forwarding
+    *
+    * @return true if IP forwarding is enabled, false otherwise.
+    */
+    boolean ipfwdEnabled();
+
+   /**
+    * Enable IP forwarding for specific requester
+    *
+    * @param requester requester name to enable IP forwarding. It is a unique name which will be
+    *                  stored in Netd to make sure if any requester needs IP forwarding.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void ipfwdEnableForwarding(in @utf8InCpp String requester);
+
+   /**
+    * Disable IP forwarding for specific requester
+    *
+    * @param requester requester name to disable IP forwarding. This name should match the
+    *                  names which are set by ipfwdEnableForwarding.
+    *                  IP forwarding would be disabled if it is the last requester.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void ipfwdDisableForwarding(in @utf8InCpp String requester);
+
+   /**
+    * Add forwarding ip rule
+    *
+    * @param fromIface interface name to add forwarding ip rule
+    * @param toIface interface name to add forwarding ip rule
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void ipfwdAddInterfaceForward(in @utf8InCpp String fromIface, in @utf8InCpp String toIface);
+
+   /**
+    * Remove forwarding ip rule
+    *
+    * @param fromIface interface name to remove forwarding ip rule
+    * @param toIface interface name to remove forwarding ip rule
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void ipfwdRemoveInterfaceForward(in @utf8InCpp String fromIface, in @utf8InCpp String toIface);
+
 }
