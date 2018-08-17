@@ -38,9 +38,6 @@
 
 const size_t SHA256_SIZE = EVP_MD_size(EVP_sha256());
 
-const char * const ADD = "add";
-const char * const DEL = "del";
-
 int execIptablesRestoreWithOutput(IptablesTarget target, const std::string& commands,
                                   std::string *output) {
     return android::net::gCtls->iptablesRestoreCtrl.execute(target, commands, output);
