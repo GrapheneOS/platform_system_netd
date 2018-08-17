@@ -16,12 +16,14 @@
 
 #define LOG_TAG "BpfUtils"
 
+#include <elf.h>
+#include <inttypes.h>
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>
 #include <stdlib.h>
 #include <string.h>
-#include <inttypes.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
@@ -31,19 +33,20 @@
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
+#include <netdutils/MemBlock.h>
 #include <netdutils/Slice.h>
 #include <netdutils/StatusOr.h>
 #include "bpf/BpfUtils.h"
 
+using android::base::GetUintProperty;
 using android::base::StringPrintf;
 using android::base::unique_fd;
-using android::base::GetUintProperty;
+using android::netdutils::MemBlock;
 using android::netdutils::Slice;
 using android::netdutils::statusFromErrno;
 using android::netdutils::StatusOr;
 
-#define ptr_to_u64(x) ((uint64_t)(uintptr_t)x)
-#define DEFAULT_LOG_LEVEL 1
+constexpr size_t LOG_BUF_SIZE = 65536;
 
 namespace android {
 namespace bpf {
@@ -158,7 +161,7 @@ int bpfProgLoad(bpf_prog_type prog_type, Slice bpf_insns, const char* license,
     return ret;
 }
 
-int mapPin(const base::unique_fd& map_fd, const char* pathname) {
+int bpfFdPin(const base::unique_fd& map_fd, const char* pathname) {
     bpf_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.pathname = ptr_to_u64((void*)pathname);
@@ -231,6 +234,180 @@ bool hasBpfSupport() {
         return api_level >= MINIMUM_API_REQUIRED;
     }
     return false;
+}
+
+int loadAndPinProgram(BpfProgInfo* prog, Slice progBlock) {
+    // Program doesn't exist. Try to load it.
+    char bpf_log_buf[LOG_BUF_SIZE];
+    Slice bpfLog = Slice(bpf_log_buf, sizeof(bpf_log_buf));
+    prog->fd.reset(bpfProgLoad(prog->loadType, progBlock, "Apache 2.0", 0, bpfLog));
+    if (prog->fd < 0) {
+        int ret = -errno;
+        ALOGE("load %s failed: %s", prog->name, strerror(errno));
+        return ret;
+    }
+    if (prog->attachType == BPF_CGROUP_INET_EGRESS || prog->attachType == BPF_CGROUP_INET_INGRESS) {
+        unique_fd cg_fd(open(CGROUP_ROOT_PATH, O_DIRECTORY | O_RDONLY | O_CLOEXEC));
+        if (cg_fd < 0) {
+            int ret = -errno;
+            ALOGE("Failed to open the cgroup directory");
+            return ret;
+        }
+        int ret = android::bpf::attachProgram(prog->attachType, prog->fd, cg_fd);
+        if (ret) {
+            ret = -errno;
+            ALOGE("%s attach failed: %s", prog->name, strerror(errno));
+            return ret;
+        }
+    }
+    if (prog->path) {
+        int ret = android::bpf::bpfFdPin(prog->fd, prog->path);
+        if (ret) {
+            ret = -errno;
+            ALOGE("Pin %s as file %s failed: %s", prog->name, prog->path, strerror(errno));
+            return ret;
+        }
+    }
+    return 0;
+}
+
+int extractAndLoadProg(BpfProgInfo* prog, Elf64_Shdr* sectionPtr, Slice fileContents,
+                       const std::vector<BpfMapInfo>& mapPatterns) {
+    uint64_t progSize = (uint64_t) sectionPtr->sh_size;
+    Slice progSection = take(drop(fileContents, sectionPtr->sh_offset), progSize);
+    if (progSection.size() < progSize) {
+        ALOGE("programSection out of bound");
+        return -EINVAL;
+    }
+    MemBlock progCopy(progSection);
+    if (progCopy.get().size() != progSize) {
+        ALOGE("program cannot be extracted");
+        return -EINVAL;
+    }
+    Slice remaining = progCopy.get();
+    while (remaining.size() >= MAP_CMD_SIZE) {
+        // Scan the program, examining all possible places that might be the start of a
+        // map load operation (i.e., all bytes of value MAP_LD_CMD_HEAD).
+        // In each of these places, check whether it is the start of one of the patterns
+        // we want to replace, and if so, replace it.
+        Slice mapHead = findFirstMatching(remaining, MAP_LD_CMD_HEAD);
+        if (mapHead.size() < MAP_CMD_SIZE) break;
+        bool replaced = false;
+        for (const auto& pattern : mapPatterns) {
+            if (!memcmp(mapHead.base(), pattern.search.data(), MAP_CMD_SIZE)) {
+                memcpy(mapHead.base(), pattern.replace.data(), MAP_CMD_SIZE);
+                replaced = true;
+                break;
+            }
+        }
+        remaining = drop(mapHead, replaced ? MAP_CMD_SIZE : sizeof(uint8_t));
+    }
+    if (!(prog->path) || access(prog->path, R_OK) == -1) {
+        return loadAndPinProgram(prog, progCopy.get());
+    }
+    return 0;
+}
+
+int parsePrograms(Slice fileContents, BpfProgInfo* programs, size_t size,
+                  const std::vector<BpfMapInfo>& mapPatterns) {
+    Slice elfHeader = take(fileContents, sizeof(Elf64_Ehdr));
+    if (elfHeader.size() < sizeof(Elf64_Ehdr)) {
+        ALOGE("bpf fileContents does not have complete elf header");
+        return -EINVAL;
+    }
+
+    Elf64_Ehdr* elf = (Elf64_Ehdr*) elfHeader.base();
+    // Find section names string table. This is the section whose index is e_shstrndx.
+    if (elf->e_shstrndx == SHN_UNDEF) {
+        ALOGE("cannot locate namesSection\n");
+        return -EINVAL;
+    }
+    size_t totalSectionSize = (elf->e_shnum) * sizeof(Elf64_Shdr);
+    Slice sections = take(drop(fileContents, elf->e_shoff), totalSectionSize);
+    if (sections.size() < totalSectionSize) {
+        ALOGE("sections corrupted");
+        return -EMSGSIZE;
+    }
+
+    Slice namesSection =
+            take(drop(sections, elf->e_shstrndx * sizeof(Elf64_Shdr)), sizeof(Elf64_Shdr));
+    if (namesSection.size() != sizeof(Elf64_Shdr)) {
+        ALOGE("namesSection corrupted");
+        return -EMSGSIZE;
+    }
+    size_t strTabOffset = ((Elf64_Shdr*) namesSection.base())->sh_offset;
+    size_t strTabSize = ((Elf64_Shdr*) namesSection.base())->sh_size;
+
+    Slice strTab = take(drop(fileContents, strTabOffset), strTabSize);
+    if (strTab.size() < strTabSize) {
+        ALOGE("string table out of bound\n");
+        return -EMSGSIZE;
+    }
+
+    for (int i = 0; i < elf->e_shnum; i++) {
+        Slice section = take(drop(sections, i * sizeof(Elf64_Shdr)), sizeof(Elf64_Shdr));
+        if (section.size() < sizeof(Elf64_Shdr)) {
+            ALOGE("section %d is out of bound, section size: %zu, header size: %zu, total size: "
+                  "%zu",
+                  i, section.size(), sizeof(Elf64_Shdr), sections.size());
+            return -EBADF;
+        }
+        Elf64_Shdr* sectionPtr = (Elf64_Shdr*) section.base();
+        Slice nameSlice = drop(strTab, sectionPtr->sh_name);
+        if (nameSlice.size() == 0) {
+            ALOGE("nameSlice out of bound, i: %d, strTabSize: %zu, sh_name: %u", i, strTabSize,
+                  sectionPtr->sh_name);
+            return -EBADF;
+        }
+        for (size_t i = 0; i < size; i++) {
+            BpfProgInfo* prog = programs + i;
+            if (!strcmp((char*) nameSlice.base(), prog->name)) {
+                int ret = extractAndLoadProg(prog, sectionPtr, fileContents, mapPatterns);
+                if (ret) return ret;
+            }
+        }
+    }
+
+    // Check all the program struct passed in to make sure they all have a valid fd.
+    for (size_t i = 0; i < size; i++) {
+        BpfProgInfo* prog = programs + i;
+        if (prog->fd < 0) {
+            return -EINVAL;
+        }
+    }
+    return 0;
+}
+
+int parseProgramsFromFile(const char* path, BpfProgInfo* programs, size_t size,
+                          const std::vector<BpfMapInfo>& mapPatterns) {
+    unique_fd fd(open(path, O_RDONLY));
+    int ret;
+    if (fd < 0) {
+        ret = -errno;
+        ALOGE("Failed to open %s program: %s", path, strerror(errno));
+        return ret;
+    }
+
+    struct stat stat;
+    if (fstat(fd.get(), &stat)) {
+        ret = -errno;
+        ALOGE("Failed to get file (%s) size: %s", path, strerror(errno));
+        return ret;
+    }
+
+    off_t fileLen = stat.st_size;
+    char* baseAddr =
+            (char*) mmap(NULL, fileLen, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd.get(), 0);
+    if (baseAddr == MAP_FAILED) {
+        ALOGE("Failed to map the program (%s) into memory: %s", path, strerror(errno));
+        ret = -errno;
+        return ret;
+    }
+
+    ret = parsePrograms(Slice(baseAddr, fileLen), programs, size, mapPatterns);
+
+    munmap(baseAddr, fileLen);
+    return ret;
 }
 
 }  // namespace bpf
