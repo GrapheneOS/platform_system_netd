@@ -17,24 +17,19 @@
 #ifndef _NETD_CONSTANTS_H
 #define _NETD_CONSTANTS_H
 
-#include <mutex>
-#include <string>
-#include <list>
 #include <ifaddrs.h>
 #include <netdb.h>
-#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
 
-#include <chrono>
+#include <mutex>
+#include <string>
 
 #include <private/android_filesystem_config.h>
 
-const int PROTECT_MARK = 0x1;
 const int MAX_SYSTEM_UID = AID_APP - 1;
 
 extern const size_t SHA256_SIZE;
-
-extern const char * const ADD;
-extern const char * const DEL;
 
 enum IptablesTarget { V4, V6, V4V6 };
 
