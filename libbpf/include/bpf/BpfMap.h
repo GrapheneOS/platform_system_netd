@@ -58,7 +58,7 @@ class BpfMap {
     }
 
     netdutils::Status pinToPath(const std::string path) {
-        int ret = mapPin(mMapFd, path.c_str());
+        int ret = bpfFdPin(mMapFd, path.c_str());
         if (ret) {
             return netdutils::statusFromErrno(errno,
                                               base::StringPrintf("pin to %s failed", path.c_str()));
