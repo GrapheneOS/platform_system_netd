@@ -95,6 +95,14 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     // Tethering-related commands.
     binder::Status tetherApplyDnsInterfaces(bool *ret) override;
     binder::Status tetherGetStats(android::os::PersistableBundle *ret) override;
+    binder::Status tetherStart(const std::vector<std::string>& dhcpRanges) override;
+    binder::Status tetherStop() override;
+    binder::Status tetherIsEnabled(bool* enabled) override;
+    binder::Status tetherInterfaceAdd(const std::string& ifName) override;
+    binder::Status tetherInterfaceRemove(const std::string& ifName) override;
+    binder::Status tetherInterfaceList(std::vector<std::string>* ifList) override;
+    binder::Status tetherDnsSet(int32_t netId, const std::vector<std::string>& dnsAddrs) override;
+    binder::Status tetherDnsList(std::vector<std::string>* dnsList) override;
 
     // Interface-related commands.
     binder::Status interfaceAddAddress(const std::string &ifName,
