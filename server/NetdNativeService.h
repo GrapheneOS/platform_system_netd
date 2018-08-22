@@ -207,6 +207,15 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     // Clatd-related commands
     binder::Status clatdStart(const std::string& ifName) override;
     binder::Status clatdStop(const std::string& ifName) override;
+
+    // Ipfw-related commands
+    binder::Status ipfwdEnabled(bool* status) override;
+    binder::Status ipfwdEnableForwarding(const std::string& requester) override;
+    binder::Status ipfwdDisableForwarding(const std::string& requester) override;
+    binder::Status ipfwdAddInterfaceForward(const std::string& fromIface,
+                                            const std::string& toIface) override;
+    binder::Status ipfwdRemoveInterfaceForward(const std::string& fromIface,
+                                               const std::string& toIface) override;
 };
 
 }  // namespace net
