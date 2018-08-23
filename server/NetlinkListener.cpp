@@ -57,8 +57,11 @@ const NetlinkListener::DispatchFn kDefaultDispatchFn = [](const nlmsghdr& nlmsg,
 
 }  // namespace
 
-NetlinkListener::NetlinkListener(UniqueFd event, UniqueFd sock)
-    : mEvent(std::move(event)), mSock(std::move(sock)), mWorker([this]() { run(); }) {
+NetlinkListener::NetlinkListener(UniqueFd event, UniqueFd sock, const std::string& name)
+    : mEvent(std::move(event)),
+      mSock(std::move(sock)),
+      mWorker([this]() { run(); }),
+      mThreadName(name) {
     const auto rxErrorHandler = [](const nlmsghdr& nlmsg, const Slice msg) {
         std::stringstream ss;
         ss << nlmsg << " " << msg << " " << netdutils::toHex(msg, 32);
@@ -105,6 +108,12 @@ Status NetlinkListener::run() {
         fn(nlmsg, buf);
     };
 
+    if (mThreadName.length() > 0) {
+        int ret = pthread_setname_np(pthread_self(), mThreadName.c_str());
+        if (ret) {
+            ALOGE("thread name set failed, name: %s, ret: %s", mThreadName.c_str(), strerror(ret));
+        }
+    }
     const auto& sys = sSyscalls.get();
     const std::array<Fd, 2> fds{{{mEvent}, {mSock}}};
     const int events = POLLIN;
