@@ -1121,3 +1121,91 @@ TEST_F(BinderTest, TestClatdStartStop) {
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     EXPECT_FALSE(processExists(clatdName));
 }
+
+namespace {
+
+bool getIpfwdV4Enable() {
+    static const char ipv4IpfwdCmd[] = "cat /proc/sys/net/ipv4/ip_forward";
+    std::vector<std::string> result = runCommand(ipv4IpfwdCmd);
+    EXPECT_TRUE(!result.empty());
+    int v4Enable = std::stoi(result[0]);
+    return v4Enable;
+}
+
+bool getIpfwdV6Enable() {
+    static const char ipv6IpfwdCmd[] = "cat proc/sys/net/ipv6/conf/all/forwarding";
+    std::vector<std::string> result = runCommand(ipv6IpfwdCmd);
+    EXPECT_TRUE(!result.empty());
+    int v6Enable = std::stoi(result[0]);
+    return v6Enable;
+}
+
+void expectIpfwdEnable(bool enable) {
+    int enableIPv4 = getIpfwdV4Enable();
+    int enableIPv6 = getIpfwdV6Enable();
+    EXPECT_EQ(enable, enableIPv4);
+    EXPECT_EQ(enable, enableIPv6);
+}
+
+bool ipRuleIpfwdExists(const char* ipVersion, const std::string ipfwdRule) {
+    std::vector<std::string> rules = listIpRules(ipVersion);
+    for (const auto& rule : rules) {
+        if (rule.find(ipfwdRule) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void expectIpfwdRuleExists(const char* fromIf, const char* toIf) {
+    std::string ipfwdRule = StringPrintf("18000:\tfrom all iif %s lookup %s ", fromIf, toIf);
+
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_TRUE(ipRuleIpfwdExists(ipVersion, ipfwdRule));
+    }
+}
+
+void expectIpfwdRuleNotExists(const char* fromIf, const char* toIf) {
+    std::string ipfwdRule = StringPrintf("18000:\tfrom all iif %s lookup %s ", fromIf, toIf);
+
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_FALSE(ipRuleIpfwdExists(ipVersion, ipfwdRule));
+    }
+}
+
+}  // namespace
+
+TEST_F(BinderTest, TestIpfwdEnableDisableStatusForwarding) {
+    // Netd default enable Ipfwd with requester NetdHwService
+    const std::string defaultRequester = "NetdHwService";
+
+    binder::Status status = mNetd->ipfwdDisableForwarding(defaultRequester);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectIpfwdEnable(false);
+
+    bool ipfwdEnabled;
+    status = mNetd->ipfwdEnabled(&ipfwdEnabled);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    EXPECT_FALSE(ipfwdEnabled);
+
+    status = mNetd->ipfwdEnableForwarding(defaultRequester);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectIpfwdEnable(true);
+
+    status = mNetd->ipfwdEnabled(&ipfwdEnabled);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    EXPECT_TRUE(ipfwdEnabled);
+}
+
+TEST_F(BinderTest, TestIpfwdAddRemoveInterfaceForward) {
+    static const char testFromIf[] = "dummy0";
+    static const char testToIf[] = "dummy0";
+
+    binder::Status status = mNetd->ipfwdAddInterfaceForward(testFromIf, testToIf);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectIpfwdRuleExists(testFromIf, testToIf);
+
+    status = mNetd->ipfwdRemoveInterfaceForward(testFromIf, testToIf);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectIpfwdRuleNotExists(testFromIf, testToIf);
+}

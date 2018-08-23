@@ -814,5 +814,47 @@ binder::Status NetdNativeService::clatdStop(const std::string& ifName) {
     return statusFromErrcode(res);
 }
 
+binder::Status NetdNativeService::ipfwdEnabled(bool* status) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+    *status = (gCtls->tetherCtrl.forwardingRequestCount() > 0) ? true : false;
+    gLog.log(entry.returns(*status).withAutomaticDuration());
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::ipfwdEnableForwarding(const std::string& requester) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(requester);
+    int res = (gCtls->tetherCtrl.enableForwarding(requester.c_str())) ? 0 : -EREMOTEIO;
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::ipfwdDisableForwarding(const std::string& requester) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(requester);
+    int res = (gCtls->tetherCtrl.disableForwarding(requester.c_str())) ? 0 : -EREMOTEIO;
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::ipfwdAddInterfaceForward(const std::string& fromIface,
+                                                           const std::string& toIface) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(fromIface).arg(toIface);
+    int res = RouteController::enableTethering(fromIface.c_str(), toIface.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::ipfwdRemoveInterfaceForward(const std::string& fromIface,
+                                                              const std::string& toIface) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(fromIface).arg(toIface);
+    int res = RouteController::disableTethering(fromIface.c_str(), toIface.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
 }  // namespace net
 }  // namespace android
