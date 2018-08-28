@@ -60,22 +60,28 @@
 #define RAW_TABLE "raw"
 #define MANGLE_TABLE "mangle"
 
-using namespace android;
-using namespace android::base;
-using namespace android::binder;
+namespace binder = android::binder;
+namespace netdutils = android::netdutils;
+
+using android::IBinder;
+using android::IServiceManager;
+using android::sp;
+using android::String16;
+using android::String8;
+using android::base::Join;
 using android::base::StartsWith;
+using android::base::StringPrintf;
 using android::bpf::hasBpfSupport;
 using android::net::INetd;
 using android::net::TunInterface;
 using android::net::UidRange;
 using android::net::XfrmController;
-using android::netdutils::sSyscalls;
 using android::os::PersistableBundle;
 
-#define SKIP_IF_BPF_SUPPORTED         \
-    do {                              \
-        if (hasBpfSupport()) return;  \
-    } while (0);
+#define SKIP_IF_BPF_SUPPORTED        \
+    do {                             \
+        if (hasBpfSupport()) return; \
+    } while (0)
 
 static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
@@ -87,13 +93,12 @@ static const std::string NO_SOCKET_ALLOW_RULE("! owner UID match 0-4294967294");
 static const std::string ESP_ALLOW_RULE("esp");
 
 class BinderTest : public ::testing::Test {
-
-public:
+  public:
     BinderTest() {
-        sp<IServiceManager> sm = defaultServiceManager();
+        sp<IServiceManager> sm = android::defaultServiceManager();
         sp<IBinder> binder = sm->getService(String16("netd"));
         if (binder != nullptr) {
-            mNetd = interface_cast<INetd>(binder);
+            mNetd = android::interface_cast<INetd>(binder);
         }
     }
 
@@ -121,7 +126,7 @@ public:
 
     static void fakeRemoteSocketPair(int *clientSocket, int *serverSocket, int *acceptedSocket);
 
-protected:
+  protected:
     sp<INetd> mNetd;
     static TunInterface sTun;
 };
@@ -129,17 +134,17 @@ protected:
 TunInterface BinderTest::sTun;
 
 class TimedOperation : public Stopwatch {
-public:
+  public:
     explicit TimedOperation(const std::string &name): mName(name) {}
     virtual ~TimedOperation() {
         fprintf(stderr, "    %s: %6.1f ms\n", mName.c_str(), timeTaken());
     }
 
-private:
+  private:
     std::string mName;
 };
 
-TEST_F(BinderTest, TestIsAlive) {
+TEST_F(BinderTest, IsAlive) {
     TimedOperation t("isAlive RPC");
     bool isAlive = false;
     mNetd->isAlive(&isAlive);
@@ -207,7 +212,7 @@ static bool iptablesEspAllowRuleExists(const char *chainName){
            iptablesRuleExists(IP6TABLES_PATH, chainName, ESP_ALLOW_RULE);
 }
 
-TEST_F(BinderTest, TestFirewallReplaceUidChain) {
+TEST_F(BinderTest, FirewallReplaceUidChain) {
     SKIP_IF_BPF_SUPPORTED;
 
     std::string chainName = StringPrintf("netd_binder_test_%u", arc4random_uniform(10000));
@@ -260,7 +265,7 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
     EXPECT_EQ(false, ret);
 }
 
-TEST_F(BinderTest, TestVirtualTunnelInterface) {
+TEST_F(BinderTest, VirtualTunnelInterface) {
     const struct TestData {
         const std::string family;
         const std::string deviceName;
@@ -317,7 +322,7 @@ bool BinderTest::allocateIpSecResources(bool expectOk, int32_t *spi) {
     return (status.ok() == expectOk);
 }
 
-TEST_F(BinderTest, TestXfrmControllerInit) {
+TEST_F(BinderTest, XfrmControllerInit) {
     netdutils::Status status;
     status = XfrmController::Init();
     SCOPED_TRACE(status);
@@ -407,7 +412,7 @@ int getDataSaverState() {
     return enabled6;
 }
 
-TEST_F(BinderTest, TestBandwidthEnableDataSaver) {
+TEST_F(BinderTest, BandwidthEnableDataSaver) {
     const int wasEnabled = getDataSaverState();
     ASSERT_NE(-1, wasEnabled);
 
@@ -456,7 +461,7 @@ static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
     return existsIp4;
 }
 
-TEST_F(BinderTest, TestNetworkInterfaces) {
+TEST_F(BinderTest, NetworkInterfaces) {
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, "").isOk());
     EXPECT_EQ(EEXIST, mNetd->networkCreatePhysical(TEST_NETID1, "").serviceSpecificErrorCode());
     EXPECT_EQ(EEXIST, mNetd->networkCreateVpn(TEST_NETID1, false, true).serviceSpecificErrorCode());
@@ -471,7 +476,7 @@ TEST_F(BinderTest, TestNetworkInterfaces) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID2).isOk());
 }
 
-TEST_F(BinderTest, TestNetworkUidRules) {
+TEST_F(BinderTest, NetworkUidRules) {
     const uint32_t RULE_PRIORITY_SECURE_VPN = 12000;
 
     EXPECT_TRUE(mNetd->networkCreateVpn(TEST_NETID1, false, true).isOk());
@@ -500,7 +505,7 @@ TEST_F(BinderTest, TestNetworkUidRules) {
     EXPECT_EQ(ENONET, mNetd->networkDestroy(TEST_NETID1).serviceSpecificErrorCode());
 }
 
-TEST_F(BinderTest, TestNetworkRejectNonSecureVpn) {
+TEST_F(BinderTest, NetworkRejectNonSecureVpn) {
     constexpr uint32_t RULE_PRIORITY = 12500;
 
     std::vector<UidRange> uidRanges = {
@@ -580,7 +585,7 @@ void checkSocketpairClosed(int clientSocket, int acceptedSocket) {
     EXPECT_EQ(ECONNRESET, err);
 }
 
-TEST_F(BinderTest, TestSocketDestroy) {
+TEST_F(BinderTest, SocketDestroy) {
     int clientSocket, serverSocket, acceptedSocket;
     ASSERT_NO_FATAL_FAILURE(fakeRemoteSocketPair(&clientSocket, &serverSocket, &acceptedSocket));
 
@@ -730,7 +735,7 @@ static bool interfaceHasAddress(
 
 }  // namespace
 
-TEST_F(BinderTest, TestInterfaceAddRemoveAddress) {
+TEST_F(BinderTest, InterfaceAddRemoveAddress) {
     static const struct TestData {
         const char *addrString;
         const int   prefixLength;
@@ -782,7 +787,7 @@ TEST_F(BinderTest, TestInterfaceAddRemoveAddress) {
     }
 }
 
-TEST_F(BinderTest, TestSetProcSysNet) {
+TEST_F(BinderTest, SetProcSysNet) {
     static const struct TestData {
         const int family;
         const int which;
@@ -828,7 +833,7 @@ static std::string base64Encode(const std::vector<uint8_t>& input) {
     return std::string(reinterpret_cast<char*>(output_bytes));
 }
 
-TEST_F(BinderTest, TestSetResolverConfiguration_Tls) {
+TEST_F(BinderTest, SetResolverConfiguration_Tls) {
     const std::vector<std::string> LOCALLY_ASSIGNED_DNS{"8.8.8.8", "2001:4860:4860::8888"};
     std::vector<uint8_t> fp(SHA256_SIZE);
     std::vector<uint8_t> short_fp(1);
@@ -883,6 +888,8 @@ TEST_F(BinderTest, TestSetResolverConfiguration_Tls) {
         "", {}, {});
 }
 
+namespace {
+
 void expectNoTestCounterRules() {
     for (const auto& binary : { IPTABLES_PATH, IP6TABLES_PATH }) {
         std::string command = StringPrintf("%s -w -nvL tetherctrl_counters", binary);
@@ -904,7 +911,9 @@ void delTetherCounterValues(const char* path, const std::string& if1, const std:
                             path, if2.c_str(), if1.c_str()));
 }
 
-TEST_F(BinderTest, TestTetherGetStats) {
+}  // namespace
+
+TEST_F(BinderTest, TetherGetStats) {
     expectNoTestCounterRules();
 
     // TODO: fold this into more comprehensive tests once we have binder RPCs for enabling and
@@ -959,6 +968,7 @@ TEST_F(BinderTest, TestTetherGetStats) {
 
     expectNoTestCounterRules();
 }
+
 namespace {
 
 constexpr char chainName_LOCAL_RAW_PREROUTING[] = "idletimer_raw_PREROUTING";
@@ -1008,7 +1018,9 @@ void expectIdletimerInterfaceRuleNotExists(const std::string& ifname, int timeou
     }
 }
 
-TEST_F(BinderTest, TestIdletimerAddRemoveInterface) {
+}  // namespace
+
+TEST_F(BinderTest, IdletimerAddRemoveInterface) {
     // TODO: We will get error in if expectIdletimerInterfaceRuleNotExists if there are the same
     // rule in the table. Because we only check the result after calling remove function. We might
     // check the actual rule which is removed by our function (maybe compare the results between
@@ -1032,8 +1044,6 @@ TEST_F(BinderTest, TestIdletimerAddRemoveInterface) {
         expectIdletimerInterfaceRuleNotExists(td.ifname, td.timeout, td.classLabel);
     }
 }
-
-}  // namespace
 
 namespace {
 
@@ -1072,7 +1082,9 @@ void expectStrictSetUidReject(const int uid) {
     }
 }
 
-TEST_F(BinderTest, TestStrictSetUidCleartextPenalty) {
+}  // namespace
+
+TEST_F(BinderTest, StrictSetUidCleartextPenalty) {
     binder::Status status;
     int32_t uid = randomUid();
 
@@ -1100,14 +1112,16 @@ TEST_F(BinderTest, TestStrictSetUidCleartextPenalty) {
     EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
 }
 
-}  // namespace
+namespace {
 
 static bool processExists(const std::string& processName) {
     std::string cmd = StringPrintf("ps -A | grep '%s'", processName.c_str());
     return (runCommand(cmd.c_str()).size()) ? true : false;
 }
 
-TEST_F(BinderTest, TestClatdStartStop) {
+}  // namespace
+
+TEST_F(BinderTest, ClatdStartStop) {
     binder::Status status;
     // use dummy0 for test since it is set ready
     static const char testIf[] = "dummy0";

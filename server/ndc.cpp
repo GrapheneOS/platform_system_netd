@@ -156,12 +156,10 @@ static int do_monitor(int sock, int stop_after_cmd) {
 
         for (i = 0; i < rc; i++) {
             if (buffer[i] == '\0') {
-                int code;
                 char tmp[4];
-
                 strncpy(tmp, buffer + offset, 3);
                 tmp[3] = '\0';
-                code = atoi(tmp);
+                long code = strtol(tmp, nullptr, 10);
 
                 printf("%s\n", buffer + offset);
                 if (stop_after_cmd) {
