@@ -172,7 +172,9 @@ TEST_F(TransportTest, RacingQueries_10000) {
     DnsTlsTransport transport(SERVER1, MARK, &factory);
     std::vector<std::future<DnsTlsTransport::Result>> results;
     // Fewer than 65536 queries to avoid ID exhaustion.
-    for (int i = 0; i < 10000; ++i) {
+    const int num_queries = 10000;
+    results.reserve(num_queries);
+    for (int i = 0; i < num_queries; ++i) {
         results.push_back(transport.query(makeSlice(QUERY)));
     }
     for (auto& result : results) {
@@ -236,6 +238,7 @@ TEST_F(TransportTest, ParallelColliding) {
     DnsTlsTransport transport(SERVER1, MARK, &factory);
     std::vector<std::future<DnsTlsTransport::Result>> results;
     // Fewer than 65536 queries to avoid ID exhaustion.
+    results.reserve(FakeSocketDelay::sDelay);
     for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
         results.push_back(transport.query(makeSlice(QUERY)));
     }
@@ -254,6 +257,7 @@ TEST_F(TransportTest, ParallelColliding_Max) {
     std::vector<std::future<DnsTlsTransport::Result>> results;
     // Exactly 65536 queries should still be possible in parallel,
     // even if they all have the same original ID.
+    results.reserve(FakeSocketDelay::sDelay);
     for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
         results.push_back(transport.query(makeSlice(QUERY)));
     }
@@ -271,6 +275,7 @@ TEST_F(TransportTest, ParallelUnique) {
     DnsTlsTransport transport(SERVER1, MARK, &factory);
     std::vector<bytevec> queries(FakeSocketDelay::sDelay);
     std::vector<std::future<DnsTlsTransport::Result>> results;
+    results.reserve(FakeSocketDelay::sDelay);
     for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
         queries[i] = make_query(i, SIZE);
         results.push_back(transport.query(makeSlice(queries[i])));
@@ -291,6 +296,7 @@ TEST_F(TransportTest, ParallelUnique_Max) {
     std::vector<std::future<DnsTlsTransport::Result>> results;
     // Exactly 65536 queries should still be possible in parallel,
     // and they should all be mapped correctly back to the original ID.
+    results.reserve(FakeSocketDelay::sDelay);
     for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
         queries[i] = make_query(i, SIZE);
         results.push_back(transport.query(makeSlice(queries[i])));
@@ -303,15 +309,17 @@ TEST_F(TransportTest, ParallelUnique_Max) {
 }
 
 TEST_F(TransportTest, IdExhaustion) {
+    const int num_queries = 65536;
     // A delay of 65537 is unreachable, because the maximum number
     // of outstanding queries is 65536.
-    FakeSocketDelay::sDelay = 65537;
+    FakeSocketDelay::sDelay = num_queries + 1;
     FakeSocketDelay::sReverse = false;
     FakeSocketFactory<FakeSocketDelay> factory;
     DnsTlsTransport transport(SERVER1, MARK, &factory);
     std::vector<std::future<DnsTlsTransport::Result>> results;
     // Issue the maximum number of queries.
-    for (int i = 0; i < 65536; ++i) {
+    results.reserve(num_queries);
+    for (int i = 0; i < num_queries; ++i) {
         results.push_back(transport.query(makeSlice(QUERY)));
     }
 
@@ -336,6 +344,7 @@ TEST_F(TransportTest, ReverseOrder) {
     DnsTlsTransport transport(SERVER1, MARK, &factory);
     std::vector<bytevec> queries(FakeSocketDelay::sDelay);
     std::vector<std::future<DnsTlsTransport::Result>> results;
+    results.reserve(FakeSocketDelay::sDelay);
     for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
         queries[i] = make_query(i, SIZE);
         results.push_back(transport.query(makeSlice(queries[i])));
@@ -354,6 +363,7 @@ TEST_F(TransportTest, ReverseOrder_Max) {
     DnsTlsTransport transport(SERVER1, MARK, &factory);
     std::vector<bytevec> queries(FakeSocketDelay::sDelay);
     std::vector<std::future<DnsTlsTransport::Result>> results;
+    results.reserve(FakeSocketDelay::sDelay);
     for (size_t i = 0; i < FakeSocketDelay::sDelay; ++i) {
         queries[i] = make_query(i, SIZE);
         results.push_back(transport.query(makeSlice(queries[i])));
@@ -493,6 +503,7 @@ TEST_F(TransportTest, SilentDrop) {
     // the socket will close.  Transport will retry them all, until they
     // all hit the retry limit and expire.
     std::vector<std::future<DnsTlsTransport::Result>> results;
+    results.reserve(FakeSocketLimited::sLimit);
     for (int i = 0; i < FakeSocketLimited::sLimit; ++i) {
         results.push_back(transport.query(makeSlice(QUERY)));
     }
@@ -511,9 +522,10 @@ TEST_F(TransportTest, PartialDrop) {
 
     // Queue up 100 queries, alternating "short" which will be served and "long"
     // which will be dropped.
-    int num_queries = 10 * FakeSocketLimited::sLimit;
+    const int num_queries = 10 * FakeSocketLimited::sLimit;
     std::vector<bytevec> queries(num_queries);
     std::vector<std::future<DnsTlsTransport::Result>> results;
+    results.reserve(num_queries);
     for (int i = 0; i < num_queries; ++i) {
         queries[i] = make_query(i, SIZE + (i % 2));
         results.push_back(transport.query(makeSlice(queries[i])));
