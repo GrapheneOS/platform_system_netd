@@ -36,8 +36,6 @@
 #include "bpf/BpfMap.h"
 #include "bpf/BpfUtils.h"
 
-using namespace android::bpf;
-
 using android::base::unique_fd;
 using android::netdutils::status::ok;
 using android::netdutils::StatusOr;
