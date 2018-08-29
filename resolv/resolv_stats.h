@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef _RES_STATS_H
-#define _RES_STATS_H
+#ifndef _RES_STATS_H_
+#define _RES_STATS_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -77,4 +77,4 @@ extern void android_net_res_stats_get_usable_servers(const struct __res_params* 
         __attribute__((visibility("default")));
 __END_DECLS
 
-#endif  // _RES_STATS_H
+#endif  // _RES_STATS_H_

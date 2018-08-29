@@ -26,5 +26,3 @@ cc_defaults {
         "-warnings-as-errors=android-*,clang-analyzer-security*,cert-*,-cert-err34-c"
     ],
 }
-
-subdirs = ["*"]

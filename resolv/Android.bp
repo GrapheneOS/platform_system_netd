@@ -1,0 +1,33 @@
+cc_library_shared {
+    name: "libnetd_resolv",
+    defaults: ["netd_defaults"],
+    srcs: [
+        "getaddrinfo.c",
+        "gethnamaddr.c",
+        "sethostent.c",
+        "res_cache.c",
+        "res_data.c",
+        "res_debug.c",
+        "res_init.c",
+        "res_mkquery.c",
+        "res_query.c",
+        "res_send.c",
+        "res_state.c",
+        "res_stats.c",
+    ],
+    // TODO: un-ifdef resolver code
+    // TODO: fix unused parameter warnings
+    cflags: [
+        "-DANDROID_CHANGES",
+        "-DINET6",
+        "-Wno-unused-parameter",
+    ],
+    // TODO: stop depending on internal bionic headers
+    include_dirs: [
+        "bionic/libc/async_safe/include",  // For async_safe/log.h
+        "bionic/libc/dns/include",  // For nsswitch.h
+    ],
+    export_include_dirs: ["."],  // Export resolv_netid.h
+    // TODO: pie in the sky: make this code clang-tidy clean
+    tidy: false
+}

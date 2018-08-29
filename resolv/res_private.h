@@ -1,7 +1,9 @@
 /*	$NetBSD: res_private.h,v 1.1.1.1 2004/05/20 17:18:54 christos Exp $	*/
 
-#ifndef res_private_h
-#define res_private_h
+#ifndef _RES_PRIVATE_H_
+#define _RES_PRIVATE_H_
+
+#include "resolv_private.h"
 
 struct __res_state_ext {
     union res_sockaddr_union nsaddrs[MAXNS];
@@ -18,4 +20,4 @@ struct __res_state_ext {
 
 extern int res_ourserver_p(const res_state statp, const struct sockaddr* sa);
 
-#endif
+#endif  // _RES_PRIVATE_H_

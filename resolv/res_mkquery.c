@@ -70,16 +70,6 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/cdefs.h>
-#if defined(LIBC_SCCS) && !defined(lint)
-#ifdef notdef
-static const char sccsid[] = "@(#)res_mkquery.c	8.1 (Berkeley) 6/4/93";
-static const char rcsid[] = "Id: res_mkquery.c,v 1.1.2.2.4.2 2004/03/16 12:34:18 marka Exp";
-#else
-__RCSID("$NetBSD: res_mkquery.c,v 1.6 2006/01/24 17:40:32 christos Exp $");
-#endif
-#endif /* LIBC_SCCS and not lint */
-
 #include <arpa/nameser.h>
 #include <netdb.h>
 #include <netinet/in.h>

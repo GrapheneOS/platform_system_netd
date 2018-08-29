@@ -29,16 +29,6 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-#if defined(LIBC_SCCS) && !defined(lint)
-#if 0
-static char sccsid[] = "@(#)sethostent.c	8.1 (Berkeley) 6/4/93";
-static char rcsid[] = "Id: sethostent.c,v 8.5 1996/09/28 06:51:07 vixie Exp ";
-#else
-__RCSID("$NetBSD: sethostent.c,v 1.20 2014/03/17 13:24:23 christos Exp $");
-#endif
-#endif /* LIBC_SCCS and not lint */
-
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <assert.h>
@@ -50,17 +40,17 @@ __RCSID("$NetBSD: sethostent.c,v 1.20 2014/03/17 13:24:23 christos Exp $");
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
-#include "namespace.h"
 
 #include "hostent.h"
 #include "resolv_private.h"
 
+// NetBSD uses _DIAGASSERT to null-check arguments and the like,
+// but it's clear from the number of mistakes in their assertions
+// that they don't actually test or ship with this.
+#define _DIAGASSERT(e) /* nothing */
+
 #define ALIGNBYTES (sizeof(uintptr_t) - 1)
 #define ALIGN(p) (((uintptr_t)(p) + ALIGNBYTES) & ~ALIGNBYTES)
-
-#ifndef _REENTRANT
-void res_close(void);
-#endif
 
 static struct hostent* _hf_gethtbyname2(const char*, int, struct getnamaddr*);
 
@@ -103,22 +93,7 @@ int _hf_gethtbyname(void* rv, void* cb_data, va_list ap) {
     /* NOSTRICT skip string len */ (void) va_arg(ap, int);
     af = va_arg(ap, int);
 
-#if 0
-	{
-		res_state res = __res_get_state();
-		if (res == NULL)
-			return NS_NOTFOUND;
-		if (res->options & RES_USE_INET6)
-			hp = _hf_gethtbyname2(name, AF_INET6, info);
-		else
-			hp = NULL;
-		if (hp == NULL)
-			hp = _hf_gethtbyname2(name, AF_INET, info);
-		__res_put_state(res);
-	}
-#else
     hp = _hf_gethtbyname2(name, af, info);
-#endif
     if (hp == NULL) {
         if (*info->he == NETDB_INTERNAL && errno == ENOSPC) {
             return NS_UNAVAIL;  // glibc compatibility.
