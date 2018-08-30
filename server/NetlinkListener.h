@@ -70,7 +70,7 @@ class NetlinkListenerInterface {
 // netfilter extensions that allow batching of events like NFLOG.
 class NetlinkListener : public NetlinkListenerInterface {
   public:
-    NetlinkListener(netdutils::UniqueFd event, netdutils::UniqueFd sock);
+    NetlinkListener(netdutils::UniqueFd event, netdutils::UniqueFd sock, const std::string& name);
 
     ~NetlinkListener() override;
 
@@ -88,6 +88,7 @@ class NetlinkListener : public NetlinkListenerInterface {
     std::mutex mMutex;
     std::map<uint16_t, DispatchFn> mDispatchMap;  // guarded by mMutex
     std::thread mWorker;
+    std::string mThreadName;
 };
 
 }  // namespace net
