@@ -80,24 +80,17 @@
 #include <netinet/in.h>
 
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#ifdef ANDROID_CHANGES
-#include <errno.h>
-#include <fcntl.h>
-#endif /* ANDROID_CHANGES */
-
 /* ensure that sockaddr_in6 and IN6ADDR_ANY_INIT are declared / defined */
-#ifdef ANDROID_CHANGES
 #include "resolv_netid.h"
 #include "resolv_private.h"
-#else
-#include <resolv.h>
-#endif
 
 #include "res_private.h"
 
@@ -106,17 +99,7 @@
 #define DEBUG
 #endif
 
-static void res_setoptions __P((res_state, const char*, const char*) );
-
-#ifdef RESOLVSORT
-static const char sort_mask[] = "/&";
-#define ISSORTMASK(ch) (strchr(sort_mask, ch) != NULL)
-static uint32_t net_mask(struct in_addr);
-#endif
-
-#if !defined(isascii) /* XXX - could be a function */
-#define isascii(c) (!(c & 0200))
-#endif
+static void res_setoptions(res_state, const char*, const char*);
 
 /*
  * Resolver state default settings.
@@ -164,9 +147,6 @@ int __res_vinit(res_state statp, int preinit) {
     int haveenv = 0;
 #endif
     int havesearch = 0;
-#ifdef RESOLVSORT
-    int nsort = 0;
-#endif
 #if !defined(__BIONIC__)
     char* net;
 #endif
@@ -266,141 +246,6 @@ int __res_vinit(res_state statp, int preinit) {
     if (nserv > 0) statp->nscount = nserv;
 #endif
 
-#ifndef ANDROID_CHANGES /* !ANDROID_CHANGES - IGNORE resolv.conf in Android */
-#define MATCH(line, name)                      \
-    (!strncmp(line, name, sizeof(name) - 1) && \
-     (line[sizeof(name) - 1] == ' ' || line[sizeof(name) - 1] == '\t'))
-
-    nserv = 0;
-    if ((fp = fopen(_PATH_RESCONF, "re")) != NULL) {
-        /* read the config file */
-        while (fgets(buf, sizeof(buf), fp) != NULL) {
-            /* skip comments */
-            if (*buf == ';' || *buf == '#') continue;
-            /* read default domain name */
-            if (MATCH(buf, "domain")) {
-                if (haveenv) /* skip if have from environ */
-                    continue;
-                cp = buf + sizeof("domain") - 1;
-                while (*cp == ' ' || *cp == '\t') cp++;
-                if ((*cp == '\0') || (*cp == '\n')) continue;
-                strncpy(statp->defdname, cp, sizeof(statp->defdname) - 1);
-                statp->defdname[sizeof(statp->defdname) - 1] = '\0';
-                if ((cp = strpbrk(statp->defdname, " \t\n")) != NULL) *cp = '\0';
-                havesearch = 0;
-                continue;
-            }
-            /* set search list */
-            if (MATCH(buf, "search")) {
-                if (haveenv) /* skip if have from environ */
-                    continue;
-                cp = buf + sizeof("search") - 1;
-                while (*cp == ' ' || *cp == '\t') cp++;
-                if ((*cp == '\0') || (*cp == '\n')) continue;
-                strncpy(statp->defdname, cp, sizeof(statp->defdname) - 1);
-                statp->defdname[sizeof(statp->defdname) - 1] = '\0';
-                if ((cp = strchr(statp->defdname, '\n')) != NULL) *cp = '\0';
-                /*
-                 * Set search list to be blank-separated strings
-                 * on rest of line.
-                 */
-                cp = statp->defdname;
-                pp = statp->dnsrch;
-                *pp++ = cp;
-                for (n = 0; *cp && pp < statp->dnsrch + MAXDNSRCH; cp++) {
-                    if (*cp == ' ' || *cp == '\t') {
-                        *cp = 0;
-                        n = 1;
-                    } else if (n) {
-                        *pp++ = cp;
-                        n = 0;
-                    }
-                }
-                /* null terminate last domain if there are excess */
-                while (*cp != '\0' && *cp != ' ' && *cp != '\t') cp++;
-                *cp = '\0';
-                *pp++ = 0;
-                havesearch = 1;
-                continue;
-            }
-            /* read nameservers to query */
-            if (MATCH(buf, "nameserver") && nserv < MAXNS) {
-                struct addrinfo hints, *ai;
-                char sbuf[NI_MAXSERV];
-                const size_t minsiz = sizeof(statp->_u._ext.ext->nsaddrs[0]);
-
-                cp = buf + sizeof("nameserver") - 1;
-                while (*cp == ' ' || *cp == '\t') cp++;
-                cp[strcspn(cp, ";# \t\n")] = '\0';
-                if ((*cp != '\0') && (*cp != '\n')) {
-                    memset(&hints, 0, sizeof(hints));
-                    hints.ai_family = PF_UNSPEC;
-                    hints.ai_socktype = SOCK_DGRAM; /*dummy*/
-                    hints.ai_flags = AI_NUMERICHOST;
-                    sprintf(sbuf, "%u", NAMESERVER_PORT);
-                    if (getaddrinfo(cp, sbuf, &hints, &ai) == 0 && ai->ai_addrlen <= minsiz) {
-                        if (statp->_u._ext.ext != NULL) {
-                            memcpy(&statp->_u._ext.ext->nsaddrs[nserv], ai->ai_addr,
-                                   ai->ai_addrlen);
-                        }
-                        if (ai->ai_addrlen <= sizeof(statp->nsaddr_list[nserv])) {
-                            memcpy(&statp->nsaddr_list[nserv], ai->ai_addr, ai->ai_addrlen);
-                        } else
-                            statp->nsaddr_list[nserv].sin_family = 0;
-                        freeaddrinfo(ai);
-                        nserv++;
-                    }
-                }
-                continue;
-            }
-            if (MATCH(buf, "sortlist")) {
-                struct in_addr a;
-
-                cp = buf + sizeof("sortlist") - 1;
-                while (nsort < MAXRESOLVSORT) {
-                    while (*cp == ' ' || *cp == '\t') cp++;
-                    if (*cp == '\0' || *cp == '\n' || *cp == ';') break;
-                    net = cp;
-                    while (*cp && !ISSORTMASK(*cp) && *cp != ';' && isascii(*cp) &&
-                           !isspace((unsigned char) *cp))
-                        cp++;
-                    n = *cp;
-                    *cp = 0;
-                    if (inet_aton(net, &a)) {
-                        statp->sort_list[nsort].addr = a;
-                        if (ISSORTMASK(n)) {
-                            *cp++ = n;
-                            net = cp;
-                            while (*cp && *cp != ';' && isascii(*cp) &&
-                                   !isspace((unsigned char) *cp))
-                                cp++;
-                            n = *cp;
-                            *cp = 0;
-                            if (inet_aton(net, &a)) {
-                                statp->sort_list[nsort].mask = a.s_addr;
-                            } else {
-                                statp->sort_list[nsort].mask =
-                                        net_mask(statp->sort_list[nsort].addr);
-                            }
-                        } else {
-                            statp->sort_list[nsort].mask = net_mask(statp->sort_list[nsort].addr);
-                        }
-                        nsort++;
-                    }
-                    *cp = n;
-                }
-                continue;
-            }
-            if (MATCH(buf, "options")) {
-                res_setoptions(statp, buf + sizeof("options") - 1, "conf");
-                continue;
-            }
-        }
-        if (nserv > 0) statp->nscount = nserv;
-        statp->nsort = nsort;
-        (void) fclose(fp);
-    }
-#endif /* !ANDROID_CHANGES */
 /*
  * Last chance to get a nameserver.  This should not normally
  * be necessary
@@ -541,21 +386,7 @@ static void res_setoptions(res_state statp, const char* options, const char* sou
     }
 }
 
-#ifdef RESOLVSORT
-/* XXX - should really support CIDR which means explicit masks always. */
-static uint32_t net_mask(struct in_addr in) /*!< XXX - should really use system's version of this */
-{
-    register uint32_t i = ntohl(in.s_addr);
-
-    if (IN_CLASSA(i))
-        return (htonl(IN_CLASSA_NET));
-    else if (IN_CLASSB(i))
-        return (htonl(IN_CLASSB_NET));
-    return (htonl(IN_CLASSC_NET));
-}
-#endif
-
-/*%
+/*
  * This routine is for closing the socket if a virtual circuit is used and
  * the program wants to close it.  This provides support for endhostent()
  * which expects to close the socket.
@@ -679,7 +510,6 @@ int res_getservers(res_state statp, union res_sockaddr_union* set, int cnt) {
     return (statp->nscount);
 }
 
-#ifdef ANDROID_CHANGES
 void res_setnetcontext(res_state statp, const struct android_net_context* netcontext) {
     if (statp != NULL) {
         statp->netid = netcontext->dns_netid;
@@ -690,5 +520,3 @@ void res_setnetcontext(res_state statp, const struct android_net_context* netcon
         }
     }
 }
-
-#endif /* ANDROID_CHANGES */

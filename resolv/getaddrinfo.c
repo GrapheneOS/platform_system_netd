@@ -881,11 +881,7 @@ static int get_port(const struct addrinfo* ai, const char* servname, int matchon
             allownumeric = 1;
             break;
         case ANY:
-#if 1 /* ANDROID-SPECIFIC CHANGE TO MATCH GLIBC */
             allownumeric = 1;
-#else
-            allownumeric = 0;
-#endif
             break;
         default:
             return EAI_SOCKTYPE;
@@ -1198,7 +1194,6 @@ struct addrinfo_sort_elem {
     int original_order;
 };
 
-/*ARGSUSED*/
 static int _get_scope(const struct sockaddr* addr) {
     if (addr->sa_family == AF_INET6) {
         const struct sockaddr_in6* addr6 = (const struct sockaddr_in6*) addr;
@@ -1256,7 +1251,6 @@ static int _get_scope(const struct sockaddr* addr) {
  * RFC 6724, section 2.1.
  */
 
-/*ARGSUSED*/
 static int _get_label(const struct sockaddr* addr) {
     if (addr->sa_family == AF_INET) {
         return 4;
@@ -1296,7 +1290,6 @@ static int _get_label(const struct sockaddr* addr) {
  * RFC 6724, section 2.1.
  */
 
-/*ARGSUSED*/
 static int _get_precedence(const struct sockaddr* addr) {
     if (addr->sa_family == AF_INET) {
         return 35;
@@ -1329,7 +1322,6 @@ static int _get_precedence(const struct sockaddr* addr) {
  * Find number of matching initial bits between the two addresses a1 and a2.
  */
 
-/*ARGSUSED*/
 static int _common_prefix_len(const struct in6_addr* a1, const struct in6_addr* a2) {
     const char* p1 = (const char*) a1;
     const char* p2 = (const char*) a2;
@@ -1357,7 +1349,6 @@ static int _common_prefix_len(const struct in6_addr* a1, const struct in6_addr* 
  * RFC 6724, section 6.
  */
 
-/*ARGSUSED*/
 static int _rfc6724_compare(const void* ptr1, const void* ptr2) {
     const struct addrinfo_sort_elem* a1 = (const struct addrinfo_sort_elem*) ptr1;
     const struct addrinfo_sort_elem* a2 = (const struct addrinfo_sort_elem*) ptr2;
@@ -1461,7 +1452,6 @@ static int _rfc6724_compare(const void* ptr1, const void* ptr2) {
  * undefined.
  */
 
-/*ARGSUSED*/
 static int _find_src_addr(const struct sockaddr* addr, struct sockaddr* src_addr, unsigned mark,
                           uid_t uid) {
     int sock;
@@ -1518,7 +1508,6 @@ static int _find_src_addr(const struct sockaddr* addr, struct sockaddr* src_addr
  * Will leave the list unchanged if an error occurs.
  */
 
-/*ARGSUSED*/
 static void _rfc6724_sort(struct addrinfo* list_sentinel, unsigned mark, uid_t uid) {
     struct addrinfo* cur;
     int nelem = 0, i;
@@ -1565,7 +1554,6 @@ error:
     free(elems);
 }
 
-/*ARGSUSED*/
 static int _dns_getaddrinfo(void* rv, void* cb_data, va_list ap) {
     struct addrinfo* ai;
     querybuf *buf, *buf2;
@@ -1767,7 +1755,6 @@ found:
     return res0;
 }
 
-/*ARGSUSED*/
 static int _files_getaddrinfo(void* rv, void* cb_data, va_list ap) {
     const char* name;
     const struct addrinfo* pai;

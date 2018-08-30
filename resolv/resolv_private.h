@@ -71,16 +71,6 @@
 #define MAXHOSTNAMELEN 256
 
 /*
- * Revision information.  This is the release date in YYYYMMDD format.
- * It can change every day so the right thing to do with it is use it
- * in preprocessor commands such as "#if (__RES > 19931104)".  Do not
- * compare for equality; rather, use it to determine whether your resolver
- * is new enough to contain a certain feature.
- */
-
-#define __RES 20030124
-
-/*
  * This used to be defined in res_query.c, now it's in herror.c.
  * [XXX no it's not.  It's in irs/irs_data.c]
  * It was
@@ -100,21 +90,6 @@
  */
 
 #define RES_SET_H_ERRNO(r, x) (h_errno = (r)->res_h_errno = (x))
-struct __res_state; /* forward */
-
-/*
- * Resolver configuration file.
- * Normally not present, but may contain the address of the
- * initial name server(s) to query and the domain search list.
- */
-
-#ifndef _PATH_RESCONF
-#ifdef ANDROID_CHANGES
-#define _PATH_RESCONF "/etc/ppp/resolv.conf"
-#else
-#define _PATH_RESCONF "/etc/resolv.conf"
-#endif
-#endif
 
 struct res_sym {
     int number;            /* Identifying number, like T_MX */
@@ -139,35 +114,24 @@ struct res_sym {
 struct __res_state_ext;
 
 struct __res_state {
-    unsigned netid; /* NetId: cache key and socket mark */
-    int retrans;    /* retransmission time interval */
-    int retry;      /* number of times to retransmit */
-#ifdef sun
-    u_int options; /* option flags - see below. */
-#else
-    u_long options;       /* option flags - see below. */
-#endif
-    int nscount;                           /* number of name servers */
+    unsigned netid;                        /* NetId: cache key and socket mark */
+    int retrans;                           /* retransmission time interval */
+    int retry;                             /* number of times to retransmit */
+    u_long options;                        /* option flags - see below. */
+    int nscount;                           /* number of name srvers */
     struct sockaddr_in nsaddr_list[MAXNS]; /* address of name server */
 #define nsaddr nsaddr_list[0]              /* for backward compatibility */
     u_short id;                            /* current message id */
     char* dnsrch[MAXDNSRCH + 1];           /* components of domain to search */
     char defdname[256];                    /* default domain (deprecated) */
-#ifdef sun
-    u_int pfcode; /* RES_PRF_ flags - see below. */
-#else
-    u_long pfcode;        /* RES_PRF_ flags - see below. */
-#endif
-    unsigned ndots : 4; /* threshold for initial abs. query */
-    unsigned nsort : 4; /* number of elements in sort_list[] */
+    u_long pfcode;                         /* RES_PRF_ flags - see below. */
+    unsigned ndots : 4;                    /* threshold for initial abs. query */
+    unsigned nsort : 4;                    /* number of elements in sort_list[] */
     char unused[3];
     struct {
         struct in_addr addr;
         uint32_t mask;
     } sort_list[MAXRESOLVSORT];
-#ifdef __OLD_RES_STATE
-    char lookups[4];
-#else
     res_send_qhook qhook; /* query hook */
     res_send_rhook rhook; /* response hook */
     int res_h_errno;      /* last one set for this context */
@@ -185,7 +149,6 @@ struct __res_state {
             struct __res_state_ext* ext; /* extention for IPv6 */
         } _ext;
     } _u;
-#endif
     struct res_static rstatic[1];
 };
 
@@ -295,18 +258,8 @@ __BEGIN_DECLS
 __LIBC_HIDDEN__ extern struct __res_state* __res_get_state(void);
 __LIBC_HIDDEN__ extern void __res_put_state(struct __res_state*);
 
-#ifndef ANDROID_CHANGES
-/*
- * Source and Binary compatibility; _res will not work properly
- * with multi-threaded programs.
- */
-extern struct __res_state* __res_state(void);
-#define _res (*__res_state())
-#endif
-
 __END_DECLS
 
-#ifndef __BIND_NOSTATIC
 #define fp_nquery __fp_nquery
 #define fp_query __fp_query
 #define hostalias __hostalias
@@ -317,14 +270,6 @@ __END_DECLS
 #define res_querydomain __res_querydomain
 #define res_send __res_send
 #define res_sendsigned __res_sendsigned
-
-#ifdef BIND_RES_POSIX3
-#define dn_expand __dn_expand
-#define res_init __res_init
-#define res_query __res_query
-#define res_search __res_search
-#define res_mkquery __res_mkquery
-#endif
 
 __BEGIN_DECLS
 void fp_nquery(const u_char*, int, FILE*);
@@ -342,7 +287,6 @@ int res_search(const char*, int, int, u_char*, int);
 int res_send(const u_char*, int, u_char*, int);
 int res_sendsigned(const u_char*, int, ns_tsig_key*, u_char*, int);
 __END_DECLS
-#endif
 
 #if !defined(SHARED_LIBBIND) || defined(LIB)
 /*
@@ -359,9 +303,6 @@ extern const struct res_sym __p_type_syms[];
 __LIBC_HIDDEN__ extern const struct res_sym __p_rcode_syms[];
 #endif /* SHARED_LIBBIND */
 
-#ifndef ANDROID_CHANGES
-#define dn_comp __dn_comp
-#endif
 #define dn_count_labels __dn_count_labels
 #define dn_skipname __dn_skipname
 #define fp_resstat __fp_resstat
@@ -429,19 +370,13 @@ int res_dnok(const char*);
 int sym_ston(const struct res_sym*, const char*, int*);
 const char* sym_ntos(const struct res_sym*, int, int*);
 const char* sym_ntop(const struct res_sym*, int, int*);
-#ifndef ANDROID_CHANGES
-int b64_ntop(u_char const*, size_t, char*, size_t);
-int b64_pton(char const*, u_char*, size_t);
-#endif
 int loc_aton(const char*, u_char*);
 const char* loc_ntoa(const u_char*, char*, size_t);
 int dn_skipname(const u_char*, const u_char*);
 void putlong(uint32_t, u_char*);
 void putshort(uint16_t, u_char*);
-#ifndef __ultrix__
 uint16_t _getshort(const u_char*);
 uint32_t _getlong(const u_char*);
-#endif
 const char* p_class(int);
 const char* p_time(uint32_t);
 const char* p_type(int);

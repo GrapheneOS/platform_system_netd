@@ -70,16 +70,6 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/cdefs.h>
-#if defined(LIBC_SCCS) && !defined(lint)
-#ifdef notdef
-static const char sccsid[] = "@(#)res_query.c	8.1 (Berkeley) 6/4/93";
-static const char rcsid[] = "Id: res_query.c,v 1.2.2.3.4.2 2004/03/16 12:34:19 marka Exp";
-#else
-__RCSID("$NetBSD: res_query.c,v 1.7 2006/01/24 17:41:25 christos Exp $");
-#endif
-#endif /* LIBC_SCCS and not lint */
-
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <ctype.h>
@@ -88,18 +78,12 @@ __RCSID("$NetBSD: res_query.c,v 1.7 2006/01/24 17:41:25 christos Exp $");
 #include <netinet/in.h>
 #include <sys/param.h>
 #include <sys/types.h>
-#ifdef ANDROID_CHANGES
 #include "resolv_cache.h"
 #include "resolv_private.h"
-#else
-#include <resolv.h>
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#define DISABLE_HOST_ALIAS 1
 
 /* Options.  Leave them on. */
 #ifndef DEBUG
