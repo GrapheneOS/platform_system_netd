@@ -121,7 +121,7 @@ StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener() {
     RETURN_IF_NOT_OK(sys.connect(sock, kernel));
 
     std::unique_ptr<NetlinkListenerInterface> listener =
-        std::make_unique<NetlinkListener>(std::move(event), std::move(sock));
+            std::make_unique<NetlinkListener>(std::move(event), std::move(sock), "SkDestroyListen");
 
     return listener;
 }
