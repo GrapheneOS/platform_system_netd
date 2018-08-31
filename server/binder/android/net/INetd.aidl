@@ -433,8 +433,8 @@ interface INetd {
     *
     * @param transformId a unique identifier for allocated resources
     * @param direction DIRECTION_IN or DIRECTION_OUT
-    * @param sourceAddress InetAddress as string for the sending endpoint
-    * @param destinationAddress InetAddress as string for the receiving endpoint
+    * @param tmplSrcAddress InetAddress as string for the sending endpoint
+    * @param tmplDstAddress InetAddress as string for the receiving endpoint
     * @param spi a 32-bit unique ID allocated to the user
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
@@ -442,8 +442,8 @@ interface INetd {
     void ipSecAddSecurityPolicy(
             int transformId,
             int direction,
-            in @utf8InCpp String sourceAddress,
-            in @utf8InCpp String destinationAddress,
+            in @utf8InCpp String tmplSrcAddress,
+            in @utf8InCpp String tmplDstAddress,
             int spi,
             int markValue,
             int markMask);
@@ -453,8 +453,8 @@ interface INetd {
     *
     * @param transformId a unique identifier for allocated resources
     * @param direction DIRECTION_IN or DIRECTION_OUT
-    * @param sourceAddress InetAddress as string for the sending endpoint
-    * @param destinationAddress InetAddress as string for the receiving endpoint
+    * @param tmplSrcAddress InetAddress as string for the sending endpoint
+    * @param tmplDstAddress InetAddress as string for the receiving endpoint
     * @param spi a 32-bit unique ID allocated to the user
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
@@ -462,8 +462,8 @@ interface INetd {
     void ipSecUpdateSecurityPolicy(
             int transformId,
             int direction,
-            in @utf8InCpp String sourceAddress,
-            in @utf8InCpp String destinationAddress,
+            in @utf8InCpp String tmplSrcAddress,
+            in @utf8InCpp String tmplDstAddress,
             int spi,
             int markValue,
             int markMask);
@@ -473,16 +473,16 @@ interface INetd {
     *
     * @param transformId a unique identifier for allocated resources
     * @param direction DIRECTION_IN or DIRECTION_OUT
-    * @param sourceAddress InetAddress as string for the sending endpoint
-    * @param destinationAddress InetAddress as string for the receiving endpoint
+    * @param tmplSrcAddress InetAddress as string for the sending endpoint
+    * @param tmplDstAddress InetAddress as string for the receiving endpoint
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
     */
     void ipSecDeleteSecurityPolicy(
             int transformId,
             int direction,
-            in @utf8InCpp String sourceAddress,
-            in @utf8InCpp String destinationAddress,
+            in @utf8InCpp String tmplSrcAddress,
+            in @utf8InCpp String tmplDstAddress,
             int markValue,
             int markMask);
 
