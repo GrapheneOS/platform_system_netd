@@ -432,18 +432,20 @@ interface INetd {
     * Adds an IPsec global policy.
     *
     * @param transformId a unique identifier for allocated resources
+    * @param selAddrFamily the address family identifier for the selector
     * @param direction DIRECTION_IN or DIRECTION_OUT
-    * @param sourceAddress InetAddress as string for the sending endpoint
-    * @param destinationAddress InetAddress as string for the receiving endpoint
+    * @param tmplSrcAddress InetAddress as string for the sending endpoint
+    * @param tmplDstAddress InetAddress as string for the receiving endpoint
     * @param spi a 32-bit unique ID allocated to the user
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
     */
     void ipSecAddSecurityPolicy(
             int transformId,
+            int selAddrFamily,
             int direction,
-            in @utf8InCpp String sourceAddress,
-            in @utf8InCpp String destinationAddress,
+            in @utf8InCpp String tmplSrcAddress,
+            in @utf8InCpp String tmplDstAddress,
             int spi,
             int markValue,
             int markMask);
@@ -452,18 +454,20 @@ interface INetd {
     * Updates an IPsec global policy.
     *
     * @param transformId a unique identifier for allocated resources
+    * @param selAddrFamily the address family identifier for the selector
     * @param direction DIRECTION_IN or DIRECTION_OUT
-    * @param sourceAddress InetAddress as string for the sending endpoint
-    * @param destinationAddress InetAddress as string for the receiving endpoint
+    * @param tmplSrcAddress InetAddress as string for the sending endpoint
+    * @param tmplDstAddress InetAddress as string for the receiving endpoint
     * @param spi a 32-bit unique ID allocated to the user
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
     */
     void ipSecUpdateSecurityPolicy(
             int transformId,
+            int selAddrFamily,
             int direction,
-            in @utf8InCpp String sourceAddress,
-            in @utf8InCpp String destinationAddress,
+            in @utf8InCpp String tmplSrcAddress,
+            in @utf8InCpp String tmplDstAddress,
             int spi,
             int markValue,
             int markMask);
@@ -471,18 +475,19 @@ interface INetd {
    /**
     * Deletes an IPsec global policy.
     *
+    * Deletion of global policies does not do any matching based on the templates, thus
+    * template source/destination addresses are not needed (as opposed to add/update).
+    *
     * @param transformId a unique identifier for allocated resources
+    * @param selAddrFamily the address family identifier for the selector
     * @param direction DIRECTION_IN or DIRECTION_OUT
-    * @param sourceAddress InetAddress as string for the sending endpoint
-    * @param destinationAddress InetAddress as string for the receiving endpoint
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
     */
     void ipSecDeleteSecurityPolicy(
             int transformId,
+            int selAddrFamily,
             int direction,
-            in @utf8InCpp String sourceAddress,
-            in @utf8InCpp String destinationAddress,
             int markValue,
             int markMask);
 
