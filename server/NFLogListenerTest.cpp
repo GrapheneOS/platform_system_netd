@@ -59,6 +59,7 @@ class MockNetlinkListener : public NetlinkListenerInterface {
     MOCK_METHOD2(subscribe, netdutils::Status(uint16_t type, const DispatchFn& fn));
     MOCK_METHOD1(unsubscribe, netdutils::Status(uint16_t type));
     MOCK_METHOD0(join, void());
+    MOCK_METHOD1(registerSkErrorHandler, void(const SkErrorHandler& handler));
 };
 
 class NFLogListenerTest : public testing::Test {
