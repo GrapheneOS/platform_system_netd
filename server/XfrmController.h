@@ -158,20 +158,19 @@ public:
     ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket);
 
     static netdutils::Status ipSecAddSecurityPolicy(int32_t transformId, int32_t direction,
-                                                    const std::string& sourceAddress,
-                                                    const std::string& destinationAddress,
-                                                    int32_t spi, int32_t markValue,
-                                                    int32_t markMask);
+                                                    const std::string& tmplSrcAddress,
+                                                    const std::string& tmplDstAddress, int32_t spi,
+                                                    int32_t markValue, int32_t markMask);
 
     static netdutils::Status ipSecUpdateSecurityPolicy(int32_t transformId, int32_t direction,
-                                                       const std::string& sourceAddress,
-                                                       const std::string& destinationAddress,
+                                                       const std::string& tmplSrcAddress,
+                                                       const std::string& tmplDstAddress,
                                                        int32_t spi, int32_t markValue,
                                                        int32_t markMask);
 
     static netdutils::Status ipSecDeleteSecurityPolicy(int32_t transformId, int32_t direction,
-                                                       const std::string& sourceAddress,
-                                                       const std::string& destinationAddress,
+                                                       const std::string& tmplSrcAddress,
+                                                       const std::string& tmplDstAddress,
                                                        int32_t markValue, int32_t markMask);
 
     static int addVirtualTunnelInterface(const std::string& deviceName,
@@ -345,8 +344,8 @@ private:
                                          uint32_t* outSpi, const XfrmSocket& sock);
 
     static netdutils::Status processSecurityPolicy(int32_t transformId, int32_t direction,
-                                                   const std::string& localAddress,
-                                                   const std::string& remoteAddress, int32_t spi,
+                                                   const std::string& tmplSrcAddress,
+                                                   const std::string& tmplDstAddress, int32_t spi,
                                                    int32_t markValue, int32_t markMask,
                                                    int32_t msgType);
     static netdutils::Status updateTunnelModeSecurityPolicy(const XfrmSaInfo& record,
