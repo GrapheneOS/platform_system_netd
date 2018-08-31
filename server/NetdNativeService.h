@@ -151,19 +151,18 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status ipSecRemoveTransportModeTransform(
             const android::base::unique_fd& socket);
 
-    binder::Status ipSecAddSecurityPolicy(int32_t transformId, int32_t direction,
-                                          const std::string& tmplSrcAddress,
+    binder::Status ipSecAddSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
+                                          int32_t direction, const std::string& tmplSrcAddress,
                                           const std::string& tmplDstAddress, int32_t spi,
                                           int32_t markValue, int32_t markMask);
 
-    binder::Status ipSecUpdateSecurityPolicy(int32_t transformId, int32_t direction,
-                                             const std::string& tmplSrcAddress,
+    binder::Status ipSecUpdateSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
+                                             int32_t direction, const std::string& tmplSrcAddress,
                                              const std::string& tmplDstAddress, int32_t spi,
                                              int32_t markValue, int32_t markMask);
 
-    binder::Status ipSecDeleteSecurityPolicy(int32_t transformId, int32_t direction,
-                                             const std::string& tmplSrcAddress,
-                                             const std::string& tmplDstAddress, int32_t markValue,
+    binder::Status ipSecDeleteSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
+                                             int32_t direction, int32_t markValue,
                                              int32_t markMask);
 
     binder::Status trafficCheckBpfStatsEnable(bool* ret) override;
