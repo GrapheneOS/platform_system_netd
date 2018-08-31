@@ -222,14 +222,14 @@ const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             "-A bw_INPUT -p esp -j RETURN",
             StringPrintf("-A bw_INPUT -m mark --mark 0x%x/0x%x -j RETURN", uidBillingMask,
                          uidBillingMask),
-            "-A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
+            useBpf ? "" : "-A bw_INPUT -m owner --socket-exists",
             StringPrintf("-A bw_INPUT -j MARK --or-mark 0x%x", uidBillingMask),
 
             // Prevents IPSec double counting (Tunnel mode and Transport mode,
             // respectively)
             "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
             "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
-            "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
+            useBpf ? "" : "-A bw_OUTPUT -m owner --socket-exists",
 
             "-A bw_costly_shared --jump bw_penalty_box",
             useBpf ? BPF_PENALTY_BOX_MATCH_BLACKLIST_COMMAND : "",
@@ -243,10 +243,9 @@ const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             // respectively)
             "-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN",
             "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN",
-            "-A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
             useBpf ? StringPrintf("-A bw_raw_PREROUTING -m bpf --object-pinned %s",
                                   XT_BPF_INGRESS_PROG_PATH)
-                   : "",
+                   : "-A bw_raw_PREROUTING -m owner --socket-exists",
             "COMMIT",
 
             "*mangle",
@@ -254,7 +253,7 @@ const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             // respectively)
             "-A bw_mangle_POSTROUTING -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
             "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN",
-            "-A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
+            useBpf ? "" : "-A bw_mangle_POSTROUTING -m owner --socket-exists",
             StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x",
                          uidBillingMask),  // Clear the mark before sending this packet
             useBpf ? StringPrintf("-A bw_mangle_POSTROUTING -m bpf --object-pinned %s",
@@ -271,11 +270,8 @@ std::vector<std::string> toStrVec(int num, const char* const strs[]) {
 
 }  // namespace
 
-bool BandwidthController::getBpfStatus() {
-    return (access(XT_BPF_INGRESS_PROG_PATH, F_OK) != -1) &&
-           (access(XT_BPF_EGRESS_PROG_PATH, F_OK) != -1) &&
-           (access(XT_BPF_WHITELIST_PROG_PATH, F_OK) != -1) &&
-           (access(XT_BPF_BLACKLIST_PROG_PATH, F_OK) != -1);
+void BandwidthController::setBpfEnabled(bool isEnabled) {
+    mBpfSupported = isEnabled;
 }
 
 BandwidthController::BandwidthController() {
@@ -313,7 +309,6 @@ int BandwidthController::enableBandwidthControl(bool force) {
 
     flushCleanTables(false);
 
-    mBpfSupported = getBpfStatus();
     std::string commands = Join(getBasicAccountingCommands(mBpfSupported), '\n');
     return iptablesRestoreFunction(V4V6, commands, nullptr);
 }
