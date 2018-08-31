@@ -103,7 +103,7 @@ struct XfrmEncap {
 };
 
 // minimally sufficient structure to match either an SA or a Policy
-struct XfrmId {
+struct XfrmCommonInfo {
     xfrm_address_t dstAddr; // network order
     xfrm_address_t srcAddr;
     int addrFamily;  // AF_INET or AF_INET6
@@ -112,13 +112,19 @@ struct XfrmId {
     xfrm_mark mark;
 };
 
-struct XfrmSaInfo : XfrmId {
+struct XfrmSaInfo : XfrmCommonInfo {
     XfrmAlgo auth;
     XfrmAlgo crypt;
     XfrmAlgo aead;
     int netId;
     XfrmMode mode;
     XfrmEncap encap;
+};
+
+struct XfrmSpInfo : XfrmSaInfo {
+    // Address family in XfrmCommonInfo used for template/SA matching, need separate addrFamily
+    // for selectors
+    int selAddrFamily;  // AF_INET or AF_INET6
 };
 
 class XfrmController {
@@ -157,21 +163,22 @@ public:
     static netdutils::Status
     ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket);
 
-    static netdutils::Status ipSecAddSecurityPolicy(int32_t transformId, int32_t direction,
+    static netdutils::Status ipSecAddSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
+                                                    int32_t direction,
                                                     const std::string& tmplSrcAddress,
                                                     const std::string& tmplDstAddress, int32_t spi,
                                                     int32_t markValue, int32_t markMask);
 
-    static netdutils::Status ipSecUpdateSecurityPolicy(int32_t transformId, int32_t direction,
+    static netdutils::Status ipSecUpdateSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
+                                                       int32_t direction,
                                                        const std::string& tmplSrcAddress,
                                                        const std::string& tmplDstAddress,
                                                        int32_t spi, int32_t markValue,
                                                        int32_t markMask);
 
-    static netdutils::Status ipSecDeleteSecurityPolicy(int32_t transformId, int32_t direction,
-                                                       const std::string& tmplSrcAddress,
-                                                       const std::string& tmplDstAddress,
-                                                       int32_t markValue, int32_t markMask);
+    static netdutils::Status ipSecDeleteSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
+                                                       int32_t direction, int32_t markValue,
+                                                       int32_t markMask);
 
     static int addVirtualTunnelInterface(const std::string& deviceName,
                                          const std::string& localAddress,
@@ -300,11 +307,13 @@ private:
                   "is needed.");
 #endif
 
-    // helper function for filling in the XfrmId (and XfrmSaInfo) structure
-    static netdutils::Status fillXfrmId(const std::string& sourceAddress,
-                                        const std::string& destinationAddress, int32_t spi,
-                                        int32_t markValue, int32_t markMask, int32_t transformId,
-                                        XfrmId* xfrmId);
+    // helper functions for filling in the XfrmCommonInfo (and XfrmSaInfo) structure
+    static netdutils::Status fillXfrmCommonInfo(const std::string& sourceAddress,
+                                                const std::string& destinationAddress, int32_t spi,
+                                                int32_t markValue, int32_t markMask,
+                                                int32_t transformId, XfrmCommonInfo* info);
+    static netdutils::Status fillXfrmCommonInfo(int32_t spi, int32_t markValue, int32_t markMask,
+                                                int32_t transformId, XfrmCommonInfo* info);
 
     // Top level functions for managing a Transport Mode Transform
     static netdutils::Status addTransportModeTransform(const XfrmSaInfo& record);
@@ -312,7 +321,7 @@ private:
 
     // TODO(messagerefactor): FACTOR OUT ALL MESSAGE BUILDING CODE BELOW HERE
     // Shared between SA and SP
-    static void fillXfrmSelector(const XfrmSaInfo& record, xfrm_selector* selector);
+    static void fillXfrmSelector(const int record, xfrm_selector* selector);
 
     // Shared between Transport and Tunnel Mode
     static int fillNlAttrXfrmAlgoEnc(const XfrmAlgo& in_algo, nlattr_algo_crypt* algo);
@@ -326,33 +335,34 @@ private:
     static int fillUserSaInfo(const XfrmSaInfo& record, xfrm_usersa_info* usersa);
 
     // Functions for deleting a Transport Mode SA
-    static netdutils::Status deleteSecurityAssociation(const XfrmId& record,
+    static netdutils::Status deleteSecurityAssociation(const XfrmCommonInfo& record,
                                                        const XfrmSocket& sock);
-    static int fillUserSaId(const XfrmId& record, xfrm_usersa_id* said);
-    static int fillUserTemplate(const XfrmSaInfo& record, xfrm_user_tmpl* tmpl);
+    static int fillUserSaId(const XfrmCommonInfo& record, xfrm_usersa_id* said);
+    static int fillUserTemplate(const XfrmSpInfo& record, xfrm_user_tmpl* tmpl);
 
-    static int fillTransportModeUserSpInfo(const XfrmSaInfo& record, XfrmDirection direction,
-                                           xfrm_userpolicy_info* usersp);
-    static int fillNlAttrUserTemplate(const XfrmSaInfo& record, nlattr_user_tmpl* tmpl);
-    static int fillUserPolicyId(const XfrmSaInfo& record, XfrmDirection direction,
+    static int fillUserSpInfo(const XfrmSpInfo& record, XfrmDirection direction,
+                              xfrm_userpolicy_info* usersp);
+    static int fillNlAttrUserTemplate(const XfrmSpInfo& record, nlattr_user_tmpl* tmpl);
+    static int fillUserPolicyId(const XfrmSpInfo& record, XfrmDirection direction,
                                 xfrm_userpolicy_id* policy_id);
-    static int fillNlAttrXfrmMark(const XfrmId& record, nlattr_xfrm_mark* mark);
+    static int fillNlAttrXfrmMark(const XfrmCommonInfo& record, nlattr_xfrm_mark* mark);
     static int fillNlAttrXfrmOutputMark(const __u32 output_mark_value,
                                         nlattr_xfrm_output_mark* output_mark);
 
     static netdutils::Status allocateSpi(const XfrmSaInfo& record, uint32_t minSpi, uint32_t maxSpi,
                                          uint32_t* outSpi, const XfrmSocket& sock);
 
-    static netdutils::Status processSecurityPolicy(int32_t transformId, int32_t direction,
+    static netdutils::Status processSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
+                                                   int32_t direction,
                                                    const std::string& tmplSrcAddress,
                                                    const std::string& tmplDstAddress, int32_t spi,
                                                    int32_t markValue, int32_t markMask,
                                                    int32_t msgType);
-    static netdutils::Status updateTunnelModeSecurityPolicy(const XfrmSaInfo& record,
+    static netdutils::Status updateTunnelModeSecurityPolicy(const XfrmSpInfo& record,
                                                             const XfrmSocket& sock,
                                                             XfrmDirection direction,
                                                             uint16_t msgType);
-    static netdutils::Status deleteTunnelModeSecurityPolicy(const XfrmSaInfo& record,
+    static netdutils::Status deleteTunnelModeSecurityPolicy(const XfrmSpInfo& record,
                                                             const XfrmSocket& sock,
                                                             XfrmDirection direction);
     static netdutils::Status flushInterfaces();
