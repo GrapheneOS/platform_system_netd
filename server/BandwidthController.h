@@ -32,7 +32,7 @@ public:
     BandwidthController();
 
     int setupIptablesHooks();
-    static bool getBpfStatus();
+    void setBpfEnabled(bool isEnabled);
 
     int enableBandwidthControl(bool force);
     int disableBandwidthControl();
