@@ -281,6 +281,7 @@ void Controllers::init() {
     }
     gLog.info("Initializing traffic control: %.1fms", s.getTimeAndReset());
 
+    bandwidthCtrl.setBpfEnabled(trafficCtrl.checkBpfStatsEnable());
     bandwidthCtrl.enableBandwidthControl(false);
     gLog.info("Disabling bandwidth control: %.1fms", s.getTimeAndReset());
 
