@@ -601,7 +601,8 @@ binder::Status NetdNativeService::ipSecRemoveTransportModeTransform(
                     socket));
 }
 
-binder::Status NetdNativeService::ipSecAddSecurityPolicy(int32_t transformId, int32_t direction,
+binder::Status NetdNativeService::ipSecAddSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
+                                                         int32_t direction,
                                                          const std::string& tmplSrcAddress,
                                                          const std::string& tmplDstAddress,
                                                          int32_t spi, int32_t markValue,
@@ -610,10 +611,13 @@ binder::Status NetdNativeService::ipSecAddSecurityPolicy(int32_t transformId, in
     ENFORCE_PERMISSION(NETWORK_STACK);
     gLog.log("ipSecAddSecurityPolicy()");
     return asBinderStatus(gCtls->xfrmCtrl.ipSecAddSecurityPolicy(
-            transformId, direction, tmplSrcAddress, tmplDstAddress, spi, markValue, markMask));
+            transformId, selAddrFamily, direction, tmplSrcAddress, tmplDstAddress, spi, markValue,
+            markMask));
 }
 
-binder::Status NetdNativeService::ipSecUpdateSecurityPolicy(int32_t transformId, int32_t direction,
+binder::Status NetdNativeService::ipSecUpdateSecurityPolicy(int32_t transformId,
+                                                            int32_t selAddrFamily,
+                                                            int32_t direction,
                                                             const std::string& tmplSrcAddress,
                                                             const std::string& tmplDstAddress,
                                                             int32_t spi, int32_t markValue,
@@ -622,18 +626,19 @@ binder::Status NetdNativeService::ipSecUpdateSecurityPolicy(int32_t transformId,
     ENFORCE_PERMISSION(NETWORK_STACK);
     gLog.log("ipSecAddSecurityPolicy()");
     return asBinderStatus(gCtls->xfrmCtrl.ipSecUpdateSecurityPolicy(
-            transformId, direction, tmplSrcAddress, tmplDstAddress, spi, markValue, markMask));
+            transformId, selAddrFamily, direction, tmplSrcAddress, tmplDstAddress, spi, markValue,
+            markMask));
 }
 
-binder::Status NetdNativeService::ipSecDeleteSecurityPolicy(int32_t transformId, int32_t direction,
-                                                            const std::string& tmplSrcAddress,
-                                                            const std::string& tmplDstAddress,
-                                                            int32_t markValue, int32_t markMask) {
+binder::Status NetdNativeService::ipSecDeleteSecurityPolicy(int32_t transformId,
+                                                            int32_t selAddrFamily,
+                                                            int32_t direction, int32_t markValue,
+                                                            int32_t markMask) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(NETWORK_STACK);
     gLog.log("ipSecAddSecurityPolicy()");
     return asBinderStatus(gCtls->xfrmCtrl.ipSecDeleteSecurityPolicy(
-            transformId, direction, tmplSrcAddress, tmplDstAddress, markValue, markMask));
+            transformId, selAddrFamily, direction, markValue, markMask));
 }
 
 binder::Status NetdNativeService::addVirtualTunnelInterface(

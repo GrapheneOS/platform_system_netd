@@ -255,7 +255,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAllocateSpi) {
     xfrm_userspi_info userspi{};
     netdutils::extract(nlMsgSlice, userspi);
 
-    EXPECT_EQ(family, userspi.info.sel.family);
+    EXPECT_EQ(AF_UNSPEC, userspi.info.sel.family);
     expectAddressEquals(family, localAddr, userspi.info.saddr);
     expectAddressEquals(family, remoteAddr, userspi.info.id.daddr);
 
@@ -551,8 +551,8 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityPolicy) {
 
     XfrmController ctrl;
     Status res = ctrl.ipSecAddSecurityPolicy(
-        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr,
-        0 /* SPI */, TEST_XFRM_MARK, TEST_XFRM_MASK);
+            1 /* resourceId */, family, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr,
+            0 /* SPI */, TEST_XFRM_MARK, TEST_XFRM_MASK);
 
     EXPECT_TRUE(isOk(res)) << res;
     EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
@@ -596,6 +596,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAddSecurityPolicy) {
 
 TEST_P(XfrmControllerParameterizedTest, TestIpSecUpdateSecurityPolicy) {
     const int version = GetParam();
+    const int family = (version == 6) ? AF_INET6 : AF_INET;
     const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
     const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
 
@@ -615,8 +616,8 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecUpdateSecurityPolicy) {
 
     XfrmController ctrl;
     Status res = ctrl.ipSecUpdateSecurityPolicy(
-        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr,
-        0 /* SPI */, 0 /* Mark */, 0 /* Mask */);
+            1 /* resourceId */, family, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr,
+            0 /* SPI */, 0 /* Mark */, 0 /* Mask */);
 
     EXPECT_TRUE(isOk(res)) << res;
     EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
@@ -629,6 +630,7 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecUpdateSecurityPolicy) {
 
 TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityPolicy) {
     const int version = GetParam();
+    const int family = (version == 6) ? AF_INET6 : AF_INET;
     const std::string localAddr = (version == 6) ? LOCALHOST_V6 : LOCALHOST_V4;
     const std::string remoteAddr = (version == 6) ? TEST_ADDR_V6 : TEST_ADDR_V4;
 
@@ -646,9 +648,9 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecDeleteSecurityPolicy) {
         .WillOnce(DoAll(SetArgSlice<1>(responseSlice), Return(responseSlice)));
 
     XfrmController ctrl;
-    Status res = ctrl.ipSecDeleteSecurityPolicy(
-        1 /* resourceId */, static_cast<int>(XfrmDirection::OUT), localAddr, remoteAddr,
-        TEST_XFRM_MARK, TEST_XFRM_MASK);
+    Status res = ctrl.ipSecDeleteSecurityPolicy(1 /* resourceId */, family,
+                                                static_cast<int>(XfrmDirection::OUT),
+                                                TEST_XFRM_MARK, TEST_XFRM_MASK);
 
     EXPECT_TRUE(isOk(res)) << res;
     EXPECT_EQ(expectedMsgLength, nlMsgBuf.size());
