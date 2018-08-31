@@ -15,10 +15,8 @@ cc_library_shared {
         "res_state.c",
         "res_stats.c",
     ],
-    // TODO: un-ifdef resolver code
     // TODO: fix unused parameter warnings
     cflags: [
-        "-DINET6",
         "-Wno-unused-parameter",
     ],
     // TODO: stop depending on internal bionic headers

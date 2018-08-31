@@ -191,24 +191,10 @@ static int evCmpTime(struct timespec a, struct timespec b) {
     return SGN(n);
 }
 
-static struct timespec evTimeSpec(struct timeval tv) {
-    struct timespec ts;
-
-    ts.tv_sec = tv.tv_sec;
-    ts.tv_nsec = tv.tv_usec * 1000;
-    return (ts);
-}
-
 static struct timespec evNowTime(void) {
-    struct timeval now;
-#ifdef CLOCK_REALTIME
     struct timespec tsnow;
-    int m = CLOCK_REALTIME;
-
-    if (clock_gettime(m, &tsnow) == 0) return (tsnow);
-#endif
-    if (gettimeofday(&now, NULL) < 0) return (evConsTime((time_t) 0, 0L));
-    return (evTimeSpec(now));
+    clock_gettime(CLOCK_REALTIME, &tsnow);
+    return tsnow;
 }
 
 static struct iovec evConsIovec(void* buf, size_t cnt) {
@@ -217,7 +203,7 @@ static struct iovec evConsIovec(void* buf, size_t cnt) {
     memset(&ret, 0xf5, sizeof ret);
     ret.iov_base = buf;
     ret.iov_len = cnt;
-    return (ret);
+    return ret;
 }
 
 // END: Code copied from ISC eventlib
@@ -813,9 +799,7 @@ same_ns:
         if (statp->_vcsock < 0) {
             switch (errno) {
                 case EPROTONOSUPPORT:
-#ifdef EPFNOSUPPORT
                 case EPFNOSUPPORT:
-#endif
                 case EAFNOSUPPORT:
                     Perror(statp, stderr, "socket(vc)", errno);
                     return (0);
@@ -1081,9 +1065,7 @@ static int send_dg(res_state statp, struct __res_params* params, const u_char* b
         if (EXT(statp).nssocks[ns] < 0) {
             switch (errno) {
                 case EPROTONOSUPPORT:
-#ifdef EPFNOSUPPORT
                 case EPFNOSUPPORT:
-#endif
                 case EAFNOSUPPORT:
                     Perror(statp, stderr, "socket(dg)", errno);
                     return (0);
