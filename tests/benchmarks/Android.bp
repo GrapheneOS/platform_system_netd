@@ -39,3 +39,25 @@ cc_benchmark {
         "dns_benchmark.cpp",
     ],
 }
+
+cc_benchmark {
+    name: "bpf_benchmark",
+    defaults: ["netd_defaults"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wunused-parameter",
+    ],
+    shared_libs: [
+        "libbase",
+        "libbpf",
+        "libnetdutils",
+    ],
+    static_libs: [
+        "libutils",
+    ],
+
+    srcs: [
+        "bpf_benchmark.cpp",
+    ],
+}
