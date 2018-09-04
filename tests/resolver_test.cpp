@@ -284,7 +284,7 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
     constexpr char name[] = "localhost";
     constexpr char addr[] = "127.0.0.1";
 
-    // Add a dummy nameserver which won't get any queries
+    // Add a dummy nameserver which shouldn't receive any queries
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
     test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
@@ -458,7 +458,7 @@ TEST_F(ResolverTest, GetAddrInfo_localhost) {
     constexpr char name_ip6[] = "ip6-localhost";
     constexpr char addr_ip6[] = "::1";
 
-    // Add a dummy nameserver which won't get any queries
+    // Add a dummy nameserver which shouldn't receive any queries
     constexpr char listen_addr[] = "127.0.0.5";
     constexpr char listen_srv[] = "53";
     test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
@@ -540,6 +540,33 @@ TEST_F(ResolverTest, MultidomainResolution) {
     EXPECT_EQ("1.2.3.3", ToString(result));
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
     dns.stopServer();
+}
+
+TEST_F(ResolverTest, GetAddrInfoV6_numeric) {
+    constexpr char listen_addr0[] = "127.0.0.7";
+    constexpr char listen_srv[] = "53";
+    constexpr char host_name[] = "ohayou.example.com.";
+    constexpr char numeric_addr[] = "fe80::1%lo";
+
+    test::DNSResponder dns(listen_addr0, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.setResponseProbability(0.0);
+    dns.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::5");
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = {listen_addr0};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+
+    addrinfo hints = {.ai_family = AF_INET6};
+    ScopedAddrinfo result = safe_getaddrinfo(numeric_addr, nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_EQ(numeric_addr, ToString(result));
+    EXPECT_TRUE(dns.queries().empty());  // Ensure no DNS queries were sent out
+
+    // Now try a non-numeric hostname query with the AI_NUMERICHOST flag set.
+    // We should fail without sending out a DNS query.
+    hints.ai_flags |= AI_NUMERICHOST;
+    result = safe_getaddrinfo(host_name, nullptr, &hints);
+    EXPECT_TRUE(result == nullptr);
+    EXPECT_TRUE(dns.queries().empty());  // Ensure no DNS queries were sent out
 }
 
 TEST_F(ResolverTest, GetAddrInfoV6_failing) {
