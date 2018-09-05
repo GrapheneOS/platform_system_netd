@@ -49,6 +49,8 @@
 #include "dns_responder_client.h"
 #include "dns_tls_frontend.h"
 #include "resolv_params.h"
+
+#include "NetdConstants.h"
 #include "ResolverStats.h"
 
 #include "android/net/INetd.h"
@@ -60,6 +62,18 @@ using android::base::StringPrintf;
 using android::net::ResolverStats;
 using android::net::metrics::INetdEventListener;
 using android::netdutils::enableSockopt;
+
+// TODO: move into libnetdutils?
+namespace {
+ScopedAddrinfo safe_getaddrinfo(const char* node, const char* service,
+                                const struct addrinfo* hints) {
+    addrinfo* result = nullptr;
+    if (getaddrinfo(node, service, hints, &result) != 0) {
+        result = nullptr;  // Should already be the case, but...
+    }
+    return ScopedAddrinfo(result);
+}
+}  // namespace
 
 // Emulates the behavior of UnorderedElementsAreArray, which currently cannot be used.
 // TODO: Use UnorderedElementsAreArray, which depends on being able to compile libgmock_host,
@@ -82,49 +96,6 @@ bool UnorderedCompareArray(const A& a, const B& b) {
     }
     return true;
 }
-
-class AddrInfo {
-  public:
-    AddrInfo() : ai_(nullptr), error_(0) {}
-
-    AddrInfo(const char* node, const char* service, const addrinfo& hints) : ai_(nullptr) {
-        init(node, service, hints);
-    }
-
-    AddrInfo(const char* node, const char* service) : ai_(nullptr) {
-        init(node, service);
-    }
-
-    ~AddrInfo() { clear(); }
-
-    int init(const char* node, const char* service, const addrinfo& hints) {
-        clear();
-        error_ = getaddrinfo(node, service, &hints, &ai_);
-        return error_;
-    }
-
-    int init(const char* node, const char* service) {
-        clear();
-        error_ = getaddrinfo(node, service, nullptr, &ai_);
-        return error_;
-    }
-
-    void clear() {
-        if (ai_ != nullptr) {
-            freeaddrinfo(ai_);
-            ai_ = nullptr;
-            error_ = 0;
-        }
-    }
-
-    const addrinfo& operator*() const { return *ai_; }
-    const addrinfo* get() const { return ai_; }
-    int error() const { return error_; }
-
-  private:
-    addrinfo* ai_;
-    int error_;
-};
 
 class ResolverTest : public ::testing::Test, public DnsResponderClient {
 private:
@@ -176,7 +147,7 @@ protected:
         return ResolverStats::decodeAll(stats32, stats);
     }
 
-    std::string ToString(const hostent* he) const {
+    static std::string ToString(const hostent* he) {
         if (he == nullptr) return "<null>";
         char buffer[INET6_ADDRSTRLEN];
         if (!inet_ntop(he->h_addrtype, he->h_addr_list[0], buffer, sizeof(buffer))) {
@@ -185,7 +156,7 @@ protected:
         return buffer;
     }
 
-    std::string ToString(const addrinfo* ai) const {
+    static std::string ToString(const addrinfo* ai) {
         if (!ai)
             return "<null>";
         for (const auto* aip = ai ; aip != nullptr ; aip = aip->ai_next) {
@@ -198,6 +169,8 @@ protected:
         }
         return "<invalid>";
     }
+
+    static std::string ToString(const ScopedAddrinfo& ai) { return ToString(ai.get()); }
 
     size_t GetNumQueries(const test::DNSResponder& dns, const char* name) const {
         auto queries = dns.queries();
@@ -236,7 +209,7 @@ protected:
         auto t0 = std::chrono::steady_clock::now();
         std::vector<std::thread> threads(num_threads);
         for (std::thread& thread : threads) {
-           thread = std::thread([this, &mappings, num_queries]() {
+            thread = std::thread([&mappings, num_queries]() {
                 for (unsigned i = 0 ; i < num_queries ; ++i) {
                     uint32_t ofs = arc4random_uniform(mappings.size());
                     auto& mapping = mappings[ofs];
@@ -302,6 +275,31 @@ TEST_F(ResolverTest, GetHostByName) {
     ASSERT_EQ(4, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
     EXPECT_EQ("1.2.3.3", ToString(result));
+    EXPECT_TRUE(result->h_addr_list[1] == nullptr);
+
+    dns.stopServer();
+}
+
+TEST_F(ResolverTest, GetHostByName_localhost) {
+    constexpr char name[] = "localhost";
+    constexpr char addr[] = "127.0.0.1";
+
+    // Add a dummy nameserver which won't get any queries
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_srv[] = "53";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+
+    dns.clearQueries();
+    const hostent* result = gethostbyname(name);
+    // Expect no DNS queries; localhost is resolved via /etc/hosts
+    EXPECT_EQ(0, GetNumQueriesForType(dns, ns_type::ns_t_a, name));
+    ASSERT_FALSE(result == nullptr);
+    ASSERT_EQ(4, result->h_length);
+    ASSERT_FALSE(result->h_addr_list[0] == nullptr);
+    EXPECT_EQ(addr, ToString(result));
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
 
     dns.stopServer();
@@ -376,8 +374,6 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
 }
 
 TEST_F(ResolverTest, GetAddrInfo) {
-    addrinfo* result = nullptr;
-
     const char* listen_addr = "127.0.0.4";
     const char* listen_addr2 = "127.0.0.5";
     const char* listen_srv = "53";
@@ -392,38 +388,30 @@ TEST_F(ResolverTest, GetAddrInfo) {
     dns2.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
     ASSERT_TRUE(dns2.startServer());
 
-
     std::vector<std::string> servers = { listen_addr };
     ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
     dns.clearQueries();
     dns2.clearQueries();
 
-    EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
+    ScopedAddrinfo result = safe_getaddrinfo("howdy", nullptr, nullptr);
+    EXPECT_TRUE(result != nullptr);
     size_t found = GetNumQueries(dns, host_name);
     EXPECT_LE(1U, found);
     // Could be A or AAAA
     std::string result_str = ToString(result);
     EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
         << ", result_str='" << result_str << "'";
-    // TODO: Use ScopedAddrinfo or similar once it is available in a common header file.
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
 
     // Verify that the name is cached.
     size_t old_found = found;
-    EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
+    result = safe_getaddrinfo("howdy", nullptr, nullptr);
+    EXPECT_TRUE(result != nullptr);
     found = GetNumQueries(dns, host_name);
     EXPECT_LE(1U, found);
     EXPECT_EQ(old_found, found);
     result_str = ToString(result);
     EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
         << result_str;
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
 
     // Change the DNS resolver, ensure that queries are still cached.
     servers = { listen_addr2 };
@@ -431,7 +419,8 @@ TEST_F(ResolverTest, GetAddrInfo) {
     dns.clearQueries();
     dns2.clearQueries();
 
-    EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
+    result = safe_getaddrinfo("howdy", nullptr, nullptr);
+    EXPECT_TRUE(result != nullptr);
     found = GetNumQueries(dns, host_name);
     size_t found2 = GetNumQueries(dns2, host_name);
     EXPECT_EQ(0U, found);
@@ -441,37 +430,53 @@ TEST_F(ResolverTest, GetAddrInfo) {
     result_str = ToString(result);
     EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
         << ", result_str='" << result_str << "'";
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
 
     dns.stopServer();
     dns2.stopServer();
 }
 
 TEST_F(ResolverTest, GetAddrInfoV4) {
-    addrinfo* result = nullptr;
-
-    const char* listen_addr = "127.0.0.5";
-    const char* listen_srv = "53";
-    const char* host_name = "hola.example.com.";
+    constexpr char listen_addr[] = "127.0.0.5";
+    constexpr char listen_srv[] = "53";
+    constexpr char host_name[] = "hola.example.com.";
     test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.5");
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = { listen_addr };
     ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
 
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    EXPECT_EQ(0, getaddrinfo("hola", nullptr, &hints, &result));
+    addrinfo hints = {.ai_family = AF_INET};
+    ScopedAddrinfo result = safe_getaddrinfo("hola", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_EQ(1U, GetNumQueries(dns, host_name));
     EXPECT_EQ("1.2.3.5", ToString(result));
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
+}
+
+TEST_F(ResolverTest, GetAddrInfo_localhost) {
+    constexpr char name[] = "localhost";
+    constexpr char addr[] = "127.0.0.1";
+    constexpr char name_ip6[] = "ip6-localhost";
+    constexpr char addr_ip6[] = "::1";
+
+    // Add a dummy nameserver which won't get any queries
+    constexpr char listen_addr[] = "127.0.0.5";
+    constexpr char listen_srv[] = "53";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+
+    ScopedAddrinfo result = safe_getaddrinfo(name, nullptr, nullptr);
+    EXPECT_TRUE(result != nullptr);
+    // Expect no DNS queries; localhost is resolved via /etc/hosts
+    EXPECT_EQ(0, GetNumQueries(dns, name));
+    EXPECT_EQ(addr, ToString(result));
+
+    result = safe_getaddrinfo(name_ip6, nullptr, nullptr);
+    EXPECT_TRUE(result != nullptr);
+    // Expect no DNS queries; localhost is resolved via /etc/hosts
+    EXPECT_EQ(0, GetNumQueries(dns, name));
+    EXPECT_EQ(addr_ip6, ToString(result));
 }
 
 TEST_F(ResolverTest, GetHostByNameBrokenEdns) {
@@ -498,8 +503,6 @@ TEST_F(ResolverTest, GetHostByNameBrokenEdns) {
 }
 
 TEST_F(ResolverTest, GetAddrInfoBrokenEdns) {
-    addrinfo* result = nullptr;
-
     const char* listen_addr = "127.0.0.5";
     const char* listen_srv = "53";
     const char* host_name = "edns2.example.com.";
@@ -510,16 +513,11 @@ TEST_F(ResolverTest, GetAddrInfoBrokenEdns) {
     std::vector<std::string> servers = { listen_addr };
     ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
 
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    EXPECT_EQ(0, getaddrinfo("edns2", nullptr, &hints, &result));
+    addrinfo hints = {.ai_family = AF_INET};
+    ScopedAddrinfo result = safe_getaddrinfo("edns2", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_EQ(1U, GetNumQueries(dns, host_name));
     EXPECT_EQ("1.2.3.5", ToString(result));
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
 }
 
 TEST_F(ResolverTest, MultidomainResolution) {
@@ -545,8 +543,6 @@ TEST_F(ResolverTest, MultidomainResolution) {
 }
 
 TEST_F(ResolverTest, GetAddrInfoV6_failing) {
-    addrinfo* result = nullptr;
-
     const char* listen_addr0 = "127.0.0.7";
     const char* listen_addr1 = "127.0.0.8";
     const char* listen_srv = "53";
@@ -568,33 +564,22 @@ TEST_F(ResolverTest, GetAddrInfoV6_failing) {
     // reached the dns0, which is set to fail. No more requests should then arrive at that server
     // for the next sample_lifetime seconds.
     // TODO: This approach is implementation-dependent, change once metrics reporting is available.
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET6;
+    addrinfo hints = {.ai_family = AF_INET6};
     for (int i = 0 ; i < sample_count ; ++i) {
         std::string domain = StringPrintf("nonexistent%d", i);
-        getaddrinfo(domain.c_str(), nullptr, &hints, &result);
-        if (result) {
-            freeaddrinfo(result);
-            result = nullptr;
-        }
+        ScopedAddrinfo result = safe_getaddrinfo(domain.c_str(), nullptr, &hints);
     }
     // Due to 100% errors for all possible samples, the server should be ignored from now on and
     // only the second one used for all following queries, until NSSAMPLE_VALIDITY is reached.
     dns0.clearQueries();
     dns1.clearQueries();
-    EXPECT_EQ(0, getaddrinfo("ohayou", nullptr, &hints, &result));
+    ScopedAddrinfo result = safe_getaddrinfo("ohayou", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_EQ(0U, GetNumQueries(dns0, host_name));
     EXPECT_EQ(1U, GetNumQueries(dns1, host_name));
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
 }
 
 TEST_F(ResolverTest, GetAddrInfoV6_nonresponsive) {
-    addrinfo* result = nullptr;
-
     const char* listen_addr0 = "127.0.0.7";
     const char* listen_addr1 = "127.0.0.8";
     const char* listen_srv = "53";
@@ -615,28 +600,21 @@ TEST_F(ResolverTest, GetAddrInfoV6_nonresponsive) {
     std::vector<std::string> servers = {listen_addr0, listen_addr1};
     ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
 
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET6;
+    const addrinfo hints = {.ai_family = AF_INET6};
 
     // dns0 will ignore the request, and we'll fallback to dns1 after the first
     // retry.
-    EXPECT_EQ(0, getaddrinfo(host_name1, nullptr, &hints, &result));
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
+    ScopedAddrinfo result = safe_getaddrinfo(host_name1, nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_EQ(1U, GetNumQueries(dns0, host_name1));
     EXPECT_EQ(1U, GetNumQueries(dns1, host_name1));
 
     // Now make dns1 also ignore 100% requests... The resolve should alternate
     // retries between the nameservers and fail after 4 attempts.
     dns1.setResponseProbability(0.0);
-    EXPECT_EQ(EAI_NODATA, getaddrinfo(host_name2, nullptr, &hints, &result));
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
+    addrinfo* result2 = nullptr;
+    EXPECT_EQ(EAI_NODATA, getaddrinfo(host_name2, nullptr, &hints, &result2));
+    EXPECT_EQ(nullptr, result2);
     EXPECT_EQ(4U, GetNumQueries(dns0, host_name2));
     EXPECT_EQ(4U, GetNumQueries(dns1, host_name2));
 }
@@ -671,9 +649,7 @@ TEST_F(ResolverTest, GetAddrInfoV6_concurrent) {
             if (serverSubset.empty()) serverSubset = servers;
             ASSERT_TRUE(SetResolversForNetwork(serverSubset, mDefaultSearchDomains,
                     mDefaultParams_Binder));
-            addrinfo hints;
-            memset(&hints, 0, sizeof(hints));
-            hints.ai_family = AF_INET6;
+            addrinfo hints = {.ai_family = AF_INET6};
             addrinfo* result = nullptr;
             int rv = getaddrinfo("konbanha", nullptr, &hints, &result);
             EXPECT_EQ(0, rv) << "error [" << rv << "] " << gai_strerror(rv);
@@ -726,8 +702,6 @@ TEST_F(ResolverTest, EmptySetup) {
 }
 
 TEST_F(ResolverTest, SearchPathChange) {
-    addrinfo* result = nullptr;
-
     const char* listen_addr = "127.0.0.13";
     const char* listen_srv = "53";
     const char* host_name1 = "test13.domain1.org.";
@@ -740,25 +714,23 @@ TEST_F(ResolverTest, SearchPathChange) {
     std::vector<std::string> domains = { "domain1.org" };
     ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams_Binder));
 
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET6;
-    EXPECT_EQ(0, getaddrinfo("test13", nullptr, &hints, &result));
+    const addrinfo hints = {.ai_family = AF_INET6};
+    ScopedAddrinfo result = safe_getaddrinfo("test13", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_EQ(1U, dns.queries().size());
     EXPECT_EQ(1U, GetNumQueries(dns, host_name1));
     EXPECT_EQ("2001:db8::13", ToString(result));
-    if (result) freeaddrinfo(result);
 
     // Test that changing the domain search path on its own works.
     domains = { "domain2.org" };
     ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams_Binder));
     dns.clearQueries();
 
-    EXPECT_EQ(0, getaddrinfo("test13", nullptr, &hints, &result));
+    result = safe_getaddrinfo("test13", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_EQ(1U, dns.queries().size());
     EXPECT_EQ(1U, GetNumQueries(dns, host_name2));
     EXPECT_EQ("2001:db8::1:13", ToString(result));
-    if (result) freeaddrinfo(result);
 }
 
 TEST_F(ResolverTest, MaxServerPrune_Binder) {
@@ -1185,19 +1157,14 @@ TEST_F(ResolverTest, GetAddrInfo_Tls) {
     EXPECT_TRUE(tls.waitForQueries(1, 5000));
 
     dns.clearQueries();
-    addrinfo* result = nullptr;
-    EXPECT_EQ(0, getaddrinfo("addrinfotls", nullptr, nullptr, &result));
+    ScopedAddrinfo result = safe_getaddrinfo("addrinfotls", nullptr, nullptr);
+    EXPECT_TRUE(result != nullptr);
     size_t found = GetNumQueries(dns, host_name);
     EXPECT_LE(1U, found);
     // Could be A or AAAA
     std::string result_str = ToString(result);
     EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
         << ", result_str='" << result_str << "'";
-    // TODO: Use ScopedAddrinfo or similar once it is available in a common header file.
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
     // Wait for both A and AAAA queries to get counted.
     EXPECT_TRUE(tls.waitForQueries(3, 5000));
 
@@ -1301,7 +1268,7 @@ TEST_F(ResolverTest, TlsBypass) {
         const int tlsQueriesBefore = tls.queries();
 
         const hostent* h_result = nullptr;
-        addrinfo* ai_result = nullptr;
+        ScopedAddrinfo ai_result;
 
         if (config.method == GETHOSTBYNAME) {
             ASSERT_EQ(0, setNetworkForResolv(BYPASS_NETID));
@@ -1315,7 +1282,8 @@ TEST_F(ResolverTest, TlsBypass) {
             EXPECT_TRUE(h_result->h_addr_list[1] == nullptr);
         } else if (config.method == GETADDRINFO) {
             ASSERT_EQ(0, setNetworkForResolv(BYPASS_NETID));
-            EXPECT_EQ(0, getaddrinfo(host_name, nullptr, nullptr, &ai_result));
+            ai_result = safe_getaddrinfo(host_name, nullptr, nullptr);
+            EXPECT_TRUE(ai_result != nullptr);
 
             EXPECT_LE(1U, GetNumQueries(dns, host_name));
             // Could be A or AAAA
@@ -1323,8 +1291,10 @@ TEST_F(ResolverTest, TlsBypass) {
             EXPECT_TRUE(result_str == ADDR4 || result_str == ADDR6)
                 << ", result_str='" << result_str << "'";
         } else if (config.method == GETADDRINFOFORNET) {
-            EXPECT_EQ(0, android_getaddrinfofornet(
-                    host_name, nullptr, nullptr, BYPASS_NETID, MARK_UNSET, &ai_result));
+            addrinfo* raw_ai_result = nullptr;
+            EXPECT_EQ(0, android_getaddrinfofornet(host_name, nullptr, nullptr, BYPASS_NETID,
+                                                   MARK_UNSET, &raw_ai_result));
+            ai_result.reset(raw_ai_result);
 
             EXPECT_LE(1U, GetNumQueries(dns, host_name));
             // Could be A or AAAA
@@ -1337,9 +1307,6 @@ TEST_F(ResolverTest, TlsBypass) {
 
         const int tlsQueriesAfter = tls.queries();
         EXPECT_EQ(0, tlsQueriesAfter - tlsQueriesBefore);
-
-        // TODO: Use ScopedAddrinfo or similar once it is available in a common header file.
-        if (ai_result != nullptr) freeaddrinfo(ai_result);
 
         // Clear per-process resolv netid.
         ASSERT_EQ(0, setNetworkForResolv(NETID_UNSET));

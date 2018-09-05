@@ -720,7 +720,6 @@ int netmaskToPrefixLength(const T *p) {
 static bool interfaceHasAddress(
         const std::string &ifname, const char *addrString, int prefixLength) {
     struct addrinfo *addrinfoList = nullptr;
-    ScopedAddrinfo addrinfoCleanup(addrinfoList);
 
     const struct addrinfo hints = {
         .ai_flags    = AI_NUMERICHOST,
@@ -731,6 +730,7 @@ static bool interfaceHasAddress(
         addrinfoList == nullptr || addrinfoList->ai_addr == nullptr) {
         return false;
     }
+    ScopedAddrinfo addrinfoCleanup(addrinfoList);
 
     struct ifaddrs *ifaddrsList = nullptr;
     ScopedIfaddrs ifaddrsCleanup(ifaddrsList);
