@@ -720,7 +720,6 @@ int netmaskToPrefixLength(const T *p) {
 static bool interfaceHasAddress(
         const std::string &ifname, const char *addrString, int prefixLength) {
     struct addrinfo *addrinfoList = nullptr;
-    ScopedAddrinfo addrinfoCleanup(addrinfoList);
 
     const struct addrinfo hints = {
         .ai_flags    = AI_NUMERICHOST,
@@ -731,6 +730,7 @@ static bool interfaceHasAddress(
         addrinfoList == nullptr || addrinfoList->ai_addr == nullptr) {
         return false;
     }
+    ScopedAddrinfo addrinfoCleanup(addrinfoList);
 
     struct ifaddrs *ifaddrsList = nullptr;
     ScopedIfaddrs ifaddrsCleanup(ifaddrsList);
@@ -1023,8 +1023,8 @@ TEST_F(BinderTest, TetherGetStats) {
 
 namespace {
 
-constexpr char chainName_LOCAL_RAW_PREROUTING[] = "idletimer_raw_PREROUTING";
-constexpr char chainName_MANGLE_POSTROUTING[] = "idletimer_mangle_POSTROUTING";
+constexpr char IDLETIMER_RAW_PREROUTING[] = "idletimer_raw_PREROUTING";
+constexpr char IDLETIMER_MANGLE_POSTROUTING[] = "idletimer_mangle_POSTROUTING";
 
 static std::vector<std::string> listIptablesRuleByTable(const char* binary, const char* table,
                                                         const char* chainName) {
@@ -1032,7 +1032,7 @@ static std::vector<std::string> listIptablesRuleByTable(const char* binary, cons
     return runCommand(command);
 }
 
-bool iptablesIdleTimerInterfcaeRuleExists(const char* binary, const char* chainName,
+bool iptablesIdleTimerInterfaceRuleExists(const char* binary, const char* chainName,
                                           const std::string& expectedInterface,
                                           const std::string& expectedRule, const char* table) {
     std::vector<std::string> rules = listIptablesRuleByTable(binary, table, chainName);
@@ -1047,25 +1047,25 @@ bool iptablesIdleTimerInterfcaeRuleExists(const char* binary, const char* chainN
 }
 
 void expectIdletimerInterfaceRuleExists(const std::string& ifname, int timeout,
-                                        const std::string& classLable) {
+                                        const std::string& classLabel) {
     std::string IdletimerRule =
-            StringPrintf("timeout:%u label:%s send_nl_msg:1", timeout, classLable.c_str());
+            StringPrintf("timeout:%u label:%s send_nl_msg:1", timeout, classLabel.c_str());
     for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
-        EXPECT_TRUE(iptablesIdleTimerInterfcaeRuleExists(binary, chainName_LOCAL_RAW_PREROUTING,
-                                                         ifname, IdletimerRule, RAW_TABLE));
-        EXPECT_TRUE(iptablesIdleTimerInterfcaeRuleExists(binary, chainName_MANGLE_POSTROUTING,
+        EXPECT_TRUE(iptablesIdleTimerInterfaceRuleExists(binary, IDLETIMER_RAW_PREROUTING, ifname,
+                                                         IdletimerRule, RAW_TABLE));
+        EXPECT_TRUE(iptablesIdleTimerInterfaceRuleExists(binary, IDLETIMER_MANGLE_POSTROUTING,
                                                          ifname, IdletimerRule, MANGLE_TABLE));
     }
 }
 
 void expectIdletimerInterfaceRuleNotExists(const std::string& ifname, int timeout,
-                                           const std::string& classLable) {
+                                           const std::string& classLabel) {
     std::string IdletimerRule =
-            StringPrintf("timeout:%u label:%s send_nl_msg:1", timeout, classLable.c_str());
+            StringPrintf("timeout:%u label:%s send_nl_msg:1", timeout, classLabel.c_str());
     for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
-        EXPECT_FALSE(iptablesIdleTimerInterfcaeRuleExists(binary, chainName_LOCAL_RAW_PREROUTING,
-                                                          ifname, IdletimerRule, RAW_TABLE));
-        EXPECT_FALSE(iptablesIdleTimerInterfcaeRuleExists(binary, chainName_MANGLE_POSTROUTING,
+        EXPECT_FALSE(iptablesIdleTimerInterfaceRuleExists(binary, IDLETIMER_RAW_PREROUTING, ifname,
+                                                          IdletimerRule, RAW_TABLE));
+        EXPECT_FALSE(iptablesIdleTimerInterfaceRuleExists(binary, IDLETIMER_MANGLE_POSTROUTING,
                                                           ifname, IdletimerRule, MANGLE_TABLE));
     }
 }
@@ -1166,7 +1166,7 @@ TEST_F(BinderTest, StrictSetUidCleartextPenalty) {
 
 namespace {
 
-static bool processExists(const std::string& processName) {
+bool processExists(const std::string& processName) {
     std::string cmd = StringPrintf("ps -A | grep '%s'", processName.c_str());
     return (runCommand(cmd.c_str()).size()) ? true : false;
 }
