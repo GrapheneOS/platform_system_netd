@@ -55,6 +55,8 @@ class LogEntry {
 
     // Convenience methods for each of the common types of function arguments.
     LogEntry& arg(const std::string& val);
+    // Intended for binary buffers, formats as hex
+    LogEntry& arg(const std::vector<uint8_t>& val);
     LogEntry& arg(const std::vector<int32_t>& val);
     LogEntry& arg(const std::vector<std::string>& val);
     template <typename IntT, typename = std::enable_if_t<std::is_arithmetic_v<IntT>>>
@@ -67,10 +69,11 @@ class LogEntry {
     template <>
     LogEntry& arg<>(bool val);
 
-    template <typename... Args> LogEntry& args(const Args&... a) {
+    template <typename... Args>
+    LogEntry& args(const Args&... a) {
         // Cleverness ahead: we throw away the initializer_list filled with
         // zeroes, all we care about is calling arg() for each argument.
-        (void)std::initializer_list<int>{ (arg(a), 0)... };
+        (void) std::initializer_list<int>{(arg(a), 0)...};
         return *this;
     }
 
