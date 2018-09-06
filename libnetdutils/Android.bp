@@ -40,11 +40,6 @@ cc_test {
     ],
     defaults: ["netd_defaults"],
     test_suites: ["device-tests"],
-    cflags: [
-        "-Wall",
-        "-Werror",
-        "-Wno-error=unused-variable",
-    ],
     static_libs: [
         "libgmock",
         "libnetdutils",
