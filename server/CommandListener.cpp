@@ -703,18 +703,6 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
 
     ALOGV("bwctrlcmd: argc=%d %s %s ...", argc, argv[0], argv[1]);
 
-    if (!strcmp(argv[1], "enable")) {
-        int rc = gCtls->bandwidthCtrl.enableBandwidthControl(true);
-        sendGenericOkFail(cli, rc);
-        return 0;
-
-    }
-    if (!strcmp(argv[1], "disable")) {
-        int rc = gCtls->bandwidthCtrl.disableBandwidthControl();
-        sendGenericOkFail(cli, rc);
-        return 0;
-
-    }
     if (!strcmp(argv[1], "removequota") || !strcmp(argv[1], "rq")) {
         if (argc != 3) {
             sendGenericSyntaxError(cli, "removequota <interface>");
