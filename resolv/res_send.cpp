@@ -104,11 +104,6 @@
 #include "resolv_private.h"
 #include "resolv_stats.h"
 
-#ifndef DE_CONST
-#define DE_CONST(c, v) \
-    v = ((c) ? strchr((const void*) (c), *(const char*) (const void*) (c)) : NULL)
-#endif
-
 /* Options.  Leave them on. */
 #ifndef DEBUG
 #define DEBUG
@@ -121,8 +116,8 @@
 
 /* Forward. */
 
-static int get_salen __P((const struct sockaddr*) );
-static struct sockaddr* get_nsaddr __P((res_state, size_t));
+static int get_salen(const struct sockaddr*);
+static struct sockaddr* get_nsaddr(res_state, size_t);
 static int send_vc(res_state, struct __res_params* params, const u_char*, int, u_char*, int, int*,
                    int, time_t*, int*, int*);
 static int send_dg(res_state, struct __res_params* params, const u_char*, int, u_char*, int, int*,
@@ -242,8 +237,8 @@ static int random_bind(int s, int family) {
         if (!bind(s, &u.sa, slen)) return 0;
     }
 
-    /* nothing after 10 tries, our network table is probably busy */
-    /* let the system decide which port is best */
+    // nothing after 10 attempts, our network table is probably busy
+    // let the system decide which port is best
     if (family == AF_INET)
         u.sin.sin_port = 0;
     else
@@ -303,8 +298,8 @@ __LIBC_HIDDEN__ int res_ourserver_p(const res_state statp, const struct sockaddr
 }
 
 /* int
- * res_nameinquery(name, type, class, buf, eom)
- *	look for (name,type,class) in the query section of packet (buf,eom)
+ * res_nameinquery(name, type, cl, buf, eom)
+ *	look for (name, type, cl) in the query section of packet (buf, eom)
  * requires:
  *	buf + HFIXEDSZ <= eom
  * returns:
@@ -314,23 +309,21 @@ __LIBC_HIDDEN__ int res_ourserver_p(const res_state statp, const struct sockaddr
  * author:
  *	paul vixie, 29may94
  */
-int res_nameinquery(const char* name, int type, int class, const u_char* buf, const u_char* eom) {
+int res_nameinquery(const char* name, int type, int cl, const u_char* buf, const u_char* eom) {
     const u_char* cp = buf + HFIXEDSZ;
     int qdcount = ntohs(((const HEADER*) (const void*) buf)->qdcount);
 
     while (qdcount-- > 0) {
         char tname[MAXDNAME + 1];
-        int n, ttype, tclass;
-
-        n = dn_expand(buf, eom, cp, tname, sizeof tname);
+        int n = dn_expand(buf, eom, cp, tname, sizeof tname);
         if (n < 0) return (-1);
         cp += n;
         if (cp + 2 * INT16SZ > eom) return (-1);
-        ttype = ns_get16(cp);
+        int ttype = ns_get16(cp);
         cp += INT16SZ;
-        tclass = ns_get16(cp);
+        int tclass = ns_get16(cp);
         cp += INT16SZ;
-        if (ttype == type && tclass == class && ns_samename(tname, name) == 1) return (1);
+        if (ttype == type && tclass == cl && ns_samename(tname, name) == 1) return (1);
     }
     return (0);
 }
@@ -364,15 +357,13 @@ int res_queriesmatch(const u_char* buf1, const u_char* eom1, const u_char* buf2,
     if (qdcount != ntohs(((const HEADER*) (const void*) buf2)->qdcount)) return (0);
     while (qdcount-- > 0) {
         char tname[MAXDNAME + 1];
-        int n, ttype, tclass;
-
-        n = dn_expand(buf1, eom1, cp, tname, sizeof tname);
+        int n = dn_expand(buf1, eom1, cp, tname, sizeof tname);
         if (n < 0) return (-1);
         cp += n;
         if (cp + 2 * INT16SZ > eom1) return (-1);
-        ttype = ns_get16(cp);
+        int ttype = ns_get16(cp);
         cp += INT16SZ;
-        tclass = ns_get16(cp);
+        int tclass = ns_get16(cp);
         cp += INT16SZ;
         if (!res_nameinquery(tname, ttype, tclass, buf2, eom2)) return (0);
     }
@@ -380,8 +371,7 @@ int res_queriesmatch(const u_char* buf1, const u_char* eom1, const u_char* buf2,
 }
 
 int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int anssiz) {
-    int gotsomewhere, terrno, try
-        , v_circuit, resplen, ns, n;
+    int gotsomewhere, terrno, v_circuit, resplen, n;
     char abuf[NI_MAXHOST];
     ResolvCacheStatus cache_status = RESOLV_CACHE_UNSUPPORTED;
 
@@ -426,7 +416,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         if (EXT(statp).nscount != statp->nscount) {
             needclose++;
         } else {
-            for (ns = 0; ns < statp->nscount; ns++) {
+            for (int ns = 0; ns < statp->nscount; ns++) {
                 if (statp->nsaddr_list[ns].sin_family &&
                     !sock_eq((struct sockaddr*) (void*) &statp->nsaddr_list[ns],
                              (struct sockaddr*) (void*) &EXT(statp).ext->nsaddrs[ns])) {
@@ -457,7 +447,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
      * Maybe initialize our private copy of the ns_addr_list.
      */
     if (EXT(statp).nscount == 0) {
-        for (ns = 0; ns < statp->nscount; ns++) {
+        for (int ns = 0; ns < statp->nscount; ns++) {
             EXT(statp).nstimes[ns] = RES_MAXTIME;
             EXT(statp).nssocks[ns] = -1;
             if (!statp->nsaddr_list[ns].sin_family) continue;
@@ -481,7 +471,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         ina = statp->nsaddr_list[0];
         fd = EXT(statp).nssocks[0];
         nstime = EXT(statp).nstimes[0];
-        for (ns = 0; ns < lastns; ns++) {
+        for (int ns = 0; ns < lastns; ns++) {
             if (EXT(statp).ext != NULL)
                 EXT(statp).ext->nsaddrs[ns] = EXT(statp).ext->nsaddrs[ns + 1];
             statp->nsaddr_list[ns] = statp->nsaddr_list[ns + 1];
@@ -497,14 +487,14 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     /*
      * Send request, RETRY times, or until successful.
      */
-    for (try = 0; try < statp->retry; try ++) {
+    for (int attempt = 0; attempt < statp->retry; ++attempt) {
         struct __res_stats stats[MAXNS];
         struct __res_params params;
         int revision_id = _resolv_cache_get_resolver_stats(statp->netid, &params, stats);
         bool usable_servers[MAXNS];
         android_net_res_stats_get_usable_servers(&params, stats, statp->nscount, usable_servers);
 
-        for (ns = 0; ns < statp->nscount; ns++) {
+        for (int ns = 0; ns < statp->nscount; ns++) {
             if (!usable_servers[ns]) continue;
             struct sockaddr* nsap;
             int nsaplen;
@@ -556,8 +546,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
 
             if (v_circuit) {
                 /* Use VC; at most one attempt per server. */
-                try
-                    = statp->retry;
+                attempt = statp->retry;
 
                 n = send_vc(statp, &params, buf, buflen, ans, anssiz, &terrno, ns, &now, &rcode,
                             &delay);
@@ -567,7 +556,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                  * queries that deterministically fail (e.g., a name that always returns
                  * SERVFAIL or times out) do not unduly affect the stats.
                  */
-                if (try == 0) {
+                if (attempt == 0) {
                     struct __res_sample sample;
                     _res_stats_set_sample(&sample, now, rcode, delay);
                     _resolv_cache_add_resolver_stats_sample(statp->netid, revision_id, ns, &sample,
@@ -591,7 +580,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                             &gotsomewhere, &now, &rcode, &delay);
 
                 /* Only record stats the first time we try a query. See above. */
-                if (try == 0) {
+                if (attempt == 0) {
                     struct __res_sample sample;
                     _res_stats_set_sample(&sample, now, rcode, delay);
                     _resolv_cache_add_resolver_stats_sample(statp->netid, revision_id, ns, &sample,
@@ -659,8 +648,8 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             }
             return (resplen);
         next_ns:;
-        } /*foreach ns*/
-    }     /*foreach retry*/
+        }  // for each ns
+    }  // for each retry
     res_nclose(statp);
     if (!v_circuit) {
         if (!gotsomewhere)
@@ -682,13 +671,7 @@ fail:
 
 /* Private */
 
-static int get_salen(sa) const struct sockaddr* sa;
-{
-#ifdef HAVE_SA_LEN
-    /* There are people do not set sa_len.  Be forgiving to them. */
-    if (sa->sa_len) return (sa->sa_len);
-#endif
-
+static int get_salen(const struct sockaddr* sa) {
     if (sa->sa_family == AF_INET)
         return (sizeof(struct sockaddr_in));
     else if (sa->sa_family == AF_INET6)
@@ -700,9 +683,7 @@ static int get_salen(sa) const struct sockaddr* sa;
 /*
  * pick appropriate nsaddr_list for use.  see res_init() for initialization.
  */
-static struct sockaddr* get_nsaddr(statp, n) res_state statp;
-size_t n;
-{
+static struct sockaddr* get_nsaddr(res_state statp, size_t n) {
     if (!statp->nsaddr_list[n].sin_family && EXT(statp).ext) {
         /*
          * - EXT(statp).ext->nsaddrs[n] holds an address that is larger
@@ -762,7 +743,6 @@ static int send_vc(res_state statp, struct __res_params* params, const u_char* b
     struct iovec iov[2];
     u_short len;
     u_char* cp;
-    void* tmp;
 
     if (DBG) {
         async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "using send_vc\n");
@@ -849,8 +829,7 @@ same_ns:
      */
     ns_put16((u_short) buflen, (u_char*) (void*) &len);
     iov[0] = evConsIovec(&len, INT16SZ);
-    DE_CONST(buf, tmp);
-    iov[1] = evConsIovec(tmp, (size_t) buflen);
+    iov[1] = evConsIovec((void*) buf, (size_t) buflen);
     if (writev(statp->_vcsock, iov, 2) != (INT16SZ + buflen)) {
         *terrno = errno;
         Perror(statp, stderr, "write failed", errno);

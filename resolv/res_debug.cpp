@@ -126,7 +126,6 @@ static void do_section(const res_state statp, ns_msg* handle, ns_sect section, i
                        FILE* file) {
     int n, sflag, rrnum;
     int buflen = 2048;
-    char* buf;
     ns_opcode opcode;
     ns_rr rr;
 
@@ -136,7 +135,7 @@ static void do_section(const res_state statp, ns_msg* handle, ns_sect section, i
     sflag = (int) (statp->pfcode & pflag);
     if (statp->pfcode && !sflag) return;
 
-    buf = malloc((size_t) buflen);
+    char* buf = (char*) malloc((size_t) buflen);
     if (buf == NULL) {
         fprintf(file, ";; memory allocation failure\n");
         return;
@@ -204,7 +203,9 @@ static void do_section(const res_state statp, ns_msg* handle, ns_sect section, i
                 if (errno == ENOSPC) {
                     free(buf);
                     buf = NULL;
-                    if (buflen < 131072) buf = malloc((size_t)(buflen += 1024));
+                    if (buflen < 131072) {
+                        buf = (char*) malloc((size_t)(buflen += 1024));
+                    }
                     if (buf == NULL) {
                         fprintf(file, ";; memory allocation failure\n");
                         return;
@@ -220,7 +221,7 @@ static void do_section(const res_state statp, ns_msg* handle, ns_sect section, i
         rrnum++;
     }
 cleanup:
-    if (buf != NULL) free(buf);
+    free(buf);
 }
 
 /*
@@ -538,15 +539,15 @@ const char* p_section(int section, int opcode) {
 /*
  * Return a mnemonic for class.
  */
-const char* p_class(int class) {
+const char* p_class(int cl) {
     int success;
     const char* result;
     static char classbuf[20];
 
-    result = sym_ntos(__p_class_syms, class, &success);
+    result = sym_ntos(__p_class_syms, cl, &success);
     if (success) return (result);
-    if (class < 0 || class > 0xffff) return ("BADCLASS");
-    snprintf(classbuf, sizeof(classbuf), "CLASS%d", class);
+    if (cl < 0 || cl > 0xffff) return ("BADCLASS");
+    snprintf(classbuf, sizeof(classbuf), "CLASS%d", cl);
     return (classbuf);
 }
 
@@ -994,9 +995,9 @@ const char* loc_ntoa(const u_char* binary, char* ascii, size_t bufsiz) {
              eastwest, altsign, altmeters, altfrac, (sizestr != NULL) ? sizestr : error,
              (hpstr != NULL) ? hpstr : error, (vpstr != NULL) ? vpstr : error);
 
-    if (sizestr != NULL) free(sizestr);
-    if (hpstr != NULL) free(hpstr);
-    if (vpstr != NULL) free(vpstr);
+    free(sizestr);
+    free(hpstr);
+    free(vpstr);
 
     return (ascii);
 }
