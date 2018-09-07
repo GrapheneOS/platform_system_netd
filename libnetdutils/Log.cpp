@@ -15,6 +15,7 @@
  */
 
 #include "netdutils/Log.h"
+#include "netdutils/Slice.h"
 
 #include <chrono>
 #include <ctime>
@@ -117,7 +118,7 @@ LogEntry& LogEntry::arg(const std::string& val) {
     return *this;
 }
 
-template<>
+template <>
 LogEntry& LogEntry::arg<>(bool val) {
     mArgs.push_back(val ? "true" : "false");
     return *this;
@@ -125,6 +126,11 @@ LogEntry& LogEntry::arg<>(bool val) {
 
 LogEntry& LogEntry::arg(const std::vector<int32_t>& val) {
     mArgs.push_back(StringPrintf("[%s]", Join(val, ", ").c_str()));
+    return *this;
+}
+
+LogEntry& LogEntry::arg(const std::vector<uint8_t>& val) {
+    mArgs.push_back('{' + toHex(makeSlice(val)) + '}');
     return *this;
 }
 
