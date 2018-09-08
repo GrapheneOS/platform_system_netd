@@ -70,16 +70,6 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/cdefs.h>
-#if defined(LIBC_SCCS) && !defined(lint)
-#ifdef notdef
-static const char sccsid[] = "@(#)res_send.c	8.1 (Berkeley) 6/4/93";
-static const char rcsid[] = "Id: res_send.c,v 1.5.2.2.4.5 2004/08/10 02:19:56 marka Exp";
-#else
-__RCSID("$NetBSD: res_send.c,v 1.9 2006/01/24 17:41:25 christos Exp $");
-#endif
-#endif /* LIBC_SCCS and not lint */
-
 /*
  * Send query to name server and wait for reply.
  */
@@ -111,8 +101,6 @@ __RCSID("$NetBSD: res_send.c,v 1.9 2006/01/24 17:41:25 christos Exp $");
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-
-#include <isc/eventlib.h>
 
 #include <resolv_cache.h>
 
@@ -156,6 +144,86 @@ typedef union {
     struct sockaddr_in sin;
     struct sockaddr_in6 sin6;
 } _sockaddr_union;
+
+// BEGIN: Code copied from ISC eventlib
+// TODO: move away from this code
+
+#define BILLION 1000000000
+
+static struct timespec evConsTime(time_t sec, long nsec) {
+    struct timespec x;
+
+    x.tv_sec = sec;
+    x.tv_nsec = nsec;
+    return (x);
+}
+
+static struct timespec evAddTime(struct timespec addend1, struct timespec addend2) {
+    struct timespec x;
+
+    x.tv_sec = addend1.tv_sec + addend2.tv_sec;
+    x.tv_nsec = addend1.tv_nsec + addend2.tv_nsec;
+    if (x.tv_nsec >= BILLION) {
+        x.tv_sec++;
+        x.tv_nsec -= BILLION;
+    }
+    return (x);
+}
+
+static struct timespec evSubTime(struct timespec minuend, struct timespec subtrahend) {
+    struct timespec x;
+
+    x.tv_sec = minuend.tv_sec - subtrahend.tv_sec;
+    if (minuend.tv_nsec >= subtrahend.tv_nsec)
+        x.tv_nsec = minuend.tv_nsec - subtrahend.tv_nsec;
+    else {
+        x.tv_nsec = BILLION - subtrahend.tv_nsec + minuend.tv_nsec;
+        x.tv_sec--;
+    }
+    return (x);
+}
+
+static int evCmpTime(struct timespec a, struct timespec b) {
+#define SGN(x) ((x) < 0 ? (-1) : (x) > 0 ? (1) : (0));
+    time_t s = a.tv_sec - b.tv_sec;
+    long n;
+
+    if (s != 0) return SGN(s);
+
+    n = a.tv_nsec - b.tv_nsec;
+    return SGN(n);
+}
+
+static struct timespec evTimeSpec(struct timeval tv) {
+    struct timespec ts;
+
+    ts.tv_sec = tv.tv_sec;
+    ts.tv_nsec = tv.tv_usec * 1000;
+    return (ts);
+}
+
+static struct timespec evNowTime(void) {
+    struct timeval now;
+#ifdef CLOCK_REALTIME
+    struct timespec tsnow;
+    int m = CLOCK_REALTIME;
+
+    if (clock_gettime(m, &tsnow) == 0) return (tsnow);
+#endif
+    if (gettimeofday(&now, NULL) < 0) return (evConsTime((time_t) 0, 0L));
+    return (evTimeSpec(now));
+}
+
+static struct iovec evConsIovec(void* buf, size_t cnt) {
+    struct iovec ret;
+
+    memset(&ret, 0xf5, sizeof ret);
+    ret.iov_base = buf;
+    ret.iov_len = cnt;
+    return (ret);
+}
+
+// END: Code copied from ISC eventlib
 
 static int random_bind(int s, int family) {
     _sockaddr_union u;
@@ -917,7 +985,7 @@ static int connect_with_timeout(int sock, const struct sockaddr* nsap, socklen_t
     origflags = fcntl(sock, F_GETFL, 0);
     fcntl(sock, F_SETFL, origflags | O_NONBLOCK);
 
-    res = __connect(sock, nsap, salen);
+    res = connect(sock, nsap, salen);
     if (res < 0 && errno != EINPROGRESS) {
         res = -1;
         goto done;
@@ -1054,7 +1122,7 @@ static int send_dg(res_state statp, struct __res_params* params, const u_char* b
             res_nclose(statp);
             return (0);
         }
-        if (__connect(EXT(statp).nssocks[ns], nsap, (socklen_t) nsaplen) < 0) {
+        if (connect(EXT(statp).nssocks[ns], nsap, (socklen_t) nsaplen) < 0) {
             Aerror(statp, stderr, "connect(dg)", errno, nsap, nsaplen);
             res_nclose(statp);
             return (0);

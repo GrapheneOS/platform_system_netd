@@ -31,7 +31,6 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/cdefs.h>
 #include <sys/types.h>
 #include "resolv_cache.h"
 #include "resolv_private.h"

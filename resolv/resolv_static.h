@@ -1,5 +1,5 @@
-#ifndef _RESOLV_STATIC_H
-#define _RESOLV_STATIC_H
+#ifndef _RESOLV_STATIC_H_
+#define _RESOLV_STATIC_H_
 
 #include <netdb.h>
 
@@ -29,4 +29,4 @@ typedef struct res_static {
 
 extern res_static __res_get_static(void);
 
-#endif /* _RESOLV_STATIC_H */
+#endif // _RESOLV_STATIC_H_

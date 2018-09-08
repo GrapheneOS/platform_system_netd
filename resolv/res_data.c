@@ -17,15 +17,6 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/cdefs.h>
-#if defined(LIBC_SCCS) && !defined(lint)
-#ifdef notdef
-static const char rcsid[] = "Id: res_data.c,v 1.1.206.2 2004/03/16 12:34:18 marka Exp";
-#else
-__RCSID("$NetBSD: res_data.c,v 1.8 2004/06/09 18:07:03 christos Exp $");
-#endif
-#endif /* LIBC_SCCS and not lint */
-
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/time.h>

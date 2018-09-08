@@ -20,7 +20,6 @@
 
 #include <async_safe/log.h>
 
-#include "isc/eventlib.h"
 #include "resolv_stats.h"
 
 #define DBG 0
@@ -135,9 +134,7 @@ bool _res_stats_usable_server(const struct __res_params* params, struct __res_st
                                       success_rate);
             }
             if (success_rate < params->success_threshold) {
-                // evNowTime() is used here instead of time() to stay consistent with the rest of
-                // the code base
-                time_t now = evNowTime().tv_sec;
+                time_t now = time(NULL);
                 if (now - last_sample_time > params->sample_validity) {
                     // Note: It might be worth considering to expire old servers after their expiry
                     // date has been reached, however the code for returning the ring buffer to its

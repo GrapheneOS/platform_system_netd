@@ -51,9 +51,6 @@
  * --Copyright--
  */
 
-#include <sys/cdefs.h>
-#include <sys/types.h>
-
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <assert.h>
@@ -67,13 +64,19 @@
 #include <strings.h>
 #include <sys/param.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <sys/un.h>
 #include <syslog.h>
 #include <unistd.h>
-#include "NetdClientDispatch.h"
+
 #include "resolv_cache.h"
 #include "resolv_netid.h"
 #include "resolv_private.h"
+
+// NetBSD uses _DIAGASSERT to null-check arguments and the like,
+// but it's clear from the number of mistakes in their assertions
+// that they don't actually test or ship with this.
+#define _DIAGASSERT(e) /* nothing */
 
 #define ALIGNBYTES (sizeof(uintptr_t) - 1)
 #define ALIGN(p) (((uintptr_t)(p) + ALIGNBYTES) & ~ALIGNBYTES)
@@ -111,9 +114,6 @@
         arr = malloc((siz = 10) * sizeof(*arr)); \
         if (arr == NULL) goto nospc;             \
     } while (/*CONSTCOND*/ 0)
-
-// This should be synchronized to ResponseCode.h
-static const int DnsProxyQueryResult = 222;
 
 static const char AskedForGot[] = "gethostby*.getanswer: asked for \"%s\", got \"%s\"";
 
@@ -161,7 +161,10 @@ static struct hostent* android_gethostbyaddrfornetcontext_proxy_internal(
         const struct android_net_context*);
 
 static const ns_src default_dns_files[] = {
-        {NSSRC_FILES, NS_SUCCESS}, {NSSRC_DNS, NS_SUCCESS}, {0, 0}};
+    {NSSRC_FILES, NS_SUCCESS},
+    {NSSRC_DNS, NS_SUCCESS},
+    {0, 0}
+};
 
 static int h_errno_to_result(int* herrno_p) {
     // glibc considers ERANGE a special case (and BSD uses ENOSPC instead).
@@ -558,111 +561,6 @@ __LIBC_HIDDEN__ FILE* android_open_proxy() {
     return fdopen(s, "r+");
 }
 
-static struct hostent* android_read_hostent(FILE* proxy, struct hostent* hp, char* hbuf,
-                                            size_t hbuflen, int* he) {
-    uint32_t size;
-    char buf[4];
-    if (fread(buf, 1, sizeof(buf), proxy) != sizeof(buf)) return NULL;
-
-    // This is reading serialized data from system/netd/server/DnsProxyListener.cpp
-    // and changes here need to be matched there.
-    int result_code = strtol(buf, NULL, 10);
-    if (result_code != DnsProxyQueryResult) {
-        fread(&size, 1, sizeof(size), proxy);
-        *he = HOST_NOT_FOUND;
-        return NULL;
-    }
-
-    if (fread(&size, 1, sizeof(size), proxy) != sizeof(size)) return NULL;
-    size = ntohl(size);
-
-    memset(hp, 0, sizeof(*hp));
-    char* ptr = hbuf;
-    char* hbuf_end = hbuf + hbuflen;
-
-    if (ptr + size > hbuf_end) {
-        goto nospc;
-    }
-    if (fread(ptr, 1, size, proxy) != size) return NULL;
-    hp->h_name = ptr;
-    ptr += size;
-
-    char* aliases_ptrs[MAXALIASES];
-    char** aliases = &aliases_ptrs[0];
-
-    while (1) {
-        if (fread(&size, 1, sizeof(size), proxy) != sizeof(size)) return NULL;
-        size = ntohl(size);
-
-        if (size == 0) {
-            *aliases = NULL;
-            break;
-        }
-        if (ptr + size > hbuf_end) {
-            goto nospc;
-        }
-        if (fread(ptr, 1, size, proxy) != size) return NULL;
-        if (aliases < &aliases_ptrs[MAXALIASES - 1]) {
-            *aliases++ = ptr;
-        }
-        ptr += size;
-    }
-
-    // Fix alignment after variable-length data.
-    ptr = (char*) ALIGN(ptr);
-
-    int aliases_len = ((int) (aliases - aliases_ptrs) + 1) * sizeof(*hp->h_aliases);
-    if (ptr + aliases_len > hbuf_end) {
-        goto nospc;
-    }
-    hp->h_aliases = (void*) ptr;
-    memcpy(ptr, aliases_ptrs, aliases_len);
-    ptr += aliases_len;
-
-    if (fread(&size, 1, sizeof(size), proxy) != sizeof(size)) return NULL;
-    hp->h_addrtype = ntohl(size);
-
-    if (fread(&size, 1, sizeof(size), proxy) != sizeof(size)) return NULL;
-    hp->h_length = ntohl(size);
-
-    char* addr_ptrs[MAXADDRS];
-    char** addr_p = &addr_ptrs[0];
-
-    while (1) {
-        if (fread(&size, 1, sizeof(size), proxy) != sizeof(size)) return NULL;
-        size = ntohl(size);
-        if (size == 0) {
-            *addr_p = NULL;
-            break;
-        }
-        if (ptr + size > hbuf_end) {
-            goto nospc;
-        }
-        if (fread(ptr, 1, size, proxy) != size) return NULL;
-        if (addr_p < &addr_ptrs[MAXADDRS - 1]) {
-            *addr_p++ = ptr;
-        }
-        ptr += size;
-    }
-
-    // Fix alignment after variable-length data.
-    ptr = (char*) ALIGN(ptr);
-
-    int addrs_len = ((int) (addr_p - addr_ptrs) + 1) * sizeof(*hp->h_addr_list);
-    if (ptr + addrs_len > hbuf_end) {
-        goto nospc;
-    }
-    hp->h_addr_list = (void*) ptr;
-    memcpy(ptr, addr_ptrs, addrs_len);
-    *he = NETDB_SUCCESS;
-    return hp;
-
-nospc:
-    *he = NETDB_INTERNAL;
-    errno = ENOSPC;
-    return NULL;
-}
-
 static struct hostent* gethostbyname_internal_real(const char* name, int af, res_state res,
                                                    struct hostent* hp, char* buf, size_t buflen,
                                                    int* he) {
@@ -670,9 +568,11 @@ static struct hostent* gethostbyname_internal_real(const char* name, int af, res
     struct getnamaddr info;
     char hbuf[MAXHOSTNAMELEN];
     size_t size;
-    static const ns_dtab dtab[] = {NS_FILES_CB(_hf_gethtbyname, NULL){NSSRC_DNS, _dns_gethtbyname,
-                                                                      NULL}, /* force -DHESIOD */
-                                   NS_NIS_CB(_yp_gethtbyname, NULL) NS_NULL_CB};
+    static const ns_dtab dtab[] = {
+        {NSSRC_FILES, _hf_gethtbyname,  NULL},
+        {NSSRC_DNS,   _dns_gethtbyname, NULL},
+        {0, 0, 0}
+    };
 
     _DIAGASSERT(name != NULL);
 
@@ -771,30 +671,8 @@ static struct hostent* gethostbyname_internal(const char* name, int af, res_stat
                                               struct hostent* hp, char* hbuf, size_t hbuflen,
                                               int* errorp,
                                               const struct android_net_context* netcontext) {
-    FILE* proxy = android_open_proxy();
-    if (proxy == NULL) {
-        // Either we're not supposed to be using the proxy or the proxy is unavailable.
-        res_setnetcontext(res, netcontext);
-        return gethostbyname_internal_real(name, af, res, hp, hbuf, hbuflen, errorp);
-    }
-
-    unsigned netid = __netdClientDispatch.netIdForResolv(netcontext->app_netid);
-
-    // This is writing to system/netd/server/DnsProxyListener.cpp and changes
-    // here need to be matched there.
-    if (fprintf(proxy, "gethostbyname %u %s %d", netid, name == NULL ? "^" : name, af) < 0) {
-        fclose(proxy);
-        return NULL;
-    }
-
-    if (fputc(0, proxy) == EOF || fflush(proxy) != 0) {
-        fclose(proxy);
-        return NULL;
-    }
-
-    struct hostent* result = android_read_hostent(proxy, hp, hbuf, hbuflen, errorp);
-    fclose(proxy);
-    return result;
+    res_setnetcontext(res, netcontext);
+    return gethostbyname_internal_real(name, af, res, hp, hbuf, hbuflen, errorp);
 }
 
 /* The prototype of gethostbyaddr_r is from glibc, not that in netbsd. */
@@ -811,9 +689,11 @@ static struct hostent* android_gethostbyaddrfornetcontext_real(
     const u_char* uaddr = (const u_char*) addr;
     socklen_t size;
     struct getnamaddr info;
-    static const ns_dtab dtab[] = {NS_FILES_CB(_hf_gethtbyaddr, NULL){NSSRC_DNS, _dns_gethtbyaddr,
-                                                                      NULL}, /* force -DHESIOD */
-                                   NS_NIS_CB(_yp_gethtbyaddr, NULL) NS_NULL_CB};
+    static const ns_dtab dtab[] = {
+        {NSSRC_FILES, _hf_gethtbyaddr,  NULL},
+        {NSSRC_DNS,   _dns_gethtbyaddr, NULL},
+        {0, 0, 0}
+    };
 
     _DIAGASSERT(addr != NULL);
 
@@ -864,35 +744,8 @@ static struct hostent* android_gethostbyaddrfornetcontext_real(
 static struct hostent* android_gethostbyaddrfornetcontext_proxy_internal(
         const void* addr, socklen_t len, int af, struct hostent* hp, char* hbuf, size_t hbuflen,
         int* he, const struct android_net_context* netcontext) {
-    FILE* proxy = android_open_proxy();
-    if (proxy == NULL) {
-        // Either we're not supposed to be using the proxy or the proxy is unavailable.
-        return android_gethostbyaddrfornetcontext_real(addr, len, af, hp, hbuf, hbuflen, he,
-                                                       netcontext);
-    }
-
-    char buf[INET6_ADDRSTRLEN];  // big enough for IPv4 and IPv6
-    const char* addrStr = inet_ntop(af, addr, buf, sizeof(buf));
-    if (addrStr == NULL) {
-        fclose(proxy);
-        return NULL;
-    }
-
-    unsigned netid = __netdClientDispatch.netIdForResolv(netcontext->app_netid);
-
-    if (fprintf(proxy, "gethostbyaddr %s %d %d %u", addrStr, len, af, netid) < 0) {
-        fclose(proxy);
-        return NULL;
-    }
-
-    if (fputc(0, proxy) == EOF || fflush(proxy) != 0) {
-        fclose(proxy);
-        return NULL;
-    }
-
-    struct hostent* result = android_read_hostent(proxy, hp, hbuf, hbuflen, he);
-    fclose(proxy);
-    return result;
+    return android_gethostbyaddrfornetcontext_real(addr, len, af, hp, hbuf, hbuflen, he,
+                                                   netcontext);
 }
 
 struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, size_t buflen,
