@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include <stdbool.h>
 #include <arpa/nameser.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include <async_safe/log.h>
@@ -26,8 +26,7 @@
 #define DBG 0
 
 /* Calculate the round-trip-time from start time t0 and end time t1. */
-int
-_res_stats_calculate_rtt(const struct timespec* t1, const struct timespec* t0) {
+int _res_stats_calculate_rtt(const struct timespec* t1, const struct timespec* t0) {
     // Divide ns by one million to get ms, multiply s by thousand to get ms (obvious)
     long ms0 = t0->tv_sec * 1000 + t0->tv_nsec / 1000000;
     long ms1 = t1->tv_sec * 1000 + t1->tv_nsec / 1000000;
@@ -35,9 +34,7 @@ _res_stats_calculate_rtt(const struct timespec* t1, const struct timespec* t0) {
 }
 
 /* Create a sample for calculating server reachability statistics. */
-void
-_res_stats_set_sample(struct __res_sample* sample, time_t now, int rcode, int rtt)
-{
+void _res_stats_set_sample(struct __res_sample* sample, time_t now, int rcode, int rtt) {
     if (DBG) {
         async_safe_format_log(ANDROID_LOG_INFO, "libc", "rcode = %d, sec = %d", rcode, rtt);
     }
@@ -47,17 +44,14 @@ _res_stats_set_sample(struct __res_sample* sample, time_t now, int rcode, int rt
 }
 
 /* Clears all stored samples for the given server. */
-void
-_res_stats_clear_samples(struct __res_stats* stats)
-{
+void _res_stats_clear_samples(struct __res_stats* stats) {
     stats->sample_count = stats->sample_next = 0;
 }
 
 /* Aggregates the reachability statistics for the given server based on on the stored samples. */
-void
-android_net_res_stats_aggregate(struct __res_stats* stats, int* successes, int* errors,
-        int* timeouts, int* internal_errors, int* rtt_avg, time_t* last_sample_time)
-{
+void android_net_res_stats_aggregate(struct __res_stats* stats, int* successes, int* errors,
+                                     int* timeouts, int* internal_errors, int* rtt_avg,
+                                     time_t* last_sample_time) {
     int s = 0;   // successes
     int e = 0;   // errors
     int t = 0;   // timouts
@@ -65,7 +59,7 @@ android_net_res_stats_aggregate(struct __res_stats* stats, int* successes, int* 
     long rtt_sum = 0;
     time_t last = 0;
     int rtt_count = 0;
-    for (int i = 0 ; i < stats->sample_count ; ++i) {
+    for (int i = 0; i < stats->sample_count; ++i) {
         // Treat everything as an error that the code in send_dg() already considers a
         // rejection by the server, i.e. SERVFAIL, NOTIMP and REFUSED. Assume that NXDOMAIN
         // and NOTAUTH can actually occur for user queries. NOERROR with empty answer section
@@ -74,25 +68,25 @@ android_net_res_stats_aggregate(struct __res_stats* stats, int* successes, int* 
         // as an indication of a broken server is unclear, though. For now treat such responses,
         // as well as unknown codes as errors.
         switch (stats->samples[i].rcode) {
-        case NOERROR:
-        case NOTAUTH:
-        case NXDOMAIN:
-            ++s;
-            rtt_sum += stats->samples[i].rtt;
-            ++rtt_count;
-            break;
-        case RCODE_TIMEOUT:
-            ++t;
-            break;
-        case RCODE_INTERNAL_ERROR:
-            ++ie;
-            break;
-        case SERVFAIL:
-        case NOTIMP:
-        case REFUSED:
-        default:
-            ++e;
-            break;
+            case NOERROR:
+            case NOTAUTH:
+            case NXDOMAIN:
+                ++s;
+                rtt_sum += stats->samples[i].rtt;
+                ++rtt_count;
+                break;
+            case RCODE_TIMEOUT:
+                ++t;
+                break;
+            case RCODE_INTERNAL_ERROR:
+                ++ie;
+                break;
+            case SERVFAIL:
+            case NOTIMP:
+            case REFUSED:
+            default:
+                ++e;
+                break;
         }
     }
     *successes = s;
@@ -116,8 +110,7 @@ android_net_res_stats_aggregate(struct __res_stats* stats, int* successes, int* 
     *last_sample_time = last;
 }
 
-bool
-_res_stats_usable_server(const struct __res_params* params, struct __res_stats* stats) {
+bool _res_stats_usable_server(const struct __res_params* params, struct __res_stats* stats) {
     int successes = -1;
     int errors = -1;
     int timeouts = -1;
@@ -125,13 +118,15 @@ _res_stats_usable_server(const struct __res_params* params, struct __res_stats* 
     int rtt_avg = -1;
     time_t last_sample_time = 0;
     android_net_res_stats_aggregate(stats, &successes, &errors, &timeouts, &internal_errors,
-            &rtt_avg, &last_sample_time);
+                                    &rtt_avg, &last_sample_time);
     if (successes >= 0 && errors >= 0 && timeouts >= 0) {
         int total = successes + errors + timeouts;
         if (DBG) {
-            async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "NS stats: S %d + E %d + T %d + I %d "
-                 "= %d, rtt = %d, min_samples = %d\n", successes, errors, timeouts, internal_errors,
-                 total, rtt_avg, params->min_samples);
+            async_safe_format_log(ANDROID_LOG_DEBUG, "libc",
+                                  "NS stats: S %d + E %d + T %d + I %d "
+                                  "= %d, rtt = %d, min_samples = %d\n",
+                                  successes, errors, timeouts, internal_errors, total, rtt_avg,
+                                  params->min_samples);
         }
         if (total >= params->min_samples && (errors > 0 || timeouts > 0)) {
             int success_rate = successes * 100 / total;
@@ -149,13 +144,13 @@ _res_stats_usable_server(const struct __res_params* params, struct __res_stats* 
                     // previous non-circular state would induce additional complexity.
                     if (DBG) {
                         async_safe_format_log(ANDROID_LOG_INFO, "libc",
-                            "samples stale, retrying server\n");
+                                              "samples stale, retrying server\n");
                     }
                     _res_stats_clear_samples(stats);
                 } else {
                     if (DBG) {
                         async_safe_format_log(ANDROID_LOG_INFO, "libc",
-                            "too many resolution errors, ignoring server\n");
+                                              "too many resolution errors, ignoring server\n");
                     }
                     return 0;
                 }
@@ -165,9 +160,9 @@ _res_stats_usable_server(const struct __res_params* params, struct __res_stats* 
     return 1;
 }
 
-void
-android_net_res_stats_get_usable_servers(const struct __res_params* params,
-        struct __res_stats stats[], int nscount, bool usable_servers[]) {
+void android_net_res_stats_get_usable_servers(const struct __res_params* params,
+                                              struct __res_stats stats[], int nscount,
+                                              bool usable_servers[]) {
     unsigned usable_servers_found = 0;
     for (int ns = 0; ns < nscount; ns++) {
         bool usable = _res_stats_usable_server(params, &stats[ns]);

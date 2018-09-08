@@ -40,37 +40,25 @@ __LIBC_HIDDEN__
 extern void _resolv_populate_res_for_net(struct __res_state* statp);
 
 typedef enum {
-    RESOLV_CACHE_UNSUPPORTED,  /* the cache can't handle that kind of queries */
-                               /* or the answer buffer is too small */
-    RESOLV_CACHE_NOTFOUND,     /* the cache doesn't know about this query */
-    RESOLV_CACHE_FOUND         /* the cache found the answer */
+    RESOLV_CACHE_UNSUPPORTED, /* the cache can't handle that kind of queries */
+                              /* or the answer buffer is too small */
+    RESOLV_CACHE_NOTFOUND,    /* the cache doesn't know about this query */
+    RESOLV_CACHE_FOUND        /* the cache found the answer */
 } ResolvCacheStatus;
 
 __LIBC_HIDDEN__
-extern ResolvCacheStatus
-_resolv_cache_lookup( unsigned              netid,
-                      const void*           query,
-                      int                   querylen,
-                      void*                 answer,
-                      int                   answersize,
-                      int                  *answerlen );
+extern ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int querylen,
+                                              void* answer, int answersize, int* answerlen);
 
 /* add a (query,answer) to the cache, only call if _resolv_cache_lookup
  * did return RESOLV_CACHE_NOTFOUND
  */
 __LIBC_HIDDEN__
-extern void
-_resolv_cache_add( unsigned              netid,
-                   const void*           query,
-                   int                   querylen,
-                   const void*           answer,
-                   int                   answerlen );
+extern void _resolv_cache_add(unsigned netid, const void* query, int querylen, const void* answer,
+                              int answerlen);
 
 /* Notify the cache a request failed */
 __LIBC_HIDDEN__
-extern void
-_resolv_cache_query_failed( unsigned     netid,
-                   const void* query,
-                   int         querylen);
+extern void _resolv_cache_query_failed(unsigned netid, const void* query, int querylen);
 
 #endif /* _RESOLV_CACHE_H_ */
