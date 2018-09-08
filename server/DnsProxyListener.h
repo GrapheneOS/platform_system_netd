@@ -17,13 +17,13 @@
 #ifndef _DNSPROXYLISTENER_H__
 #define _DNSPROXYLISTENER_H__
 
-#include <resolv_netid.h>  // struct android_net_context
 #include <binder/IServiceManager.h>
 #include <sysutils/FrameworkListener.h>
 
-#include "android/net/metrics/INetdEventListener.h"
 #include "EventReporter.h"
 #include "NetdCommand.h"
+#include "android/net/metrics/INetdEventListener.h"
+#include "resolv_netid.h"  // struct android_net_context
 
 namespace android {
 namespace net {

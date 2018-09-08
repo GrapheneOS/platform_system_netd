@@ -75,6 +75,7 @@ cc_library_static {
     ],
     shared_libs: [
         "libbpf",
+        "libnetd_resolv",
         "libnetdaidl",
         "libbase",
         "libbinder",
@@ -95,7 +96,6 @@ cc_binary {
     name: "netd",
     defaults: ["netd_defaults"],
     include_dirs: [
-        "bionic/libc/dns/include",
         "external/mdnsresponder/mDNSShared",
         "system/netd/include",
     ],
@@ -103,6 +103,7 @@ cc_binary {
     shared_libs: [
         "android.system.net.netd@1.0",
         "android.system.net.netd@1.1",
+        "libbase",
         "libbinder",
         "libbpf",
         "libcrypto",
@@ -113,15 +114,15 @@ cc_binary {
         "liblog",
         "liblogwrap",
         "libmdnssd",
+        "libnetd_resolv",
         "libnetdaidl",
-        "libnetutils",
         "libnetdutils",
+        "libnetutils",
         "libpcap",
         "libqtaguid",
         "libselinux",
         "libssl",
         "libsysutils",
-        "libbase",
         "libutils",
     ],
     static_libs: [

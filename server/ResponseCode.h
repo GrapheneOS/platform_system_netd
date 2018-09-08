@@ -44,6 +44,7 @@ public:
     static const int InterfaceTxThrottleResult = 219;
     static const int QuotaCounterResult        = 220;
     static const int TetheringStatsResult      = 221;
+    // NOTE: keep synced with bionic/libc/dns/net/gethnamaddr.c
     static const int DnsProxyQueryResult       = 222;
     static const int ClatdStatusResult         = 223;
 

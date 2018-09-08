@@ -95,16 +95,6 @@
  * IF IBM IS APPRISED OF THE POSSIBILITY OF SUCH DAMAGES.
  */
 
-#include <sys/cdefs.h>
-#if defined(LIBC_SCCS) && !defined(lint)
-#ifdef notdef
-static const char sccsid[] = "@(#)res_debug.c	8.1 (Berkeley) 6/4/93";
-static const char rcsid[] = "Id: res_debug.c,v 1.19 2009/02/26 11:20:20 tbox Exp";
-#else
-__RCSID("$NetBSD: res_debug.c,v 1.13 2012/06/25 22:32:45 abs Exp $");
-#endif
-#endif /* LIBC_SCCS and not lint */
-
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -124,22 +114,13 @@ __RCSID("$NetBSD: res_debug.c,v 1.13 2012/06/25 22:32:45 abs Exp $");
 #include <time.h>
 #include "resolv_private.h"
 
+// NetBSD uses _DIAGASSERT to null-check arguments and the like,
+// but it's clear from the number of mistakes in their assertions
+// that they don't actually test or ship with this.
+#define _DIAGASSERT(e) /* nothing */
+
 extern const char* const _res_opcodes[];
 extern const char* const _res_sectioncodes[];
-
-#ifndef _LIBC
-/*
- * Print the current options.
- */
-void fp_resstat(const res_state statp, FILE* file) {
-    u_long mask;
-
-    fprintf(file, ";; res options:");
-    for (mask = 1; mask != 0U; mask <<= 1)
-        if (statp->options & mask) fprintf(file, " %s", p_option(mask));
-    putc('\n', file);
-}
-#endif
 
 static void do_section(const res_state statp, ns_msg* handle, ns_sect section, int pflag,
                        FILE* file) {
