@@ -640,11 +640,9 @@ const char* p_sockun(union res_sockaddr_union u, char* buf, size_t size) {
         case AF_INET:
             inet_ntop(AF_INET, &u.sin.sin_addr, ret, (socklen_t) sizeof ret);
             break;
-#ifdef HAS_INET6_STRUCTS
         case AF_INET6:
             inet_ntop(AF_INET6, &u.sin6.sin6_addr, ret, sizeof ret);
             break;
-#endif
         default:
             snprintf(ret, sizeof(ret), "[af%d]", u.sin.sin_family);
             break;

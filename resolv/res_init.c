@@ -134,22 +134,10 @@ int res_ninit(res_state statp) {
 
 /* This function has to be reachable by res_data.c but not publicly. */
 int __res_vinit(res_state statp, int preinit) {
-#if !defined(__BIONIC__)
-    register FILE* fp;
-#endif
     register char *cp, **pp;
-#if !defined(__BIONIC__)
-    register int n;
-#endif
     char buf[BUFSIZ];
     int nserv = 0; /* number of nameserver records read from file */
-#if !defined(__BIONIC__)
-    int haveenv = 0;
-#endif
     int havesearch = 0;
-#if !defined(__BIONIC__)
-    char* net;
-#endif
     int dots;
     union res_sockaddr_union u[2];
 
@@ -165,30 +153,10 @@ int __res_vinit(res_state statp, int preinit) {
     }
 
     memset(u, 0, sizeof(u));
-#ifdef USELOOPBACK
-    u[nserv].sin.sin_addr = inet_makeaddr(IN_LOOPBACKNET, 1);
-#else
     u[nserv].sin.sin_addr.s_addr = INADDR_ANY;
-#endif
     u[nserv].sin.sin_family = AF_INET;
     u[nserv].sin.sin_port = htons(NAMESERVER_PORT);
-#ifdef HAVE_SA_LEN
-    u[nserv].sin.sin_len = sizeof(struct sockaddr_in);
-#endif
     nserv++;
-#ifdef HAS_INET6_STRUCTS
-#ifdef USELOOPBACK
-    u[nserv].sin6.sin6_addr = in6addr_loopback;
-#else
-    u[nserv].sin6.sin6_addr = in6addr_any;
-#endif
-    u[nserv].sin6.sin6_family = AF_INET6;
-    u[nserv].sin6.sin6_port = htons(NAMESERVER_PORT);
-#ifdef HAVE_SA_LEN
-    u[nserv].sin6.sin6_len = sizeof(struct sockaddr_in6);
-#endif
-    nserv++;
-#endif
     statp->nscount = 0;
     statp->ndots = 1;
     statp->pfcode = 0;
@@ -206,53 +174,6 @@ int __res_vinit(res_state statp, int preinit) {
     }
     statp->nsort = 0;
     res_setservers(statp, u, nserv);
-
-#if defined(__BIONIC__)
-    /* Ignore the environment. */
-#else
-    /* Allow user to override the local domain definition */
-    if ((cp = getenv("LOCALDOMAIN")) != NULL) {
-        (void) strncpy(statp->defdname, cp, sizeof(statp->defdname) - 1);
-        statp->defdname[sizeof(statp->defdname) - 1] = '\0';
-        haveenv++;
-
-        /*
-         * Set search list to be blank-separated strings
-         * from rest of env value.  Permits users of LOCALDOMAIN
-         * to still have a search list, and anyone to set the
-         * one that they want to use as an individual (even more
-         * important now that the rfc1535 stuff restricts searches)
-         */
-        cp = statp->defdname;
-        pp = statp->dnsrch;
-        *pp++ = cp;
-        for (n = 0; *cp && pp < statp->dnsrch + MAXDNSRCH; cp++) {
-            if (*cp == '\n') /* silly backwards compat */
-                break;
-            else if (*cp == ' ' || *cp == '\t') {
-                *cp = 0;
-                n = 1;
-            } else if (n) {
-                *pp++ = cp;
-                n = 0;
-                havesearch = 1;
-            }
-        }
-        /* null terminate last domain if there are excess */
-        while (*cp != '\0' && *cp != ' ' && *cp != '\t' && *cp != '\n') cp++;
-        *cp = '\0';
-        *pp++ = 0;
-    }
-    if (nserv > 0) statp->nscount = nserv;
-#endif
-
-/*
- * Last chance to get a nameserver.  This should not normally
- * be necessary
- */
-#ifdef NO_RESOLV_CONF
-    if (nserv == 0) nserv = get_nameservers(statp);
-#endif
 
     if (statp->defdname[0] == 0 && gethostname(buf, sizeof(statp->defdname) - 1) == 0 &&
         (cp = strchr(buf, '.')) != NULL)
