@@ -36,16 +36,16 @@
 #include <time.h>
 #include "pthread.h"
 
-#include <errno.h>
 #include <arpa/nameser.h>
+#include <errno.h>
+#include <linux/if.h>
 #include <net/if.h>
 #include <netdb.h>
-#include <linux/if.h>
 
 #include <arpa/inet.h>
-#include "resolv_private.h"
-#include "resolv_netid.h"
 #include "res_private.h"
+#include "resolv_netid.h"
+#include "resolv_private.h"
 
 #include <async_safe/log.h>
 
@@ -129,7 +129,7 @@
  * * Upping by another 5x for the centralized nature
  * *****************************************
  */
-#define  CONFIG_MAX_ENTRIES    64 * 2 * 5
+#define CONFIG_MAX_ENTRIES 64 * 2 * 5
 
 /****************************************************************************/
 /****************************************************************************/
@@ -140,10 +140,10 @@
 /****************************************************************************/
 
 /* set to 1 to debug cache operations */
-#define  DEBUG       0
+#define DEBUG 0
 
 /* set to 1 to debug query data */
-#define  DEBUG_DATA  0
+#define DEBUG_DATA 0
 
 #if DEBUG
 #define __DEBUG__
@@ -153,13 +153,14 @@
 
 #undef XLOG
 
-#define XLOG(...) ({ \
-    if (DEBUG) { \
-        async_safe_format_log(ANDROID_LOG_DEBUG,"libc",__VA_ARGS__); \
-    } else { \
-        ((void)0); \
-    } \
-})
+#define XLOG(...)                                                          \
+    ({                                                                     \
+        if (DEBUG) {                                                       \
+            async_safe_format_log(ANDROID_LOG_DEBUG, "libc", __VA_ARGS__); \
+        } else {                                                           \
+            ((void) 0);                                                    \
+        }                                                                  \
+    })
 
 /** BOUNDED BUFFER FORMATTING
  **/
@@ -206,33 +207,27 @@
  */
 
 /* add a char to a bounded buffer */
-char*
-_bprint_c( char*  p, char*  end, int  c )
-{
+char* _bprint_c(char* p, char* end, int c) {
     if (p < end) {
-        if (p+1 == end)
+        if (p + 1 == end)
             *p++ = 0;
         else {
             *p++ = (char) c;
-            *p   = 0;
+            *p = 0;
         }
     }
     return p;
 }
 
 /* add a sequence of bytes to a bounded buffer */
-char*
-_bprint_b( char*  p, char*  end, const char*  buf, int  len )
-{
-    int  avail = end - p;
+char* _bprint_b(char* p, char* end, const char* buf, int len) {
+    int avail = end - p;
 
-    if (avail <= 0 || len <= 0)
-        return p;
+    if (avail <= 0 || len <= 0) return p;
 
-    if (avail > len)
-        avail = len;
+    if (avail > len) avail = len;
 
-    memcpy( p, buf, avail );
+    memcpy(p, buf, avail);
     p += avail;
 
     if (p < end)
@@ -244,111 +239,96 @@ _bprint_b( char*  p, char*  end, const char*  buf, int  len )
 }
 
 /* add a string to a bounded buffer */
-char*
-_bprint_s( char*  p, char*  end, const char*  str )
-{
+char* _bprint_s(char* p, char* end, const char* str) {
     return _bprint_b(p, end, str, strlen(str));
 }
 
 /* add a formatted string to a bounded buffer */
-char* _bprint( char*  p, char*  end, const char*  format, ... ) __DEBUG__;
-char* _bprint( char*  p, char*  end, const char*  format, ... )
-{
-    int      avail, n;
-    va_list  args;
+char* _bprint(char* p, char* end, const char* format, ...) __DEBUG__;
+char* _bprint(char* p, char* end, const char* format, ...) {
+    int avail, n;
+    va_list args;
 
     avail = end - p;
 
-    if (avail <= 0)
-        return p;
+    if (avail <= 0) return p;
 
     va_start(args, format);
-    n = vsnprintf( p, avail, format, args);
+    n = vsnprintf(p, avail, format, args);
     va_end(args);
 
     /* certain C libraries return -1 in case of truncation */
-    if (n < 0 || n > avail)
-        n = avail;
+    if (n < 0 || n > avail) n = avail;
 
     p += n;
     /* certain C libraries do not zero-terminate in case of truncation */
-    if (p == end)
-        p[-1] = 0;
+    if (p == end) p[-1] = 0;
 
     return p;
 }
 
 /* add a hex value to a bounded buffer, up to 8 digits */
-char*
-_bprint_hex( char*  p, char*  end, unsigned  value, int  numDigits )
-{
-    char   text[sizeof(unsigned)*2];
-    int    nn = 0;
+char* _bprint_hex(char* p, char* end, unsigned value, int numDigits) {
+    char text[sizeof(unsigned) * 2];
+    int nn = 0;
 
     while (numDigits-- > 0) {
-        text[nn++] = "0123456789abcdef"[(value >> (numDigits*4)) & 15];
+        text[nn++] = "0123456789abcdef"[(value >> (numDigits * 4)) & 15];
     }
     return _bprint_b(p, end, text, nn);
 }
 
 /* add the hexadecimal dump of some memory area to a bounded buffer */
-char*
-_bprint_hexdump( char*  p, char*  end, const uint8_t*  data, int  datalen )
-{
-    int   lineSize = 16;
+char* _bprint_hexdump(char* p, char* end, const uint8_t* data, int datalen) {
+    int lineSize = 16;
 
     while (datalen > 0) {
-        int  avail = datalen;
-        int  nn;
+        int avail = datalen;
+        int nn;
 
-        if (avail > lineSize)
-            avail = lineSize;
+        if (avail > lineSize) avail = lineSize;
 
         for (nn = 0; nn < avail; nn++) {
-            if (nn > 0)
-                p = _bprint_c(p, end, ' ');
+            if (nn > 0) p = _bprint_c(p, end, ' ');
             p = _bprint_hex(p, end, data[nn], 2);
         }
-        for ( ; nn < lineSize; nn++ ) {
+        for (; nn < lineSize; nn++) {
             p = _bprint_s(p, end, "   ");
         }
         p = _bprint_s(p, end, "  ");
 
         for (nn = 0; nn < avail; nn++) {
-            int  c = data[nn];
+            int c = data[nn];
 
-            if (c < 32 || c > 127)
-                c = '.';
+            if (c < 32 || c > 127) c = '.';
 
             p = _bprint_c(p, end, c);
         }
         p = _bprint_c(p, end, '\n');
 
-        data    += avail;
+        data += avail;
         datalen -= avail;
     }
     return p;
 }
 
 /* dump the content of a query of packet to the log */
-void XLOG_BYTES( const void*  base, int  len ) __DEBUG__;
-void XLOG_BYTES( const void*  base, int  len )
-{
+void XLOG_BYTES(const void* base, int len) __DEBUG__;
+void XLOG_BYTES(const void* base, int len) {
     if (DEBUG_DATA) {
-        char  buff[1024];
-        char*  p = buff, *end = p + sizeof(buff);
+        char buff[1024];
+        char *p = buff, *end = p + sizeof(buff);
 
         p = _bprint_hexdump(p, end, base, len);
-        XLOG("%s",buff);
+        XLOG("%s", buff);
     }
-} __DEBUG__
+}
+__DEBUG__
 
-static time_t
-_time_now( void )
-{
-    struct timeval  tv;
+static time_t _time_now(void) {
+    struct timeval tv;
 
-    gettimeofday( &tv, NULL );
+    gettimeofday(&tv, NULL);
     return tv.tv_sec;
 }
 
@@ -437,57 +417,47 @@ _time_now( void )
  *       records, only QNAMEs.
  */
 
-#define  DNS_HEADER_SIZE  12
+#define DNS_HEADER_SIZE 12
 
-#define  DNS_TYPE_A   "\00\01"   /* big-endian decimal 1 */
-#define  DNS_TYPE_PTR "\00\014"  /* big-endian decimal 12 */
-#define  DNS_TYPE_MX  "\00\017"  /* big-endian decimal 15 */
-#define  DNS_TYPE_AAAA "\00\034" /* big-endian decimal 28 */
-#define  DNS_TYPE_ALL "\00\0377" /* big-endian decimal 255 */
+#define DNS_TYPE_A "\00\01"     /* big-endian decimal 1 */
+#define DNS_TYPE_PTR "\00\014"  /* big-endian decimal 12 */
+#define DNS_TYPE_MX "\00\017"   /* big-endian decimal 15 */
+#define DNS_TYPE_AAAA "\00\034" /* big-endian decimal 28 */
+#define DNS_TYPE_ALL "\00\0377" /* big-endian decimal 255 */
 
-#define  DNS_CLASS_IN "\00\01"   /* big-endian decimal 1 */
+#define DNS_CLASS_IN "\00\01" /* big-endian decimal 1 */
 
 typedef struct {
-    const uint8_t*  base;
-    const uint8_t*  end;
-    const uint8_t*  cursor;
+    const uint8_t* base;
+    const uint8_t* end;
+    const uint8_t* cursor;
 } DnsPacket;
 
-static void
-_dnsPacket_init( DnsPacket*  packet, const uint8_t*  buff, int  bufflen )
-{
-    packet->base   = buff;
-    packet->end    = buff + bufflen;
+static void _dnsPacket_init(DnsPacket* packet, const uint8_t* buff, int bufflen) {
+    packet->base = buff;
+    packet->end = buff + bufflen;
     packet->cursor = buff;
 }
 
-static void
-_dnsPacket_rewind( DnsPacket*  packet )
-{
+static void _dnsPacket_rewind(DnsPacket* packet) {
     packet->cursor = packet->base;
 }
 
-static void
-_dnsPacket_skip( DnsPacket*  packet, int  count )
-{
-    const uint8_t*  p = packet->cursor + count;
+static void _dnsPacket_skip(DnsPacket* packet, int count) {
+    const uint8_t* p = packet->cursor + count;
 
-    if (p > packet->end)
-        p = packet->end;
+    if (p > packet->end) p = packet->end;
 
     packet->cursor = p;
 }
 
-static int
-_dnsPacket_readInt16( DnsPacket*  packet )
-{
-    const uint8_t*  p = packet->cursor;
+static int _dnsPacket_readInt16(DnsPacket* packet) {
+    const uint8_t* p = packet->cursor;
 
-    if (p+2 > packet->end)
-        return -1;
+    if (p + 2 > packet->end) return -1;
 
-    packet->cursor = p+2;
-    return (p[0]<< 8) | p[1];
+    packet->cursor = p + 2;
+    return (p[0] << 8) | p[1];
 }
 
 /** QUERY CHECKING
@@ -496,16 +466,12 @@ _dnsPacket_readInt16( DnsPacket*  packet )
 /* check bytes in a dns packet. returns 1 on success, 0 on failure.
  * the cursor is only advanced in the case of success
  */
-static int
-_dnsPacket_checkBytes( DnsPacket*  packet, int  numBytes, const void*  bytes )
-{
-    const uint8_t*  p = packet->cursor;
+static int _dnsPacket_checkBytes(DnsPacket* packet, int numBytes, const void* bytes) {
+    const uint8_t* p = packet->cursor;
 
-    if (p + numBytes > packet->end)
-        return 0;
+    if (p + numBytes > packet->end) return 0;
 
-    if (memcmp(p, bytes, numBytes) != 0)
-        return 0;
+    if (memcmp(p, bytes, numBytes) != 0) return 0;
 
     packet->cursor = p + numBytes;
     return 1;
@@ -515,17 +481,14 @@ _dnsPacket_checkBytes( DnsPacket*  packet, int  numBytes, const void*  bytes )
  * from the current cursor position. returns 1 on success,
  * or 0 for malformed data.
  */
-static int
-_dnsPacket_checkQName( DnsPacket*  packet )
-{
-    const uint8_t*  p   = packet->cursor;
-    const uint8_t*  end = packet->end;
+static int _dnsPacket_checkQName(DnsPacket* packet) {
+    const uint8_t* p = packet->cursor;
+    const uint8_t* end = packet->end;
 
     for (;;) {
-        int  c;
+        int c;
 
-        if (p >= end)
-            break;
+        if (p >= end) break;
 
         c = *p++;
 
@@ -535,8 +498,7 @@ _dnsPacket_checkQName( DnsPacket*  packet )
         }
 
         /* we don't expect label compression in QNAMEs */
-        if (c >= 64)
-            break;
+        if (c >= 64) break;
 
         p += c;
         /* we rely on the bound check at the start
@@ -550,19 +512,15 @@ _dnsPacket_checkQName( DnsPacket*  packet )
 /* parse and skip a given QR stored in a packet.
  * returns 1 on success, and 0 on failure
  */
-static int
-_dnsPacket_checkQR( DnsPacket*  packet )
-{
-    if (!_dnsPacket_checkQName(packet))
-        return 0;
+static int _dnsPacket_checkQR(DnsPacket* packet) {
+    if (!_dnsPacket_checkQName(packet)) return 0;
 
     /* TYPE must be one of the things we support */
     if (!_dnsPacket_checkBytes(packet, 2, DNS_TYPE_A) &&
         !_dnsPacket_checkBytes(packet, 2, DNS_TYPE_PTR) &&
         !_dnsPacket_checkBytes(packet, 2, DNS_TYPE_MX) &&
         !_dnsPacket_checkBytes(packet, 2, DNS_TYPE_AAAA) &&
-        !_dnsPacket_checkBytes(packet, 2, DNS_TYPE_ALL))
-    {
+        !_dnsPacket_checkBytes(packet, 2, DNS_TYPE_ALL)) {
         XLOG("unsupported TYPE");
         return 0;
     }
@@ -578,11 +536,9 @@ _dnsPacket_checkQR( DnsPacket*  packet )
 /* check the header of a DNS Query packet, return 1 if it is one
  * type of query we can cache, or 0 otherwise
  */
-static int
-_dnsPacket_checkQuery( DnsPacket*  packet )
-{
-    const uint8_t*  p = packet->base;
-    int             qdCount, anCount, dnCount, arCount;
+static int _dnsPacket_checkQuery(DnsPacket* packet) {
+    const uint8_t* p = packet->base;
+    int qdCount, anCount, dnCount, arCount;
 
     if (p + DNS_HEADER_SIZE > packet->end) {
         XLOG("query packet too small");
@@ -618,7 +574,7 @@ _dnsPacket_checkQuery( DnsPacket*  packet )
     qdCount = (p[4] << 8) | p[5];
     anCount = (p[6] << 8) | p[7];
     dnCount = (p[8] << 8) | p[9];
-    arCount = (p[10]<< 8) | p[11];
+    arCount = (p[10] << 8) | p[11];
 
     if (anCount != 0 || dnCount != 0 || arCount > 1) {
         XLOG("query packet contains non-query records");
@@ -633,9 +589,8 @@ _dnsPacket_checkQuery( DnsPacket*  packet )
     /* Check QDCOUNT QRs */
     packet->cursor = p + DNS_HEADER_SIZE;
 
-    for (;qdCount > 0; qdCount--)
-        if (!_dnsPacket_checkQR(packet))
-            return 0;
+    for (; qdCount > 0; qdCount--)
+        if (!_dnsPacket_checkQR(packet)) return 0;
 
     return 1;
 }
@@ -643,18 +598,15 @@ _dnsPacket_checkQuery( DnsPacket*  packet )
 /** QUERY DEBUGGING
  **/
 #if DEBUG
-static char*
-_dnsPacket_bprintQName(DnsPacket*  packet, char*  bp, char*  bend)
-{
-    const uint8_t*  p   = packet->cursor;
-    const uint8_t*  end = packet->end;
-    int             first = 1;
+static char* _dnsPacket_bprintQName(DnsPacket* packet, char* bp, char* bend) {
+    const uint8_t* p = packet->cursor;
+    const uint8_t* end = packet->end;
+    int first = 1;
 
     for (;;) {
-        int  c;
+        int c;
 
-        if (p >= end)
-            break;
+        if (p >= end) break;
 
         c = *p++;
 
@@ -664,15 +616,14 @@ _dnsPacket_bprintQName(DnsPacket*  packet, char*  bp, char*  bend)
         }
 
         /* we don't expect label compression in QNAMEs */
-        if (c >= 64)
-            break;
+        if (c >= 64) break;
 
         if (first)
             first = 0;
         else
             bp = _bprint_c(bp, bend, '.');
 
-        bp = _bprint_b(bp, bend, (const char*)p, c);
+        bp = _bprint_b(bp, bend, (const char*) p, c);
 
         p += c;
         /* we rely on the bound check at the start
@@ -683,20 +634,15 @@ _dnsPacket_bprintQName(DnsPacket*  packet, char*  bp, char*  bend)
     return bp;
 }
 
-static char*
-_dnsPacket_bprintQR(DnsPacket*  packet, char*  p, char*  end)
-{
-#define  QQ(x)   { DNS_TYPE_##x, #x }
+static char* _dnsPacket_bprintQR(DnsPacket* packet, char* p, char* end) {
+#define QQ(x) \
+    { DNS_TYPE_##x, #x }
     static const struct {
-        const char*  typeBytes;
-        const char*  typeString;
-    } qTypes[] =
-    {
-        QQ(A), QQ(PTR), QQ(MX), QQ(AAAA), QQ(ALL),
-        { NULL, NULL }
-    };
-    int          nn;
-    const char*  typeString = NULL;
+        const char* typeBytes;
+        const char* typeString;
+    } qTypes[] = {QQ(A), QQ(PTR), QQ(MX), QQ(AAAA), QQ(ALL), {NULL, NULL}};
+    int nn;
+    const char* typeString = NULL;
 
     /* dump QNAME */
     p = _dnsPacket_bprintQName(packet, p, end);
@@ -714,7 +660,7 @@ _dnsPacket_bprintQR(DnsPacket*  packet, char*  p, char*  end)
     if (typeString != NULL)
         p = _bprint_s(p, end, typeString);
     else {
-        int  typeCode = _dnsPacket_readInt16(packet);
+        int typeCode = _dnsPacket_readInt16(packet);
         p = _bprint(p, end, "UNKNOWN-%d", typeCode);
     }
 
@@ -726,10 +672,8 @@ _dnsPacket_bprintQR(DnsPacket*  packet, char*  p, char*  end)
 }
 
 /* this function assumes the packet has already been checked */
-static char*
-_dnsPacket_bprintQuery( DnsPacket*  packet, char*  p, char*  end )
-{
-    int   qdCount;
+static char* _dnsPacket_bprintQuery(DnsPacket* packet, char* p, char* end) {
+    int qdCount;
 
     if (packet->base[2] & 0x1) {
         p = _bprint_s(p, end, "RECURSIVE ");
@@ -739,13 +683,12 @@ _dnsPacket_bprintQuery( DnsPacket*  packet, char*  p, char*  end )
     qdCount = _dnsPacket_readInt16(packet);
     _dnsPacket_skip(packet, 6);
 
-    for ( ; qdCount > 0; qdCount-- ) {
+    for (; qdCount > 0; qdCount--) {
         p = _dnsPacket_bprintQR(packet, p, end);
     }
     return p;
 }
 #endif
-
 
 /** QUERY HASHING SUPPORT
  **
@@ -754,71 +697,60 @@ _dnsPacket_bprintQuery( DnsPacket*  packet, char*  p, char*  end )
  **/
 
 /* use 32-bit FNV hash function */
-#define  FNV_MULT   16777619U
-#define  FNV_BASIS  2166136261U
+#define FNV_MULT 16777619U
+#define FNV_BASIS 2166136261U
 
-static unsigned
-_dnsPacket_hashBytes( DnsPacket*  packet, int  numBytes, unsigned  hash )
-{
-    const uint8_t*  p   = packet->cursor;
-    const uint8_t*  end = packet->end;
+static unsigned _dnsPacket_hashBytes(DnsPacket* packet, int numBytes, unsigned hash) {
+    const uint8_t* p = packet->cursor;
+    const uint8_t* end = packet->end;
 
     while (numBytes > 0 && p < end) {
-        hash = hash*FNV_MULT ^ *p++;
+        hash = hash * FNV_MULT ^ *p++;
     }
     packet->cursor = p;
     return hash;
 }
 
-
-static unsigned
-_dnsPacket_hashQName( DnsPacket*  packet, unsigned  hash )
-{
-    const uint8_t*  p   = packet->cursor;
-    const uint8_t*  end = packet->end;
+static unsigned _dnsPacket_hashQName(DnsPacket* packet, unsigned hash) {
+    const uint8_t* p = packet->cursor;
+    const uint8_t* end = packet->end;
 
     for (;;) {
-        int  c;
+        int c;
 
-        if (p >= end) {  /* should not happen */
+        if (p >= end) { /* should not happen */
             XLOG("%s: INTERNAL_ERROR: read-overflow !!\n", __FUNCTION__);
             break;
         }
 
         c = *p++;
 
-        if (c == 0)
-            break;
+        if (c == 0) break;
 
         if (c >= 64) {
             XLOG("%s: INTERNAL_ERROR: malformed domain !!\n", __FUNCTION__);
             break;
         }
         if (p + c >= end) {
-            XLOG("%s: INTERNAL_ERROR: simple label read-overflow !!\n",
-                    __FUNCTION__);
+            XLOG("%s: INTERNAL_ERROR: simple label read-overflow !!\n", __FUNCTION__);
             break;
         }
         while (c > 0) {
-            hash = hash*FNV_MULT ^ *p++;
-            c   -= 1;
+            hash = hash * FNV_MULT ^ *p++;
+            c -= 1;
         }
     }
     packet->cursor = p;
     return hash;
 }
 
-static unsigned
-_dnsPacket_hashQR( DnsPacket*  packet, unsigned  hash )
-{
+static unsigned _dnsPacket_hashQR(DnsPacket* packet, unsigned hash) {
     hash = _dnsPacket_hashQName(packet, hash);
     hash = _dnsPacket_hashBytes(packet, 4, hash); /* TYPE and CLASS */
     return hash;
 }
 
-static unsigned
-_dnsPacket_hashRR( DnsPacket*  packet, unsigned  hash )
-{
+static unsigned _dnsPacket_hashRR(DnsPacket* packet, unsigned hash) {
     int rdlength;
     hash = _dnsPacket_hashQR(packet, hash);
     hash = _dnsPacket_hashBytes(packet, 4, hash); /* TTL */
@@ -827,11 +759,9 @@ _dnsPacket_hashRR( DnsPacket*  packet, unsigned  hash )
     return hash;
 }
 
-static unsigned
-_dnsPacket_hashQuery( DnsPacket*  packet )
-{
-    unsigned  hash = FNV_BASIS;
-    int       count, arcount;
+static unsigned _dnsPacket_hashQuery(DnsPacket* packet) {
+    unsigned hash = FNV_BASIS;
+    int count, arcount;
     _dnsPacket_rewind(packet);
 
     /* ignore the ID */
@@ -844,7 +774,7 @@ _dnsPacket_hashQuery( DnsPacket*  packet )
      * between answers for recursive and non-recursive
      * queries.
      */
-    hash = hash*FNV_MULT ^ (packet->base[2] & 1);
+    hash = hash * FNV_MULT ^ (packet->base[2] & 1);
 
     /* mark the first header byte as processed */
     _dnsPacket_skip(packet, 1);
@@ -862,16 +792,13 @@ _dnsPacket_hashQuery( DnsPacket*  packet )
     arcount = _dnsPacket_readInt16(packet);
 
     /* hash QDCOUNT QRs */
-    for ( ; count > 0; count-- )
-        hash = _dnsPacket_hashQR(packet, hash);
+    for (; count > 0; count--) hash = _dnsPacket_hashQR(packet, hash);
 
     /* hash ARCOUNT RRs */
-    for ( ; arcount > 0; arcount-- )
-        hash = _dnsPacket_hashRR(packet, hash);
+    for (; arcount > 0; arcount--) hash = _dnsPacket_hashRR(packet, hash);
 
     return hash;
 }
-
 
 /** QUERY COMPARISON
  **
@@ -879,16 +806,14 @@ _dnsPacket_hashQuery( DnsPacket*  packet )
  ** BEEN SUCCESFULLY CHECKED.
  **/
 
-static int
-_dnsPacket_isEqualDomainName( DnsPacket*  pack1, DnsPacket*  pack2 )
-{
-    const uint8_t*  p1   = pack1->cursor;
-    const uint8_t*  end1 = pack1->end;
-    const uint8_t*  p2   = pack2->cursor;
-    const uint8_t*  end2 = pack2->end;
+static int _dnsPacket_isEqualDomainName(DnsPacket* pack1, DnsPacket* pack2) {
+    const uint8_t* p1 = pack1->cursor;
+    const uint8_t* end1 = pack1->end;
+    const uint8_t* p2 = pack2->cursor;
+    const uint8_t* end2 = pack2->end;
 
     for (;;) {
-        int  c1, c2;
+        int c1, c2;
 
         if (p1 >= end1 || p2 >= end2) {
             XLOG("%s: INTERNAL_ERROR: read-overflow !!\n", __FUNCTION__);
@@ -896,8 +821,7 @@ _dnsPacket_isEqualDomainName( DnsPacket*  pack1, DnsPacket*  pack2 )
         }
         c1 = *p1++;
         c2 = *p2++;
-        if (c1 != c2)
-            break;
+        if (c1 != c2) break;
 
         if (c1 == 0) {
             pack1->cursor = p1;
@@ -908,13 +832,11 @@ _dnsPacket_isEqualDomainName( DnsPacket*  pack1, DnsPacket*  pack2 )
             XLOG("%s: INTERNAL_ERROR: malformed domain !!\n", __FUNCTION__);
             break;
         }
-        if ((p1+c1 > end1) || (p2+c1 > end2)) {
-            XLOG("%s: INTERNAL_ERROR: simple label read-overflow !!\n",
-                    __FUNCTION__);
+        if ((p1 + c1 > end1) || (p2 + c1 > end2)) {
+            XLOG("%s: INTERNAL_ERROR: simple label read-overflow !!\n", __FUNCTION__);
             break;
         }
-        if (memcmp(p1, p2, c1) != 0)
-            break;
+        if (memcmp(p1, p2, c1) != 0) break;
         p1 += c1;
         p2 += c1;
         /* we rely on the bound checks at the start of the loop */
@@ -924,57 +846,43 @@ _dnsPacket_isEqualDomainName( DnsPacket*  pack1, DnsPacket*  pack2 )
     return 0;
 }
 
-static int
-_dnsPacket_isEqualBytes( DnsPacket*  pack1, DnsPacket*  pack2, int  numBytes )
-{
-    const uint8_t*  p1 = pack1->cursor;
-    const uint8_t*  p2 = pack2->cursor;
+static int _dnsPacket_isEqualBytes(DnsPacket* pack1, DnsPacket* pack2, int numBytes) {
+    const uint8_t* p1 = pack1->cursor;
+    const uint8_t* p2 = pack2->cursor;
 
-    if ( p1 + numBytes > pack1->end || p2 + numBytes > pack2->end )
-        return 0;
+    if (p1 + numBytes > pack1->end || p2 + numBytes > pack2->end) return 0;
 
-    if ( memcmp(p1, p2, numBytes) != 0 )
-        return 0;
+    if (memcmp(p1, p2, numBytes) != 0) return 0;
 
     pack1->cursor += numBytes;
     pack2->cursor += numBytes;
     return 1;
 }
 
-static int
-_dnsPacket_isEqualQR( DnsPacket*  pack1, DnsPacket*  pack2 )
-{
+static int _dnsPacket_isEqualQR(DnsPacket* pack1, DnsPacket* pack2) {
     /* compare domain name encoding + TYPE + CLASS */
-    if ( !_dnsPacket_isEqualDomainName(pack1, pack2) ||
-         !_dnsPacket_isEqualBytes(pack1, pack2, 2+2) )
+    if (!_dnsPacket_isEqualDomainName(pack1, pack2) ||
+        !_dnsPacket_isEqualBytes(pack1, pack2, 2 + 2))
         return 0;
 
     return 1;
 }
 
-static int
-_dnsPacket_isEqualRR( DnsPacket*  pack1, DnsPacket*  pack2 )
-{
+static int _dnsPacket_isEqualRR(DnsPacket* pack1, DnsPacket* pack2) {
     int rdlength1, rdlength2;
     /* compare query + TTL */
-    if ( !_dnsPacket_isEqualQR(pack1, pack2) ||
-         !_dnsPacket_isEqualBytes(pack1, pack2, 4) )
-        return 0;
+    if (!_dnsPacket_isEqualQR(pack1, pack2) || !_dnsPacket_isEqualBytes(pack1, pack2, 4)) return 0;
 
     /* compare RDATA */
     rdlength1 = _dnsPacket_readInt16(pack1);
     rdlength2 = _dnsPacket_readInt16(pack2);
-    if ( rdlength1 != rdlength2 ||
-         !_dnsPacket_isEqualBytes(pack1, pack2, rdlength1) )
-        return 0;
+    if (rdlength1 != rdlength2 || !_dnsPacket_isEqualBytes(pack1, pack2, rdlength1)) return 0;
 
     return 1;
 }
 
-static int
-_dnsPacket_isEqualQuery( DnsPacket*  pack1, DnsPacket*  pack2 )
-{
-    int  count1, count2, arcount1, arcount2;
+static int _dnsPacket_isEqualQuery(DnsPacket* pack1, DnsPacket* pack2) {
+    int count1, count2, arcount1, arcount2;
 
     /* compare the headers, ignore most fields */
     _dnsPacket_rewind(pack1);
@@ -1016,7 +924,7 @@ _dnsPacket_isEqualQuery( DnsPacket*  pack1, DnsPacket*  pack2 )
     }
 
     /* compare the QDCOUNT QRs */
-    for ( ; count1 > 0; count1-- ) {
+    for (; count1 > 0; count1--) {
         if (!_dnsPacket_isEqualQR(pack1, pack2)) {
             XLOG("different QR");
             return 0;
@@ -1024,7 +932,7 @@ _dnsPacket_isEqualQuery( DnsPacket*  pack1, DnsPacket*  pack2 )
     }
 
     /* compare the ARCOUNT RRs */
-    for ( ; arcount1 > 0; arcount1-- ) {
+    for (; arcount1 > 0; arcount1--) {
         if (!_dnsPacket_isEqualRR(pack1, pack2)) {
             XLOG("different additional RR");
             return 0;
@@ -1047,17 +955,17 @@ _dnsPacket_isEqualQuery( DnsPacket*  pack1, DnsPacket*  pack2 )
  * similarly, mru_next and mru_prev are part of the global MRU list
  */
 typedef struct Entry {
-    unsigned int     hash;   /* hash value */
-    struct Entry*    hlink;  /* next in collision chain */
-    struct Entry*    mru_prev;
-    struct Entry*    mru_next;
+    unsigned int hash;   /* hash value */
+    struct Entry* hlink; /* next in collision chain */
+    struct Entry* mru_prev;
+    struct Entry* mru_next;
 
-    const uint8_t*   query;
-    int              querylen;
-    const uint8_t*   answer;
-    int              answerlen;
-    time_t           expires;   /* time_t when the entry isn't valid any more */
-    int              id;        /* for debugging purpose */
+    const uint8_t* query;
+    int querylen;
+    const uint8_t* answer;
+    int answerlen;
+    time_t expires; /* time_t when the entry isn't valid any more */
+    int id;         /* for debugging purpose */
 } Entry;
 
 /**
@@ -1066,8 +974,7 @@ typedef struct Entry {
  *
  * Return 0 if not found.
  */
-static u_long
-answer_getNegativeTTL(ns_msg handle) {
+static u_long answer_getNegativeTTL(ns_msg handle) {
     int n, nscount;
     u_long result = 0;
     ns_rr rr;
@@ -1075,23 +982,23 @@ answer_getNegativeTTL(ns_msg handle) {
     nscount = ns_msg_count(handle, ns_s_ns);
     for (n = 0; n < nscount; n++) {
         if ((ns_parserr(&handle, ns_s_ns, n, &rr) == 0) && (ns_rr_type(rr) == ns_t_soa)) {
-            const u_char *rdata = ns_rr_rdata(rr); // find the data
-            const u_char *edata = rdata + ns_rr_rdlen(rr); // add the len to find the end
+            const u_char* rdata = ns_rr_rdata(rr);          // find the data
+            const u_char* edata = rdata + ns_rr_rdlen(rr);  // add the len to find the end
             int len;
             u_long ttl, rec_result = ns_rr_ttl(rr);
 
             // find the MINIMUM-TTL field from the blob of binary data for this record
             // skip the server name
             len = dn_skipname(rdata, edata);
-            if (len == -1) continue; // error skipping
+            if (len == -1) continue;  // error skipping
             rdata += len;
 
             // skip the admin name
             len = dn_skipname(rdata, edata);
-            if (len == -1) continue; // error skipping
+            if (len == -1) continue;  // error skipping
             rdata += len;
 
-            if (edata - rdata != 5*NS_INT32SZ) continue;
+            if (edata - rdata != 5 * NS_INT32SZ) continue;
             // skip: serial number + refresh interval + retry interval + expiry
             rdata += NS_INT32SZ * 4;
             // finally read the MINIMUM TTL
@@ -1120,9 +1027,7 @@ answer_getNegativeTTL(ns_msg handle) {
  * In case of parse error zero (0) is returned which
  * indicates that the answer shall not be cached.
  */
-static u_long
-answer_getTTL(const void* answer, int answerlen)
-{
+static u_long answer_getTTL(const void* answer, int answerlen) {
     ns_msg handle;
     int ancount, n;
     u_long result, ttl;
@@ -1157,40 +1062,32 @@ answer_getTTL(const void* answer, int answerlen)
     return result;
 }
 
-static void
-entry_free( Entry*  e )
-{
+static void entry_free(Entry* e) {
     /* everything is allocated in a single memory block */
     if (e) {
         free(e);
     }
 }
 
-static __inline__ void
-entry_mru_remove( Entry*  e )
-{
+static __inline__ void entry_mru_remove(Entry* e) {
     e->mru_prev->mru_next = e->mru_next;
     e->mru_next->mru_prev = e->mru_prev;
 }
 
-static __inline__ void
-entry_mru_add( Entry*  e, Entry*  list )
-{
-    Entry*  first = list->mru_next;
+static __inline__ void entry_mru_add(Entry* e, Entry* list) {
+    Entry* first = list->mru_next;
 
     e->mru_next = first;
     e->mru_prev = list;
 
-    list->mru_next  = e;
+    list->mru_next = e;
     first->mru_prev = e;
 }
 
 /* compute the hash of a given entry, this is a hash of most
  * data in the query (key) */
-static unsigned
-entry_hash( const Entry*  e )
-{
-    DnsPacket  pack[1];
+static unsigned entry_hash(const Entry* e) {
+    DnsPacket pack[1];
 
     _dnsPacket_init(pack, e->query, e->querylen);
     return _dnsPacket_hashQuery(pack);
@@ -1198,16 +1095,14 @@ entry_hash( const Entry*  e )
 
 /* initialize an Entry as a search key, this also checks the input query packet
  * returns 1 on success, or 0 in case of unsupported/malformed data */
-static int
-entry_init_key( Entry*  e, const void*  query, int  querylen )
-{
-    DnsPacket  pack[1];
+static int entry_init_key(Entry* e, const void* query, int querylen) {
+    DnsPacket pack[1];
 
     memset(e, 0, sizeof(*e));
 
-    e->query    = query;
+    e->query = query;
     e->querylen = querylen;
-    e->hash     = entry_hash(e);
+    e->hash = entry_hash(e);
 
     _dnsPacket_init(pack, query, querylen);
 
@@ -1215,35 +1110,30 @@ entry_init_key( Entry*  e, const void*  query, int  querylen )
 }
 
 /* allocate a new entry as a cache node */
-static Entry*
-entry_alloc( const Entry*  init, const void*  answer, int  answerlen )
-{
-    Entry*  e;
-    int     size;
+static Entry* entry_alloc(const Entry* init, const void* answer, int answerlen) {
+    Entry* e;
+    int size;
 
     size = sizeof(*e) + init->querylen + answerlen;
-    e    = calloc(size, 1);
-    if (e == NULL)
-        return e;
+    e = calloc(size, 1);
+    if (e == NULL) return e;
 
-    e->hash     = init->hash;
-    e->query    = (const uint8_t*)(e+1);
+    e->hash = init->hash;
+    e->query = (const uint8_t*) (e + 1);
     e->querylen = init->querylen;
 
-    memcpy( (char*)e->query, init->query, e->querylen );
+    memcpy((char*) e->query, init->query, e->querylen);
 
-    e->answer    = e->query + e->querylen;
+    e->answer = e->query + e->querylen;
     e->answerlen = answerlen;
 
-    memcpy( (char*)e->answer, answer, e->answerlen );
+    memcpy((char*) e->answer, answer, e->answerlen);
 
     return e;
 }
 
-static int
-entry_equals( const Entry*  e1, const Entry*  e2 )
-{
-    DnsPacket  pack1[1], pack2[1];
+static int entry_equals(const Entry* e1, const Entry* e2) {
+    DnsPacket pack1[1], pack2[1];
 
     if (e1->querylen != e2->querylen) {
         return 0;
@@ -1271,37 +1161,37 @@ entry_equals( const Entry*  e1, const Entry*  e2 )
 #define PENDING_REQUEST_TIMEOUT 20;
 
 typedef struct pending_req_info {
-    unsigned int                hash;
-    pthread_cond_t              cond;
-    struct pending_req_info*    next;
+    unsigned int hash;
+    pthread_cond_t cond;
+    struct pending_req_info* next;
 } PendingReqInfo;
 
 typedef struct resolv_cache {
-    int              max_entries;
-    int              num_entries;
-    Entry            mru_list;
-    int              last_id;
-    Entry*           entries;
-    PendingReqInfo   pending_requests;
+    int max_entries;
+    int num_entries;
+    Entry mru_list;
+    int last_id;
+    Entry* entries;
+    PendingReqInfo pending_requests;
 } Cache;
 
 struct resolv_cache_info {
-    unsigned                    netid;
-    Cache*                      cache;
-    struct resolv_cache_info*   next;
-    int                         nscount;
-    char*                       nameservers[MAXNS];
-    struct addrinfo*            nsaddrinfo[MAXNS];
-    int                         revision_id; // # times the nameservers have been replaced
-    struct __res_params         params;
-    struct __res_stats          nsstats[MAXNS];
-    char                        defdname[MAXDNSRCHPATH];
-    int                         dnsrch_offset[MAXDNSRCH+1];  // offsets into defdname
+    unsigned netid;
+    Cache* cache;
+    struct resolv_cache_info* next;
+    int nscount;
+    char* nameservers[MAXNS];
+    struct addrinfo* nsaddrinfo[MAXNS];
+    int revision_id;  // # times the nameservers have been replaced
+    struct __res_params params;
+    struct __res_stats nsstats[MAXNS];
+    char defdname[MAXDNSRCHPATH];
+    int dnsrch_offset[MAXDNSRCH + 1];  // offsets into defdname
 };
 
-#define  HTABLE_VALID(x)  ((x) != NULL && (x) != HTABLE_DELETED)
+#define HTABLE_VALID(x) ((x) != NULL && (x) != HTABLE_DELETED)
 
-static pthread_once_t        _res_cache_once = PTHREAD_ONCE_INIT;
+static pthread_once_t _res_cache_once = PTHREAD_ONCE_INIT;
 static void _res_cache_init(void);
 
 // lock protecting everything in the _resolve_cache_info structs (next ptr, etc)
@@ -1310,9 +1200,7 @@ static pthread_mutex_t _res_cache_list_lock;
 /* gets cache associated with a network, or NULL if none exists */
 static struct resolv_cache* _find_named_cache_locked(unsigned netid);
 
-static void
-_cache_flush_pending_requests_locked( struct resolv_cache* cache )
-{
+static void _cache_flush_pending_requests_locked(struct resolv_cache* cache) {
     struct pending_req_info *ri, *tmp;
     if (cache) {
         ri = cache->pending_requests.next;
@@ -1333,9 +1221,8 @@ _cache_flush_pending_requests_locked( struct resolv_cache* cache )
 /* Return 0 if no pending request is found matching the key.
  * If a matching request is found the calling thread will wait until
  * the matching request completes, then update *cache and return 1. */
-static int
-_cache_check_pending_request_locked( struct resolv_cache** cache, Entry* key, unsigned netid )
-{
+static int _cache_check_pending_request_locked(struct resolv_cache** cache, Entry* key,
+                                               unsigned netid) {
     struct pending_req_info *ri, *prev;
     int exist = 0;
 
@@ -1359,7 +1246,7 @@ _cache_check_pending_request_locked( struct resolv_cache** cache, Entry* key, un
                 prev->next = ri;
             }
         } else {
-            struct timespec ts = {0,0};
+            struct timespec ts = {0, 0};
             XLOG("Waiting for previous request");
             ts.tv_sec = _time_now() + PENDING_REQUEST_TIMEOUT;
             pthread_cond_timedwait(&ri->cond, &_res_cache_list_lock, &ts);
@@ -1373,9 +1260,7 @@ _cache_check_pending_request_locked( struct resolv_cache** cache, Entry* key, un
 
 /* notify any waiting thread that waiting on a request
  * matching the key has been added to the cache */
-static void
-_cache_notify_waiting_tid_locked( struct resolv_cache* cache, Entry* key )
-{
+static void _cache_notify_waiting_tid_locked(struct resolv_cache* cache, Entry* key) {
     struct pending_req_info *ri, *prev;
 
     if (cache && key) {
@@ -1400,16 +1285,11 @@ _cache_notify_waiting_tid_locked( struct resolv_cache* cache, Entry* key )
 }
 
 /* notify the cache that the query failed */
-void
-_resolv_cache_query_failed( unsigned    netid,
-                   const void* query,
-                   int         querylen)
-{
-    Entry    key[1];
-    Cache*   cache;
+void _resolv_cache_query_failed(unsigned netid, const void* query, int querylen) {
+    Entry key[1];
+    Cache* cache;
 
-    if (!entry_init_key(key, query, querylen))
-        return;
+    if (!entry_init_key(key, query, querylen)) return;
 
     pthread_mutex_lock(&_res_cache_list_lock);
 
@@ -1424,17 +1304,14 @@ _resolv_cache_query_failed( unsigned    netid,
 
 static struct resolv_cache_info* _find_cache_info_locked(unsigned netid);
 
-static void
-_cache_flush_locked( Cache*  cache )
-{
-    int     nn;
+static void _cache_flush_locked(Cache* cache) {
+    int nn;
 
-    for (nn = 0; nn < cache->max_entries; nn++)
-    {
-        Entry**  pnode = (Entry**) &cache->entries[nn];
+    for (nn = 0; nn < cache->max_entries; nn++) {
+        Entry** pnode = (Entry**) &cache->entries[nn];
 
         while (*pnode != NULL) {
-            Entry*  node = *pnode;
+            Entry* node = *pnode;
             *pnode = node->hlink;
             entry_free(node);
         }
@@ -1444,17 +1321,15 @@ _cache_flush_locked( Cache*  cache )
     _cache_flush_pending_requests_locked(cache);
 
     cache->mru_list.mru_next = cache->mru_list.mru_prev = &cache->mru_list;
-    cache->num_entries       = 0;
-    cache->last_id           = 0;
+    cache->num_entries = 0;
+    cache->last_id = 0;
 
     XLOG("*************************\n"
          "*** DNS CACHE FLUSHED ***\n"
          "*************************");
 }
 
-static int
-_res_cache_get_max_entries( void )
-{
+static int _res_cache_get_max_entries(void) {
     int cache_size = CONFIG_MAX_ENTRIES;
 
     const char* cache_mode = getenv("ANDROID_DNS_MODE");
@@ -1467,10 +1342,8 @@ _res_cache_get_max_entries( void )
     return cache_size;
 }
 
-static struct resolv_cache*
-_resolv_cache_create( void )
-{
-    struct resolv_cache*  cache;
+static struct resolv_cache* _resolv_cache_create(void) {
+    struct resolv_cache* cache;
 
     cache = calloc(sizeof(*cache), 1);
     if (cache) {
@@ -1487,24 +1360,19 @@ _resolv_cache_create( void )
     return cache;
 }
 
-
 #if DEBUG
-static void
-_dump_query( const uint8_t*  query, int  querylen )
-{
-    char       temp[256], *p=temp, *end=p+sizeof(temp);
-    DnsPacket  pack[1];
+static void _dump_query(const uint8_t* query, int querylen) {
+    char temp[256], *p = temp, *end = p + sizeof(temp);
+    DnsPacket pack[1];
 
     _dnsPacket_init(pack, query, querylen);
     p = _dnsPacket_bprintQuery(pack, p, end);
     XLOG("QUERY: %s", temp);
 }
 
-static void
-_cache_dump_mru( Cache*  cache )
-{
-    char    temp[512], *p=temp, *end=p+sizeof(temp);
-    Entry*  e;
+static void _cache_dump_mru(Cache* cache) {
+    char temp[512], *p = temp, *end = p + sizeof(temp);
+    Entry* e;
 
     p = _bprint(temp, end, "MRU LIST (%2d): ", cache->num_entries);
     for (e = cache->mru_list.mru_next; e != &cache->mru_list; e = e->mru_next)
@@ -1513,9 +1381,7 @@ _cache_dump_mru( Cache*  cache )
     XLOG("%s", temp);
 }
 
-static void
-_dump_answer(const void* answer, int answerlen)
-{
+static void _dump_answer(const void* answer, int answerlen) {
     res_state statep;
     FILE* fp;
     char* buf;
@@ -1527,33 +1393,32 @@ _dump_answer(const void* answer, int answerlen)
 
         res_pquery(statep, answer, answerlen, fp);
 
-        //Get file length
+        // Get file length
         fseek(fp, 0, SEEK_END);
-        fileLen=ftell(fp);
+        fileLen = ftell(fp);
         fseek(fp, 0, SEEK_SET);
-        buf = (char *)malloc(fileLen+1);
+        buf = (char*) malloc(fileLen + 1);
         if (buf != NULL) {
-            //Read file contents into buffer
+            // Read file contents into buffer
             fread(buf, fileLen, 1, fp);
             XLOG("%s\n", buf);
             free(buf);
         }
         fclose(fp);
         remove("/data/reslog.txt");
-    }
-    else {
-        errno = 0; // else debug is introducing error signals
+    } else {
+        errno = 0;  // else debug is introducing error signals
         XLOG("%s: can't open file\n", __FUNCTION__);
     }
 }
 #endif
 
 #if DEBUG
-#  define  XLOG_QUERY(q,len)   _dump_query((q), (len))
-#  define  XLOG_ANSWER(a, len) _dump_answer((a), (len))
+#define XLOG_QUERY(q, len) _dump_query((q), (len))
+#define XLOG_ANSWER(a, len) _dump_answer((a), (len))
 #else
-#  define  XLOG_QUERY(q,len)   ((void)0)
-#  define  XLOG_ANSWER(a,len)  ((void)0)
+#define XLOG_QUERY(q, len) ((void) 0)
+#define XLOG_ANSWER(a, len) ((void) 0)
 #endif
 
 /* This function tries to find a key within the hash table
@@ -1570,21 +1435,16 @@ _dump_answer(const void* answer, int answerlen)
  * The result of a lookup_p is only valid until you alter the hash
  * table.
  */
-static Entry**
-_cache_lookup_p( Cache*   cache,
-                 Entry*   key )
-{
-    int      index = key->hash % cache->max_entries;
-    Entry**  pnode = (Entry**) &cache->entries[ index ];
+static Entry** _cache_lookup_p(Cache* cache, Entry* key) {
+    int index = key->hash % cache->max_entries;
+    Entry** pnode = (Entry**) &cache->entries[index];
 
     while (*pnode != NULL) {
-        Entry*  node = *pnode;
+        Entry* node = *pnode;
 
-        if (node == NULL)
-            break;
+        if (node == NULL) break;
 
-        if (node->hash == key->hash && entry_equals(node, key))
-            break;
+        if (node->hash == key->hash && entry_equals(node, key)) break;
 
         pnode = &node->hlink;
     }
@@ -1596,32 +1456,23 @@ _cache_lookup_p( Cache*   cache,
  * (i.e. with *lookup == NULL), and 'e' is the pointer to the
  * newly created entry
  */
-static void
-_cache_add_p( Cache*   cache,
-              Entry**  lookup,
-              Entry*   e )
-{
+static void _cache_add_p(Cache* cache, Entry** lookup, Entry* e) {
     *lookup = e;
     e->id = ++cache->last_id;
     entry_mru_add(e, &cache->mru_list);
     cache->num_entries += 1;
 
-    XLOG("%s: entry %d added (count=%d)", __FUNCTION__,
-         e->id, cache->num_entries);
+    XLOG("%s: entry %d added (count=%d)", __FUNCTION__, e->id, cache->num_entries);
 }
 
 /* Remove an existing entry from the hash table,
  * 'lookup' must be the result of an immediate previous
  * and succesful _lookup_p() call.
  */
-static void
-_cache_remove_p( Cache*   cache,
-                 Entry**  lookup )
-{
-    Entry*  e  = *lookup;
+static void _cache_remove_p(Cache* cache, Entry** lookup) {
+    Entry* e = *lookup;
 
-    XLOG("%s: entry %d removed (count=%d)", __FUNCTION__,
-         e->id, cache->num_entries-1);
+    XLOG("%s: entry %d removed (count=%d)", __FUNCTION__, e->id, cache->num_entries - 1);
 
     entry_mru_remove(e);
     *lookup = e->hlink;
@@ -1631,11 +1482,9 @@ _cache_remove_p( Cache*   cache,
 
 /* Remove the oldest entry from the hash table.
  */
-static void
-_cache_remove_oldest( Cache*  cache )
-{
-    Entry*   oldest = cache->mru_list.mru_prev;
-    Entry**  lookup = _cache_lookup_p(cache, oldest);
+static void _cache_remove_oldest(Cache* cache) {
+    Entry* oldest = cache->mru_list.mru_prev;
+    Entry** lookup = _cache_lookup_p(cache, oldest);
 
     if (*lookup == NULL) { /* should not happen */
         XLOG("%s: OLDEST NOT IN HTABLE ?", __FUNCTION__);
@@ -1670,21 +1519,15 @@ static void _cache_remove_expired(Cache* cache) {
     }
 }
 
-ResolvCacheStatus
-_resolv_cache_lookup( unsigned              netid,
-                      const void*           query,
-                      int                   querylen,
-                      void*                 answer,
-                      int                   answersize,
-                      int                  *answerlen )
-{
-    Entry      key[1];
-    Entry**    lookup;
-    Entry*     e;
-    time_t     now;
-    Cache*     cache;
+ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int querylen,
+                                       void* answer, int answersize, int* answerlen) {
+    Entry key[1];
+    Entry** lookup;
+    Entry* e;
+    time_t now;
+    Cache* cache;
 
-    ResolvCacheStatus  result = RESOLV_CACHE_NOTFOUND;
+    ResolvCacheStatus result = RESOLV_CACHE_NOTFOUND;
 
     XLOG("%s: lookup", __FUNCTION__);
     XLOG_QUERY(query, querylen);
@@ -1708,10 +1551,10 @@ _resolv_cache_lookup( unsigned              netid,
      * the function always return a non-NULL pointer.
      */
     lookup = _cache_lookup_p(cache, key);
-    e      = *lookup;
+    e = *lookup;
 
     if (e == NULL) {
-        XLOG( "NOT IN CACHE");
+        XLOG("NOT IN CACHE");
         // calling thread will wait if an outstanding request is found
         // that matching this query
         if (!_cache_check_pending_request_locked(&cache, key, netid) || cache == NULL) {
@@ -1729,7 +1572,7 @@ _resolv_cache_lookup( unsigned              netid,
 
     /* remove stale entries here */
     if (now >= e->expires) {
-        XLOG( " NOT IN CACHE (STALE ENTRY %p DISCARDED)", *lookup );
+        XLOG(" NOT IN CACHE (STALE ENTRY %p DISCARDED)", *lookup);
         XLOG_QUERY(e->query, e->querylen);
         _cache_remove_p(cache, lookup);
         goto Exit;
@@ -1743,15 +1586,15 @@ _resolv_cache_lookup( unsigned              netid,
         goto Exit;
     }
 
-    memcpy( answer, e->answer, e->answerlen );
+    memcpy(answer, e->answer, e->answerlen);
 
     /* bump up this entry to the top of the MRU list */
     if (e != cache->mru_list.mru_next) {
-        entry_mru_remove( e );
-        entry_mru_add( e, &cache->mru_list );
+        entry_mru_remove(e);
+        entry_mru_add(e, &cache->mru_list);
     }
 
-    XLOG( "FOUND IN CACHE entry=%p", e );
+    XLOG("FOUND IN CACHE entry=%p", e);
     result = RESOLV_CACHE_FOUND;
 
 Exit:
@@ -1759,24 +1602,18 @@ Exit:
     return result;
 }
 
-
-void
-_resolv_cache_add( unsigned              netid,
-                   const void*           query,
-                   int                   querylen,
-                   const void*           answer,
-                   int                   answerlen )
-{
-    Entry    key[1];
-    Entry*   e;
-    Entry**  lookup;
-    u_long   ttl;
-    Cache*   cache = NULL;
+void _resolv_cache_add(unsigned netid, const void* query, int querylen, const void* answer,
+                       int answerlen) {
+    Entry key[1];
+    Entry* e;
+    Entry** lookup;
+    u_long ttl;
+    Cache* cache = NULL;
 
     /* don't assume that the query has already been cached
      */
-    if (!entry_init_key( key, query, querylen )) {
-        XLOG( "%s: passed invalid query ?", __FUNCTION__);
+    if (!entry_init_key(key, query, querylen)) {
+        XLOG("%s: passed invalid query ?", __FUNCTION__);
         return;
     }
 
@@ -1787,20 +1624,19 @@ _resolv_cache_add( unsigned              netid,
         goto Exit;
     }
 
-    XLOG( "%s: query:", __FUNCTION__ );
-    XLOG_QUERY(query,querylen);
+    XLOG("%s: query:", __FUNCTION__);
+    XLOG_QUERY(query, querylen);
     XLOG_ANSWER(answer, answerlen);
 #if DEBUG_DATA
-    XLOG( "answer:");
-    XLOG_BYTES(answer,answerlen);
+    XLOG("answer:");
+    XLOG_BYTES(answer, answerlen);
 #endif
 
     lookup = _cache_lookup_p(cache, key);
-    e      = *lookup;
+    e = *lookup;
 
     if (e != NULL) { /* should not happen */
-        XLOG("%s: ALREADY IN CACHE (%p) ? IGNORING ADD",
-             __FUNCTION__, e);
+        XLOG("%s: ALREADY IN CACHE (%p) ? IGNORING ADD", __FUNCTION__, e);
         goto Exit;
     }
 
@@ -1811,10 +1647,9 @@ _resolv_cache_add( unsigned              netid,
         }
         /* need to lookup again */
         lookup = _cache_lookup_p(cache, key);
-        e      = *lookup;
+        e = *lookup;
         if (e != NULL) {
-            XLOG("%s: ALREADY IN CACHE (%p) ? IGNORING ADD",
-                __FUNCTION__, e);
+            XLOG("%s: ALREADY IN CACHE (%p) ? IGNORING ADD", __FUNCTION__, e);
             goto Exit;
         }
     }
@@ -1832,7 +1667,7 @@ _resolv_cache_add( unsigned              netid,
 #endif
 Exit:
     if (cache != NULL) {
-      _cache_notify_waiting_tid_locked(cache, key);
+        _cache_notify_waiting_tid_locked(cache, key);
     }
     pthread_mutex_unlock(&_res_cache_list_lock);
 }
@@ -1851,7 +1686,7 @@ static struct resolv_cache_info _res_cache_list;
 /* insert resolv_cache_info into the list of resolv_cache_infos */
 static void _insert_cache_info_locked(struct resolv_cache_info* cache_info);
 /* creates a resolv_cache_info */
-static struct resolv_cache_info* _create_cache_info( void );
+static struct resolv_cache_info* _create_cache_info(void);
 /* gets a resolv_cache_info associated with a network, or NULL if not found */
 static struct resolv_cache_info* _find_cache_info_locked(unsigned netid);
 /* look up the named cache, and creates one if needed */
@@ -1863,20 +1698,16 @@ static void _free_nameservers_locked(struct resolv_cache_info* cache_info);
 /* return 1 if the provided list of name servers differs from the list of name servers
  * currently attached to the provided cache_info */
 static int _resolv_is_nameservers_equal_locked(struct resolv_cache_info* cache_info,
-        const char** servers, int numservers);
+                                               const char** servers, int numservers);
 /* clears the stats samples contained withing the given cache_info */
 static void _res_cache_clear_stats_locked(struct resolv_cache_info* cache_info);
 
-static void
-_res_cache_init(void)
-{
+static void _res_cache_init(void) {
     memset(&_res_cache_list, 0, sizeof(_res_cache_list));
     pthread_mutex_init(&_res_cache_list_lock, NULL);
 }
 
-static struct resolv_cache*
-_get_res_cache_for_net_locked(unsigned netid)
-{
+static struct resolv_cache* _get_res_cache_for_net_locked(unsigned netid) {
     struct resolv_cache* cache = _find_named_cache_locked(netid);
     if (!cache) {
         struct resolv_cache_info* cache_info = _create_cache_info();
@@ -1894,9 +1725,7 @@ _get_res_cache_for_net_locked(unsigned netid)
     return cache;
 }
 
-void
-_resolv_flush_cache_for_net(unsigned netid)
-{
+void _resolv_flush_cache_for_net(unsigned netid) {
     pthread_once(&_res_cache_once, _res_cache_init);
     pthread_mutex_lock(&_res_cache_list_lock);
 
@@ -1905,9 +1734,7 @@ _resolv_flush_cache_for_net(unsigned netid)
     pthread_mutex_unlock(&_res_cache_list_lock);
 }
 
-static void
-_flush_cache_for_net_locked(unsigned netid)
-{
+static void _flush_cache_for_net_locked(unsigned netid) {
     struct resolv_cache* cache = _find_named_cache_locked(netid);
     if (cache) {
         _cache_flush_locked(cache);
@@ -1918,8 +1745,7 @@ _flush_cache_for_net_locked(unsigned netid)
     _res_cache_clear_stats_locked(cache_info);
 }
 
-void _resolv_delete_cache_for_net(unsigned netid)
-{
+void _resolv_delete_cache_for_net(unsigned netid) {
     pthread_once(&_res_cache_once, _res_cache_init);
     pthread_mutex_lock(&_res_cache_list_lock);
 
@@ -1944,29 +1770,23 @@ void _resolv_delete_cache_for_net(unsigned netid)
     pthread_mutex_unlock(&_res_cache_list_lock);
 }
 
-static struct resolv_cache_info*
-_create_cache_info(void)
-{
+static struct resolv_cache_info* _create_cache_info(void) {
     struct resolv_cache_info* cache_info;
 
     cache_info = calloc(sizeof(*cache_info), 1);
     return cache_info;
 }
 
-static void
-_insert_cache_info_locked(struct resolv_cache_info* cache_info)
-{
+static void _insert_cache_info_locked(struct resolv_cache_info* cache_info) {
     struct resolv_cache_info* last;
 
-    for (last = &_res_cache_list; last->next; last = last->next);
+    for (last = &_res_cache_list; last->next; last = last->next)
+        ;
 
     last->next = cache_info;
-
 }
 
-static struct resolv_cache*
-_find_named_cache_locked(unsigned netid) {
-
+static struct resolv_cache* _find_named_cache_locked(unsigned netid) {
     struct resolv_cache_info* info = _find_cache_info_locked(netid);
 
     if (info != NULL) return info->cache;
@@ -1974,9 +1794,7 @@ _find_named_cache_locked(unsigned netid) {
     return NULL;
 }
 
-static struct resolv_cache_info*
-_find_cache_info_locked(unsigned netid)
-{
+static struct resolv_cache_info* _find_cache_info_locked(unsigned netid) {
     struct resolv_cache_info* cache_info = _res_cache_list.next;
 
     while (cache_info) {
@@ -1989,8 +1807,7 @@ _find_cache_info_locked(unsigned netid)
     return cache_info;
 }
 
-void
-_resolv_set_default_params(struct __res_params* params) {
+void _resolv_set_default_params(struct __res_params* params) {
     params->sample_validity = NSSAMPLE_VALIDITY;
     params->success_threshold = SUCCESS_THRESHOLD;
     params->min_samples = 0;
@@ -1998,13 +1815,11 @@ _resolv_set_default_params(struct __res_params* params) {
     params->base_timeout_msec = 0;  // 0 = legacy algorithm
 }
 
-int
-_resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigned numservers,
-        const char *domains, const struct __res_params* params)
-{
+int _resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigned numservers,
+                                    const char* domains, const struct __res_params* params) {
     char sbuf[NI_MAXSERV];
-    register char *cp;
-    int *offset;
+    register char* cp;
+    int* offset;
     struct addrinfo* nsaddrinfo[MAXNS];
 
     if (numservers > MAXNS) {
@@ -2015,16 +1830,13 @@ _resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigned n
     // Parse the addresses before actually locking or changing any state, in case there is an error.
     // As a side effect this also reduces the time the lock is kept.
     struct addrinfo hints = {
-        .ai_family = AF_UNSPEC,
-        .ai_socktype = SOCK_DGRAM,
-        .ai_flags = AI_NUMERICHOST
-    };
+            .ai_family = AF_UNSPEC, .ai_socktype = SOCK_DGRAM, .ai_flags = AI_NUMERICHOST};
     snprintf(sbuf, sizeof(sbuf), "%u", NAMESERVER_PORT);
     for (unsigned i = 0; i < numservers; i++) {
         // The addrinfo structures allocated here are freed in _free_nameservers_locked().
         int rt = getaddrinfo(servers[i], sbuf, &hints, &nsaddrinfo[i]);
         if (rt != 0) {
-            for (unsigned j = 0 ; j < i ; j++) {
+            for (unsigned j = 0; j < i; j++) {
                 freeaddrinfo(nsaddrinfo[j]);
                 nsaddrinfo[j] = NULL;
             }
@@ -2084,8 +1896,7 @@ _resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigned n
         // just the host name.
         // code moved from res_init.c, load_domain_search_list
         strlcpy(cache_info->defdname, domains, sizeof(cache_info->defdname));
-        if ((cp = strchr(cache_info->defdname, '\n')) != NULL)
-            *cp = '\0';
+        if ((cp = strchr(cache_info->defdname, '\n')) != NULL) *cp = '\0';
 
         cp = cache_info->defdname;
         offset = cache_info->dnsrch_offset;
@@ -2095,8 +1906,8 @@ _resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigned n
             if (*cp == '\0') /* stop if nothing more to do */
                 break;
             *offset++ = cp - cache_info->defdname; /* record this search domain */
-            while (*cp) { /* zero-terminate it */
-                if (*cp == ' '|| *cp == '\t') {
+            while (*cp) {                          /* zero-terminate it */
+                if (*cp == ' ' || *cp == '\t') {
                     *cp++ = '\0';
                     break;
                 }
@@ -2110,10 +1921,8 @@ _resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigned n
     return 0;
 }
 
-static int
-_resolv_is_nameservers_equal_locked(struct resolv_cache_info* cache_info,
-        const char** servers, int numservers)
-{
+static int _resolv_is_nameservers_equal_locked(struct resolv_cache_info* cache_info,
+                                               const char** servers, int numservers) {
     if (cache_info->nscount != numservers) {
         return 0;
     }
@@ -2125,7 +1934,7 @@ _resolv_is_nameservers_equal_locked(struct resolv_cache_info* cache_info,
     // insensitive to the order of the nameservers; we should probably fix that
     // too.
     for (int i = 0; i < numservers; i++) {
-        for (int j = 0 ; ; j++) {
+        for (int j = 0;; j++) {
             if (j >= numservers) {
                 return 0;
             }
@@ -2138,9 +1947,7 @@ _resolv_is_nameservers_equal_locked(struct resolv_cache_info* cache_info,
     return 1;
 }
 
-static void
-_free_nameservers_locked(struct resolv_cache_info* cache_info)
-{
+static void _free_nameservers_locked(struct resolv_cache_info* cache_info) {
     int i;
     for (i = 0; i < cache_info->nscount; i++) {
         free(cache_info->nameservers[i]);
@@ -2149,17 +1956,14 @@ _free_nameservers_locked(struct resolv_cache_info* cache_info)
             freeaddrinfo(cache_info->nsaddrinfo[i]);
             cache_info->nsaddrinfo[i] = NULL;
         }
-        cache_info->nsstats[i].sample_count =
-            cache_info->nsstats[i].sample_next = 0;
+        cache_info->nsstats[i].sample_count = cache_info->nsstats[i].sample_next = 0;
     }
     cache_info->nscount = 0;
     _res_cache_clear_stats_locked(cache_info);
     ++cache_info->revision_id;
 }
 
-void
-_resolv_populate_res_for_net(res_state statp)
-{
+void _resolv_populate_res_for_net(res_state statp) {
     if (statp == NULL) {
         return;
     }
@@ -2183,10 +1987,8 @@ _resolv_populate_res_for_net(res_state statp)
                     memcpy(&statp->_u._ext.ext->nsaddrs[nserv], ai->ai_addr, ai->ai_addrlen);
                     statp->nsaddr_list[nserv].sin_family = AF_UNSPEC;
                 } else {
-                    if ((size_t) ai->ai_addrlen
-                            <= sizeof(statp->nsaddr_list[0])) {
-                        memcpy(&statp->nsaddr_list[nserv], ai->ai_addr,
-                                ai->ai_addrlen);
+                    if ((size_t) ai->ai_addrlen <= sizeof(statp->nsaddr_list[0])) {
+                        memcpy(&statp->nsaddr_list[nserv], ai->ai_addr, ai->ai_addrlen);
                     } else {
                         statp->nsaddr_list[nserv].sin_family = AF_UNSPEC;
                     }
@@ -2200,8 +2002,8 @@ _resolv_populate_res_for_net(res_state statp)
         // but the setting/offset-computer only runs when set/changed
         // WARNING: Don't use str*cpy() here, this string contains zeroes.
         memcpy(statp->defdname, info->defdname, sizeof(statp->defdname));
-        register char **pp = statp->dnsrch;
-        register int *p = info->dnsrch_offset;
+        register char** pp = statp->dnsrch;
+        register int* p = info->dnsrch_offset;
         while (pp < statp->dnsrch + MAXDNSRCH && *p != -1) {
             *pp++ = &statp->defdname[0] + *p++;
         }
@@ -2211,13 +2013,12 @@ _resolv_populate_res_for_net(res_state statp)
 
 /* Resolver reachability statistics. */
 
-static void
-_res_cache_add_stats_sample_locked(struct __res_stats* stats, const struct __res_sample* sample,
-        int max_samples) {
+static void _res_cache_add_stats_sample_locked(struct __res_stats* stats,
+                                               const struct __res_sample* sample, int max_samples) {
     // Note: This function expects max_samples > 0, otherwise a (harmless) modification of the
     // allocated but supposedly unused memory for samples[0] will happen
-    XLOG("%s: adding sample to stats, next = %d, count = %d", __FUNCTION__,
-            stats->sample_next, stats->sample_count);
+    XLOG("%s: adding sample to stats, next = %d, count = %d", __FUNCTION__, stats->sample_next,
+         stats->sample_count);
     stats->samples[stats->sample_next] = *sample;
     if (stats->sample_count < max_samples) {
         ++stats->sample_count;
@@ -2227,19 +2028,19 @@ _res_cache_add_stats_sample_locked(struct __res_stats* stats, const struct __res
     }
 }
 
-static void
-_res_cache_clear_stats_locked(struct resolv_cache_info* cache_info) {
+static void _res_cache_clear_stats_locked(struct resolv_cache_info* cache_info) {
     if (cache_info) {
-        for (int i = 0 ; i < MAXNS ; ++i) {
+        for (int i = 0; i < MAXNS; ++i) {
             cache_info->nsstats->sample_count = cache_info->nsstats->sample_next = 0;
         }
     }
 }
 
-int
-android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
-        struct sockaddr_storage servers[MAXNS], int* dcount, char domains[MAXDNSRCH][MAXDNSRCHPATH],
-        struct __res_params* params, struct __res_stats stats[MAXNS]) {
+int android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
+                                           struct sockaddr_storage servers[MAXNS], int* dcount,
+                                           char domains[MAXDNSRCH][MAXDNSRCHPATH],
+                                           struct __res_params* params,
+                                           struct __res_stats stats[MAXNS]) {
     int revision_id = -1;
     pthread_mutex_lock(&_res_cache_list_lock);
 
@@ -2258,8 +2059,7 @@ android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
             //  - all addresses are valid
             //  - there is only one address per addrinfo thanks to numeric resolution
             int addrlen = info->nsaddrinfo[i]->ai_addrlen;
-            if (addrlen < (int) sizeof(struct sockaddr) ||
-                    addrlen > (int) sizeof(servers[0])) {
+            if (addrlen < (int) sizeof(struct sockaddr) || addrlen > (int) sizeof(servers[0])) {
                 pthread_mutex_unlock(&_res_cache_list_lock);
                 XLOG("%s: nsaddrinfo[%d].ai_addrlen == %d", __FUNCTION__, i, addrlen);
                 errno = EMSGSIZE;
@@ -2290,7 +2090,7 @@ android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
             // TODO: Pass in a search domain array instead of a string to
             // _resolv_set_nameservers_for_net() and make this double check unnecessary.
             if (info->dnsrch_offset[i] < 0 ||
-                    ((size_t)info->dnsrch_offset[i]) >= sizeof(info->defdname) || !cur_domain[0]) {
+                ((size_t) info->dnsrch_offset[i]) >= sizeof(info->defdname) || !cur_domain[0]) {
                 break;
             }
             strlcpy(domains[i], cur_domain, MAXDNSRCHPATH);
@@ -2304,9 +2104,8 @@ android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
     return revision_id;
 }
 
-int
-_resolv_cache_get_resolver_stats( unsigned netid, struct __res_params* params,
-        struct __res_stats stats[MAXNS]) {
+int _resolv_cache_get_resolver_stats(unsigned netid, struct __res_params* params,
+                                     struct __res_stats stats[MAXNS]) {
     int revision_id = -1;
     pthread_mutex_lock(&_res_cache_list_lock);
 
@@ -2321,9 +2120,8 @@ _resolv_cache_get_resolver_stats( unsigned netid, struct __res_params* params,
     return revision_id;
 }
 
-void
-_resolv_cache_add_resolver_stats_sample( unsigned netid, int revision_id, int ns,
-       const struct __res_sample* sample, int max_samples) {
+void _resolv_cache_add_resolver_stats_sample(unsigned netid, int revision_id, int ns,
+                                             const struct __res_sample* sample, int max_samples) {
     if (max_samples <= 0) return;
 
     pthread_mutex_lock(&_res_cache_list_lock);
