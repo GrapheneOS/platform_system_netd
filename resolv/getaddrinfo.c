@@ -92,22 +92,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include "NetdClientDispatch.h"
 #include "resolv_cache.h"
 #include "resolv_netid.h"
 #include "resolv_private.h"
 
 #include <stdarg.h>
 #include <syslog.h>
+
 #include "nsswitch.h"
-#include "private/bionic_defs.h"
 
 typedef union sockaddr_union {
     struct sockaddr generic;
@@ -125,11 +123,6 @@ static const char in_loopback[] = {127, 0, 0, 1};
 #ifdef INET6
 static const char in6_addrany[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const char in6_loopback[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
-#endif
-
-#if defined(__ANDROID__)
-// This should be synchronized to ResponseCode.h
-static const int DnsProxyQueryResult = 222;
 #endif
 
 static const struct afd {
@@ -186,7 +179,10 @@ static const struct explore explore[] = {
 #endif
 
 static const ns_src default_dns_files[] = {
-        {NSSRC_FILES, NS_SUCCESS}, {NSSRC_DNS, NS_SUCCESS}, {0, 0}};
+    {NSSRC_FILES, NS_SUCCESS},
+    {NSSRC_DNS, NS_SUCCESS},
+    {0, 0}
+};
 
 #define MAXPACKET (8 * 1024)
 
@@ -290,21 +286,15 @@ static const char* const ai_errlist[] = {
     ((x) == (y) || (/*CONSTCOND*/ (w) && ((x) == PF_UNSPEC || (y) == PF_UNSPEC)))
 #define MATCH(x, y, w) ((x) == (y) || (/*CONSTCOND*/ (w) && ((x) == ANY || (y) == ANY)))
 
-__BIONIC_WEAK_FOR_NATIVE_BRIDGE
 const char* gai_strerror(int ecode) {
     if (ecode < 0 || ecode > EAI_MAX) ecode = EAI_MAX;
     return ai_errlist[ecode];
 }
 
-__BIONIC_WEAK_FOR_NATIVE_BRIDGE
 void freeaddrinfo(struct addrinfo* ai) {
     struct addrinfo* next;
 
-#if defined(__BIONIC__)
     if (ai == NULL) return;
-#else
-    _DIAGASSERT(ai != NULL);
-#endif
 
     do {
         next = ai->ai_next;
@@ -367,160 +357,11 @@ bool readBE32(FILE* fp, int32_t* result) {
     return true;
 }
 
-#if defined(__ANDROID__)
-// Returns 0 on success, else returns on error.
-static int android_getaddrinfo_proxy(const char* hostname, const char* servname,
-                                     const struct addrinfo* hints, struct addrinfo** res,
-                                     unsigned netid) {
-    int success = 0;
-
-    // Clear this at start, as we use its non-NULLness later (in the
-    // error path) to decide if we have to free up any memory we
-    // allocated in the process (before failing).
-    *res = NULL;
-
-    // Bogus things we can't serialize.  Don't use the proxy.  These will fail - let them.
-    if ((hostname != NULL && strcspn(hostname, " \n\r\t^'\"") != strlen(hostname)) ||
-        (servname != NULL && strcspn(servname, " \n\r\t^'\"") != strlen(servname))) {
-        return EAI_NODATA;
-    }
-
-    FILE* proxy = android_open_proxy();
-    if (proxy == NULL) {
-        return EAI_SYSTEM;
-    }
-
-    netid = __netdClientDispatch.netIdForResolv(netid);
-
-    // Send the request.
-    if (fprintf(proxy, "getaddrinfo %s %s %d %d %d %d %u", hostname == NULL ? "^" : hostname,
-                servname == NULL ? "^" : servname, hints == NULL ? -1 : hints->ai_flags,
-                hints == NULL ? -1 : hints->ai_family, hints == NULL ? -1 : hints->ai_socktype,
-                hints == NULL ? -1 : hints->ai_protocol, netid) < 0) {
-        goto exit;
-    }
-    // literal NULL byte at end, required by FrameworkListener
-    if (fputc(0, proxy) == EOF || fflush(proxy) != 0) {
-        goto exit;
-    }
-
-    char buf[4];
-    // read result code for gethostbyaddr
-    if (fread(buf, 1, sizeof(buf), proxy) != sizeof(buf)) {
-        goto exit;
-    }
-
-    int result_code = (int) strtol(buf, NULL, 10);
-    // verify the code itself
-    if (result_code != DnsProxyQueryResult) {
-        fread(buf, 1, sizeof(buf), proxy);
-        goto exit;
-    }
-
-    struct addrinfo* ai = NULL;
-    struct addrinfo** nextres = res;
-    while (1) {
-        int32_t have_more;
-        if (!readBE32(proxy, &have_more)) {
-            break;
-        }
-        if (have_more == 0) {
-            success = 1;
-            break;
-        }
-
-        struct addrinfo* ai = calloc(1, sizeof(struct addrinfo) + sizeof(struct sockaddr_storage));
-        if (ai == NULL) {
-            break;
-        }
-        ai->ai_addr = (struct sockaddr*) (ai + 1);
-
-        // struct addrinfo {
-        //	int	ai_flags;	/* AI_PASSIVE, AI_CANONNAME, AI_NUMERICHOST */
-        //	int	ai_family;	/* PF_xxx */
-        //	int	ai_socktype;	/* SOCK_xxx */
-        //	int	ai_protocol;	/* 0 or IPPROTO_xxx for IPv4 and IPv6 */
-        //	socklen_t ai_addrlen;	/* length of ai_addr */
-        //	char	*ai_canonname;	/* canonical name for hostname */
-        //	struct	sockaddr *ai_addr;	/* binary address */
-        //	struct	addrinfo *ai_next;	/* next structure in linked list */
-        // };
-
-        // Read the struct piece by piece because we might be a 32-bit process
-        // talking to a 64-bit netd.
-        int32_t addr_len;
-        bool success = readBE32(proxy, &ai->ai_flags) && readBE32(proxy, &ai->ai_family) &&
-                       readBE32(proxy, &ai->ai_socktype) && readBE32(proxy, &ai->ai_protocol) &&
-                       readBE32(proxy, &addr_len);
-        if (!success) {
-            break;
-        }
-
-        // Set ai_addrlen and read the ai_addr data.
-        ai->ai_addrlen = addr_len;
-        if (addr_len != 0) {
-            if ((size_t) addr_len > sizeof(struct sockaddr_storage)) {
-                // Bogus; too big.
-                break;
-            }
-            if (fread(ai->ai_addr, addr_len, 1, proxy) != 1) {
-                break;
-            }
-        }
-
-        // The string for ai_cannonname.
-        int32_t name_len;
-        if (!readBE32(proxy, &name_len)) {
-            break;
-        }
-        if (name_len != 0) {
-            ai->ai_canonname = (char*) malloc(name_len);
-            if (fread(ai->ai_canonname, name_len, 1, proxy) != 1) {
-                break;
-            }
-            if (ai->ai_canonname[name_len - 1] != '\0') {
-                // The proxy should be returning this
-                // NULL-terminated.
-                break;
-            }
-        }
-
-        *nextres = ai;
-        nextres = &ai->ai_next;
-        ai = NULL;
-    }
-
-    if (ai != NULL) {
-        // Clean up partially-built addrinfo that we never ended up
-        // attaching to the response.
-        freeaddrinfo(ai);
-    }
-exit:
-    if (proxy != NULL) {
-        fclose(proxy);
-    }
-
-    if (success) {
-        return 0;
-    }
-
-    // Proxy failed;
-    // clean up memory we might've allocated.
-    if (*res) {
-        freeaddrinfo(*res);
-        *res = NULL;
-    }
-    return EAI_NODATA;
-}
-#endif
-
-__BIONIC_WEAK_FOR_NATIVE_BRIDGE
 int getaddrinfo(const char* hostname, const char* servname, const struct addrinfo* hints,
                 struct addrinfo** res) {
     return android_getaddrinfofornet(hostname, servname, hints, NETID_UNSET, MARK_UNSET, res);
 }
 
-__BIONIC_WEAK_FOR_NATIVE_BRIDGE
 int android_getaddrinfofornet(const char* hostname, const char* servname,
                               const struct addrinfo* hints, unsigned netid, unsigned mark,
                               struct addrinfo** res) {
@@ -534,7 +375,6 @@ int android_getaddrinfofornet(const char* hostname, const char* servname,
     return android_getaddrinfofornetcontext(hostname, servname, hints, &netcontext, res);
 }
 
-__BIONIC_WEAK_FOR_NATIVE_BRIDGE
 int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
                                      const struct addrinfo* hints,
                                      const struct android_net_context* netcontext,
@@ -660,14 +500,6 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
     if (hostname == NULL) ERR(EAI_NODATA);
     if (pai->ai_flags & AI_NUMERICHOST) ERR(EAI_NONAME);
 
-#if defined(__ANDROID__)
-    int gai_error =
-            android_getaddrinfo_proxy(hostname, servname, hints, res, netcontext->app_netid);
-    if (gai_error != EAI_SYSTEM) {
-        return gai_error;
-    }
-#endif
-
     /*
      * hostname as alphabetical name.
      * we would like to prefer AF_INET6 than AF_INET, so we'll make a
@@ -721,9 +553,11 @@ static int explore_fqdn(const struct addrinfo* pai, const char* hostname, const 
     struct addrinfo* result;
     struct addrinfo* cur;
     int error = 0;
-    static const ns_dtab dtab[] = {NS_FILES_CB(_files_getaddrinfo, NULL){
-                                           NSSRC_DNS, _dns_getaddrinfo, NULL}, /* force -DHESIOD */
-                                   NS_NIS_CB(_yp_getaddrinfo, NULL){0, 0, 0}};
+    static const ns_dtab dtab[] = {
+        {NSSRC_FILES, _files_getaddrinfo, NULL},
+        {NSSRC_DNS, _dns_getaddrinfo, NULL},
+        {0, 0, 0}
+    };
 
     assert(pai != NULL);
     /* hostname may be NULL */
@@ -1663,7 +1497,7 @@ static int _find_src_addr(const struct sockaddr* addr, struct sockaddr* src_addr
         return 0;
     }
     do {
-        ret = __connect(sock, addr, len);
+        ret = connect(sock, addr, len);
     } while (ret == -1 && errno == EINTR);
 
     if (ret == -1) {

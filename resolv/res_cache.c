@@ -26,15 +26,13 @@
  * SUCH DAMAGE.
  */
 
-#include "resolv_cache.h"
-
+#include <pthread.h>
 #include <resolv.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "pthread.h"
 
 #include <arpa/nameser.h>
 #include <errno.h>
@@ -43,7 +41,9 @@
 #include <netdb.h>
 
 #include <arpa/inet.h>
+
 #include "res_private.h"
+#include "resolv_cache.h"
 #include "resolv_netid.h"
 #include "resolv_private.h"
 
