@@ -32,10 +32,10 @@
  * server selection. They are used by system/netd/ and should not be
  * exposed by the C library's public NDK headers.
  */
-#include <sys/cdefs.h>
 #include <netinet/in.h>
-#include "resolv_params.h"
 #include <stdio.h>
+#include <sys/cdefs.h>
+#include "resolv_params.h"
 
 /*
  * Passing NETID_UNSET as the netId causes system/netd/server/DnsProxyListener.cpp to
@@ -53,7 +53,7 @@ __BEGIN_DECLS
 struct __res_params;
 struct addrinfo;
 
-#define __used_in_netd __attribute__((visibility ("default")))
+#define __used_in_netd __attribute__((visibility("default")))
 
 /*
  * A struct to capture context relevant to network operations.
@@ -76,27 +76,32 @@ struct android_net_context {
     res_send_qhook qhook;
 };
 
-#define NET_CONTEXT_INVALID_UID ((uid_t)-1)
+#define NET_CONTEXT_INVALID_UID ((uid_t) -1)
 
-#define NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS  0x00000001
-#define NET_CONTEXT_FLAG_USE_EDNS               0x00000002
+#define NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS 0x00000001
+#define NET_CONTEXT_FLAG_USE_EDNS 0x00000002
 
-struct hostent *android_gethostbyaddrfornet(const void *, socklen_t, int, unsigned, unsigned) __used_in_netd;
-struct hostent *android_gethostbynamefornet(const char *, int, unsigned, unsigned) __used_in_netd;
-int android_getaddrinfofornet(const char *, const char *, const struct addrinfo *, unsigned,
-    unsigned, struct addrinfo **) __used_in_netd;
+struct hostent* android_gethostbyaddrfornet(const void*, socklen_t, int, unsigned,
+                                            unsigned) __used_in_netd;
+struct hostent* android_gethostbynamefornet(const char*, int, unsigned, unsigned) __used_in_netd;
+int android_getaddrinfofornet(const char*, const char*, const struct addrinfo*, unsigned, unsigned,
+                              struct addrinfo**) __used_in_netd;
 /*
  * TODO: consider refactoring android_getaddrinfo_proxy() to serve as an
  * explore_fqdn() dispatch table method, with the below function only making DNS calls.
  */
-struct hostent *android_gethostbyaddrfornetcontext(const void *, socklen_t, int, const struct android_net_context *) __used_in_netd;
-struct hostent *android_gethostbynamefornetcontext(const char *, int, const struct android_net_context *) __used_in_netd;
-int android_getaddrinfofornetcontext(const char *, const char *, const struct addrinfo *,
-    const struct android_net_context *, struct addrinfo **) __used_in_netd;
+struct hostent* android_gethostbyaddrfornetcontext(
+        const void*, socklen_t, int, const struct android_net_context*) __used_in_netd;
+struct hostent* android_gethostbynamefornetcontext(
+        const char*, int, const struct android_net_context*) __used_in_netd;
+int android_getaddrinfofornetcontext(const char*, const char*, const struct addrinfo*,
+                                     const struct android_net_context*,
+                                     struct addrinfo**) __used_in_netd;
 
 /* set name servers for a network */
 extern int _resolv_set_nameservers_for_net(unsigned netid, const char** servers,
-        unsigned numservers, const char *domains, const struct __res_params* params) __used_in_netd;
+                                           unsigned numservers, const char* domains,
+                                           const struct __res_params* params) __used_in_netd;
 
 /* flush the cache associated with a certain network */
 extern void _resolv_flush_cache_for_net(unsigned netid) __used_in_netd;
@@ -105,8 +110,10 @@ extern void _resolv_flush_cache_for_net(unsigned netid) __used_in_netd;
 extern void _resolv_delete_cache_for_net(unsigned netid) __used_in_netd;
 
 /* Internal use only. */
-struct hostent *android_gethostbyaddrfornetcontext_proxy(const void *, socklen_t, int , const struct android_net_context *) __LIBC_HIDDEN__;
-int android_getnameinfofornet(const struct sockaddr *, socklen_t, char *, size_t, char *, size_t, int, unsigned, unsigned) __LIBC_HIDDEN__;
+struct hostent* android_gethostbyaddrfornetcontext_proxy(
+        const void*, socklen_t, int, const struct android_net_context*) __LIBC_HIDDEN__;
+int android_getnameinfofornet(const struct sockaddr*, socklen_t, char*, size_t, char*, size_t, int,
+                              unsigned, unsigned) __LIBC_HIDDEN__;
 FILE* android_open_proxy(void) __LIBC_HIDDEN__;
 
 __END_DECLS
