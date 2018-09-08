@@ -932,7 +932,6 @@ static void addrsort(char** ap, int num, res_state res) {
     }
 }
 
-/*ARGSUSED*/
 static int _dns_gethtbyname(void* rv, void* cb_data, va_list ap) {
     querybuf* buf;
     int n, type;
@@ -990,7 +989,6 @@ static int _dns_gethtbyname(void* rv, void* cb_data, va_list ap) {
     return NS_SUCCESS;
 }
 
-/*ARGSUSED*/
 static int _dns_gethtbyaddr(void* rv, void* cb_data, va_list ap) {
     char qbuf[MAXDNAME + 1], *qp, *ep;
     int n;
@@ -1094,7 +1092,6 @@ nospc:
 }
 
 #ifdef YP
-/*ARGSUSED*/
 static struct hostent* _yp_hostent(char* line, int af, struct getnamaddr* info) {
     struct in6_addr host_addrs[MAXADDRS];
     char** aliases;
@@ -1210,7 +1207,6 @@ nospc:
     return NULL;
 }
 
-/*ARGSUSED*/
 int _yp_gethtbyaddr(void* rv, void* cb_data, va_list ap) {
     struct hostent* hp = NULL;
     char* ypcurrent;
@@ -1257,7 +1253,6 @@ int _yp_gethtbyaddr(void* rv, void* cb_data, va_list ap) {
     return NS_SUCCESS;
 }
 
-/*ARGSUSED*/
 int _yp_gethtbyname(void* rv, void* cb_data, va_list ap) {
     struct hostent* hp;
     char* ypcurrent;

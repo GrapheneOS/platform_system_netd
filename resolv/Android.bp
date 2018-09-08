@@ -18,7 +18,6 @@ cc_library_shared {
     // TODO: un-ifdef resolver code
     // TODO: fix unused parameter warnings
     cflags: [
-        "-DANDROID_CHANGES",
         "-DINET6",
         "-Wno-unused-parameter",
     ],

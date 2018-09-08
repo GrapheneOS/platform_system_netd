@@ -88,13 +88,6 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <poll.h>
-#ifdef ANDROID_CHANGES
-#include "private/android_filesystem_config.h"
-#include "resolv_netid.h"
-#include "resolv_private.h"
-#else
-#include <resolv.h>
-#endif
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -102,9 +95,14 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <resolv_cache.h>
-
 #include <async_safe/log.h>
+
+#include "private/android_filesystem_config.h"
+#include "res_private.h"
+#include "resolv_cache.h"
+#include "resolv_netid.h"
+#include "resolv_private.h"
+#include "resolv_stats.h"
 
 #ifndef DE_CONST
 #define DE_CONST(c, v) \
@@ -115,9 +113,8 @@
 #ifndef DEBUG
 #define DEBUG
 #endif
+
 #include "res_debug.h"
-#include "res_private.h"
-#include "resolv_stats.h"
 
 #define EXT(res) ((res)->_u._ext)
 #define DBG 0
