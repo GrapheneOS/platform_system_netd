@@ -42,16 +42,6 @@ const char* const _res_opcodes[] = {
         "11",     "12",     "13",      "ZONEINIT", "ZONEREF",
 };
 
-#ifdef BIND_UPDATE
-const char* const _res_sectioncodes[] = {
-        "ZONE",
-        "PREREQUISITES",
-        "UPDATE",
-        "ADDITIONAL",
-};
-#endif
-
-#ifndef __BIND_NOSTATIC
 extern struct __res_state _nres;
 
 /* Proto. */
@@ -63,21 +53,6 @@ int res_ourserver_p(const res_state, const struct sockaddr*);
 int res_init(void) {
     int rv;
     extern int __res_vinit(res_state, int);
-#ifdef COMPAT__RES
-    /*
-     * Compatibility with program that were accessing _res directly
-     * to set options. We keep another struct res that is the same
-     * size as the original res structure, and then copy fields to
-     * it so that we achieve the same initialization
-     */
-    extern void* __res_get_old_state(void);
-    extern void __res_put_old_state(void*);
-    res_state ores = __res_get_old_state();
-
-    if (ores->options != 0) _nres.options = ores->options;
-    if (ores->retrans != 0) _nres.retrans = ores->retrans;
-    if (ores->retry != 0) _nres.retry = ores->retry;
-#endif
 
     /*
      * These three fields used to be statically initialized.  This made
@@ -109,9 +84,6 @@ int res_init(void) {
     if (!_nres.id) _nres.id = res_randomid();
 
     rv = __res_vinit(&_nres, 1);
-#ifdef COMPAT__RES
-    __res_put_old_state(&_nres);
-#endif
     return rv;
 }
 
@@ -144,17 +116,6 @@ int res_mkquery(int op,                 /* opcode of query */
     }
     return (res_nmkquery(&_nres, op, dname, class, type, data, datalen, newrr_in, buf, buflen));
 }
-
-#ifdef _LIBRESOLV
-int res_mkupdate(ns_updrec* rrecp_in, u_char* buf, int buflen) {
-    if (res_need_init() && res_init() == -1) {
-        RES_SET_H_ERRNO(&_nres, NETDB_INTERNAL);
-        return (-1);
-    }
-
-    return (res_nmkupdate(&_nres, rrecp_in, buf, buflen));
-}
-#endif
 
 int res_query(const char* name,    /* domain name */
               int class, int type, /* class and type of query */
@@ -189,31 +150,9 @@ int res_send(const u_char* buf, int buflen, u_char* ans, int anssiz) {
     return (res_nsend(&_nres, buf, buflen, ans, anssiz));
 }
 
-#ifdef _LIBRESOLV
-int res_sendsigned(const u_char* buf, int buflen, ns_tsig_key* key, u_char* ans, int anssiz) {
-    if (res_need_init() && res_init() == -1) {
-        /* errno should have been set by res_init() in this case. */
-        return (-1);
-    }
-
-    return (res_nsendsigned(&_nres, buf, buflen, key, ans, anssiz));
-}
-#endif
-
 void res_close(void) {
     res_nclose(&_nres);
 }
-
-#ifdef _LIBRESOLV
-int res_update(ns_updrec* rrecp_in) {
-    if (res_need_init() && res_init() == -1) {
-        RES_SET_H_ERRNO(&_nres, NETDB_INTERNAL);
-        return (-1);
-    }
-
-    return (res_nupdate(&_nres, rrecp_in, NULL));
-}
-#endif
 
 int res_search(const char* name,    /* domain name */
                int class, int type, /* class and type of query */
@@ -248,19 +187,3 @@ int res_opt(int a, u_char* b, int c, int d) {
 const char* hostalias(const char* name) {
     return NULL;
 }
-
-#ifdef ultrix
-int local_hostname_length(const char* hostname) {
-    int len_host, len_domain;
-
-    if (!*_nres.defdname) res_init();
-    len_host = strlen(hostname);
-    len_domain = strlen(_nres.defdname);
-    if (len_host > len_domain && !strcasecmp(hostname + len_host - len_domain, _nres.defdname) &&
-        hostname[len_host - len_domain - 1] == '.')
-        return (len_host - len_domain - 1);
-    return (0);
-}
-#endif /*ultrix*/
-
-#endif

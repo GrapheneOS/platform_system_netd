@@ -73,26 +73,19 @@
 #include <arpa/nameser.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <sys/param.h>
-#include <sys/types.h>
-#ifdef ANDROID_CHANGES
-#include "resolv_private.h"
-#else
-#include <resolv.h>
-#endif
 #include <stdio.h>
 #include <string.h>
+#include <sys/param.h>
+#include <sys/types.h>
+
+#include "resolv_private.h"
 
 /* Options.  Leave them on. */
 #ifndef DEBUG
 #define DEBUG
 #endif
 
-#ifndef lint
 #define UNUSED(a) (void) &a
-#else
-#define UNUSED(a) a = a
-#endif
 
 extern const char* _res_opcodes[];
 

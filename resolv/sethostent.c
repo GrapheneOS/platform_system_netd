@@ -55,7 +55,6 @@
 static struct hostent* _hf_gethtbyname2(const char*, int, struct getnamaddr*);
 
 void
-/*ARGSUSED*/
 sethostent(int stayopen) {
     res_static rs = __res_get_static();
     if (rs) sethostent_r(&rs->hostf);
@@ -80,7 +79,6 @@ void endhostent_r(FILE** hf) {
     }
 }
 
-/*ARGSUSED*/
 int _hf_gethtbyname(void* rv, void* cb_data, va_list ap) {
     struct hostent* hp;
     const char* name;
@@ -203,7 +201,6 @@ nospc:
     return NULL;
 }
 
-/*ARGSUSED*/
 int _hf_gethtbyaddr(void* rv, void* cb_data, va_list ap) {
     struct hostent* hp;
     const unsigned char* addr;
