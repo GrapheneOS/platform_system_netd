@@ -113,17 +113,12 @@ typedef union sockaddr_union {
     struct sockaddr_in6 in6;
 } sockaddr_union;
 
-#define SUCCESS 0
 #define ANY 0
-#define YES 1
-#define NO 0
 
 static const char in_addrany[] = {0, 0, 0, 0};
 static const char in_loopback[] = {127, 0, 0, 1};
-#ifdef INET6
 static const char in6_addrany[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const char in6_loopback[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
-#endif
 
 static const struct afd {
     int a_af;
@@ -134,10 +129,8 @@ static const struct afd {
     const char* a_loopback;
     int a_scoped;
 } afdl[] = {
-#ifdef INET6
         {PF_INET6, sizeof(struct in6_addr), sizeof(struct sockaddr_in6),
          offsetof(struct sockaddr_in6, sin6_addr), in6_addrany, in6_loopback, 1},
-#endif
         {PF_INET, sizeof(struct in_addr), sizeof(struct sockaddr_in),
          offsetof(struct sockaddr_in, sin_addr), in_addrany, in_loopback, 0},
         {0, 0, 0, 0, NULL, NULL, 0},
@@ -155,14 +148,9 @@ struct explore {
 };
 
 static const struct explore explore[] = {
-#if 0
-	{ PF_LOCAL, 0, ANY, ANY, NULL, 0x01 },
-#endif
-#ifdef INET6
         {PF_INET6, SOCK_DGRAM, IPPROTO_UDP, "udp", 0x07},
         {PF_INET6, SOCK_STREAM, IPPROTO_TCP, "tcp", 0x07},
         {PF_INET6, SOCK_RAW, ANY, NULL, 0x05},
-#endif
         {PF_INET, SOCK_DGRAM, IPPROTO_UDP, "udp", 0x07},
         {PF_INET, SOCK_STREAM, IPPROTO_TCP, "tcp", 0x07},
         {PF_INET, SOCK_RAW, ANY, NULL, 0x05},
@@ -172,11 +160,7 @@ static const struct explore explore[] = {
         {-1, 0, 0, NULL, 0},
 };
 
-#ifdef INET6
 #define PTON_MAX 16
-#else
-#define PTON_MAX 4
-#endif
 
 static const ns_src default_dns_files[] = {
     {NSSRC_FILES, NS_SUCCESS},
@@ -213,9 +197,7 @@ static struct addrinfo* get_ai(const struct addrinfo*, const struct afd*, const 
 static int get_portmatch(const struct addrinfo*, const char*);
 static int get_port(const struct addrinfo*, const char*, int);
 static const struct afd* find_afd(int);
-#ifdef INET6
 static int ip6_str2scopeid(char*, struct sockaddr_in6*, u_int32_t*);
-#endif
 
 static struct addrinfo* getanswer(const querybuf*, int, const char*, int, const struct addrinfo*);
 static int _dns_getaddrinfo(void*, void*, va_list);
@@ -413,9 +395,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
         switch (hints->ai_family) {
             case PF_UNSPEC:
             case PF_INET:
-#ifdef INET6
             case PF_INET6:
-#endif
                 break;
             default:
                 ERR(EAI_FAMILY);
@@ -444,18 +424,12 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
      * for raw and other inet{,6} sockets.
      */
     if (MATCH_FAMILY(pai->ai_family, PF_INET, 1)
-#ifdef PF_INET6
         || MATCH_FAMILY(pai->ai_family, PF_INET6, 1)
-#endif
     ) {
         ai0 = *pai; /* backup *pai */
 
         if (pai->ai_family == PF_UNSPEC) {
-#ifdef PF_INET6
             pai->ai_family = PF_INET6;
-#else
-            pai->ai_family = PF_INET;
-#endif
         }
         error = get_portmatch(pai, servname);
         if (error) ERR(error);
@@ -534,7 +508,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
         if (sentinel.ai_next) {
         good:
             *res = sentinel.ai_next;
-            return SUCCESS;
+            return 0;
         } else
             error = EAI_FAIL;
     }
@@ -746,9 +720,6 @@ bad:
  */
 static int explore_numeric_scope(const struct addrinfo* pai, const char* hostname,
                                  const char* servname, struct addrinfo** res) {
-#if !defined(SCOPE_DELIMITER) || !defined(INET6)
-    return explore_numeric(pai, hostname, servname, res, hostname);
-#else
     const struct afd* afd;
     struct addrinfo* cur;
     int error;
@@ -801,7 +772,6 @@ static int explore_numeric_scope(const struct addrinfo* pai, const char* hostnam
     free(hostname2);
 
     return error;
-#endif
 }
 
 static int get_canonname(const struct addrinfo* pai, struct addrinfo* ai, const char* str) {
@@ -832,10 +802,6 @@ static struct addrinfo* get_ai(const struct addrinfo* pai, const struct afd* afd
     ai->ai_addr = (struct sockaddr*) (void*) (ai + 1);
     memset(ai->ai_addr, 0, (size_t) afd->a_socklen);
 
-#ifdef HAVE_SA_LEN
-    ai->ai_addr->sa_len = afd->a_socklen;
-#endif
-
     ai->ai_addrlen = afd->a_socklen;
 #if defined(__alpha__) || (defined(__i386__) && defined(_LP64)) || defined(__sparc64__)
     ai->__ai_pad0 = 0;
@@ -865,9 +831,7 @@ static int get_port(const struct addrinfo* ai, const char* servname, int matchon
     if (servname == NULL) return 0;
     switch (ai->ai_family) {
         case AF_INET:
-#ifdef AF_INET6
         case AF_INET6:
-#endif
             break;
         default:
             return 0;
@@ -916,11 +880,9 @@ static int get_port(const struct addrinfo* ai, const char* servname, int matchon
             case AF_INET:
                 ((struct sockaddr_in*) (void*) ai->ai_addr)->sin_port = port;
                 break;
-#ifdef INET6
             case AF_INET6:
                 ((struct sockaddr_in6*) (void*) ai->ai_addr)->sin6_port = port;
                 break;
-#endif
         }
     }
 
@@ -937,8 +899,7 @@ static const struct afd* find_afd(int af) {
     return NULL;
 }
 
-#ifdef INET6
-/* convert a string to a scope identifier. XXX: IPv6 specific */
+/* convert a string to a scope identifier. */
 static int ip6_str2scopeid(char* scope, struct sockaddr_in6* sin6, u_int32_t* scopeid) {
     u_long lscopeid;
     struct in6_addr* a6;
@@ -981,7 +942,6 @@ trynumeric:
     else
         return -1;
 }
-#endif
 
 /* code duplicate with gethnamaddr.c */
 
@@ -1830,11 +1790,9 @@ static int res_queryN(const char* name, /* domain name */ struct res_target* tar
 #endif
 
         n = res_nmkquery(res, QUERY, name, class, type, NULL, 0, NULL, buf, sizeof(buf));
-#ifdef RES_USE_EDNS0
         if (n > 0 && (res->_flags & RES_F_EDNS0ERR) == 0 &&
             (res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0)
             n = res_nopt(res, n, buf, sizeof(buf), anslen);
-#endif
         if (n <= 0) {
 #ifdef DEBUG
             if (res->options & RES_DEBUG) printf(";; res_nquery: mkquery failed\n");
@@ -1843,20 +1801,9 @@ static int res_queryN(const char* name, /* domain name */ struct res_target* tar
             return n;
         }
         n = res_nsend(res, buf, n, answer, anslen);
-#if 0
-		if (n < 0) {
-#ifdef DEBUG
-			if (res->options & RES_DEBUG)
-				printf(";; res_query: send error\n");
-#endif
-			h_errno = TRY_AGAIN;
-			return n;
-		}
-#endif
 
         if (n < 0 || hp->rcode != NOERROR || ntohs(hp->ancount) == 0) {
             rcode = hp->rcode; /* record most recent error */
-#ifdef RES_USE_EDNS0
             /* if the query choked with EDNS0, retry without EDNS0 */
             if ((res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 &&
                 ((oflags ^ res->_flags) & RES_F_EDNS0ERR) != 0) {
@@ -1866,7 +1813,6 @@ static int res_queryN(const char* name, /* domain name */ struct res_target* tar
 #endif
                 goto again;
             }
-#endif
 #ifdef DEBUG
             if (res->options & RES_DEBUG)
                 printf(";; rcode = %u, ancount=%u\n", hp->rcode, ntohs(hp->ancount));
