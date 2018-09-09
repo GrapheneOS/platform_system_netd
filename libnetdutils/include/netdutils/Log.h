@@ -21,6 +21,7 @@
 #include <deque>
 #include <shared_mutex>
 #include <string>
+#include <type_traits>
 
 #include <android-base/stringprintf.h>
 #include <android-base/thread_annotations.h>
@@ -54,13 +55,25 @@ class LogEntry {
 
     // Convenience methods for each of the common types of function arguments.
     LogEntry& arg(const std::string& val);
-    LogEntry& arg(const std::vector<int32_t>& val);
+    // Intended for binary buffers, formats as hex
     LogEntry& arg(const std::vector<uint8_t>& val);
+    LogEntry& arg(const std::vector<int32_t>& val);
     LogEntry& arg(const std::vector<std::string>& val);
-    LogEntry& arg(bool val);
-    template <class T>
-    LogEntry& arg(T val) {
+    template <typename IntT, typename = std::enable_if_t<std::is_arithmetic_v<IntT>>>
+    LogEntry& arg(IntT val) {
         mArgs.push_back(std::to_string(val));
+        return *this;
+    }
+    // Not using a plain overload here to avoid the implicit conversion from
+    // any pointer to bool, which causes string literals to print as 'true'.
+    template <>
+    LogEntry& arg<>(bool val);
+
+    template <typename... Args>
+    LogEntry& args(const Args&... a) {
+        // Cleverness ahead: we throw away the initializer_list filled with
+        // zeroes, all we care about is calling arg() for each argument.
+        (void) std::initializer_list<int>{(arg(a), 0)...};
         return *this;
     }
 

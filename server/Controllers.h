@@ -17,8 +17,6 @@
 #ifndef _CONTROLLERS_H__
 #define _CONTROLLERS_H__
 
-#include <sysutils/FrameworkListener.h>
-
 #include "BandwidthController.h"
 #include "ClatdController.h"
 #include "EventReporter.h"

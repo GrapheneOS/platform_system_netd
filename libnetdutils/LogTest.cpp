@@ -110,5 +110,34 @@ TEST(LogEntryTest, InnerClassPrettyFunction) {
     EXPECT_EQ("BBB::prettyFunctionName()", entry.toString());
 }
 
+TEST(LogEntryTest, PrintChainedArguments) {
+    const LogEntry entry = LogEntry()
+            .function("testFunc")
+            .arg("hello")
+            .arg(42)
+            .arg(true);
+    EXPECT_EQ("testFunc(hello, 42, true)", entry.toString());
+}
+
+TEST(LogEntryTest, PrintIntegralTypes) {
+    const LogEntry entry = LogEntry()
+            .function("testFunc")
+            .arg('A')
+            .arg(100U)
+            .arg(-1000LL);
+    EXPECT_EQ("testFunc(65, 100, -1000)", entry.toString());
+}
+
+TEST(LogEntryTest, PrintHex) {
+    const std::vector<uint8_t> buf{0xDE, 0xAD, 0xBE, 0xEF};
+    const LogEntry entry = LogEntry().function("testFunc").arg(buf);
+    EXPECT_EQ("testFunc({deadbeef})", entry.toString());
+}
+
+TEST(LogEntryTest, PrintArgumentPack) {
+    const LogEntry entry = LogEntry().function("testFunc").args("hello", 42, false);
+    EXPECT_EQ("testFunc(hello, 42, false)", entry.toString());
+}
+
 }  // namespace netdutils
 }  // namespace android
