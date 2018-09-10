@@ -82,7 +82,7 @@ class Dns64Configuration {
     static bool doRfc7050PrefixDiscovery(const android_net_context& netcontext, Dns64Config* cfg);
 
     unsigned getNextId() REQUIRES(mMutex) { return mNextId++; }
-    bool mapContainsConfig(const Dns64Config& cfg) const REQUIRES(mMutex);
+    bool isDiscoveryInProgress(const Dns64Config& cfg) const REQUIRES(mMutex);
 
     bool shouldContinueDiscovery(const Dns64Config& cfg);
     void recordDns64Config(const Dns64Config& cfg);

@@ -16,6 +16,9 @@
 
 #include <cstdint>
 #include <limits>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include <android-base/macros.h>
 #include <gtest/gtest.h>
@@ -25,6 +28,56 @@
 namespace android {
 namespace netdutils {
 namespace {
+
+enum Relation { EQ, LT };
+
+std::ostream& operator<<(std::ostream& os, Relation relation) {
+    switch (relation) {
+        case EQ: os << "eq"; break;
+        case LT: os << "lt"; break;
+        default: os << "?!"; break;
+    }
+    return os;
+}
+
+template <typename T>
+struct OperatorExpectation {
+    const Relation relation;
+    const T obj1;
+    const T obj2;
+
+    std::string toString() const {
+        std::stringstream output;
+        output << obj1 << " " << relation << " " << obj2;
+        return output.str();
+    }
+};
+
+template <typename T>
+void testGamutOfOperators(const OperatorExpectation<T>& expectation) {
+    switch (expectation.relation) {
+        case EQ:
+            EXPECT_TRUE(expectation.obj1 == expectation.obj2);
+            EXPECT_TRUE(expectation.obj1 <= expectation.obj2);
+            EXPECT_TRUE(expectation.obj1 >= expectation.obj2);
+            EXPECT_FALSE(expectation.obj1 != expectation.obj2);
+            EXPECT_FALSE(expectation.obj1 < expectation.obj2);
+            EXPECT_FALSE(expectation.obj1 > expectation.obj2);
+            break;
+
+        case LT:
+            EXPECT_TRUE(expectation.obj1 < expectation.obj2);
+            EXPECT_TRUE(expectation.obj1 <= expectation.obj2);
+            EXPECT_TRUE(expectation.obj1 != expectation.obj2);
+            EXPECT_FALSE(expectation.obj1 > expectation.obj2);
+            EXPECT_FALSE(expectation.obj1 >= expectation.obj2);
+            EXPECT_FALSE(expectation.obj1 == expectation.obj2);
+            break;
+
+        default:
+            FAIL() << "Unknown relation given in test expectation";
+    }
+}
 
 const in_addr IPV4_ANY{htonl(INADDR_ANY)};
 const in_addr IPV4_LOOPBACK{htonl(INADDR_LOOPBACK)};
@@ -37,47 +90,53 @@ const in6_addr FE80_2{{{0xfe,0x80,0,0,0,0,0,0,0,0,0,0,0,0,0,2}}};
 const uint8_t ff = std::numeric_limits<uint8_t>::max();
 const in6_addr IPV6_ONES{{{ff,ff,ff,ff,ff,ff,ff,ff,ff,ff,ff,ff,ff,ff,ff,ff}}};
 
-TEST(IPAddressTest, Equals) {
-    EXPECT_TRUE(IPAddress() == IPAddress());
-    EXPECT_TRUE(IPAddress(IPV4_ONES) == IPAddress(IPV4_ONES));
-    EXPECT_TRUE(IPAddress(IPV6_ONES) == IPAddress(IPV6_ONES));
-    EXPECT_TRUE(IPAddress(FE80_1) == IPAddress(FE80_1));
-    EXPECT_TRUE(IPAddress(FE80_2) == IPAddress(FE80_2));
-    EXPECT_FALSE(IPAddress() == IPAddress(IPV4_ONES));
-    EXPECT_FALSE(IPAddress() == IPAddress(IPV6_ONES));
-    EXPECT_FALSE(IPAddress(IPV4_ONES) == IPAddress(IPV6_ONES));
-    EXPECT_FALSE(IPAddress(IPV6_ONES) == IPAddress(FE80_1));
-}
+TEST(IPAddressTest, GamutOfOperators) {
+    const std::vector<OperatorExpectation<IPAddress>> kExpectations{
+            {EQ, IPAddress(), IPAddress()},
+            {EQ, IPAddress(IPV4_ONES), IPAddress(IPV4_ONES)},
+            {EQ, IPAddress(IPV6_ONES), IPAddress(IPV6_ONES)},
+            {EQ, IPAddress(FE80_1), IPAddress(FE80_1)},
+            {EQ, IPAddress(FE80_2), IPAddress(FE80_2)},
+            {LT, IPAddress(), IPAddress(IPV4_ANY)},
+            {LT, IPAddress(), IPAddress(IPV4_ONES)},
+            {LT, IPAddress(), IPAddress(IPV6_ANY)},
+            {LT, IPAddress(), IPAddress(IPV6_ONES)},
+            {LT, IPAddress(IPV4_ANY), IPAddress(IPV4_ONES)},
+            {LT, IPAddress(IPV4_ANY), IPAddress(IPV6_ANY)},
+            {LT, IPAddress(IPV4_ONES), IPAddress(IPV6_ANY)},
+            {LT, IPAddress(IPV4_ONES), IPAddress(IPV6_ONES)},
+            {LT, IPAddress(IPV6_ANY), IPAddress(IPV6_LOOPBACK)},
+            {LT, IPAddress(IPV6_ANY), IPAddress(IPV6_ONES)},
+            {LT, IPAddress(IPV6_LOOPBACK), IPAddress(IPV6_ONES)},
+            {LT, IPAddress(FE80_1), IPAddress(FE80_2)},
+            {LT, IPAddress(FE80_1), IPAddress(IPV6_ONES)},
+            {LT, IPAddress(FE80_2), IPAddress(IPV6_ONES)},
+            // Sort by scoped_id within the same address.
+            {LT, IPAddress(FE80_1), IPAddress(FE80_1, 1)},
+            {LT, IPAddress(FE80_1, 1), IPAddress(FE80_1, 2)},
+            // Sort by address first, scope_id second.
+            {LT, IPAddress(FE80_1, 2), IPAddress(FE80_2, 1)},
+    };
 
-TEST(IPAddressTest, NotEquals) {
-    EXPECT_FALSE(IPAddress() != IPAddress());
-    EXPECT_FALSE(IPAddress(IPV4_ONES) != IPAddress(IPV4_ONES));
-    EXPECT_FALSE(IPAddress(IPV6_ONES) != IPAddress(IPV6_ONES));
-    EXPECT_FALSE(IPAddress(FE80_1) != IPAddress(FE80_1));
-    EXPECT_FALSE(IPAddress(FE80_2) != IPAddress(FE80_2));
-    EXPECT_TRUE(IPAddress() != IPAddress(IPV4_ONES));
-    EXPECT_TRUE(IPAddress() != IPAddress(IPV6_ONES));
-    EXPECT_TRUE(IPAddress(IPV4_ONES) != IPAddress(IPV6_ONES));
-    EXPECT_TRUE(IPAddress(IPV6_ONES) != IPAddress(FE80_1));
+    size_t tests_run = 0;
+    for (const auto& expectation : kExpectations) {
+        SCOPED_TRACE(expectation.toString());
+        EXPECT_NO_FATAL_FAILURE(testGamutOfOperators(expectation));
+        tests_run++;
+    }
+    EXPECT_EQ(kExpectations.size(), tests_run);
 }
 
 TEST(IPAddressTest, ScopeIds) {
-    EXPECT_TRUE(IPAddress(FE80_1, 22) == IPAddress(FE80_1, 22));
-    EXPECT_FALSE(IPAddress(FE80_1, 22) != IPAddress(FE80_1, 22));
-    EXPECT_FALSE(IPAddress(FE80_1) == IPAddress(FE80_1, 22));
-    EXPECT_TRUE(IPAddress(FE80_1) != IPAddress(FE80_1, 22));
-    EXPECT_FALSE(IPAddress(FE80_2, 22) == IPAddress(FE80_1, 22));
-    EXPECT_TRUE(IPAddress(FE80_2, 22) != IPAddress(FE80_1, 22));
-
     // Scope IDs ignored for IPv4 addresses.
     const IPAddress ones(IPV4_ONES);
     EXPECT_EQ(0, ones.scope_id());
     const IPAddress ones22(ones, 22);
     EXPECT_EQ(0, ones22.scope_id());
-    EXPECT_TRUE(ones == ones22);
+    EXPECT_EQ(ones, ones22);
     const IPAddress ones23(ones, 23);
     EXPECT_EQ(0, ones23.scope_id());
-    EXPECT_TRUE(ones22 == ones23);
+    EXPECT_EQ(ones22, ones23);
 
     EXPECT_EQ("fe80::1%22", IPAddress(FE80_1, 22).toString());
     EXPECT_EQ("fe80::2%23", IPAddress(FE80_2, 23).toString());
@@ -88,23 +147,6 @@ TEST(IPAddressTest, ScopeIds) {
     EXPECT_EQ(22, fe80_intf22.scope_id());
     EXPECT_EQ(fe80_intf22, IPAddress(fe80_intf22));
     EXPECT_EQ(IPAddress(FE80_1), IPAddress(fe80_intf22, 0));
-}
-
-TEST(IPAddressTest, LessThan) {
-    EXPECT_FALSE(IPAddress() < IPAddress());
-    EXPECT_TRUE(IPAddress() < IPAddress(IPV4_ANY));
-    EXPECT_TRUE(IPAddress() < IPAddress(IPV6_ANY));
-    EXPECT_TRUE(IPAddress(IPV4_ANY) < IPAddress(IPV6_ANY));
-    EXPECT_TRUE(IPAddress(IPV4_ANY) < IPAddress(IPV4_ONES));
-    EXPECT_TRUE(IPAddress(IPV4_ONES) < IPAddress(IPV6_ANY));
-    EXPECT_TRUE(IPAddress(IPV6_ANY) < IPAddress(IPV6_LOOPBACK));
-    EXPECT_TRUE(IPAddress(IPV6_ANY) < IPAddress(IPV6_ONES));
-    // Sort by scoped_id.
-    EXPECT_TRUE(IPAddress(FE80_1) < IPAddress(FE80_1, 1));
-    EXPECT_TRUE(IPAddress(FE80_1, 1) < IPAddress(FE80_1, 2));
-    // Sort by address first, scope_id second.
-    EXPECT_TRUE(IPAddress(FE80_1, 2) < IPAddress(FE80_2));
-    EXPECT_TRUE(IPAddress(FE80_1, 2) < IPAddress(FE80_2, 2));
 }
 
 TEST(IPAddressTest, forString) {
@@ -361,121 +403,80 @@ TEST(IPPrefixTest, TruncationOther) {
     EXPECT_EQ(arraysize(testExpectations), totalTests);
 }
 
-TEST(IPPrefixTest, Equals) {
-    EXPECT_TRUE(IPPrefix() == IPPrefix());
-    EXPECT_TRUE(IPPrefix(IPAddress(IPV4_ANY), 0) == IPPrefix(IPAddress(IPV4_ANY), 0));
-    EXPECT_TRUE(IPPrefix(IPAddress(IPV4_ANY), IPV4_ADDR_BITS) == IPPrefix(IPAddress(IPV4_ANY)));
-    for (int i = 0; i < IPV4_ADDR_BITS; i++) {
-        EXPECT_FALSE(IPPrefix(IPAddress(IPV4_ANY), i) == IPPrefix(IPAddress(IPV4_ANY), i + 1));
-        EXPECT_FALSE(IPPrefix(IPAddress(IPV4_ONES), i) == IPPrefix(IPAddress(IPV4_ONES), i + 1));
+TEST(IPPrefixTest, GamutOfOperators) {
+    const std::vector<OperatorExpectation<IPPrefix>> kExpectations{
+            {EQ, IPPrefix(), IPPrefix()},
+            {EQ, IPPrefix(IPAddress(IPV4_ANY), 0), IPPrefix(IPAddress(IPV4_ANY), 0)},
+            {EQ, IPPrefix(IPAddress(IPV4_ANY), IPV4_ADDR_BITS), IPPrefix(IPAddress(IPV4_ANY))},
+            {EQ, IPPrefix(IPAddress(IPV6_ANY), 0), IPPrefix(IPAddress(IPV6_ANY), 0)},
+            {EQ, IPPrefix(IPAddress(IPV6_ANY), IPV6_ADDR_BITS), IPPrefix(IPAddress(IPV6_ANY))},
+            // Needlessly fully-specified IPv6 link-local address.
+            {EQ, IPPrefix(IPAddress(FE80_1)), IPPrefix(IPAddress(FE80_1, 0), IPV6_ADDR_BITS)},
+            // Different IPv6 link-local addresses within the same /64, no scoped_id: same /64.
+            {EQ, IPPrefix(IPAddress(FE80_1), 64), IPPrefix(IPAddress(FE80_2), 64)},
+            // Different IPv6 link-local address within the same /64, same scoped_id: same /64.
+            {EQ, IPPrefix(IPAddress(FE80_1, 17), 64), IPPrefix(IPAddress(FE80_2, 17), 64)},
+            // Unspecified < IPv4.
+            {LT, IPPrefix(), IPPrefix(IPAddress(IPV4_ANY), 0)},
+            // Same IPv4 base address sorts by prefix length.
+            {LT, IPPrefix(IPAddress(IPV4_ANY), 0), IPPrefix(IPAddress(IPV4_ANY), 1)},
+            {LT, IPPrefix(IPAddress(IPV4_ANY), 1), IPPrefix(IPAddress(IPV4_ANY), IPV4_ADDR_BITS)},
+            // Truncation means each base IPv4 address is different.
+            {LT, IPPrefix(IPAddress(IPV4_ONES), 0), IPPrefix(IPAddress(IPV4_ONES), 1)},
+            {LT, IPPrefix(IPAddress(IPV4_ONES), 1), IPPrefix(IPAddress(IPV4_ONES), IPV4_ADDR_BITS)},
+            // Sort by base IPv4 addresses first.
+            {LT, IPPrefix(IPAddress(IPV4_ANY), 0), IPPrefix(IPAddress::forString("0.0.0.1"))},
+            {LT, IPPrefix(IPAddress(IPV4_ANY), 1), IPPrefix(IPAddress::forString("0.0.0.1"))},
+            {LT, IPPrefix(IPAddress(IPV4_ANY), 24), IPPrefix(IPAddress::forString("0.0.0.1"))},
+            // IPv4 < IPv6.
+            {LT, IPPrefix(IPAddress(IPV4_ANY), 0), IPPrefix(IPAddress(IPV6_ANY), 0)},
+            {LT, IPPrefix(IPAddress(IPV4_ONES)), IPPrefix(IPAddress(IPV6_ANY))},
+            // Unspecified < IPv6.
+            {LT, IPPrefix(), IPPrefix(IPAddress(IPV6_ANY), 0)},
+            // Same IPv6 base address sorts by prefix length.
+            {LT, IPPrefix(IPAddress(IPV6_ANY), 0), IPPrefix(IPAddress(IPV6_ANY), 1)},
+            {LT, IPPrefix(IPAddress(IPV6_ANY), 1), IPPrefix(IPAddress(IPV6_ANY), IPV6_ADDR_BITS)},
+            // Truncation means each base IPv6 address is different.
+            {LT, IPPrefix(IPAddress(IPV6_ONES), 0), IPPrefix(IPAddress(IPV6_ONES), 1)},
+            {LT, IPPrefix(IPAddress(IPV6_ONES), 1), IPPrefix(IPAddress(IPV6_ONES), IPV6_ADDR_BITS)},
+            // Different IPv6 link-local address in same /64, different scoped_id: different /64.
+            {LT, IPPrefix(IPAddress(FE80_1, 17), 64), IPPrefix(IPAddress(FE80_2, 22), 64)},
+            {LT, IPPrefix(IPAddress(FE80_1, 17), 64), IPPrefix(IPAddress(FE80_1, 18), 64)},
+            {LT, IPPrefix(IPAddress(FE80_1, 18), 64), IPPrefix(IPAddress(FE80_1, 19), 64)},
+    };
+
+    size_t tests_run = 0;
+    for (const auto& expectation : kExpectations) {
+        SCOPED_TRACE(expectation.toString());
+        EXPECT_NO_FATAL_FAILURE(testGamutOfOperators(expectation));
+        tests_run++;
     }
-    EXPECT_TRUE(IPPrefix(IPAddress(IPV6_ANY), 0) == IPPrefix(IPAddress(IPV6_ANY), 0));
-    EXPECT_TRUE(IPPrefix(IPAddress(IPV6_ANY), IPV6_ADDR_BITS) == IPPrefix(IPAddress(IPV6_ANY)));
-    for (int i = 0; i < IPV6_ADDR_BITS; i++) {
-        EXPECT_FALSE(IPPrefix(IPAddress(IPV6_ANY), i) == IPPrefix(IPAddress(IPV6_ANY), i + 1));
-        EXPECT_FALSE(IPPrefix(IPAddress(IPV6_ONES), i) == IPPrefix(IPAddress(IPV6_ONES), i + 1));
-    }
-    // Needlessly fully-specified IPv6 link-local address.
-    EXPECT_TRUE(IPPrefix(IPAddress(FE80_1)) == IPPrefix(IPAddress(FE80_1, 0), IPV6_ADDR_BITS));
-    // Different IPv6 link-local address within the same /64, no scoped_id --> same /64.
-    EXPECT_TRUE(IPPrefix(IPAddress(FE80_1), 64) == IPPrefix(IPAddress(FE80_2), 64));
-    const uint32_t idx = 17;
-    // Different IPv6 link-local address within the same /64, same scoped_id --> same /64.
-    EXPECT_TRUE(IPPrefix(IPAddress(FE80_1, idx), 64) == IPPrefix(IPAddress(FE80_2, idx), 64));
-    // Different IPv6 link-local address within the same /64, different scoped_id --> different /64.
-    EXPECT_FALSE(IPPrefix(IPAddress(FE80_1, idx), 64) == IPPrefix(IPAddress(FE80_2, idx + 1), 64));
+    EXPECT_EQ(kExpectations.size(), tests_run);
 }
 
-TEST(IPPrefixTest, NotEquals) {
-    EXPECT_FALSE(IPPrefix() != IPPrefix());
-    EXPECT_FALSE(IPPrefix(IPAddress(IPV4_ANY), 0) != IPPrefix(IPAddress(IPV4_ANY), 0));
-    EXPECT_FALSE(IPPrefix(IPAddress(IPV4_ANY), IPV4_ADDR_BITS) != IPPrefix(IPAddress(IPV4_ANY)));
-    for (int i = 0; i < IPV4_ADDR_BITS; i++) {
-        EXPECT_TRUE(IPPrefix(IPAddress(IPV4_ANY), i) != IPPrefix(IPAddress(IPV4_ANY), i + 1));
-        EXPECT_TRUE(IPPrefix(IPAddress(IPV4_ONES), i) != IPPrefix(IPAddress(IPV4_ONES), i + 1));
+TEST(IPSockAddrTest, GamutOfOperators) {
+    const std::vector<OperatorExpectation<IPSockAddr>> kExpectations{
+            {EQ, IPSockAddr(), IPSockAddr()},
+            {EQ, IPSockAddr(IPAddress(IPV4_ANY)), IPSockAddr(IPAddress(IPV4_ANY), 0)},
+            {EQ, IPSockAddr(IPAddress(IPV6_ANY)), IPSockAddr(IPAddress(IPV6_ANY), 0)},
+            {EQ, IPSockAddr(IPAddress(FE80_1), 80), IPSockAddr(IPAddress(FE80_1), 80)},
+            {EQ, IPSockAddr(IPAddress(FE80_1, 17)), IPSockAddr(IPAddress(FE80_1, 17), 0)},
+            {LT, IPSockAddr(IPAddress(IPV4_ANY), 0), IPSockAddr(IPAddress(IPV4_ANY), 1)},
+            {LT, IPSockAddr(IPAddress(IPV4_ANY), 53), IPSockAddr(IPAddress(IPV4_ANY), 123)},
+            {LT, IPSockAddr(IPAddress(IPV4_ONES), 123), IPSockAddr(IPAddress(IPV6_ANY), 53)},
+            {LT, IPSockAddr(IPAddress(IPV6_ANY), 0), IPSockAddr(IPAddress(IPV6_ANY), 1)},
+            {LT, IPSockAddr(IPAddress(IPV6_ANY), 53), IPSockAddr(IPAddress(IPV6_ANY), 123)},
+            {LT, IPSockAddr(IPAddress(FE80_1), 80), IPSockAddr(IPAddress(FE80_1, 17), 80)},
+            {LT, IPSockAddr(IPAddress(FE80_1, 17), 80), IPSockAddr(IPAddress(FE80_1, 22), 80)},
+    };
+
+    size_t tests_run = 0;
+    for (const auto& expectation : kExpectations) {
+        SCOPED_TRACE(expectation.toString());
+        EXPECT_NO_FATAL_FAILURE(testGamutOfOperators(expectation));
+        tests_run++;
     }
-    EXPECT_FALSE(IPPrefix(IPAddress(IPV6_ANY), 0) != IPPrefix(IPAddress(IPV6_ANY), 0));
-    EXPECT_FALSE(IPPrefix(IPAddress(IPV6_ANY), IPV6_ADDR_BITS) != IPPrefix(IPAddress(IPV6_ANY)));
-    for (int i = 0; i < IPV6_ADDR_BITS; i++) {
-        EXPECT_TRUE(IPPrefix(IPAddress(IPV6_ANY), i) != IPPrefix(IPAddress(IPV6_ANY), i + 1));
-        EXPECT_TRUE(IPPrefix(IPAddress(IPV6_ONES), i) != IPPrefix(IPAddress(IPV6_ONES), i + 1));
-    }
-    // Needlessly fully-specified IPv6 link-local address.
-    EXPECT_FALSE(IPPrefix(IPAddress(FE80_1)) != IPPrefix(IPAddress(FE80_1, 0), IPV6_ADDR_BITS));
-    // Different IPv6 link-local address within the same /64, no scoped_id --> same /64.
-    EXPECT_FALSE(IPPrefix(IPAddress(FE80_1), 64) != IPPrefix(IPAddress(FE80_2), 64));
-    const uint32_t idx = 17;
-    // Different IPv6 link-local address within the same /64, same scoped_id --> same /64.
-    EXPECT_FALSE(IPPrefix(IPAddress(FE80_1, idx), 64) != IPPrefix(IPAddress(FE80_2, idx), 64));
-    // Different IPv6 link-local address within the same /64, different scoped_id --> different /64.
-    EXPECT_TRUE(IPPrefix(IPAddress(FE80_1, idx), 64) != IPPrefix(IPAddress(FE80_2, idx + 1), 64));
-}
-
-TEST(IPPrefixTest, LessThan) {
-    EXPECT_FALSE(IPPrefix() < IPPrefix());
-
-    // Unspecified < IPv4.
-    EXPECT_TRUE(IPPrefix() < IPPrefix(IPAddress(IPV4_ANY), 0));
-    for (int i = 0; i < IPV4_ADDR_BITS; i++) {
-        // Same IPv4 base address sorts by prefix length.
-        EXPECT_TRUE(IPPrefix(IPAddress(IPV4_ANY), i) < IPPrefix(IPAddress(IPV4_ANY), i + 1));
-        // Walk all the bits for good measure.
-        EXPECT_TRUE(IPPrefix(IPAddress(IPV4_ONES), i) < IPPrefix(IPAddress(IPV4_ONES), i + 1));
-        // Sort by base IPv6 addresses first.
-        EXPECT_TRUE(IPPrefix(IPAddress(IPV4_ANY), i) < IPPrefix(IPAddress::forString("0.0.0.1")));
-    }
-
-    // Unspecified < IPv6.
-    EXPECT_TRUE(IPPrefix() < IPPrefix(IPAddress(IPV6_ANY), 0));
-
-    // IPv4 < IPv6.
-    EXPECT_TRUE(IPPrefix(IPAddress(IPV4_ANY), 0) < IPPrefix(IPAddress(IPV6_ANY), 0));
-    EXPECT_TRUE(IPPrefix(IPAddress(IPV4_ONES)) < IPPrefix(IPAddress(IPV6_ANY)));
-    for (int i = 0; i < IPV6_ADDR_BITS; i++) {
-        // Same IPv6 base address sorts by prefix length.
-        EXPECT_TRUE(IPPrefix(IPAddress(IPV6_ANY), i) < IPPrefix(IPAddress(IPV6_ANY), i + 1));
-        // Walk all the bits for good measure.
-        EXPECT_TRUE(IPPrefix(IPAddress(IPV6_ONES), i) < IPPrefix(IPAddress(IPV6_ONES), i + 1));
-        // Sort by base IPv6 addresses first.
-        EXPECT_TRUE(IPPrefix(IPAddress(IPV6_ANY, i)) < IPPrefix(IPAddress(IPV6_ONES)));
-    }
-    // Scope_ids.
-    for (int i = 0; i < 100; i++) {
-        EXPECT_TRUE(IPPrefix(IPAddress(FE80_1, i), 64) < IPPrefix(IPAddress(FE80_1, i + 1), 64));
-    }
-}
-
-TEST(IPSockAddrTest, Equals) {
-    EXPECT_TRUE(IPSockAddr() == IPSockAddr());
-    EXPECT_TRUE(IPSockAddr(IPAddress(IPV4_ANY)) == IPSockAddr(IPAddress(IPV4_ANY), 0));
-    EXPECT_FALSE(IPSockAddr(IPAddress(IPV4_ANY), 53) == IPSockAddr(IPAddress(IPV4_ANY), 123));
-    EXPECT_TRUE(IPSockAddr(IPAddress(IPV6_ANY)) == IPSockAddr(IPAddress(IPV6_ANY), 0));
-    EXPECT_FALSE(IPSockAddr(IPAddress(IPV6_ANY), 53) == IPSockAddr(IPAddress(IPV6_ANY), 123));
-    EXPECT_TRUE(IPSockAddr(IPAddress(FE80_1), 80) == IPSockAddr(IPAddress(FE80_1), 80));
-    EXPECT_FALSE(IPSockAddr(IPAddress(FE80_1), 80) == IPSockAddr(IPAddress(FE80_1, 17), 80));
-    EXPECT_TRUE(IPSockAddr(IPAddress(FE80_1, 17)) == IPSockAddr(IPAddress(FE80_1, 17), 0));
-}
-
-TEST(IPSockAddrTest, NotEquals) {
-    EXPECT_FALSE(IPSockAddr() != IPSockAddr());
-    EXPECT_FALSE(IPSockAddr(IPAddress(IPV4_ANY)) != IPSockAddr(IPAddress(IPV4_ANY), 0));
-    EXPECT_TRUE(IPSockAddr(IPAddress(IPV4_ANY), 53) != IPSockAddr(IPAddress(IPV4_ANY), 123));
-    EXPECT_FALSE(IPSockAddr(IPAddress(IPV6_ANY)) != IPSockAddr(IPAddress(IPV6_ANY), 0));
-    EXPECT_TRUE(IPSockAddr(IPAddress(IPV6_ANY), 53) != IPSockAddr(IPAddress(IPV6_ANY), 123));
-    EXPECT_FALSE(IPSockAddr(IPAddress(FE80_1), 80) != IPSockAddr(IPAddress(FE80_1), 80));
-    EXPECT_TRUE(IPSockAddr(IPAddress(FE80_1), 80) != IPSockAddr(IPAddress(FE80_1, 17), 80));
-    EXPECT_FALSE(IPSockAddr(IPAddress(FE80_1, 17)) != IPSockAddr(IPAddress(FE80_1, 17), 0));
-}
-
-TEST(IPSockAddrTest, LessThan) {
-    EXPECT_FALSE(IPSockAddr() < IPSockAddr());
-
-    for (in_port_t i = 0; i < std::numeric_limits<in_port_t>::max(); i++) {
-        EXPECT_TRUE(IPSockAddr(IPAddress(IPV4_ANY), i) < IPSockAddr(IPAddress(IPV4_ANY), i + 1));
-        EXPECT_TRUE(IPSockAddr(IPAddress(IPV4_ANY), i) < IPSockAddr(IPAddress(IPV6_ANY), i));
-        EXPECT_TRUE(IPSockAddr(IPAddress(IPV6_ANY), i) < IPSockAddr(IPAddress(IPV6_ANY), i + 1));
-        EXPECT_TRUE(IPSockAddr(IPAddress(FE80_1), i) < IPSockAddr(IPAddress(FE80_1), i + 1));
-    }
+    EXPECT_EQ(kExpectations.size(), tests_run);
 }
 
 TEST(IPSockAddrTest, toString) {

@@ -29,19 +29,17 @@ using base::StringPrintf;
 namespace netdutils {
 
 std::string IPAddress::toString() const noexcept {
-    char repr[INET6_ADDRSTRLEN] = {0};
+    char repr[INET6_ADDRSTRLEN] = "\0";
 
     switch (mData.family) {
         case AF_UNSPEC:
             return "<unspecified>";
         case AF_INET: {
-            // Address of packed member may not have correct alignment.
             const in_addr v4 = mData.ip.v4;
             inet_ntop(AF_INET, &v4, repr, sizeof(repr));
             break;
         }
         case AF_INET6: {
-            // Address of packed member may not have correct alignment.
             const in6_addr v6 = mData.ip.v6;
             inet_ntop(AF_INET6, &v6, repr, sizeof(repr));
             break;
@@ -107,7 +105,7 @@ IPPrefix::IPPrefix(const IPAddress& ip, int length) : IPPrefix(ip) {
         }
         case AF_INET6: {
             // The byte in which this CIDR length falls.
-            const int which = (length == 0) ? 0 : length / 8;
+            const int which = length / 8;
             const int mask = (length % 8 == 0) ? 0 : 0xff << (8 - length % 8);
             mData.ip.v6.s6_addr[which] &= mask;
             for (int i = which + 1; i < IPV6_ADDR_LEN; i++) {
