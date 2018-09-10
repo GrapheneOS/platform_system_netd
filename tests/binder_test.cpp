@@ -1213,7 +1213,7 @@ void expectIpfwdEnable(bool enable) {
     EXPECT_EQ(enable, enableIPv6);
 }
 
-bool ipRuleIpfwdExists(const char* ipVersion, const std::string ipfwdRule) {
+bool ipRuleIpfwdExists(const char* ipVersion, const std::string& ipfwdRule) {
     std::vector<std::string> rules = listIpRules(ipVersion);
     for (const auto& rule : rules) {
         if (rule.find(ipfwdRule) != std::string::npos) {
