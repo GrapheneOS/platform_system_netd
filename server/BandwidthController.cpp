@@ -291,15 +291,7 @@ int BandwidthController::setupIptablesHooks() {
     return 0;
 }
 
-int BandwidthController::enableBandwidthControl(bool force) {
-    char value[PROPERTY_VALUE_MAX];
-
-    if (!force) {
-            property_get("persist.bandwidth.enable", value, "1");
-            if (!strcmp(value, "0"))
-                    return 0;
-    }
-
+int BandwidthController::enableBandwidthControl() {
     /* Let's pretend we started from scratch ... */
     mSharedQuotaIfaces.clear();
     mQuotaIfaces.clear();
