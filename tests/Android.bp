@@ -48,11 +48,6 @@ cc_test {
         "system/core/libnetutils/include",
         "bionic/libc/dns/include",
     ],
-    aidl: {
-        include_dirs: [
-            "system/netd/server/binder",
-        ],
-    },
     shared_libs: [
         "libbase",
         "libbinder",
