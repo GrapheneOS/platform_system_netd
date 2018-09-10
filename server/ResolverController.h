@@ -19,9 +19,9 @@
 
 #include <list>
 #include <vector>
+#include "dns/Dns64Configuration.h"
 
 struct __res_params;
-struct sockaddr_storage;
 
 namespace android {
 namespace net {
@@ -38,10 +38,10 @@ enum class PrivateDnsMode {
 
 
 class ResolverController {
-public:
-    ResolverController() {};
+  public:
+    ResolverController(const NetworkController& netCtrl) : mDns64Configuration(netCtrl) {}
 
-    virtual ~ResolverController() {};
+    ~ResolverController() {}
 
     // TODO: delete this function
     int setDnsServers(unsigned netId, const char* searchDomains, const char** servers,
@@ -82,6 +82,8 @@ public:
 
     void dump(DumpWriter& dw, unsigned netId);
 
+  private:
+    Dns64Configuration mDns64Configuration;
 };
 
 }  // namespace net

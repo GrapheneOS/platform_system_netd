@@ -2,6 +2,7 @@ cc_library_static {
     name: "libnetddns",
     defaults: ["netd_defaults"],
     srcs: [
+        "Dns64Configuration.cpp",
         "DnsTlsDispatcher.cpp",
         "DnsTlsQueryMap.cpp",
         "DnsTlsTransport.cpp",
@@ -18,9 +19,11 @@ cc_library_static {
         "libnetdutils",
     ],
     include_dirs: [
+        "bionic/libc/dns/include",
         "system/netd/include",
         // This is so that #include "dns/Foo.h" still works
         // TODO: Decide how to reorganize dns headers
         "system/netd/server",
     ],
+    export_include_dirs: ["."],
 }
