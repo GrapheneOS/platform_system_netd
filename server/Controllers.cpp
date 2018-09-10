@@ -189,7 +189,8 @@ void Controllers::createChildChains(IptablesTarget target, const char* table,
 }
 
 Controllers::Controllers()
-    : clatdCtrl(&netCtrl),
+    : resolverCtrl(netCtrl),
+      clatdCtrl(&netCtrl),
       wakeupCtrl(
               [this](const WakeupController::ReportArgs& args) {
                   const auto listener = eventReporter.getNetdEventListener();
