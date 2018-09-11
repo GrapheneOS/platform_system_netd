@@ -337,16 +337,6 @@ void res_ndestroy(res_state statp) {
     statp->_u._ext.ext = NULL;
 }
 
-const char* res_get_nibblesuffix(res_state statp) {
-    if (statp->_u._ext.ext) return (statp->_u._ext.ext->nsuffix);
-    return ("ip6.arpa");
-}
-
-const char* res_get_nibblesuffix2(res_state statp) {
-    if (statp->_u._ext.ext) return (statp->_u._ext.ext->nsuffix2);
-    return ("ip6.int");
-}
-
 void res_setservers(res_state statp, const union res_sockaddr_union* set, int cnt) {
     int i, nserv;
     size_t size;
