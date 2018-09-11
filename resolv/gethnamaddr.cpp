@@ -78,6 +78,8 @@
 // that they don't actually test or ship with this.
 #define _DIAGASSERT(e) /* nothing */
 
+// TODO: unify macro ALIGNBYTES and ALIGN for all possible data type alignment of hostent
+// buffer.
 #define ALIGNBYTES (sizeof(uintptr_t) - 1)
 #define ALIGN(p) (((uintptr_t)(p) + ALIGNBYTES) & ~ALIGNBYTES)
 
@@ -778,6 +780,11 @@ struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, s
     HENT_COPY(hent->h_addr_list[0], &host_addr, hent->h_length, buf, buflen);
     hent->h_addr_list[1] = NULL;
 
+    /* Reserve space for mapping IPv4 address to IPv6 address in place */
+    if (hent->h_addrtype == AF_INET) {
+        HENT_COPY(buf, NAT64_PAD, sizeof(NAT64_PAD), buf, buflen);
+    }
+
     HENT_SCOPY(hent->h_name, name, buf, buflen);
     for (size_t i = 0; i < anum; i++) HENT_SCOPY(hent->h_aliases[i], aliases[i], buf, buflen);
     hent->h_aliases[anum] = NULL;
@@ -995,6 +1002,13 @@ static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
         map_v4v6_address(bf, bf);
         hp->h_addrtype = AF_INET6;
         hp->h_length = NS_IN6ADDRSZ;
+    }
+
+    /* Reserve enough space for mapping IPv4 address to IPv6 address in place */
+    if (info->hp->h_addrtype == AF_INET) {
+        if (blen + NS_IN6ADDRSZ > info->buflen) goto nospc;
+        // Pad zero to the unused address space
+        memcpy(bf + NS_INADDRSZ, NAT64_PAD, sizeof(NAT64_PAD));
     }
 
     res_put_state(res);
