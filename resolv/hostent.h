@@ -31,63 +31,61 @@
 #ifndef _DNS_NET_HOSTENT_H
 #define _DNS_NET_HOSTENT_H
 
-#include <stdio.h>
 #include <netdb.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 /*
  * These are not being advertised because the interfaces are non-standard.
  * There are versions by linux, aix, qnx, sun, etc. Our versions are used
  * internally to provide thread safety; they mostly resemble qnx.
  */
-void sethostent_r(FILE **);
-struct hostent	*netbsd_gethostent_r(FILE *, struct hostent *, char *, size_t, int *);
-void endhostent_r(FILE **);
+void sethostent_r(FILE**);
+struct hostent* netbsd_gethostent_r(FILE*, struct hostent*, char*, size_t, int*);
+void endhostent_r(FILE**);
 
 /*
  * The following are internal API's and are used only for testing.
  */
 struct getnamaddr {
-	struct hostent *hp;
-	char *buf;
-	size_t buflen;
-	int *he;
+    struct hostent* hp;
+    char* buf;
+    size_t buflen;
+    int* he;
 };
 
 /* /etc/hosts lookup */
-int _hf_gethtbyaddr(void *, void *, va_list);
-int _hf_gethtbyname(void *, void *, va_list);
+int _hf_gethtbyaddr(void*, void*, va_list);
+int _hf_gethtbyname(void*, void*, va_list);
 
 #ifdef YP
 /* NIS lookup */
-int _yp_gethtbyaddr(void *, void *, va_list);
-int _yp_gethtbyname(void *, void *, va_list);
+int _yp_gethtbyaddr(void*, void*, va_list);
+int _yp_gethtbyname(void*, void*, va_list);
 #endif
 
-#define HENT_ARRAY(dst, anum, ptr, len) \
-	do { \
-		size_t _len = (anum + 1) * sizeof(*dst); \
-		if (_len > len) \
-			goto nospc; \
-		dst = (void *)ptr; \
-		ptr += _len; \
-		len -= _len; \
-	} while (/*CONSTCOND*/0)
+#define HENT_ARRAY(dst, anum, ptr, len)          \
+    do {                                         \
+        size_t _len = (anum + 1) * sizeof(*dst); \
+        if (_len > len) goto nospc;              \
+        dst = (void*) ptr;                       \
+        ptr += _len;                             \
+        len -= _len;                             \
+    } while (/*CONSTCOND*/ 0)
 
-#define HENT_COPY(dst, src, slen, ptr, len) \
-	do { \
-		if ((size_t)slen > len) \
-			goto nospc; \
-		memcpy(ptr, src, (size_t)slen); \
-		dst = ptr; \
-		ptr += slen; \
-		len -= slen; \
-	} while (/* CONSTCOND */0)
+#define HENT_COPY(dst, src, slen, ptr, len)  \
+    do {                                     \
+        if ((size_t) slen > len) goto nospc; \
+        memcpy(ptr, src, (size_t) slen);     \
+        dst = ptr;                           \
+        ptr += slen;                         \
+        len -= slen;                         \
+    } while (/* CONSTCOND */ 0)
 
-#define HENT_SCOPY(dst, src, ptr, len) \
-	do { \
-		size_t _len = strlen(src) + 1; \
-		HENT_COPY(dst, src, _len, ptr, len); \
-	} while (/* CONSTCOND */0)
+#define HENT_SCOPY(dst, src, ptr, len)       \
+    do {                                     \
+        size_t _len = strlen(src) + 1;       \
+        HENT_COPY(dst, src, _len, ptr, len); \
+    } while (/* CONSTCOND */ 0)
 
 #endif /* _DNS_NET_HOSTENT_H */
