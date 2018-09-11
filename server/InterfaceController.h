@@ -47,6 +47,9 @@ public:
 
     // Read and write values in files of the form:
     //     /proc/sys/net/<family>/<which>/<interface>/<parameter>
+    //
+    // NOTE: getParameter() trims whitespace so the caller does not need extra
+    // code to crop trailing newlines, for example.
     static int getParameter(
             const char *family, const char *which, const char *interface, const char *parameter,
             std::string *value);
