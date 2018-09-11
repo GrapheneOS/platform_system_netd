@@ -386,6 +386,13 @@ class PrivateDnsConfiguration {
             mNetdEventListener GUARDED_BY(mPrivateDnsLock);
 } sPrivateDnsConfiguration;
 
+bool allIPv6Only(const std::vector<std::string>& servers) {
+    for (const auto& server : servers) {
+        if (server.find(':') == std::string::npos) return false;
+    }
+    return !servers.empty();
+}
+
 }  // namespace
 
 int ResolverController::setDnsServers(unsigned netId, const char* searchDomains,
@@ -406,6 +413,7 @@ int ResolverController::clearDnsServers(unsigned netId) {
     if (DBG) {
         ALOGD("clearDnsServers netId = %u\n", netId);
     }
+    mDns64Configuration.stopPrefixDiscovery(netId);
     sPrivateDnsConfiguration.clear(netId);
     return 0;
 }
@@ -533,8 +541,26 @@ int ResolverController::setResolverConfiguration(int32_t netId,
     if (params.size() > INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC) {
         res_params.base_timeout_msec = params[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC];
     }
-    return setDnsServers(netId, domains_str.c_str(), server_ptrs.data(), server_ptrs.size(),
-            &res_params);
+
+    const auto rval = setDnsServers(netId, domains_str.c_str(), server_ptrs.data(),
+                                    server_ptrs.size(), &res_params);
+
+    if (rval == 0) {
+        // Start DNS64 discovery after successfully setting any new DNS servers
+        // as the cache may have been cleared (if the nameservers differ), and
+        // we might discover a different DNS64 prefix. If the cache has not been
+        // cleared, we may quickly rediscover the same prefix.
+        //
+        // Operators may choose to use a longer TTL in order to reduce repeated
+        // resolution (see also https://tools.ietf.org/html/rfc7050#section-5).
+        if (allIPv6Only(servers)) {
+            mDns64Configuration.startPrefixDiscovery(netId);
+        } else {
+            mDns64Configuration.stopPrefixDiscovery(netId);
+        }
+    }
+
+    return rval;
 }
 
 int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>* servers,
@@ -613,6 +639,7 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
                     static_cast<unsigned>(params.max_samples), params.base_timeout_msec);
         }
 
+        mDns64Configuration.dump(dw, netId);
         sPrivateDnsConfiguration.dump(dw, netId);
     }
     dw.decIndent();

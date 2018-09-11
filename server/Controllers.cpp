@@ -189,7 +189,8 @@ void Controllers::createChildChains(IptablesTarget target, const char* table,
 }
 
 Controllers::Controllers()
-    : clatdCtrl(&netCtrl),
+    : resolverCtrl(netCtrl),
+      clatdCtrl(&netCtrl),
       wakeupCtrl(
               [this](const WakeupController::ReportArgs& args) {
                   const auto listener = eventReporter.getNetdEventListener();
@@ -282,8 +283,8 @@ void Controllers::init() {
     gLog.info("Initializing traffic control: %.1fms", s.getTimeAndReset());
 
     bandwidthCtrl.setBpfEnabled(trafficCtrl.checkBpfStatsEnable());
-    bandwidthCtrl.enableBandwidthControl(false);
-    gLog.info("Disabling bandwidth control: %.1fms", s.getTimeAndReset());
+    bandwidthCtrl.enableBandwidthControl();
+    gLog.info("Enabling bandwidth control: %.1fms", s.getTimeAndReset());
 
     if (int ret = RouteController::Init(NetworkController::LOCAL_NET_ID)) {
         gLog.error("Failed to initialize RouteController (%s)", strerror(-ret));

@@ -208,7 +208,7 @@ protected:
         std::string expectedAccounting =
                 useBpf ? ACCOUNT_RULES_WITH_BPF : ACCOUNT_RULES_WITHOUT_BPF;
         mBw.setBpfEnabled(useBpf);
-        mBw.enableBandwidthControl(false);
+        mBw.enableBandwidthControl();
         expectSetupCommands(expectedClean, expectedAccounting);
     }
 

@@ -34,7 +34,7 @@ public:
     int setupIptablesHooks();
     void setBpfEnabled(bool isEnabled);
 
-    int enableBandwidthControl(bool force);
+    int enableBandwidthControl();
     int disableBandwidthControl();
     int enableDataSaver(bool enable);
 
