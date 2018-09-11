@@ -17,6 +17,7 @@
 #define LOG_TAG "Netd"
 
 #include <set>
+#include <tuple>
 #include <vector>
 
 #include <android-base/stringprintf.h>
@@ -444,25 +445,25 @@ binder::Status NetdNativeService::interfaceDelAddress(const std::string &ifName,
     return binder::Status::ok();
 }
 
-binder::Status NetdNativeService::setProcSysNet(
-        int32_t family, int32_t which, const std::string &ifname, const std::string &parameter,
-        const std::string &value) {
-    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+namespace {
 
-    const char *familyStr;
-    switch (family) {
+std::tuple<binder::Status, const char*, const char*> getPathComponents(int32_t ipversion,
+                                                                       int32_t category) {
+    const char* ipversionStr = nullptr;
+    switch (ipversion) {
         case INetd::IPV4:
-            familyStr = "ipv4";
+            ipversionStr = "ipv4";
             break;
         case INetd::IPV6:
-            familyStr = "ipv6";
+            ipversionStr = "ipv6";
             break;
         default:
-            return binder::Status::fromServiceSpecificError(EAFNOSUPPORT, String8("Bad family"));
+            return {binder::Status::fromServiceSpecificError(EAFNOSUPPORT, "Bad IP version"),
+                    nullptr, nullptr};
     }
 
-    const char *whichStr;
-    switch (which) {
+    const char* whichStr = nullptr;
+    switch (category) {
         case INetd::CONF:
             whichStr = "conf";
             break;
@@ -470,17 +471,58 @@ binder::Status NetdNativeService::setProcSysNet(
             whichStr = "neigh";
             break;
         default:
-            return binder::Status::fromServiceSpecificError(EINVAL, String8("Bad category"));
+            return {binder::Status::fromServiceSpecificError(EINVAL, "Bad category"), nullptr,
+                    nullptr};
     }
 
-    const int err = InterfaceController::setParameter(
-            familyStr, whichStr, ifname.c_str(), parameter.c_str(),
-            value.c_str());
-    if (err != 0) {
-        return binder::Status::fromServiceSpecificError(-err,
-                String8::format("ResolverController error: %s", strerror(-err)));
+    return {binder::Status::ok(), ipversionStr, whichStr};
+}
+
+}  // namespace
+
+binder::Status NetdNativeService::getProcSysNet(int32_t ipversion, int32_t which,
+                                                const std::string& ifname,
+                                                const std::string& parameter, std::string* value) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__)
+                         .args(ipversion, which, ifname, parameter);
+
+    const auto pathParts = getPathComponents(ipversion, which);
+    const auto& pathStatus = std::get<0>(pathParts);
+    if (!pathStatus.isOk()) {
+        gLog.log(entry.returns(pathStatus.exceptionCode()).withAutomaticDuration());
+        return pathStatus;
     }
-    return binder::Status::ok();
+
+    const int err = InterfaceController::getParameter(std::get<1>(pathParts),
+                                                      std::get<2>(pathParts), ifname.c_str(),
+                                                      parameter.c_str(), value);
+    entry.returns(err);
+    if (err == 0) entry.returns(*value);
+    gLog.log(entry.withAutomaticDuration());
+    return statusFromErrcode(err);
+}
+
+binder::Status NetdNativeService::setProcSysNet(int32_t ipversion, int32_t which,
+                                                const std::string& ifname,
+                                                const std::string& parameter,
+                                                const std::string& value) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__)
+                         .args(ipversion, which, ifname, parameter, value);
+
+    const auto pathParts = getPathComponents(ipversion, which);
+    const auto& pathStatus = std::get<0>(pathParts);
+    if (!pathStatus.isOk()) {
+        gLog.log(entry.returns(pathStatus.exceptionCode()).withAutomaticDuration());
+        return pathStatus;
+    }
+
+    const int err = InterfaceController::setParameter(std::get<1>(pathParts),
+                                                      std::get<2>(pathParts), ifname.c_str(),
+                                                      parameter.c_str(), value.c_str());
+    gLog.log(entry.returns(err).withAutomaticDuration());
+    return statusFromErrcode(err);
 }
 
 binder::Status NetdNativeService::getMetricsReportingLevel(int *reportingLevel) {
