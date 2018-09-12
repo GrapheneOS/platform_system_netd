@@ -95,23 +95,23 @@ extern const char* _res_opcodes[];
  */
 int res_nmkquery(res_state statp, int op, /* opcode of query */
                  const char* dname,       /* domain name */
-                 int class, int type,     /* class and type of query */
+                 int cl, int type,        /* class and type of query */
                  const u_char* data,      /* resource record data */
                  int datalen,             /* length of data */
                  const u_char* newrr_in,  /* new rr for modify or append */
                  u_char* buf,             /* buffer to put query */
                  int buflen)              /* size of buffer */
 {
-    register HEADER* hp;
-    register u_char *cp, *ep;
-    register int n;
+    HEADER* hp;
+    u_char *cp, *ep;
+    int n;
     u_char *dnptrs[20], **dpp, **lastdnptr;
 
     UNUSED(newrr_in);
 
 #ifdef DEBUG
     if (statp->options & RES_DEBUG)
-        printf(";; res_nmkquery(%s, %s, %s, %s)\n", _res_opcodes[op], dname, p_class(class),
+        printf(";; res_nmkquery(%s, %s, %s, %s)\n", _res_opcodes[op], dname, p_class(cl),
                p_type(type));
 #endif
     /*
@@ -142,7 +142,7 @@ int res_nmkquery(res_state statp, int op, /* opcode of query */
             cp += n;
             ns_put16(type, cp);
             cp += INT16SZ;
-            ns_put16(class, cp);
+            ns_put16(cl, cp);
             cp += INT16SZ;
             hp->qdcount = htons(1);
             if (op == QUERY || data == NULL) break;
@@ -155,7 +155,7 @@ int res_nmkquery(res_state statp, int op, /* opcode of query */
             cp += n;
             ns_put16(T_NULL, cp);
             cp += INT16SZ;
-            ns_put16(class, cp);
+            ns_put16(cl, cp);
             cp += INT16SZ;
             ns_put32(0, cp);
             cp += INT32SZ;
@@ -172,7 +172,7 @@ int res_nmkquery(res_state statp, int op, /* opcode of query */
             *cp++ = '\0'; /* no domain name */
             ns_put16(type, cp);
             cp += INT16SZ;
-            ns_put16(class, cp);
+            ns_put16(cl, cp);
             cp += INT16SZ;
             ns_put32(0, cp);
             cp += INT32SZ;
@@ -202,8 +202,8 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
              int buflen,              /* size of buffer */
              int anslen)              /* UDP answer buffer size */
 {
-    register HEADER* hp;
-    register u_char *cp, *ep;
+    HEADER* hp;
+    u_char *cp, *ep;
     u_int16_t flags = 0;
 
 #ifdef DEBUG

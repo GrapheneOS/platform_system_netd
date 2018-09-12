@@ -69,26 +69,13 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#include <sys/cdefs.h>
-#if defined(LIBC_SCCS) && !defined(lint)
-#ifdef notdef
-static const char sccsid[] = "@(#)res_comp.c	8.1 (Berkeley) 6/4/93";
-static const char rcsid[] = "Id: res_comp.c,v 1.1.2.1.4.1 2004/03/09 08:33:54 marka Exp";
-#else
-__RCSID("$NetBSD: res_comp.c,v 1.6 2004/05/22 23:47:09 christos Exp $");
-#endif
-#endif /* LIBC_SCCS and not lint */
 
 #include <arpa/nameser.h>
 #include <ctype.h>
 #include <netinet/in.h>
 #include <sys/param.h>
 #include <sys/types.h>
-#ifdef ANDROID_CHANGES
 #include "resolv_private.h"
-#else
-#include <resolv.h>
-#endif
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -222,28 +209,3 @@ int res_dnok(const char* dn) {
         if (!domainchar(ch)) return (0);
     return (1);
 }
-
-#ifdef BIND_4_COMPAT
-/*
- * This module must export the following externally-visible symbols:
- *	___putlong
- *	___putshort
- *	__getlong
- *	__getshort
- * Note that one _ comes from C and the others come from us.
- */
-void __putlong(u_int32_t src, u_char* dst) {
-    ns_put32(src, dst);
-}
-void __putshort(u_int16_t src, u_char* dst) {
-    ns_put16(src, dst);
-}
-#ifndef __ultrix__
-u_int32_t _getlong(const u_char* src) {
-    return (ns_get32(src));
-}
-u_int16_t _getshort(const u_char* src) {
-    return (ns_get16(src));
-}
-#endif /*__ultrix__*/
-#endif /*BIND_4_COMPAT*/

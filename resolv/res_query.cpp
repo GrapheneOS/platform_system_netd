@@ -106,10 +106,10 @@
  *
  * Caller must parse answer and determine whether it answers the question.
  */
-int res_nquery(res_state statp, const char* name, /* domain name */
-               int class, int type,               /* class and type of query */
-               u_char* answer,                    /* buffer to put answer */
-               int anslen)                        /* size of answer buffer */
+int res_nquery(res_state statp, const char* name, // domain name
+               int cl, int type,                  // class and type of query
+               u_char* answer,                    // buffer to put answer
+               int anslen)                        // size of answer buffer
 {
     u_char buf[MAXPACKET];
     HEADER* hp = (HEADER*) (void*) answer;
@@ -122,10 +122,10 @@ again:
     hp->rcode = NOERROR; /* default */
 
 #ifdef DEBUG
-    if (statp->options & RES_DEBUG) printf(";; res_query(%s, %d, %d)\n", name, class, type);
+    if (statp->options & RES_DEBUG) printf(";; res_query(%s, %d, %d)\n", name, cl, type);
 #endif
 
-    n = res_nmkquery(statp, QUERY, name, class, type, NULL, 0, NULL, buf, sizeof(buf));
+    n = res_nmkquery(statp, QUERY, name, cl, type, NULL, 0, NULL, buf, sizeof(buf));
 #ifdef RES_USE_EDNS0
     if (n > 0 && (statp->_flags & RES_F_EDNS0ERR) == 0 &&
         (statp->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0U)
@@ -136,7 +136,7 @@ again:
         if (statp->options & RES_DEBUG) printf(";; res_query: mkquery failed\n");
 #endif
         RES_SET_H_ERRNO(statp, NO_RECOVERY);
-        return (n);
+        return n;
     }
     n = res_nsend(statp, buf, n, answer, anslen);
     if (n < 0) {
@@ -153,7 +153,7 @@ again:
         if (statp->options & RES_DEBUG) printf(";; res_query: send error\n");
 #endif
         RES_SET_H_ERRNO(statp, TRY_AGAIN);
-        return (n);
+        return n;
     }
 
     if (hp->rcode != NOERROR || ntohs(hp->ancount) == 0) {
@@ -179,9 +179,9 @@ again:
                 RES_SET_H_ERRNO(statp, NO_RECOVERY);
                 break;
         }
-        return (-1);
+        return -1;
     }
-    return (n);
+    return n;
 }
 
 /*
@@ -191,7 +191,7 @@ again:
  * is detected.  Error code, if any, is left in H_ERRNO.
  */
 int res_nsearch(res_state statp, const char* name, /* domain name */
-                int class, int type,               /* class and type of query */
+                int cl, int type,                  /* class and type of query */
                 u_char* answer,                    /* buffer to put answer */
                 int anslen)                        /* size of answer */
 {
@@ -214,7 +214,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
 
     /* If there aren't any dots, it could be a user-level alias. */
     if (!dots && (cp = res_hostalias(statp, name, tmp, sizeof tmp)) != NULL)
-        return (res_nquery(statp, cp, class, type, answer, anslen));
+        return res_nquery(statp, cp, cl, type, answer, anslen);
 
     /*
      * If there are enough dots in the name, let's just give it a
@@ -223,8 +223,8 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
      */
     saved_herrno = -1;
     if (dots >= statp->ndots || trailing_dot) {
-        ret = res_nquerydomain(statp, name, NULL, class, type, answer, anslen);
-        if (ret > 0 || trailing_dot) return (ret);
+        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen);
+        if (ret > 0 || trailing_dot) return ret;
         saved_herrno = statp->res_h_errno;
         tried_as_is++;
     }
@@ -254,8 +254,8 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
             if (domain[0][0] == '\0' || (domain[0][0] == '.' && domain[0][1] == '\0'))
                 root_on_list++;
 
-            ret = res_nquerydomain(statp, name, *domain, class, type, answer, anslen);
-            if (ret > 0) return (ret);
+            ret = res_nquerydomain(statp, name, *domain, cl, type, answer, anslen);
+            if (ret > 0) return ret;
 
             /*
              * If no server present, give up.
@@ -272,7 +272,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
              */
             if (errno == ECONNREFUSED) {
                 RES_SET_H_ERRNO(statp, TRY_AGAIN);
-                return (-1);
+                return -1;
             }
 
             switch (statp->res_h_errno) {
@@ -307,8 +307,8 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
      */
     if ((dots || !searched || (statp->options & RES_NOTLDQUERY) == 0U) &&
         !(tried_as_is || root_on_list)) {
-        ret = res_nquerydomain(statp, name, NULL, class, type, answer, anslen);
-        if (ret > 0) return (ret);
+        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen);
+        if (ret > 0) return ret;
     }
 
     /* if we got here, we didn't satisfy the search.
@@ -324,17 +324,17 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
         RES_SET_H_ERRNO(statp, NO_DATA);
     else if (got_servfail)
         RES_SET_H_ERRNO(statp, TRY_AGAIN);
-    return (-1);
+    return -1;
 }
 
 /*
  * Perform a call on res_query on the concatenation of name and domain,
  * removing a trailing dot from name if domain is NULL.
  */
-int res_nquerydomain(res_state statp, const char* name, const char* domain, int class,
-                     int type,       /* class and type of query */
-                     u_char* answer, /* buffer to put answer */
-                     int anslen)     /* size of answer */
+int res_nquerydomain(res_state statp, const char* name, const char* domain,
+                     int cl, int type,  /* class and type of query */
+                     u_char* answer,    /* buffer to put answer */
+                     int anslen)        /* size of answer */
 {
     char nbuf[MAXDNAME];
     const char* longname = nbuf;
@@ -342,7 +342,7 @@ int res_nquerydomain(res_state statp, const char* name, const char* domain, int 
 
 #ifdef DEBUG
     if (statp->options & RES_DEBUG)
-        printf(";; res_nquerydomain(%s, %s, %d, %d)\n", name, domain ? domain : "<Nil>", class,
+        printf(";; res_nquerydomain(%s, %s, %d, %d)\n", name, domain ? domain : "<Nil>", cl,
                type);
 #endif
     if (domain == NULL) {
@@ -353,7 +353,7 @@ int res_nquerydomain(res_state statp, const char* name, const char* domain, int 
         n = strlen(name);
         if (n >= MAXDNAME) {
             RES_SET_H_ERRNO(statp, NO_RECOVERY);
-            return (-1);
+            return -1;
         }
         n--;
         if (n >= 0 && name[n] == '.') {
@@ -366,13 +366,14 @@ int res_nquerydomain(res_state statp, const char* name, const char* domain, int 
         d = strlen(domain);
         if (n + d + 1 >= MAXDNAME) {
             RES_SET_H_ERRNO(statp, NO_RECOVERY);
-            return (-1);
+            return -1;
         }
         snprintf(nbuf, sizeof(nbuf), "%s.%s", name, domain);
     }
-    return (res_nquery(statp, longname, class, type, answer, anslen));
+    return res_nquery(statp, longname, cl, type, answer, anslen);
 }
 
-const char* res_hostalias(const res_state statp, const char* name, char* dst, size_t siz) {
-    return (NULL);
+const char* res_hostalias(const res_state /*statp*/, const char* /*name*/, char* /*dst*/,
+                          size_t /*siz*/) {
+    return NULL;
 }
