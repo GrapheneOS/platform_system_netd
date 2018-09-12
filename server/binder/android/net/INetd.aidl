@@ -291,20 +291,24 @@ interface INetd {
     /**
      * Set and get /proc/sys/net interface configuration parameters.
      *
-     * @param family One of IPV4/IPV6 integers, indicating the desired address family directory.
+     * @param ipversion One of IPV4/IPV6 integers, indicating the desired IP version directory.
      * @param which One of CONF/NEIGH integers, indicating the desired parameter category directory.
      * @param ifname The interface name portion of the path; may also be "all" or "default".
      * @param parameter The parameter name portion of the path.
      * @param value The value string to be written into the assembled path.
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
      */
 
     const int IPV4  = 4;
     const int IPV6  = 6;
     const int CONF  = 1;
     const int NEIGH = 2;
-    void setProcSysNet(int family, int which, in @utf8InCpp String ifname,
+    @utf8InCpp String getProcSysNet(int ipversion, int which, in @utf8InCpp String ifname,
+            in @utf8InCpp String parameter);
+    void setProcSysNet(int ipversion, int which, in @utf8InCpp String ifname,
             in @utf8InCpp String parameter, in @utf8InCpp String value);
-    // TODO: add corresponding getProcSysNet().
 
     /**
      * Get/Set metrics reporting level.

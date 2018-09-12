@@ -839,30 +839,68 @@ TEST_F(BinderTest, InterfaceAddRemoveAddress) {
     }
 }
 
-TEST_F(BinderTest, SetProcSysNet) {
-    static const struct TestData {
-        const int family;
+TEST_F(BinderTest, GetProcSysNet) {
+    const char LOOPBACK[] = "lo";
+    static const struct {
+        const int ipversion;
         const int which;
-        const char *ifname;
-        const char *parameter;
-        const char *value;
+        const char* ifname;
+        const char* parameter;
+        const char* expectedValue;
         const int expectedReturnCode;
     } kTestData[] = {
-        { INetd::IPV4, INetd::CONF, sTun.name().c_str(), "arp_ignore", "1", 0 },
-        { -1, INetd::CONF, sTun.name().c_str(), "arp_ignore", "1", EAFNOSUPPORT },
-        { INetd::IPV4, -1, sTun.name().c_str(), "arp_ignore", "1", EINVAL },
-        { INetd::IPV4, INetd::CONF, "..", "conf/lo/arp_ignore", "1", EINVAL },
-        { INetd::IPV4, INetd::CONF, ".", "lo/arp_ignore", "1", EINVAL },
-        { INetd::IPV4, INetd::CONF, sTun.name().c_str(), "../all/arp_ignore", "1", EINVAL },
-        { INetd::IPV6, INetd::NEIGH, sTun.name().c_str(), "ucast_solicit", "7", 0 },
+            {INetd::IPV4, INetd::CONF, LOOPBACK, "arp_ignore", "0", 0},
+            {-1, INetd::CONF, sTun.name().c_str(), "arp_ignore", nullptr, EAFNOSUPPORT},
+            {INetd::IPV4, -1, sTun.name().c_str(), "arp_ignore", nullptr, EINVAL},
+            {INetd::IPV4, INetd::CONF, "..", "conf/lo/arp_ignore", nullptr, EINVAL},
+            {INetd::IPV4, INetd::CONF, ".", "lo/arp_ignore", nullptr, EINVAL},
+            {INetd::IPV4, INetd::CONF, sTun.name().c_str(), "../all/arp_ignore", nullptr, EINVAL},
+            {INetd::IPV6, INetd::NEIGH, LOOPBACK, "ucast_solicit", "3", 0},
     };
 
-    for (unsigned int i = 0; i < arraysize(kTestData); i++) {
-        const auto &td = kTestData[i];
+    for (int i = 0; i < arraysize(kTestData); i++) {
+        const auto& td = kTestData[i];
 
-        const binder::Status status = mNetd->setProcSysNet(
-                    td.family, td.which, td.ifname, td.parameter,
-                    td.value);
+        std::string value;
+        const binder::Status status =
+                mNetd->getProcSysNet(td.ipversion, td.which, td.ifname, td.parameter, &value);
+
+        if (td.expectedReturnCode == 0) {
+            SCOPED_TRACE(String8::format("test case %d should have passed", i));
+            EXPECT_EQ(0, status.exceptionCode());
+            EXPECT_EQ(0, status.serviceSpecificErrorCode());
+            EXPECT_EQ(td.expectedValue, value);
+        } else {
+            SCOPED_TRACE(String8::format("test case %d should have failed", i));
+            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
+        }
+    }
+}
+
+TEST_F(BinderTest, SetProcSysNet) {
+    static const struct {
+        const int ipversion;
+        const int which;
+        const char* ifname;
+        const char* parameter;
+        const char* value;
+        const int expectedReturnCode;
+    } kTestData[] = {
+            {INetd::IPV4, INetd::CONF, sTun.name().c_str(), "arp_ignore", "1", 0},
+            {-1, INetd::CONF, sTun.name().c_str(), "arp_ignore", "1", EAFNOSUPPORT},
+            {INetd::IPV4, -1, sTun.name().c_str(), "arp_ignore", "1", EINVAL},
+            {INetd::IPV4, INetd::CONF, "..", "conf/lo/arp_ignore", "1", EINVAL},
+            {INetd::IPV4, INetd::CONF, ".", "lo/arp_ignore", "1", EINVAL},
+            {INetd::IPV4, INetd::CONF, sTun.name().c_str(), "../all/arp_ignore", "1", EINVAL},
+            {INetd::IPV6, INetd::NEIGH, sTun.name().c_str(), "ucast_solicit", "7", 0},
+    };
+
+    for (int i = 0; i < arraysize(kTestData); i++) {
+        const auto& td = kTestData[i];
+
+        const binder::Status status =
+                mNetd->setProcSysNet(td.ipversion, td.which, td.ifname, td.parameter, td.value);
 
         if (td.expectedReturnCode == 0) {
             SCOPED_TRACE(String8::format("test case %d should have passed", i));
@@ -874,6 +912,29 @@ TEST_F(BinderTest, SetProcSysNet) {
             EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
         }
     }
+}
+
+TEST_F(BinderTest, GetSetProcSysNet) {
+    const int ipversion = INetd::IPV6;
+    const int category = INetd::NEIGH;
+    const std::string& tun = sTun.name();
+    const std::string parameter("ucast_solicit");
+
+    std::string value{};
+    EXPECT_TRUE(mNetd->getProcSysNet(ipversion, category, tun, parameter, &value).isOk());
+    EXPECT_FALSE(value.empty());
+    const int ival = std::stoi(value);
+    EXPECT_GT(ival, 0);
+    // Try doubling the parameter value (always best!).
+    EXPECT_TRUE(mNetd->setProcSysNet(ipversion, category, tun, parameter, std::to_string(2 * ival))
+            .isOk());
+    EXPECT_TRUE(mNetd->getProcSysNet(ipversion, category, tun, parameter, &value).isOk());
+    EXPECT_EQ(2 * ival, std::stoi(value));
+    // Try resetting the parameter.
+    EXPECT_TRUE(mNetd->setProcSysNet(ipversion, category, tun, parameter, std::to_string(ival))
+            .isOk());
+    EXPECT_TRUE(mNetd->getProcSysNet(ipversion, category, tun, parameter, &value).isOk());
+    EXPECT_EQ(ival, std::stoi(value));
 }
 
 static std::string base64Encode(const std::vector<uint8_t>& input) {
