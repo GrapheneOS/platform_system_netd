@@ -138,15 +138,10 @@ static void map_v4v6_address(const char*, char*);
 static void map_v4v6_hostent(struct hostent*, char**, char*);
 static void addrsort(char**, int, res_state);
 
-void ht_sethostent(int);
-void ht_endhostent(void);
 struct hostent* ht_gethostbyname(char*);
 struct hostent* ht_gethostbyaddr(const char*, int, int);
-void dns_service(void);
-#undef dn_skipname
-int dn_skipname(const u_char*, const u_char*);
 static int _dns_gethtbyaddr(void*, void*, va_list);
-static int _dns_gethtbyname(void*, void*, va_list);
+static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info);
 
 static struct hostent* gethostbyname_internal(const char*, int, res_state, struct hostent*, char*,
                                               size_t, int*, const struct android_net_context*);
@@ -562,11 +557,6 @@ static struct hostent* gethostbyname_internal_real(const char* name, int af, res
     struct getnamaddr info;
     char hbuf[MAXHOSTNAMELEN];
     size_t size;
-    static const ns_dtab dtab[] = {
-        {NSSRC_FILES, _hf_gethtbyname,  NULL},
-        {NSSRC_DNS,   _dns_gethtbyname, NULL},
-        {0, 0, 0}
-    };
 
     _DIAGASSERT(name != NULL);
 
@@ -630,9 +620,11 @@ static struct hostent* gethostbyname_internal_real(const char* name, int af, res
     info.buf = buf;
     info.buflen = buflen;
     info.he = he;
-    if (nsdispatch(&info, dtab, NSDB_HOSTS, "gethostbyname", default_dns_files, name, strlen(name),
-                   af) != NS_SUCCESS)
-        return NULL;
+    if (!_hf_gethtbyname2(name, af, &info)) {
+        if (_dns_gethtbyname(name, af, &info) != NS_SUCCESS) {
+            return NULL;
+        }
+    }
     *he = NETDB_SUCCESS;
     return hp;
 nospc:
@@ -926,18 +918,12 @@ static void addrsort(char** ap, int num, res_state res) {
     }
 }
 
-static int _dns_gethtbyname(void* rv, void* /*cb_data*/, va_list ap) {
+static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
     int n, type;
     struct hostent* hp;
-    const char* name;
     res_state res;
-    struct getnamaddr* info = (struct getnamaddr*) rv;
 
-    _DIAGASSERT(rv != NULL);
-
-    name = va_arg(ap, char*);
-    /* NOSTRICT skip string len */ (void) va_arg(ap, int);
-    info->hp->h_addrtype = va_arg(ap, int);
+    info->hp->h_addrtype = addr_type;
 
     switch (info->hp->h_addrtype) {
         case AF_INET:
@@ -1155,17 +1141,4 @@ __LIBC_HIDDEN__ struct hostent* android_gethostbyaddrfornetcontext_proxy(
     struct res_static* rs = __res_get_static();  // For thread-safety.
     return android_gethostbyaddrfornetcontext_proxy_internal(
             addr, len, af, &rs->host, rs->hostbuf, sizeof(rs->hostbuf), &h_errno, netcontext);
-}
-
-struct hostent* gethostent(void) {
-    struct res_static* rs = __res_get_static();  // For thread-safety.
-    if (!rs->hostf) {
-        sethostent_r(&rs->hostf);
-        if (!rs->hostf) {
-            h_errno = NETDB_INTERNAL;
-            return NULL;
-        }
-    }
-    memset(&rs->host, 0, sizeof(rs->host));
-    return netbsd_gethostent_r(rs->hostf, &rs->host, rs->hostbuf, sizeof(rs->hostbuf), &h_errno);
 }
