@@ -56,7 +56,7 @@ typedef struct {
 } _res_thread;
 
 static _res_thread* _res_thread_alloc(void) {
-    _res_thread* rt = calloc(1, sizeof(*rt));
+    _res_thread* rt = (_res_thread*) calloc(1, sizeof(*rt));
 
     if (rt) {
         rt->_h_errno = 0;
@@ -65,7 +65,7 @@ static _res_thread* _res_thread_alloc(void) {
     return rt;
 }
 
-static void _res_static_done(res_static rs) {
+static void _res_static_done(struct res_static* rs) {
     /* fortunately, there is nothing to do here, since the
      * points in h_addr_ptrs and host_aliases should all
      * point to 'hostbuf'
@@ -78,7 +78,7 @@ static void _res_static_done(res_static rs) {
 }
 
 static void _res_thread_free(void* _rt) {
-    _res_thread* rt = _rt;
+    _res_thread* rt = (_res_thread*) _rt;
 
     D("%s: rt=%p for thread=%d", __FUNCTION__, rt, gettid());
 
@@ -94,9 +94,7 @@ __attribute__((constructor)) static void __res_key_init() {
 }
 
 static _res_thread* _res_thread_get(void) {
-    _res_thread* rt;
-    rt = pthread_getspecific(_res_key);
-
+    _res_thread* rt = (_res_thread*) pthread_getspecific(_res_key);
     if (rt != NULL) {
         return rt;
     }
@@ -161,7 +159,7 @@ void __res_put_state(res_state res __unused) {
     /* nothing to do */
 }
 
-res_static __res_get_static(void) {
+struct res_static* __res_get_static(void) {
     _res_thread* rt = _res_thread_get();
 
     return rt ? rt->_rstatic : NULL;

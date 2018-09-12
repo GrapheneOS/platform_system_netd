@@ -134,7 +134,7 @@ int res_ninit(res_state statp) {
 
 /* This function has to be reachable by res_data.c but not publicly. */
 int __res_vinit(res_state statp, int preinit) {
-    register char *cp, **pp;
+    char *cp, **pp;
     char buf[BUFSIZ];
     int nserv = 0; /* number of nameserver records read from file */
     int havesearch = 0;
@@ -165,7 +165,7 @@ int __res_vinit(res_state statp, int preinit) {
     statp->qhook = NULL;
     statp->rhook = NULL;
     statp->_u._ext.nscount = 0;
-    statp->_u._ext.ext = malloc(sizeof(*statp->_u._ext.ext));
+    statp->_u._ext.ext = (struct __res_state_ext*) malloc(sizeof(*statp->_u._ext.ext));
     if (statp->_u._ext.ext != NULL) {
         memset(statp->_u._ext.ext, 0, sizeof(*statp->_u._ext.ext));
         statp->_u._ext.ext->nsaddrs[0].sin = statp->nsaddr;
