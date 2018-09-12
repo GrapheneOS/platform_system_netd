@@ -554,6 +554,11 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         // Operators may choose to use a longer TTL in order to reduce repeated
         // resolution (see also https://tools.ietf.org/html/rfc7050#section-5).
         if (allIPv6Only(servers)) {
+            // TODO: Keep any existing discovered prefix around for use while
+            // re-discovery is in progress. Otherwise, whenever DNS servers are
+            // pushed to netd there can be gaps where it would appear there was
+            // no prefix64 when in fact we had previously discovered one (and
+            // are highly likely to rediscover the same one).
             mDns64Configuration.startPrefixDiscovery(netId);
         } else {
             mDns64Configuration.stopPrefixDiscovery(netId);

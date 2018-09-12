@@ -34,13 +34,13 @@ namespace internal_ {
 // related types such as IPSockAddr and IPPrefix.
 struct compact_ipdata {
     uint8_t family{AF_UNSPEC};
-    uint8_t cidrlen{0U};
-    in_port_t port{0U};
+    uint8_t cidrlen{0U};  // written and read in host-byte order
+    in_port_t port{0U};   // written and read in host-byte order
     uint32_t scope_id{0U};
     union {
         in_addr v4;
         in6_addr v6;
-    } ip{.v6 = IN6ADDR_ANY_INIT};
+    } ip{.v6 = IN6ADDR_ANY_INIT};  // written and read in network-byte order
 
     // Classes that use compact_ipdata and this method should be sure to clear
     // (i.e. zero or make uniform) any fields not relevant to the class.
@@ -50,22 +50,22 @@ struct compact_ipdata {
             return false;
         }
         switch (a.family) {
+            case AF_UNSPEC:
+                // After the above checks, two AF_UNSPEC objects can be
+                // considered equal, for convenience.
+                return true;
             case AF_INET: {
-                // Address of packed member may not have correct alignment.
                 const in_addr v4a = a.ip.v4;
                 const in_addr v4b = b.ip.v4;
-                if (v4a.s_addr != v4b.s_addr) return false;
-                break;
+                return (v4a.s_addr == v4b.s_addr);
             }
             case AF_INET6: {
-                // Address of packed member may not have correct alignment.
                 const in6_addr v6a = a.ip.v6;
                 const in6_addr v6b = b.ip.v6;
-                if (std::memcmp(v6a.s6_addr, v6b.s6_addr, IPV6_ADDR_LEN) != 0) return false;
-                break;
+                return IN6_ARE_ADDR_EQUAL(&v6a, &v6b);
             }
         }
-        return true;
+        return false;
     }
 
     // Classes that use compact_ipdata and this method should be sure to clear
@@ -78,17 +78,15 @@ struct compact_ipdata {
         if (a.family != b.family) return (a.family < b.family);
         switch (a.family) {
             case AF_INET: {
-                // Address of packed member may not have correct alignment.
                 const in_addr v4a = a.ip.v4;
                 const in_addr v4b = b.ip.v4;
                 if (v4a.s_addr != v4b.s_addr) return (ntohl(v4a.s_addr) < ntohl(v4b.s_addr));
                 break;
             }
             case AF_INET6: {
-                // Address of packed member may not have correct alignment.
                 const in6_addr v6a = a.ip.v6;
                 const in6_addr v6b = b.ip.v6;
-                const int cmp = memcmp(v6a.s6_addr, v6b.s6_addr, IPV6_ADDR_LEN);
+                const int cmp = std::memcmp(v6a.s6_addr, v6b.s6_addr, IPV6_ADDR_LEN);
                 if (cmp != 0) return cmp < 0;
                 break;
             }
@@ -106,7 +104,7 @@ static_assert(sizeof(compact_ipdata) == 24U, "compact_ipdata unexpectedly large"
 
 }  // namespace internal_
 
-inline bool isLinkLocal(const in6_addr& ipv6) {
+inline bool usesScopedIds(const in6_addr& ipv6) {
     return (IN6_IS_ADDR_LINKLOCAL(&ipv6) || IN6_IS_ADDR_MC_LINKLOCAL(&ipv6));
 }
 
@@ -135,10 +133,10 @@ class IPAddress {
                  IPV6_ADDR_BITS,
                  0U,
                  // Sanity check: scoped_ids only for link-local addresses.
-                 isLinkLocal(ipv6) ? scope_id : 0U,
+                 usesScopedIds(ipv6) ? scope_id : 0U,
                  {.v6 = ipv6}}) {}
     IPAddress(const IPAddress& ip, uint32_t scope_id) : IPAddress(ip) {
-        mData.scope_id = (family() == AF_INET6 && isLinkLocal(mData.ip.v6)) ? scope_id : 0U;
+        mData.scope_id = (family() == AF_INET6 && usesScopedIds(mData.ip.v6)) ? scope_id : 0U;
     }
 
     IPAddress& operator=(const IPAddress&) = default;
@@ -173,7 +171,7 @@ class IPAddress {
                 break;
             case AF_INET6:
                 mData.cidrlen = IPV6_ADDR_BITS;
-                if (isLinkLocal(ipdata.ip.v6)) mData.scope_id = ipdata.scope_id;
+                if (usesScopedIds(ipdata.ip.v6)) mData.scope_id = ipdata.scope_id;
                 break;
             default:
                 mData.cidrlen = 0U;
