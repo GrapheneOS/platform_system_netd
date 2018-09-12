@@ -14,15 +14,24 @@
  * limitations under the License.
  */
 
+constexpr bool kVerboseLogging = false;
+#define LOG_TAG "res_stats"
+
 #include <arpa/nameser.h>
 #include <stdbool.h>
 #include <string.h>
 
-#include <async_safe/log.h>
+#include <android-base/logging.h>
 
 #include "resolv_stats.h"
 
-#define DBG 0
+#define VLOG if (!kVerboseLogging) {} else LOG(INFO)
+
+#ifndef RESOLV_ALLOW_VERBOSE_LOGGING
+static_assert(kVerboseLogging == false,
+              "Verbose logging floods logs at high-rate and exposes privacy-sensitive information. "
+              "Do not enable in release builds.");
+#endif
 
 /* Calculate the round-trip-time from start time t0 and end time t1. */
 int _res_stats_calculate_rtt(const struct timespec* t1, const struct timespec* t0) {
@@ -34,9 +43,7 @@ int _res_stats_calculate_rtt(const struct timespec* t1, const struct timespec* t
 
 /* Create a sample for calculating server reachability statistics. */
 void _res_stats_set_sample(struct __res_sample* sample, time_t now, int rcode, int rtt) {
-    if (DBG) {
-        async_safe_format_log(ANDROID_LOG_INFO, "libc", "rcode = %d, sec = %d", rcode, rtt);
-    }
+    VLOG << __func__ << ": rcode = " << rcode << ", sec = " << rtt;
     sample->at = now;
     sample->rcode = rcode;
     sample->rtt = rtt;
@@ -120,35 +127,26 @@ bool _res_stats_usable_server(const struct __res_params* params, struct __res_st
                                     &rtt_avg, &last_sample_time);
     if (successes >= 0 && errors >= 0 && timeouts >= 0) {
         int total = successes + errors + timeouts;
-        if (DBG) {
-            async_safe_format_log(ANDROID_LOG_DEBUG, "libc",
-                                  "NS stats: S %d + E %d + T %d + I %d "
-                                  "= %d, rtt = %d, min_samples = %d\n",
-                                  successes, errors, timeouts, internal_errors, total, rtt_avg,
-                                  params->min_samples);
-        }
+        VLOG << "NS stats: S " << successes
+             << " + E " << errors
+             << " + T " << timeouts
+             << " + I " << internal_errors
+             << " = " << total
+             << ", rtt = " << rtt_avg
+             << ", min_samples = " << params->min_samples;
         if (total >= params->min_samples && (errors > 0 || timeouts > 0)) {
             int success_rate = successes * 100 / total;
-            if (DBG) {
-                async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "success rate %d%%\n",
-                                      success_rate);
-            }
+            VLOG << "success rate " << success_rate;
             if (success_rate < params->success_threshold) {
                 time_t now = time(NULL);
                 if (now - last_sample_time > params->sample_validity) {
                     // Note: It might be worth considering to expire old servers after their expiry
                     // date has been reached, however the code for returning the ring buffer to its
                     // previous non-circular state would induce additional complexity.
-                    if (DBG) {
-                        async_safe_format_log(ANDROID_LOG_INFO, "libc",
-                                              "samples stale, retrying server\n");
-                    }
+                    VLOG << "samples stale, retrying server";
                     _res_stats_clear_samples(stats);
                 } else {
-                    if (DBG) {
-                        async_safe_format_log(ANDROID_LOG_INFO, "libc",
-                                              "too many resolution errors, ignoring server\n");
-                    }
+                    VLOG << "too many resolution errors, ignoring server";
                     return 0;
                 }
             }
