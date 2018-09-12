@@ -288,21 +288,6 @@ int res_send(const u_char*, int, u_char*, int);
 int res_sendsigned(const u_char*, int, ns_tsig_key*, u_char*, int);
 __END_DECLS
 
-#if !defined(SHARED_LIBBIND) || defined(LIB)
-/*
- * If libbind is a shared object (well, DLL anyway)
- * these externs break the linker when resolv.h is
- * included by a lib client (like named)
- * Make them go away if a client is including this
- *
- */
-__LIBC_HIDDEN__ extern const struct res_sym __p_key_syms[];
-__LIBC_HIDDEN__ extern const struct res_sym __p_cert_syms[];
-extern const struct res_sym __p_class_syms[];
-extern const struct res_sym __p_type_syms[];
-__LIBC_HIDDEN__ extern const struct res_sym __p_rcode_syms[];
-#endif /* SHARED_LIBBIND */
-
 #define dn_count_labels __dn_count_labels
 #define dn_skipname __dn_skipname
 #define fp_resstat __fp_resstat
@@ -317,7 +302,6 @@ __LIBC_HIDDEN__ extern const struct res_sym __p_rcode_syms[];
 #define p_secstodate __p_secstodate
 #define p_section __p_section
 #define p_time __p_time
-#define p_type __p_type
 #define p_rcode __p_rcode
 #define p_sockun __p_sockun
 #define putlong __putlong
@@ -341,20 +325,13 @@ __LIBC_HIDDEN__ extern const struct res_sym __p_rcode_syms[];
 #define res_nisourserver __res_nisourserver
 #define res_ownok __res_ownok
 #define res_queriesmatch __res_queriesmatch
-#define sym_ntop __sym_ntop
-#define sym_ntos __sym_ntos
-#define sym_ston __sym_ston
 #define res_nopt __res_nopt
 #define res_ndestroy __res_ndestroy
-#define res_nametoclass __res_nametoclass
-#define res_nametotype __res_nametotype
 #define res_setservers __res_setservers
 #define res_getservers __res_getservers
 #define res_buildprotolist __res_buildprotolist
 #define res_destroyprotolist __res_destroyprotolist
 #define res_destroyservicelist __res_destroyservicelist
-#define res_get_nibblesuffix __res_get_nibblesuffix
-#define res_get_nibblesuffix2 __res_get_nibblesuffix2
 #define res_ourserver_p __res_ourserver_p
 #define res_protocolname __res_protocolname
 #define res_protocolnumber __res_protocolnumber
@@ -367,9 +344,6 @@ int res_hnok(const char*);
 int res_ownok(const char*);
 int res_mailok(const char*);
 int res_dnok(const char*);
-int sym_ston(const struct res_sym*, const char*, int*);
-const char* sym_ntos(const struct res_sym*, int, int*);
-const char* sym_ntop(const struct res_sym*, int, int*);
 int loc_aton(const char*, u_char*);
 const char* loc_ntoa(const u_char*, char*, size_t);
 int dn_skipname(const u_char*, const u_char*);
@@ -418,31 +392,14 @@ const char* res_servicename(uint16_t, const char*);
 const char* res_protocolname(int);
 void res_destroyprotolist(void);
 void res_buildprotolist(void);
-__LIBC_HIDDEN__ const char* res_get_nibblesuffix(res_state);
-__LIBC_HIDDEN__ const char* res_get_nibblesuffix2(res_state);
 __LIBC_HIDDEN__ void res_ndestroy(res_state);
-__LIBC_HIDDEN__ uint16_t res_nametoclass(const char*, int*);
-__LIBC_HIDDEN__ uint16_t res_nametotype(const char*, int*);
 __LIBC_HIDDEN__ void res_setservers(res_state, const union res_sockaddr_union*, int);
 __LIBC_HIDDEN__ int res_getservers(res_state, union res_sockaddr_union*, int);
 
 struct android_net_context; /* forward */
 __LIBC_HIDDEN__ void res_setnetcontext(res_state, const struct android_net_context*);
 
-// We use the OpenBSD __res_randomid...
-u_int __res_randomid(void);
-// ...but NetBSD calls it res_randomid.
-#define res_randomid __res_randomid
-
-#ifdef __i386__
-#define __socketcall extern __attribute__((__cdecl__))
-#else
-#define __socketcall extern
-#endif
-
-__socketcall int __connect(int, const struct sockaddr*, socklen_t);
-
-#undef __socketcall
+u_int res_randomid(void);
 
 // Symbols that are supposed to be in resolv.h, but that we aren't exporting.
 int ns_parserr2(ns_msg*, ns_sect, int, ns_rr2*);
