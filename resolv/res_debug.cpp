@@ -114,13 +114,8 @@
 #include <time.h>
 #include "resolv_private.h"
 
-// NetBSD uses _DIAGASSERT to null-check arguments and the like,
-// but it's clear from the number of mistakes in their assertions
-// that they don't actually test or ship with this.
-#define _DIAGASSERT(e) /* nothing */
 
 extern const char* const _res_opcodes[];
-extern const char* const _res_sectioncodes[];
 
 static void do_section(const res_state statp, ns_msg* handle, ns_sect section, int pflag,
                        FILE* file) {
@@ -353,21 +348,6 @@ static const struct res_sym __p_update_section_syms[] = {{S_ZONE, "ZONE", (char*
                                                          {S_ADDT, "ADDITIONAL", (char*) 0},
                                                          {0, (char*) 0, (char*) 0}};
 
-const struct res_sym __p_key_syms[] = {
-        {NS_ALG_MD5RSA, "RSA", "RSA KEY with MD5 hash"},
-        {NS_ALG_DH, "DH", "Diffie Hellman"},
-        {NS_ALG_DSA, "DSA", "Digital Signature Algorithm"},
-        {NS_ALG_EXPIRE_ONLY, "EXPIREONLY", "No algorithm"},
-        {NS_ALG_PRIVATE_OID, "PRIVATE", "Algorithm obtained from OID"},
-        {0, NULL, NULL}};
-
-const struct res_sym __p_cert_syms[] = {{cert_t_pkix, "PKIX", "PKIX (X.509v3) Certificate"},
-                                        {cert_t_spki, "SPKI", "SPKI certificate"},
-                                        {cert_t_pgp, "PGP", "PGP certificate"},
-                                        {cert_t_url, "URL", "URL Private"},
-                                        {cert_t_oid, "OID", "OID Private"},
-                                        {0, NULL, NULL}};
-
 /*
  * Names of RR types and qtypes.  Types and qtypes are the same, except
  * that T_ANY is a qtype but not a type.  (You can ask for records of type
@@ -464,18 +444,7 @@ const struct res_sym __p_rcode_syms[] = {{ns_r_noerror, "NOERROR", "no error"},
                                          {ns_r_badtime, "BADTIME", "bad time"},
                                          {0, NULL, NULL}};
 
-int sym_ston(const struct res_sym* syms, const char* name, int* success) {
-    for (; syms->name != 0; syms++) {
-        if (strcasecmp(name, syms->name) == 0) {
-            if (success) *success = 1;
-            return (syms->number);
-        }
-    }
-    if (success) *success = 0;
-    return (syms->number); /* The default value. */
-}
-
-const char* sym_ntos(const struct res_sym* syms, int number, int* success) {
+static const char* sym_ntos(const struct res_sym* syms, int number, int* success) {
     static char unname[20];
 
     for (; syms->name != 0; syms++) {
@@ -485,20 +454,6 @@ const char* sym_ntos(const struct res_sym* syms, int number, int* success) {
         }
     }
 
-    snprintf(unname, sizeof(unname), "%d", number); /* XXX nonreentrant */
-    if (success) *success = 0;
-    return (unname);
-}
-
-const char* sym_ntop(const struct res_sym* syms, int number, int* success) {
-    static char unname[20];
-
-    for (; syms->name != 0; syms++) {
-        if (number == syms->number) {
-            if (success) *success = 1;
-            return (syms->humanname);
-        }
-    }
     snprintf(unname, sizeof(unname), "%d", number); /* XXX nonreentrant */
     if (success) *success = 0;
     return (unname);
@@ -1020,7 +975,6 @@ int dn_count_labels(const char* name) {
     /* if terminating '.' not found, must adjust */
     /* count to include last label */
     if (len > 0 && name[len - 1] != '.') count++;
-    _DIAGASSERT(__type_fit(int, count));
     return (int) count;
 }
 
@@ -1045,38 +999,4 @@ char* p_secstodate(u_long secs) {
     snprintf(output, sizeof(output), "%04d%02d%02d%02d%02d%02d", mytime->tm_year, mytime->tm_mon,
              mytime->tm_mday, mytime->tm_hour, mytime->tm_min, mytime->tm_sec);
     return (output);
-}
-
-u_int16_t res_nametoclass(const char* buf, int* successp) {
-    unsigned long result;
-    char* endptr;
-    int success;
-
-    result = sym_ston(__p_class_syms, buf, &success);
-    if (success) goto done;
-
-    if (strncasecmp(buf, "CLASS", 5) != 0 || !isdigit((unsigned char) buf[5])) goto done;
-    errno = 0;
-    result = strtoul(buf + 5, &endptr, 10);
-    if (errno == 0 && *endptr == '\0' && result <= 0xffffU) success = 1;
-done:
-    if (successp) *successp = success;
-    return (u_int16_t)(result);
-}
-
-u_int16_t res_nametotype(const char* buf, int* successp) {
-    unsigned long result;
-    char* endptr;
-    int success;
-
-    result = sym_ston(__p_type_syms, buf, &success);
-    if (success) goto done;
-
-    if (strncasecmp(buf, "type", 4) != 0 || !isdigit((unsigned char) buf[4])) goto done;
-    errno = 0;
-    result = strtoul(buf + 4, &endptr, 10);
-    if (errno == 0 && *endptr == '\0' && result <= 0xffffU) success = 1;
-done:
-    if (successp) *successp = success;
-    return (u_int16_t)(result);
 }
