@@ -111,7 +111,7 @@ void TcpSocketMonitor::dump(DumpWriter& dw) {
     if (!mNetworkStats.empty()) {
         dw.blankline();
         dw.println("Network stats:");
-        for (const std::pair<uint32_t, TcpStats>& stats : mNetworkStats) {
+        for (const std::pair<const uint32_t, TcpStats>& stats : mNetworkStats) {
             if (stats.second.nSockets == 0) {
                 continue;
             }
@@ -127,7 +127,7 @@ void TcpSocketMonitor::dump(DumpWriter& dw) {
     if (!mSocketEntries.empty()) {
         dw.blankline();
         dw.println("Socket entries:");
-        for (const std::pair<uint64_t, SocketEntry>& stats : mSocketEntries) {
+        for (const std::pair<const uint64_t, SocketEntry>& stats : mSocketEntries) {
             dw.println("netId=%u uid=%u cookie=%" PRIu64, stats.second.mark.netId, stats.second.uid,
                        stats.first);
         }
