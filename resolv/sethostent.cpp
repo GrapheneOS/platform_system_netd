@@ -55,13 +55,13 @@
 static struct hostent* _hf_gethtbyname2(const char*, int, struct getnamaddr*);
 
 void
-sethostent(int stayopen) {
-    res_static rs = __res_get_static();
+sethostent(int /*stayopen*/) {
+    struct res_static* rs = __res_get_static();
     if (rs) sethostent_r(&rs->hostf);
 }
 
 void endhostent(void) {
-    res_static rs = __res_get_static();
+    struct res_static* rs = __res_get_static();
     if (rs) endhostent_r(&rs->hostf);
 }
 
@@ -79,11 +79,11 @@ void endhostent_r(FILE** hf) {
     }
 }
 
-int _hf_gethtbyname(void* rv, void* cb_data, va_list ap) {
+int _hf_gethtbyname(void* rv, void* /*cb_data*/, va_list ap) {
     struct hostent* hp;
     const char* name;
     int af;
-    struct getnamaddr* info = rv;
+    struct getnamaddr* info = (struct getnamaddr*) rv;
 
     _DIAGASSERT(rv != NULL);
 
@@ -120,7 +120,7 @@ struct hostent* _hf_gethtbyname2(const char* name, int af, struct getnamaddr* in
         return NULL;
     }
 
-    if ((ptr = buf = malloc(len = info->buflen)) == NULL) {
+    if ((ptr = buf = (char*) malloc(len = info->buflen)) == NULL) {
         *info->he = NETDB_INTERNAL;
         return NULL;
     }
@@ -158,7 +158,7 @@ struct hostent* _hf_gethtbyname2(const char* name, int af, struct getnamaddr* in
                 if (anum >= MAXALIASES) goto nospc;
                 HENT_SCOPY(aliases[anum], hp->h_aliases[anum], ptr, len);
             }
-            ptr = (void*) ALIGN(ptr);
+            ptr = (char*) ALIGN(ptr);
             if ((size_t)(ptr - buf) >= info->buflen) goto nospc;
         }
 
@@ -201,10 +201,10 @@ nospc:
     return NULL;
 }
 
-int _hf_gethtbyaddr(void* rv, void* cb_data, va_list ap) {
+int _hf_gethtbyaddr(void* rv, void* /*cb_data*/, va_list ap) {
     struct hostent* hp;
     const unsigned char* addr;
-    struct getnamaddr* info = rv;
+    struct getnamaddr* info = (struct getnamaddr*) rv;
     FILE* hf;
 
     _DIAGASSERT(rv != NULL);
