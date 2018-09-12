@@ -45,8 +45,8 @@ cc_test {
         "system/netd/server",
         "system/core/logwrapper/include",
         "system/netd/tests/dns_responder",
+        "system/netd/resolv",
         "system/core/libnetutils/include",
-        "bionic/libc/dns/include",
     ],
     shared_libs: [
         "libbase",

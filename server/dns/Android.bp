@@ -12,6 +12,7 @@ cc_library_static {
     ],
     shared_libs: [
         "libbase",
+        "libnetd_resolv",
         "libnetutils",
         "libssl",
     ],
@@ -19,7 +20,6 @@ cc_library_static {
         "libnetdutils",
     ],
     include_dirs: [
-        "bionic/libc/dns/include",
         "system/netd/include",
         // This is so that #include "dns/Foo.h" still works
         // TODO: Decide how to reorganize dns headers
