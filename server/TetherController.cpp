@@ -49,6 +49,9 @@
 #include "ResponseCode.h"
 #include "TetherController.h"
 
+namespace android {
+namespace net {
+
 using android::base::Join;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
@@ -111,9 +114,6 @@ bool inBpToolsMode() {
 }
 
 }  // namespace
-
-namespace android {
-namespace net {
 
 auto TetherController::iptablesRestoreFunction = execIptablesRestoreWithOutput;
 
