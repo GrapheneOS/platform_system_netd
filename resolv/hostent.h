@@ -35,14 +35,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-/*
- * These are not being advertised because the interfaces are non-standard.
- * There are versions by linux, aix, qnx, sun, etc. Our versions are used
- * internally to provide thread safety; they mostly resemble qnx.
- */
-void sethostent_r(FILE**);
 struct hostent* netbsd_gethostent_r(FILE*, struct hostent*, char*, size_t, int*);
-void endhostent_r(FILE**);
 
 /*
  * The following are internal API's and are used only for testing.
@@ -56,7 +49,7 @@ struct getnamaddr {
 
 /* /etc/hosts lookup */
 int _hf_gethtbyaddr(void*, void*, va_list);
-int _hf_gethtbyname(void*, void*, va_list);
+hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info);
 
 #define HENT_ARRAY(dst, anum, ptr, len) do {     \
         size_t _len = (anum + 1) * sizeof(*dst); \
