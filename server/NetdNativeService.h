@@ -43,6 +43,15 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     // Bandwidth control commands.
     binder::Status bandwidthEnableDataSaver(bool enable, bool *ret) override;
+    binder::Status bandwidthSetInterfaceQuota(const std::string& ifName, int64_t bytes) override;
+    binder::Status bandwidthRemoveInterfaceQuota(const std::string& ifName) override;
+    binder::Status bandwidthSetInterfaceAlert(const std::string& ifName, int64_t bytes) override;
+    binder::Status bandwidthRemoveInterfaceAlert(const std::string& ifName) override;
+    binder::Status bandwidthSetGlobalAlert(int64_t bytes) override;
+    binder::Status bandwidthAddNaughtyApp(int32_t uid) override;
+    binder::Status bandwidthRemoveNaughtyApp(int32_t uid) override;
+    binder::Status bandwidthAddNiceApp(int32_t uid) override;
+    binder::Status bandwidthRemoveNiceApp(int32_t uid) override;
 
     // Network and routing commands.
     binder::Status networkCreatePhysical(int32_t netId, const std::string& permission)

@@ -332,24 +332,44 @@ int BandwidthController::enableDataSaver(bool enable) {
     return ret;
 }
 
+// TODO: Remove after removing these commands in CommandListener
 int BandwidthController::addNaughtyApps(int numUids, const char* const appUids[]) {
     return manipulateSpecialApps(toStrVec(numUids, appUids), NAUGHTY_CHAIN,
                                  IptJumpReject, IptOpInsert);
 }
 
+// TODO: Remove after removing these commands in CommandListener
 int BandwidthController::removeNaughtyApps(int numUids, const char* const appUids[]) {
     return manipulateSpecialApps(toStrVec(numUids, appUids), NAUGHTY_CHAIN,
                                  IptJumpReject, IptOpDelete);
 }
 
+// TODO: Remove after removing these commands in CommandListener
 int BandwidthController::addNiceApps(int numUids, const char* const appUids[]) {
     return manipulateSpecialApps(toStrVec(numUids, appUids), NICE_CHAIN,
                                  IptJumpReturn, IptOpInsert);
 }
 
+// TODO: Remove after removing these commands in CommandListener
 int BandwidthController::removeNiceApps(int numUids, const char* const appUids[]) {
     return manipulateSpecialApps(toStrVec(numUids, appUids), NICE_CHAIN,
                                  IptJumpReturn, IptOpDelete);
+}
+
+int BandwidthController::addNaughtyApps(const std::vector<std::string>& appStrUid) {
+    return manipulateSpecialApps(appStrUid, NAUGHTY_CHAIN, IptJumpReject, IptOpInsert);
+}
+
+int BandwidthController::removeNaughtyApps(const std::vector<std::string>& appStrUid) {
+    return manipulateSpecialApps(appStrUid, NAUGHTY_CHAIN, IptJumpReject, IptOpDelete);
+}
+
+int BandwidthController::addNiceApps(const std::vector<std::string>& appStrUid) {
+    return manipulateSpecialApps(appStrUid, NICE_CHAIN, IptJumpReturn, IptOpInsert);
+}
+
+int BandwidthController::removeNiceApps(const std::vector<std::string>& appStrUid) {
+    return manipulateSpecialApps(appStrUid, NICE_CHAIN, IptJumpReturn, IptOpDelete);
 }
 
 int BandwidthController::manipulateSpecialApps(const std::vector<std::string>& appStrUids,
@@ -482,13 +502,11 @@ int BandwidthController::removeInterfaceSharedQuota(const std::string& iface) {
 int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t maxBytes) {
     const std::string& cost = iface;
 
-    if (!isIfaceName(iface))
-        return -1;
+    if (!isIfaceName(iface)) return -EINVAL;
 
     if (!maxBytes) {
-        /* Don't talk about -1, deprecate it. */
         ALOGE("Invalid bytes value. 1..max_int64.");
-        return -1;
+        return -ERANGE;
     }
     if (maxBytes == -1) {
         return removeInterfaceQuota(iface);
@@ -498,10 +516,10 @@ int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t max
     auto it = mQuotaIfaces.find(iface);
 
     if (it != mQuotaIfaces.end()) {
-        if (updateQuota(cost, maxBytes) != 0) {
+        if (int res = updateQuota(cost, maxBytes)) {
             ALOGE("Failed update quota for %s", iface.c_str());
             removeInterfaceQuota(iface);
-            return -1;
+            return res;
         }
         it->second.quota = maxBytes;
         return 0;
@@ -523,11 +541,10 @@ int BandwidthController::setInterfaceQuota(const std::string& iface, int64_t max
                      chain.c_str(), maxBytes, cost.c_str()),
         "COMMIT\n",
     };
-
     if (iptablesRestoreFunction(V4V6, Join(cmds, "\n"), nullptr) != 0) {
         ALOGE("Failed set quota rule");
         removeInterfaceQuota(iface);
-        return -1;
+        return -EREMOTEIO;
     }
 
     mQuotaIfaces[iface] = QuotaInfo{maxBytes, 0};
@@ -559,14 +576,13 @@ int BandwidthController::getInterfaceQuota(const std::string& iface, int64_t* by
 }
 
 int BandwidthController::removeInterfaceQuota(const std::string& iface) {
-    if (!isIfaceName(iface))
-        return -1;
+    if (!isIfaceName(iface)) return -EINVAL;
 
     auto it = mQuotaIfaces.find(iface);
 
     if (it == mQuotaIfaces.end()) {
         ALOGE("No such iface %s to delete", iface.c_str());
-        return -1;
+        return -ENODEV;
     }
 
     const std::string chain = "bw_costly_" + iface;
@@ -587,7 +603,7 @@ int BandwidthController::removeInterfaceQuota(const std::string& iface) {
         mQuotaIfaces.erase(it);
     }
 
-    return res;
+    return res ? -EREMOTEIO : 0;
 }
 
 int BandwidthController::updateQuota(const std::string& quotaName, int64_t bytes) {
@@ -596,13 +612,14 @@ int BandwidthController::updateQuota(const std::string& quotaName, int64_t bytes
 
     if (!isIfaceName(quotaName)) {
         ALOGE("updateQuota: Invalid quotaName \"%s\"", quotaName.c_str());
-        return -1;
+        return -EINVAL;
     }
 
     StatusOr<UniqueFile> file = sys.fopen(fname, "we");
     if (!isOk(file)) {
+        int res = errno;
         ALOGE("Updating quota %s failed (%s)", quotaName.c_str(), toString(file).c_str());
-        return -1;
+        return -res;
     }
     sys.fprintf(file.value().get(), "%" PRId64 "\n", bytes);
     return 0;
@@ -641,7 +658,7 @@ int BandwidthController::setGlobalAlert(int64_t bytes) {
 
     if (!bytes) {
         ALOGE("Invalid bytes value. 1..max_int64.");
-        return -1;
+        return -ERANGE;
     }
     if (mGlobalAlertBytes) {
         res = updateQuota(alertName, bytes);
@@ -650,6 +667,9 @@ int BandwidthController::setGlobalAlert(int64_t bytes) {
         if (mGlobalAlertTetherCount) {
             ALOGV("setGlobalAlert for %d tether", mGlobalAlertTetherCount);
             res |= runIptablesAlertFwdCmd(IptOpInsert, alertName, bytes);
+        }
+        if (res) {
+            res = -EREMOTEIO;
         }
     }
     mGlobalAlertBytes = bytes;
@@ -737,18 +757,18 @@ int BandwidthController::removeSharedAlert() {
 int BandwidthController::setInterfaceAlert(const std::string& iface, int64_t bytes) {
     if (!isIfaceName(iface)) {
         ALOGE("setInterfaceAlert: Invalid iface \"%s\"", iface.c_str());
-        return -1;
+        return -EINVAL;
     }
 
     if (!bytes) {
         ALOGE("Invalid bytes value. 1..max_int64.");
-        return -1;
+        return -ERANGE;
     }
     auto it = mQuotaIfaces.find(iface);
 
     if (it == mQuotaIfaces.end()) {
         ALOGE("Need to have a prior interface quota set to set an alert");
-        return -1;
+        return -ENOENT;
     }
 
     return setCostlyAlert(iface, bytes, &it->second.alert);
@@ -757,14 +777,14 @@ int BandwidthController::setInterfaceAlert(const std::string& iface, int64_t byt
 int BandwidthController::removeInterfaceAlert(const std::string& iface) {
     if (!isIfaceName(iface)) {
         ALOGE("removeInterfaceAlert: Invalid iface \"%s\"", iface.c_str());
-        return -1;
+        return -EINVAL;
     }
 
     auto it = mQuotaIfaces.find(iface);
 
     if (it == mQuotaIfaces.end()) {
         ALOGE("No prior alert set for interface %s", iface.c_str());
-        return -1;
+        return -ENOENT;
     }
 
     return removeCostlyAlert(iface, &it->second.alert);
@@ -776,12 +796,12 @@ int BandwidthController::setCostlyAlert(const std::string& costName, int64_t byt
 
     if (!isIfaceName(costName)) {
         ALOGE("setCostlyAlert: Invalid costName \"%s\"", costName.c_str());
-        return -1;
+        return -EINVAL;
     }
 
     if (!bytes) {
         ALOGE("Invalid bytes value. 1..max_int64.");
-        return -1;
+        return -ERANGE;
     }
 
     std::string alertName = costName + "Alert";
@@ -797,6 +817,7 @@ int BandwidthController::setCostlyAlert(const std::string& costName, int64_t byt
         res = iptablesRestoreFunction(V4V6, Join(commands, ""), nullptr);
         if (res) {
             ALOGE("Failed to set costly alert for %s", costName.c_str());
+            res = -EREMOTEIO;
         }
     }
     if (res == 0) {
@@ -808,12 +829,12 @@ int BandwidthController::setCostlyAlert(const std::string& costName, int64_t byt
 int BandwidthController::removeCostlyAlert(const std::string& costName, int64_t* alertBytes) {
     if (!isIfaceName(costName)) {
         ALOGE("removeCostlyAlert: Invalid costName \"%s\"", costName.c_str());
-        return -1;
+        return -EINVAL;
     }
 
     if (!*alertBytes) {
         ALOGE("No prior alert set for %s alert", costName.c_str());
-        return -1;
+        return -ENOENT;
     }
 
     std::string alertName = costName + "Alert";
@@ -825,7 +846,7 @@ int BandwidthController::removeCostlyAlert(const std::string& costName, int64_t*
     };
     if (iptablesRestoreFunction(V4V6, Join(commands, ""), nullptr) != 0) {
         ALOGE("Failed to remove costly alert %s", costName.c_str());
-        return -1;
+        return -EREMOTEIO;
     }
 
     *alertBytes = 0;

@@ -682,4 +682,87 @@ interface INetd {
     */
     void ipfwdRemoveInterfaceForward(in @utf8InCpp String fromIface, in @utf8InCpp String toIface);
 
+   /**
+    * Set quota for interface
+    *
+    * @param ifName Name of target interface
+    * @param bytes Quota value in bytes
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void bandwidthSetInterfaceQuota(in @utf8InCpp String ifName, long bytes);
+
+   /**
+    * Remove quota for interface
+    *
+    * @param ifName Name of target interface
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void bandwidthRemoveInterfaceQuota(in @utf8InCpp String ifName);
+
+   /**
+    * Set alert for interface
+    *
+    * @param ifName Name of target interface
+    * @param bytes Alert value in bytes
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void bandwidthSetInterfaceAlert(in @utf8InCpp String ifName, long bytes);
+
+   /**
+    * Remove alert for interface
+    *
+    * @param ifName Name of target interface
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void bandwidthRemoveInterfaceAlert(in @utf8InCpp String ifName);
+
+   /**
+    * Set global alert
+    *
+    * @param bytes Alert value in bytes
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void bandwidthSetGlobalAlert(long bytes);
+
+   /**
+    * Add naughty app bandwidth rule for specific app
+    *
+    * @param uid uid of target app
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void bandwidthAddNaughtyApp(int uid);
+
+   /**
+    * Remove naughty app bandwidth rule for specific app
+    *
+    * @param uid uid of target app
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void bandwidthRemoveNaughtyApp(int uid);
+
+   /**
+    * Add nice app bandwidth rule for specific app
+    *
+    * @param uid uid of target app
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void bandwidthAddNiceApp(int uid);
+
+   /**
+    * Remove nice app bandwidth rule for specific app
+    *
+    * @param uid uid of target app
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void bandwidthRemoveNiceApp(int uid);
+
 }
