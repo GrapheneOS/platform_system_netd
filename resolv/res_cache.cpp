@@ -131,25 +131,11 @@
  */
 #define CONFIG_MAX_ENTRIES 64 * 2 * 5
 
-/****************************************************************************/
-/****************************************************************************/
-/*****                                                                  *****/
-/*****                                                                  *****/
-/*****                                                                  *****/
-/****************************************************************************/
-/****************************************************************************/
-
 /* set to 1 to debug cache operations */
 #define DEBUG 0
 
 /* set to 1 to debug query data */
 #define DEBUG_DATA 0
-
-#if DEBUG
-#define __DEBUG__
-#else
-#define __DEBUG__ __attribute__((unused))
-#endif
 
 #undef XLOG
 
@@ -162,8 +148,7 @@
         }                                                                  \
     })
 
-/** BOUNDED BUFFER FORMATTING
- **/
+/** BOUNDED BUFFER FORMATTING **/
 
 /* technical note:
  *
@@ -207,7 +192,7 @@
  */
 
 /* add a char to a bounded buffer */
-char* _bprint_c(char* p, char* end, int c) {
+static char* _bprint_c(char* p, char* end, int c) {
     if (p < end) {
         if (p + 1 == end)
             *p++ = 0;
@@ -220,7 +205,7 @@ char* _bprint_c(char* p, char* end, int c) {
 }
 
 /* add a sequence of bytes to a bounded buffer */
-char* _bprint_b(char* p, char* end, const char* buf, int len) {
+static char* _bprint_b(char* p, char* end, const char* buf, int len) {
     int avail = end - p;
 
     if (avail <= 0 || len <= 0) return p;
@@ -239,13 +224,12 @@ char* _bprint_b(char* p, char* end, const char* buf, int len) {
 }
 
 /* add a string to a bounded buffer */
-char* _bprint_s(char* p, char* end, const char* str) {
+static char* _bprint_s(char* p, char* end, const char* str) {
     return _bprint_b(p, end, str, strlen(str));
 }
 
 /* add a formatted string to a bounded buffer */
-char* _bprint(char* p, char* end, const char* format, ...) __DEBUG__;
-char* _bprint(char* p, char* end, const char* format, ...) {
+[[maybe_unused]] static char* _bprint(char* p, char* end, const char* format, ...) {
     int avail, n;
     va_list args;
 
@@ -268,7 +252,7 @@ char* _bprint(char* p, char* end, const char* format, ...) {
 }
 
 /* add a hex value to a bounded buffer, up to 8 digits */
-char* _bprint_hex(char* p, char* end, unsigned value, int numDigits) {
+static char* _bprint_hex(char* p, char* end, unsigned value, int numDigits) {
     char text[sizeof(unsigned) * 2];
     int nn = 0;
 
@@ -279,7 +263,7 @@ char* _bprint_hex(char* p, char* end, unsigned value, int numDigits) {
 }
 
 /* add the hexadecimal dump of some memory area to a bounded buffer */
-char* _bprint_hexdump(char* p, char* end, const uint8_t* data, int datalen) {
+static char* _bprint_hexdump(char* p, char* end, const uint8_t* data, int datalen) {
     int lineSize = 16;
 
     while (datalen > 0) {
@@ -313,8 +297,7 @@ char* _bprint_hexdump(char* p, char* end, const uint8_t* data, int datalen) {
 }
 
 /* dump the content of a query of packet to the log */
-void XLOG_BYTES(const void* base, int len) __DEBUG__;
-void XLOG_BYTES(const void* base, int len) {
+[[maybe_unused]] static void XLOG_BYTES(const uint8_t* base, int len) {
     if (DEBUG_DATA) {
         char buff[1024];
         char *p = buff, *end = p + sizeof(buff);
@@ -323,7 +306,6 @@ void XLOG_BYTES(const void* base, int len) {
         XLOG("%s", buff);
     }
 }
-__DEBUG__
 
 static time_t _time_now(void) {
     struct timeval tv;
@@ -460,8 +442,7 @@ static int _dnsPacket_readInt16(DnsPacket* packet) {
     return (p[0] << 8) | p[1];
 }
 
-/** QUERY CHECKING
- **/
+/** QUERY CHECKING **/
 
 /* check bytes in a dns packet. returns 1 on success, 0 on failure.
  * the cursor is only advanced in the case of success
@@ -595,8 +576,7 @@ static int _dnsPacket_checkQuery(DnsPacket* packet) {
     return 1;
 }
 
-/** QUERY DEBUGGING
- **/
+/** QUERY DEBUGGING **/
 #if DEBUG
 static char* _dnsPacket_bprintQName(DnsPacket* packet, char* bp, char* bend) {
     const uint8_t* p = packet->cursor;
@@ -941,14 +921,6 @@ static int _dnsPacket_isEqualQuery(DnsPacket* pack1, DnsPacket* pack2) {
     return 1;
 }
 
-/****************************************************************************/
-/****************************************************************************/
-/*****                                                                  *****/
-/*****                                                                  *****/
-/*****                                                                  *****/
-/****************************************************************************/
-/****************************************************************************/
-
 /* cache entry. for simplicity, 'hash' and 'hlink' are inlined in this
  * structure though they are conceptually part of the hash table.
  *
@@ -968,7 +940,7 @@ typedef struct Entry {
     int id;         /* for debugging purpose */
 } Entry;
 
-/**
+/*
  * Find the TTL for a negative DNS result.  This is defined as the minimum
  * of the SOA records TTL and the MINIMUM-TTL field (RFC-2308).
  *
@@ -1015,7 +987,7 @@ static u_long answer_getNegativeTTL(ns_msg handle) {
     return result;
 }
 
-/**
+/*
  * Parse the answer records and find the appropriate
  * smallest TTL among the records.  This might be from
  * the answer records if found or from the SOA record
@@ -1034,7 +1006,7 @@ static u_long answer_getTTL(const void* answer, int answerlen) {
     ns_rr rr;
 
     result = 0;
-    if (ns_initparse(answer, answerlen, &handle) >= 0) {
+    if (ns_initparse((const uint8_t*) answer, answerlen, &handle) >= 0) {
         // get number of answer records
         ancount = ns_msg_count(handle, ns_s_an);
 
@@ -1100,11 +1072,11 @@ static int entry_init_key(Entry* e, const void* query, int querylen) {
 
     memset(e, 0, sizeof(*e));
 
-    e->query = query;
+    e->query = (const uint8_t*) query;
     e->querylen = querylen;
     e->hash = entry_hash(e);
 
-    _dnsPacket_init(pack, query, querylen);
+    _dnsPacket_init(pack, e->query, e->querylen);
 
     return _dnsPacket_checkQuery(pack);
 }
@@ -1115,7 +1087,7 @@ static Entry* entry_alloc(const Entry* init, const void* answer, int answerlen) 
     int size;
 
     size = sizeof(*e) + init->querylen + answerlen;
-    e = calloc(size, 1);
+    e = (Entry*) calloc(size, 1);
     if (e == NULL) return e;
 
     e->hash = init->hash;
@@ -1239,7 +1211,7 @@ static int _cache_check_pending_request_locked(struct resolv_cache** cache, Entr
         }
 
         if (!exist) {
-            ri = calloc(1, sizeof(struct pending_req_info));
+            ri = (struct pending_req_info*) calloc(1, sizeof(struct pending_req_info));
             if (ri) {
                 ri->hash = key->hash;
                 pthread_cond_init(&ri->cond, NULL);
@@ -1345,10 +1317,10 @@ static int _res_cache_get_max_entries(void) {
 static struct resolv_cache* _resolv_cache_create(void) {
     struct resolv_cache* cache;
 
-    cache = calloc(sizeof(*cache), 1);
+    cache = (struct resolv_cache*) calloc(sizeof(*cache), 1);
     if (cache) {
         cache->max_entries = _res_cache_get_max_entries();
-        cache->entries = calloc(sizeof(*cache->entries), cache->max_entries);
+        cache->entries = (Entry*) calloc(sizeof(*cache->entries), cache->max_entries);
         if (cache->entries) {
             cache->mru_list.mru_prev = cache->mru_list.mru_next = &cache->mru_list;
             XLOG("%s: cache created\n", __FUNCTION__);
@@ -1672,14 +1644,6 @@ Exit:
     pthread_mutex_unlock(&_res_cache_list_lock);
 }
 
-/****************************************************************************/
-/****************************************************************************/
-/*****                                                                  *****/
-/*****                                                                  *****/
-/*****                                                                  *****/
-/****************************************************************************/
-/****************************************************************************/
-
 // Head of the list of caches.  Protected by _res_cache_list_lock.
 static struct resolv_cache_info _res_cache_list;
 
@@ -1771,26 +1735,18 @@ void _resolv_delete_cache_for_net(unsigned netid) {
 }
 
 static struct resolv_cache_info* _create_cache_info(void) {
-    struct resolv_cache_info* cache_info;
-
-    cache_info = calloc(sizeof(*cache_info), 1);
-    return cache_info;
+    return (struct resolv_cache_info*) calloc(sizeof(struct resolv_cache_info), 1);
 }
 
 static void _insert_cache_info_locked(struct resolv_cache_info* cache_info) {
     struct resolv_cache_info* last;
-
-    for (last = &_res_cache_list; last->next; last = last->next)
-        ;
-
+    for (last = &_res_cache_list; last->next; last = last->next) {}
     last->next = cache_info;
 }
 
 static struct resolv_cache* _find_named_cache_locked(unsigned netid) {
     struct resolv_cache_info* info = _find_cache_info_locked(netid);
-
     if (info != NULL) return info->cache;
-
     return NULL;
 }
 
@@ -1818,7 +1774,7 @@ void _resolv_set_default_params(struct __res_params* params) {
 int _resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigned numservers,
                                     const char* domains, const struct __res_params* params) {
     char sbuf[NI_MAXSERV];
-    register char* cp;
+    char* cp;
     int* offset;
     struct addrinfo* nsaddrinfo[MAXNS];
 
@@ -2002,8 +1958,8 @@ void _resolv_populate_res_for_net(res_state statp) {
         // but the setting/offset-computer only runs when set/changed
         // WARNING: Don't use str*cpy() here, this string contains zeroes.
         memcpy(statp->defdname, info->defdname, sizeof(statp->defdname));
-        register char** pp = statp->dnsrch;
-        register int* p = info->dnsrch_offset;
+        char** pp = statp->dnsrch;
+        int* p = info->dnsrch_offset;
         while (pp < statp->dnsrch + MAXDNSRCH && *p != -1) {
             *pp++ = &statp->defdname[0] + *p++;
         }

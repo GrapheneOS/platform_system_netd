@@ -2,6 +2,7 @@
 #define _RESOLV_STATIC_H_
 
 #include <netdb.h>
+#include <stdio.h>
 
 /* this structure contains all the variables that were declared
  * 'static' in the original NetBSD resolver code.
@@ -15,7 +16,7 @@
 #define MAXALIASES 35
 #define MAXADDRS 35
 
-typedef struct res_static {
+struct res_static {
     char* h_addr_ptrs[MAXADDRS + 1];
     char* host_aliases[MAXALIASES];
     char hostbuf[8 * 1024];
@@ -25,8 +26,8 @@ typedef struct res_static {
     const char* servent_ptr;
     struct servent servent;
     struct hostent host;
-} * res_static;
+};
 
-extern res_static __res_get_static(void);
+extern struct res_static* __res_get_static(void);
 
 #endif // _RESOLV_STATIC_H_

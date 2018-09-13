@@ -174,7 +174,7 @@ bool Dns64Configuration::doRfc7050PrefixDiscovery(const android_net_context& net
     return true;
 }
 
-bool Dns64Configuration::mapContainsConfig(const Dns64Config& cfg) const REQUIRES(mMutex) {
+bool Dns64Configuration::isDiscoveryInProgress(const Dns64Config& cfg) const REQUIRES(mMutex) {
     const auto& iter = mDns64Configs.find(cfg.netId);
     if (iter == mDns64Configs.end()) return false;
 
@@ -184,12 +184,12 @@ bool Dns64Configuration::mapContainsConfig(const Dns64Config& cfg) const REQUIRE
 
 bool Dns64Configuration::shouldContinueDiscovery(const Dns64Config& cfg) {
     std::lock_guard guard(mMutex);
-    return mapContainsConfig(cfg);
+    return isDiscoveryInProgress(cfg);
 }
 
 void Dns64Configuration::recordDns64Config(const Dns64Config& cfg) {
     std::lock_guard guard(mMutex);
-    if (!mapContainsConfig(cfg)) return;
+    if (!isDiscoveryInProgress(cfg)) return;
 
     mDns64Configs.erase(cfg.netId);
     mDns64Configs.emplace(std::make_pair(cfg.netId, cfg));

@@ -37,6 +37,7 @@
 #include <netinet/in.h>
 #include <nsswitch.h>
 #include <resolv.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
@@ -52,57 +53,21 @@
 #define ALIGNBYTES (sizeof(uintptr_t) - 1)
 #define ALIGN(p) (((uintptr_t)(p) + ALIGNBYTES) & ~ALIGNBYTES)
 
-static struct hostent* _hf_gethtbyname2(const char*, int, struct getnamaddr*);
-
-void
-sethostent(int stayopen) {
-    res_static rs = __res_get_static();
-    if (rs) sethostent_r(&rs->hostf);
-}
-
-void endhostent(void) {
-    res_static rs = __res_get_static();
-    if (rs) endhostent_r(&rs->hostf);
-}
-
-void sethostent_r(FILE** hf) {
+static void sethostent_r(FILE** hf) {
     if (!*hf)
         *hf = fopen(_PATH_HOSTS, "re");
     else
         rewind(*hf);
 }
 
-void endhostent_r(FILE** hf) {
+static void endhostent_r(FILE** hf) {
     if (*hf) {
         (void) fclose(*hf);
         *hf = NULL;
     }
 }
 
-int _hf_gethtbyname(void* rv, void* cb_data, va_list ap) {
-    struct hostent* hp;
-    const char* name;
-    int af;
-    struct getnamaddr* info = rv;
-
-    _DIAGASSERT(rv != NULL);
-
-    name = va_arg(ap, char*);
-    /* NOSTRICT skip string len */ (void) va_arg(ap, int);
-    af = va_arg(ap, int);
-
-    hp = _hf_gethtbyname2(name, af, info);
-    if (hp == NULL) {
-        if (*info->he == NETDB_INTERNAL && errno == ENOSPC) {
-            return NS_UNAVAIL;  // glibc compatibility.
-        }
-        *info->he = HOST_NOT_FOUND;
-        return NS_NOTFOUND;
-    }
-    return NS_SUCCESS;
-}
-
-struct hostent* _hf_gethtbyname2(const char* name, int af, struct getnamaddr* info) {
+hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
     struct hostent *hp, hent;
     char *buf, *ptr;
     size_t len, anum, num, i;
@@ -120,7 +85,7 @@ struct hostent* _hf_gethtbyname2(const char* name, int af, struct getnamaddr* in
         return NULL;
     }
 
-    if ((ptr = buf = malloc(len = info->buflen)) == NULL) {
+    if ((ptr = buf = (char*) malloc(len = info->buflen)) == NULL) {
         *info->he = NETDB_INTERNAL;
         return NULL;
     }
@@ -150,7 +115,7 @@ struct hostent* _hf_gethtbyname2(const char* name, int af, struct getnamaddr* in
         }
 
         if (num == 0) {
-            hent.h_addrtype = af = hp->h_addrtype;
+            hent.h_addrtype = hp->h_addrtype;
             hent.h_length = hp->h_length;
 
             HENT_SCOPY(hent.h_name, hp->h_name, ptr, len);
@@ -158,7 +123,7 @@ struct hostent* _hf_gethtbyname2(const char* name, int af, struct getnamaddr* in
                 if (anum >= MAXALIASES) goto nospc;
                 HENT_SCOPY(aliases[anum], hp->h_aliases[anum], ptr, len);
             }
-            ptr = (void*) ALIGN(ptr);
+            ptr = (char*) ALIGN(ptr);
             if ((size_t)(ptr - buf) >= info->buflen) goto nospc;
         }
 
@@ -201,10 +166,10 @@ nospc:
     return NULL;
 }
 
-int _hf_gethtbyaddr(void* rv, void* cb_data, va_list ap) {
+int _hf_gethtbyaddr(void* rv, void* /*cb_data*/, va_list ap) {
     struct hostent* hp;
     const unsigned char* addr;
-    struct getnamaddr* info = rv;
+    struct getnamaddr* info = (struct getnamaddr*) rv;
     FILE* hf;
 
     _DIAGASSERT(rv != NULL);
