@@ -34,7 +34,7 @@
  */
 #include <netinet/in.h>
 #include <stdio.h>
-#include <sys/cdefs.h>
+
 #include "resolv_params.h"
 
 /*
@@ -111,10 +111,10 @@ extern void _resolv_delete_cache_for_net(unsigned netid) __used_in_netd;
 
 /* Internal use only. */
 struct hostent* android_gethostbyaddrfornetcontext_proxy(
-        const void*, socklen_t, int, const struct android_net_context*) __LIBC_HIDDEN__;
+        const void*, socklen_t, int, const struct android_net_context*);
 int android_getnameinfofornet(const struct sockaddr*, socklen_t, char*, size_t, char*, size_t, int,
-                              unsigned, unsigned) __LIBC_HIDDEN__;
-FILE* android_open_proxy(void) __LIBC_HIDDEN__;
+                              unsigned, unsigned);
+FILE* android_open_proxy(void);
 
 __END_DECLS
 

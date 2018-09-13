@@ -117,7 +117,6 @@ static _res_thread* _res_thread_get(void) {
     return rt;
 }
 
-__LIBC_HIDDEN__
 struct __res_state _nres;
 
 #if 0

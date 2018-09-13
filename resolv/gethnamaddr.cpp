@@ -515,7 +515,7 @@ int gethostbyname2_r(const char* name, int af, struct hostent* hp, char* buf, si
     return h_errno_to_result(errorp);
 }
 
-__LIBC_HIDDEN__ FILE* android_open_proxy() {
+FILE* android_open_proxy() {
     const char* cache_mode = getenv("ANDROID_DNS_MODE");
     bool use_proxy = (cache_mode == NULL || strcmp(cache_mode, "local") != 0);
     if (!use_proxy) {
@@ -1109,7 +1109,7 @@ struct hostent* android_gethostbyaddrfornetcontext(const void* addr, socklen_t l
     return android_gethostbyaddrfornetcontext_proxy(addr, len, af, netcontext);
 }
 
-__LIBC_HIDDEN__ struct hostent* android_gethostbyaddrfornetcontext_proxy(
+struct hostent* android_gethostbyaddrfornetcontext_proxy(
         const void* addr, socklen_t len, int af, const struct android_net_context* netcontext) {
     struct res_static* rs = __res_get_static();  // For thread-safety.
     return android_gethostbyaddrfornetcontext_proxy_internal(
