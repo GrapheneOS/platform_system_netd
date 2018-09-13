@@ -59,12 +59,13 @@ int TunInterface::init() {
         return -EINVAL;
     }
 
-    // Create a tun interface with a name based on our PID and some randomness.
-    // iptables will only accept interfaces whose name is up to IFNAMSIZ - 1 bytes long.
-    mIfName = StringPrintf("netd%u_%u", getpid(), arc4random());
-    if (mIfName.size() >= IFNAMSIZ) {
-        mIfName.resize(IFNAMSIZ - 1);
-    }
+    // Create a tun interface with a name based on a random number.
+    // In order to fit the size of interface alert name , resize ifname to 9
+    // Alert name format in netd: ("%sAlert", ifname)
+    // Limitation in kernel: char name[15] in struct xt_quota_mtinfo2
+    mIfName = StringPrintf("netd%x", arc4random());
+    mIfName.resize(9);
+
     struct ifreq ifr = {
         .ifr_ifru = { .ifru_flags = IFF_TUN },
     };
@@ -89,11 +90,15 @@ int TunInterface::init() {
 
     mIfIndex = if_nametoindex(ifr.ifr_name);
 
+    if (int ret = ifc_enable(ifr.ifr_name)) {
+        return ret;
+    }
     return 0;
 }
 
 void TunInterface::destroy() {
     if (mFd != -1) {
+        ifc_disable(mIfName.c_str());
         close(mFd);
         mFd = -1;
     }
