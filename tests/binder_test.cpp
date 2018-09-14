@@ -1371,7 +1371,8 @@ void expectXtQuotaValueEqual(const char* ifname, long quotaBytes) {
     std::string result = "";
 
     EXPECT_TRUE(ReadFileToString(path, &result));
-    EXPECT_EQ(std::to_string(quotaBytes), Trim(result));
+    // Quota value might be decreased while matching packets
+    EXPECT_GE(quotaBytes, std::stol(Trim(result)));
 }
 
 void expectBandwidthInterfaceQuotaRuleExists(const char* ifname, long quotaBytes) {
