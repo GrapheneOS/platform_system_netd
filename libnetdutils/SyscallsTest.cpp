@@ -188,11 +188,12 @@ TEST_F(SyscallsTest, recvfrom) {
 
     // Success
     EXPECT_CALL(mSyscalls, recvfrom(kFd, dst, kFlags, _, _))
-        .WillOnce(Invoke([expected, used](Fd, const Slice, int, sockaddr* src, socklen_t* srclen) {
-            memcpy(src, &expected, sizeof(src));
-            *srclen = sizeof(expected);
-            return used;
-        }));
+            .WillOnce(Invoke(
+                    [expected, used](Fd, const Slice, int, sockaddr* src, socklen_t* srclen) {
+                        *srclen = sizeof(expected);
+                        memcpy(src, &expected, *srclen);
+                        return used;
+                    }));
     auto result = sys.recvfrom<sockaddr_nl>(kFd, dst, kFlags);
     EXPECT_EQ(status::ok, result.status());
     EXPECT_EQ(used, result.value().first);
