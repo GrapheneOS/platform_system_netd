@@ -515,35 +515,6 @@ int gethostbyname2_r(const char* name, int af, struct hostent* hp, char* buf, si
     return h_errno_to_result(errorp);
 }
 
-FILE* android_open_proxy() {
-    const char* cache_mode = getenv("ANDROID_DNS_MODE");
-    bool use_proxy = (cache_mode == NULL || strcmp(cache_mode, "local") != 0);
-    if (!use_proxy) {
-        return NULL;
-    }
-
-    int s = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (s == -1) {
-        return NULL;
-    }
-
-    const int one = 1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
-
-    struct sockaddr_un proxy_addr;
-    memset(&proxy_addr, 0, sizeof(proxy_addr));
-    proxy_addr.sun_family = AF_UNIX;
-    strlcpy(proxy_addr.sun_path, "/dev/socket/dnsproxyd", sizeof(proxy_addr.sun_path));
-
-    if (TEMP_FAILURE_RETRY(connect(s, (const struct sockaddr*) &proxy_addr, sizeof(proxy_addr))) !=
-        0) {
-        close(s);
-        return NULL;
-    }
-
-    return fdopen(s, "r+");
-}
-
 static struct hostent* gethostbyname_internal_real(const char* name, int af, res_state res,
                                                    struct hostent* hp, char* buf, size_t buflen,
                                                    int* he) {
