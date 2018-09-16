@@ -34,6 +34,7 @@
 #include <linux/if_tun.h>
 #include <openssl/base64.h>
 
+#include <android-base/file.h>
 #include <android-base/macros.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
@@ -59,6 +60,7 @@
 #define TUN_DEV "/dev/tun"
 #define RAW_TABLE "raw"
 #define MANGLE_TABLE "mangle"
+#define FILTER_TABLE "filter"
 
 namespace binder = android::binder;
 namespace netdutils = android::netdutils;
@@ -69,8 +71,10 @@ using android::sp;
 using android::String16;
 using android::String8;
 using android::base::Join;
+using android::base::ReadFileToString;
 using android::base::StartsWith;
 using android::base::StringPrintf;
+using android::base::Trim;
 using android::bpf::hasBpfSupport;
 using android::net::INetd;
 using android::net::TunInterface;
@@ -1335,4 +1339,206 @@ TEST_F(BinderTest, TestIpfwdAddRemoveInterfaceForward) {
     status = mNetd->ipfwdRemoveInterfaceForward(testFromIf, testToIf);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectIpfwdRuleNotExists(testFromIf, testToIf);
+}
+
+namespace {
+
+constexpr char BANDWIDTH_INPUT[] = "bw_INPUT";
+constexpr char BANDWIDTH_OUTPUT[] = "bw_OUTPUT";
+constexpr char BANDWIDTH_FORWARD[] = "bw_FORWARD";
+constexpr char BANDWIDTH_NAUGHTY[] = "bw_penalty_box";
+constexpr char BANDWIDTH_NICE[] = "bw_happy_box";
+
+// TODO: move iptablesTargetsExists and listIptablesRuleByTable to the top.
+bool iptablesTargetsExists(const char* binary, int expectedCount, const char* table,
+                           const char* chainName, const std::string& expectedTargetA,
+                           const std::string& expectedTargetB) {
+    std::vector<std::string> rules = listIptablesRuleByTable(binary, table, chainName);
+    int matchCount = 0;
+
+    for (const auto& rule : rules) {
+        if (rule.find(expectedTargetA) != std::string::npos) {
+            if (rule.find(expectedTargetB) != std::string::npos) {
+                matchCount++;
+            }
+        }
+    }
+    return matchCount == expectedCount;
+}
+
+void expectXtQuotaValueEqual(const char* ifname, long quotaBytes) {
+    std::string path = StringPrintf("/proc/net/xt_quota/%s", ifname);
+    std::string result = "";
+
+    EXPECT_TRUE(ReadFileToString(path, &result));
+    // Quota value might be decreased while matching packets
+    EXPECT_GE(quotaBytes, std::stol(Trim(result)));
+}
+
+void expectBandwidthInterfaceQuotaRuleExists(const char* ifname, long quotaBytes) {
+    std::string BANDWIDTH_COSTLY_IF = StringPrintf("bw_costly_%s", ifname);
+    std::string quotaRule = StringPrintf("quota %s", ifname);
+
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesTargetsExists(binary, 1, FILTER_TABLE, BANDWIDTH_INPUT, ifname,
+                                          BANDWIDTH_COSTLY_IF));
+        EXPECT_TRUE(iptablesTargetsExists(binary, 1, FILTER_TABLE, BANDWIDTH_OUTPUT, ifname,
+                                          BANDWIDTH_COSTLY_IF));
+        EXPECT_TRUE(iptablesTargetsExists(binary, 2, FILTER_TABLE, BANDWIDTH_FORWARD, ifname,
+                                          BANDWIDTH_COSTLY_IF));
+        EXPECT_TRUE(iptablesRuleExists(binary, BANDWIDTH_COSTLY_IF.c_str(), BANDWIDTH_NAUGHTY));
+        EXPECT_TRUE(iptablesRuleExists(binary, BANDWIDTH_COSTLY_IF.c_str(), quotaRule));
+    }
+    expectXtQuotaValueEqual(ifname, quotaBytes);
+}
+
+void expectBandwidthInterfaceQuotaRuleDoesNotExist(const char* ifname) {
+    std::string BANDWIDTH_COSTLY_IF = StringPrintf("bw_costly_%s", ifname);
+    std::string quotaRule = StringPrintf("quota %s", ifname);
+
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_FALSE(iptablesTargetsExists(binary, 1, FILTER_TABLE, BANDWIDTH_INPUT, ifname,
+                                           BANDWIDTH_COSTLY_IF));
+        EXPECT_FALSE(iptablesTargetsExists(binary, 1, FILTER_TABLE, BANDWIDTH_OUTPUT, ifname,
+                                           BANDWIDTH_COSTLY_IF));
+        EXPECT_FALSE(iptablesTargetsExists(binary, 2, FILTER_TABLE, BANDWIDTH_FORWARD, ifname,
+                                           BANDWIDTH_COSTLY_IF));
+        EXPECT_FALSE(iptablesRuleExists(binary, BANDWIDTH_COSTLY_IF.c_str(), BANDWIDTH_NAUGHTY));
+        EXPECT_FALSE(iptablesRuleExists(binary, BANDWIDTH_COSTLY_IF.c_str(), quotaRule));
+    }
+}
+
+void expectBandwidthInterfaceAlertRuleExists(const char* ifname, long alertBytes) {
+    std::string BANDWIDTH_COSTLY_IF = StringPrintf("bw_costly_%s", ifname);
+    std::string alertRule = StringPrintf("quota %sAlert", ifname);
+    std::string alertName = StringPrintf("%sAlert", ifname);
+
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesRuleExists(binary, BANDWIDTH_COSTLY_IF.c_str(), alertRule));
+    }
+    expectXtQuotaValueEqual(alertName.c_str(), alertBytes);
+}
+
+void expectBandwidthInterfaceAlertRuleDoesNotExist(const char* ifname) {
+    std::string BANDWIDTH_COSTLY_IF = StringPrintf("bw_costly_%s", ifname);
+    std::string alertRule = StringPrintf("quota %sAlert", ifname);
+
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_FALSE(iptablesRuleExists(binary, BANDWIDTH_COSTLY_IF.c_str(), alertRule));
+    }
+}
+
+void expectBandwidthGlobalAlertRuleExists(long alertBytes) {
+    static const char globalAlertRule[] = "quota globalAlert";
+    static const char globalAlertName[] = "globalAlert";
+
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesRuleExists(binary, BANDWIDTH_INPUT, globalAlertRule));
+        EXPECT_TRUE(iptablesRuleExists(binary, BANDWIDTH_OUTPUT, globalAlertRule));
+    }
+    expectXtQuotaValueEqual(globalAlertName, alertBytes);
+}
+
+void expectBandwidthManipulateSpecialAppRuleExists(const char* chain, const char* target, int uid) {
+    std::string uidRule = StringPrintf("owner UID match %u", uid);
+
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesTargetsExists(binary, 1, FILTER_TABLE, chain, target, uidRule));
+    }
+}
+
+void expectBandwidthManipulateSpecialAppRuleDoesNotExist(const char* chain, int uid) {
+    std::string uidRule = StringPrintf("owner UID match %u", uid);
+
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_FALSE(iptablesRuleExists(binary, chain, uidRule));
+    }
+}
+
+}  // namespace
+
+TEST_F(BinderTest, BandwidthSetRemoveInterfaceQuota) {
+    long testQuotaBytes = 5550;
+
+    // Add test physical network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, "").isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    binder::Status status = mNetd->bandwidthSetInterfaceQuota(sTun.name(), testQuotaBytes);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthInterfaceQuotaRuleExists(sTun.name().c_str(), testQuotaBytes);
+
+    status = mNetd->bandwidthRemoveInterfaceQuota(sTun.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthInterfaceQuotaRuleDoesNotExist(sTun.name().c_str());
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
+TEST_F(BinderTest, BandwidthSetRemoveInterfaceAlert) {
+    long testAlertBytes = 373;
+
+    // Add test physical network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, "").isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    // Need to have a prior interface quota set to set an alert
+    binder::Status status = mNetd->bandwidthSetInterfaceQuota(sTun.name(), testAlertBytes);
+    status = mNetd->bandwidthSetInterfaceAlert(sTun.name(), testAlertBytes);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthInterfaceAlertRuleExists(sTun.name().c_str(), testAlertBytes);
+
+    status = mNetd->bandwidthRemoveInterfaceAlert(sTun.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthInterfaceAlertRuleDoesNotExist(sTun.name().c_str());
+
+    // Remove interface quota
+    status = mNetd->bandwidthRemoveInterfaceQuota(sTun.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthInterfaceQuotaRuleDoesNotExist(sTun.name().c_str());
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
+TEST_F(BinderTest, BandwidthSetGlobalAlert) {
+    long testAlertBytes = 2097149;
+
+    binder::Status status = mNetd->bandwidthSetGlobalAlert(testAlertBytes);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthGlobalAlertRuleExists(testAlertBytes);
+
+    testAlertBytes = 2097152;
+    status = mNetd->bandwidthSetGlobalAlert(testAlertBytes);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthGlobalAlertRuleExists(testAlertBytes);
+}
+
+TEST_F(BinderTest, BandwidthManipulateSpecialApp) {
+    SKIP_IF_BPF_SUPPORTED;
+
+    int32_t uid = randomUid();
+    static const char targetReject[] = "REJECT";
+    static const char targetReturn[] = "RETURN";
+
+    // add NaughtyApp
+    binder::Status status = mNetd->bandwidthAddNaughtyApp(uid);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthManipulateSpecialAppRuleExists(BANDWIDTH_NAUGHTY, targetReject, uid);
+
+    // remove NaughtyApp
+    status = mNetd->bandwidthRemoveNaughtyApp(uid);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthManipulateSpecialAppRuleDoesNotExist(BANDWIDTH_NAUGHTY, uid);
+
+    // add NiceApp
+    status = mNetd->bandwidthAddNiceApp(uid);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthManipulateSpecialAppRuleExists(BANDWIDTH_NICE, targetReturn, uid);
+
+    // remove NiceApp
+    status = mNetd->bandwidthRemoveNiceApp(uid);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectBandwidthManipulateSpecialAppRuleDoesNotExist(BANDWIDTH_NICE, uid);
 }

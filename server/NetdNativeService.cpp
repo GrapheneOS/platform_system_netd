@@ -208,6 +208,102 @@ binder::Status NetdNativeService::bandwidthEnableDataSaver(bool enable, bool *re
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::bandwidthSetInterfaceQuota(const std::string& ifName,
+                                                             int64_t bytes) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->bandwidthCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName).arg(bytes);
+
+    int res = gCtls->bandwidthCtrl.setInterfaceQuota(ifName, bytes);
+
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::bandwidthRemoveInterfaceQuota(const std::string& ifName) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->bandwidthCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
+
+    int res = gCtls->bandwidthCtrl.removeInterfaceQuota(ifName);
+
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::bandwidthSetInterfaceAlert(const std::string& ifName,
+                                                             int64_t bytes) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->bandwidthCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName).arg(bytes);
+
+    int res = gCtls->bandwidthCtrl.setInterfaceAlert(ifName, bytes);
+
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::bandwidthRemoveInterfaceAlert(const std::string& ifName) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->bandwidthCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
+
+    int res = gCtls->bandwidthCtrl.removeInterfaceAlert(ifName);
+
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::bandwidthSetGlobalAlert(int64_t bytes) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->bandwidthCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(bytes);
+
+    int res = gCtls->bandwidthCtrl.setGlobalAlert(bytes);
+
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::bandwidthAddNaughtyApp(int32_t uid) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->bandwidthCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(uid);
+
+    std::vector<std::string> appStrUids = {std::to_string(abs(uid))};
+    int res = gCtls->bandwidthCtrl.addNaughtyApps(appStrUids);
+
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::bandwidthRemoveNaughtyApp(int32_t uid) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->bandwidthCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(uid);
+
+    std::vector<std::string> appStrUids = {std::to_string(abs(uid))};
+    int res = gCtls->bandwidthCtrl.removeNaughtyApps(appStrUids);
+
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::bandwidthAddNiceApp(int32_t uid) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->bandwidthCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(uid);
+
+    std::vector<std::string> appStrUids = {std::to_string(abs(uid))};
+    int res = gCtls->bandwidthCtrl.addNiceApps(appStrUids);
+
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::bandwidthRemoveNiceApp(int32_t uid) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->bandwidthCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(uid);
+
+    std::vector<std::string> appStrUids = {std::to_string(abs(uid))};
+    int res = gCtls->bandwidthCtrl.removeNiceApps(appStrUids);
+
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
 binder::Status NetdNativeService::networkCreatePhysical(int32_t netId,
         const std::string& permission) {
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
