@@ -44,14 +44,6 @@
 #include <linux/xfrm.h>
 
 #define LOG_TAG "XfrmController"
-#include "InterfaceController.h"
-#include "NetdConstants.h"
-#include "NetlinkCommands.h"
-#include "ResponseCode.h"
-#include "XfrmController.h"
-#include "netdutils/Fd.h"
-#include "netdutils/Slice.h"
-#include "netdutils/Syscalls.h"
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
@@ -61,6 +53,16 @@
 #include <log/log.h>
 #include <log/log_properties.h>
 #include <logwrap/logwrap.h>
+#include "Fwmark.h"
+#include "InterfaceController.h"
+#include "NetdConstants.h"
+#include "NetlinkCommands.h"
+#include "Permission.h"
+#include "ResponseCode.h"
+#include "XfrmController.h"
+#include "netdutils/Fd.h"
+#include "netdutils/Slice.h"
+#include "netdutils/Syscalls.h"
 
 using android::net::INetd;
 using android::netdutils::Fd;
@@ -1213,14 +1215,27 @@ int XfrmController::fillNlAttrXfrmMark(const XfrmCommonInfo& record, nlattr_xfrm
     return len;
 }
 
-int XfrmController::fillNlAttrXfrmOutputMark(const __u32 output_mark_value,
+// This function sets the output mark (or set-mark in newer kernels) to that of the underlying
+// Network's netid. This allows outbound IPsec Tunnel mode packets to be correctly directed to a
+// preselected underlying Network. Packet as marked as protected from VPNs and have a network
+// explicitly selected to prevent interference or routing loops. Also set permission flag to
+// PERMISSION_SYSTEM to ensure we can use background/restricted networks.
+int XfrmController::fillNlAttrXfrmOutputMark(const __u32 underlyingNetId,
                                              nlattr_xfrm_output_mark* output_mark) {
     // Do not set if we were not given an output mark
-    if (output_mark_value == 0) {
+    if (underlyingNetId == 0) {
         return 0;
     }
 
-    output_mark->outputMark = output_mark_value;
+    Fwmark fwmark;
+    fwmark.netId = underlyingNetId;
+
+    // TODO: Rework this to more accurately follow the underlying network
+    fwmark.permission = PERMISSION_SYSTEM;
+    fwmark.explicitlySelected = true;
+    fwmark.protectedFromVpn = true;
+    output_mark->outputMark = fwmark.intValue;
+
     int len = NLA_HDRLEN + sizeof(__u32);
     fillXfrmNlaHdr(&output_mark->hdr, XFRMA_OUTPUT_MARK, len);
     return len;

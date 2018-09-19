@@ -43,8 +43,10 @@
 #include <android-base/unique_fd.h>
 #include <gtest/gtest.h>
 
+#include "Fwmark.h"
 #include "NetdConstants.h"
 #include "NetlinkCommands.h"
+#include "Permission.h"
 #include "Stopwatch.h"
 #include "XfrmController.h"
 #include "android/net/INetd.h"
@@ -101,7 +103,7 @@ namespace net {
 static constexpr int DROID_SPI = 0xD1201D;
 static constexpr size_t KEY_LENGTH = 32;
 static constexpr int NLMSG_DEFAULTSIZE = 8192;
-static constexpr uint32_t TEST_XFRM_OUTPUT_MARK = 0x512;
+static constexpr uint16_t TEST_XFRM_OUTPUT_MARK = 0x512;
 static constexpr uint32_t TEST_XFRM_MARK = 0x123;
 static constexpr uint32_t TEST_XFRM_MASK = 0xFFFFFFFF;
 
@@ -365,7 +367,12 @@ void testIpSecAddSecurityAssociation(int version, const MockSyscalls& mockSyscal
     EXPECT_EQ(TEST_XFRM_MARK, mark.mark.v);
     EXPECT_EQ(TEST_XFRM_MASK, mark.mark.m);
     if (underlying_netid) {
-        EXPECT_EQ(TEST_XFRM_OUTPUT_MARK, outputmark.outputMark);
+        Fwmark fwmark;
+        fwmark.intValue = outputmark.outputMark;
+        EXPECT_EQ(underlying_netid, fwmark.netId);
+        EXPECT_EQ(PERMISSION_SYSTEM, fwmark.permission);
+        EXPECT_TRUE(fwmark.explicitlySelected);
+        EXPECT_TRUE(fwmark.protectedFromVpn);
     }
 }
 
