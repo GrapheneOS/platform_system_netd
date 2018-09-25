@@ -142,7 +142,7 @@ class BpfMap {
     const std::string getPinnedPath() const { return mPinnedPath; };
 
     // Move constructor
-    void operator=(BpfMap<Key, Value>&& other) {
+    void operator=(BpfMap<Key, Value>&& other) noexcept {
         mMapFd = std::move(other.mMapFd);
         if (!other.mPinnedPath.empty()) {
             mPinnedPath = other.mPinnedPath;
