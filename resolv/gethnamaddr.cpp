@@ -89,7 +89,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "nsswitch.h"
 
 #include "hostent.h"
 
@@ -140,20 +139,15 @@ static void addrsort(char**, int, res_state);
 
 struct hostent* ht_gethostbyname(char*);
 struct hostent* ht_gethostbyaddr(const char*, int, int);
-static int _dns_gethtbyaddr(void*, void*, va_list);
-static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info);
+static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
+                             const android_net_context* netcontext, getnamaddr* info);
+static bool _dns_gethtbyname(const char* name, int af, getnamaddr* info);
 
 static struct hostent* gethostbyname_internal(const char*, int, res_state, struct hostent*, char*,
                                               size_t, int*, const struct android_net_context*);
 static struct hostent* android_gethostbyaddrfornetcontext_proxy_internal(
         const void*, socklen_t, int, struct hostent*, char*, size_t, int*,
         const struct android_net_context*);
-
-static const ns_src default_dns_files[] = {
-    {NSSRC_FILES, NS_SUCCESS},
-    {NSSRC_DNS, NS_SUCCESS},
-    {0, 0}
-};
 
 static int h_errno_to_result(int* herrno_p) {
     // glibc considers ERANGE a special case (and BSD uses ENOSPC instead).
@@ -621,7 +615,7 @@ static struct hostent* gethostbyname_internal_real(const char* name, int af, res
     info.buflen = buflen;
     info.he = he;
     if (!_hf_gethtbyname2(name, af, &info)) {
-        if (_dns_gethtbyname(name, af, &info) != NS_SUCCESS) {
+        if (!_dns_gethtbyname(name, af, &info)) {
             return NULL;
         }
     }
@@ -675,11 +669,6 @@ static struct hostent* android_gethostbyaddrfornetcontext_real(
     const u_char* uaddr = (const u_char*) addr;
     socklen_t size;
     struct getnamaddr info;
-    static const ns_dtab dtab[] = {
-        {NSSRC_FILES, _hf_gethtbyaddr,  NULL},
-        {NSSRC_DNS,   _dns_gethtbyaddr, NULL},
-        {0, 0, 0}
-    };
 
     _DIAGASSERT(addr != NULL);
 
@@ -720,9 +709,11 @@ static struct hostent* android_gethostbyaddrfornetcontext_real(
     info.buflen = buflen;
     info.he = he;
     *he = NETDB_INTERNAL;
-    if (nsdispatch(&info, dtab, NSDB_HOSTS, "gethostbyaddr", default_dns_files, uaddr, len, af,
-                   netcontext) != NS_SUCCESS)
-        return NULL;
+    if (!_hf_gethtbyaddr(uaddr, len, af, &info)) {
+        if (!_dns_gethtbyaddr(uaddr, len, af, netcontext, &info)) {
+            return NULL;
+        }
+    }
     *he = NETDB_SUCCESS;
     return hp;
 }
@@ -918,7 +909,7 @@ static void addrsort(char** ap, int num, res_state res) {
     }
 }
 
-static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
+static bool _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
     int n, type;
     struct hostent* hp;
     res_state res;
@@ -935,55 +926,44 @@ static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
             type = T_AAAA;
             break;
         default:
-            return NS_UNAVAIL;
+            return false;
     }
     querybuf* buf = (querybuf*) malloc(sizeof(querybuf));
     if (buf == NULL) {
         *info->he = NETDB_INTERNAL;
-        return NS_NOTFOUND;
+        return false;
     }
     res = __res_get_state();
     if (res == NULL) {
         free(buf);
-        return NS_NOTFOUND;
+        return false;
     }
     n = res_nsearch(res, name, C_IN, type, buf->buf, (int) sizeof(buf->buf));
     if (n < 0) {
         free(buf);
         debugprintf("res_nsearch failed (%d)\n", res, n);
         __res_put_state(res);
-        return NS_NOTFOUND;
+        return false;
     }
     hp = getanswer(buf, n, name, type, res, info->hp, info->buf, info->buflen, info->he);
     free(buf);
     __res_put_state(res);
-    if (hp == NULL) switch (*info->he) {
-            case HOST_NOT_FOUND:
-                return NS_NOTFOUND;
-            case TRY_AGAIN:
-                return NS_TRYAGAIN;
-            default:
-                return NS_UNAVAIL;
-        }
-    return NS_SUCCESS;
+    if (hp == NULL) {
+        return false;
+    }
+    return true;
 }
 
-static int _dns_gethtbyaddr(void* rv, void* /*cb_data*/, va_list ap) {
+static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
+                             const android_net_context* netcontext, getnamaddr* info) {
     char qbuf[MAXDNAME + 1], *qp, *ep;
     int n;
     struct hostent* hp;
-    const unsigned char* uaddr;
     int advance;
     res_state res;
-    struct getnamaddr* info = (struct getnamaddr*) rv;
-    const struct android_net_context* netcontext;
 
-    _DIAGASSERT(rv != NULL);
-
-    uaddr = va_arg(ap, unsigned char*);
-    info->hp->h_length = va_arg(ap, int);
-    info->hp->h_addrtype = va_arg(ap, int);
-    netcontext = va_arg(ap, const struct android_net_context*);
+    info->hp->h_length = len;
+    info->hp->h_addrtype = af;
 
     switch (info->hp->h_addrtype) {
         case AF_INET:
@@ -1001,27 +981,27 @@ static int _dns_gethtbyaddr(void* rv, void* /*cb_data*/, va_list ap) {
                     qp += advance;
                 else {
                     *info->he = NETDB_INTERNAL;
-                    return NS_NOTFOUND;
+                    return false;
                 }
             }
             if (strlcat(qbuf, "ip6.arpa", sizeof(qbuf)) >= sizeof(qbuf)) {
                 *info->he = NETDB_INTERNAL;
-                return NS_NOTFOUND;
+                return false;
             }
             break;
         default:
-            return NS_UNAVAIL;
+            return false;
     }
 
     querybuf* buf = (querybuf*) malloc(sizeof(querybuf));
     if (buf == NULL) {
         *info->he = NETDB_INTERNAL;
-        return NS_NOTFOUND;
+        return false;
     }
     res = __res_get_state();
     if (res == NULL) {
         free(buf);
-        return NS_NOTFOUND;
+        return false;
     }
     res_setnetcontext(res, netcontext);
     n = res_nquery(res, qbuf, C_IN, T_PTR, buf->buf, (int) sizeof(buf->buf));
@@ -1029,20 +1009,13 @@ static int _dns_gethtbyaddr(void* rv, void* /*cb_data*/, va_list ap) {
         free(buf);
         debugprintf("res_nquery failed (%d)\n", res, n);
         __res_put_state(res);
-        return NS_NOTFOUND;
+        return false;
     }
     hp = getanswer(buf, n, qbuf, T_PTR, res, info->hp, info->buf, info->buflen, info->he);
     free(buf);
     if (hp == NULL) {
         __res_put_state(res);
-        switch (*info->he) {
-            case HOST_NOT_FOUND:
-                return NS_NOTFOUND;
-            case TRY_AGAIN:
-                return NS_TRYAGAIN;
-            default:
-                return NS_UNAVAIL;
-        }
+        return false;
     }
 
     char* bf = (char*) (hp->h_addr_list + 2);
@@ -1060,12 +1033,12 @@ static int _dns_gethtbyaddr(void* rv, void* /*cb_data*/, va_list ap) {
 
     __res_put_state(res);
     *info->he = NETDB_SUCCESS;
-    return NS_SUCCESS;
+    return true;
 
 nospc:
     errno = ENOSPC;
     *info->he = NETDB_INTERNAL;
-    return NS_UNAVAIL;
+    return false;
 }
 
 /*

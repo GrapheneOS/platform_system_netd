@@ -35,7 +35,6 @@
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <nsswitch.h>
 #include <resolv.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,11 +43,6 @@
 
 #include "hostent.h"
 #include "resolv_private.h"
-
-// NetBSD uses _DIAGASSERT to null-check arguments and the like,
-// but it's clear from the number of mistakes in their assertions
-// that they don't actually test or ship with this.
-#define _DIAGASSERT(e) /* nothing */
 
 #define ALIGNBYTES (sizeof(uintptr_t) - 1)
 #define ALIGN(p) (((uintptr_t)(p) + ALIGNBYTES) & ~ALIGNBYTES)
@@ -70,14 +64,11 @@ static void endhostent_r(FILE** hf) {
 hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
     struct hostent *hp, hent;
     char *buf, *ptr;
-    size_t len, anum, num, i;
-    FILE* hf;
+    size_t len, num, i;
     char* aliases[MAXALIASES];
     char* addr_ptrs[MAXADDRS];
 
-    _DIAGASSERT(name != NULL);
-
-    hf = NULL;
+    FILE* hf = NULL;
     sethostent_r(&hf);
     if (hf == NULL) {
         errno = EINVAL;
@@ -90,12 +81,12 @@ hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
         return NULL;
     }
 
-    anum = 0;            /* XXX: gcc */
-    hent.h_name = NULL;  /* XXX: gcc */
-    hent.h_addrtype = 0; /* XXX: gcc */
-    hent.h_length = 0;   /* XXX: gcc */
+    hent.h_name = NULL;
+    hent.h_addrtype = 0;
+    hent.h_length = 0;
 
-    for (num = 0; num < MAXADDRS;) {
+    size_t anum = 0;
+    for (num = 0; num < MAXADDRS; /**/) {
         info->hp->h_addrtype = af;
         info->hp->h_length = 0;
 
@@ -111,6 +102,7 @@ hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
             char** cp;
             for (cp = hp->h_aliases; *cp != NULL; cp++)
                 if (strcasecmp(*cp, name) == 0) break;
+            // NOTE: does not increment num
             if (*cp == NULL) continue;
         }
 
@@ -129,6 +121,7 @@ hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
 
         if (num >= MAXADDRS) goto nospc;
         HENT_COPY(addr_ptrs[num], hp->h_addr_list[0], hp->h_length, ptr, len);
+
         num++;
     }
     endhostent_r(&hf);
@@ -154,7 +147,9 @@ hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
 
     HENT_SCOPY(hp->h_name, hent.h_name, ptr, len);
 
-    for (i = 0; i < anum; i++) HENT_SCOPY(hp->h_aliases[i], aliases[i], ptr, len);
+    for (i = 0; i < anum; i++) {
+        HENT_SCOPY(hp->h_aliases[i], aliases[i], ptr, len);
+    }
     hp->h_aliases[anum] = NULL;
 
     free(buf);
@@ -166,32 +161,25 @@ nospc:
     return NULL;
 }
 
-int _hf_gethtbyaddr(void* rv, void* /*cb_data*/, va_list ap) {
-    struct hostent* hp;
-    const unsigned char* addr;
-    struct getnamaddr* info = (struct getnamaddr*) rv;
-    FILE* hf;
+bool _hf_gethtbyaddr(const unsigned char* uaddr, int len, int af, getnamaddr* info) {
+    info->hp->h_length = len;
+    info->hp->h_addrtype = af;
 
-    _DIAGASSERT(rv != NULL);
-
-    addr = va_arg(ap, unsigned char*);
-    info->hp->h_length = va_arg(ap, int);
-    info->hp->h_addrtype = va_arg(ap, int);
-
-    hf = NULL;
+    FILE* hf = NULL;
     sethostent_r(&hf);
     if (hf == NULL) {
         *info->he = NETDB_INTERNAL;
-        return NS_UNAVAIL;
+        return false;
     }
+    struct hostent* hp;
     while ((hp = netbsd_gethostent_r(hf, info->hp, info->buf, info->buflen, info->he)) != NULL)
-        if (!memcmp(hp->h_addr_list[0], addr, (size_t) hp->h_length)) break;
+        if (!memcmp(hp->h_addr_list[0], uaddr, (size_t) hp->h_length)) break;
     endhostent_r(&hf);
 
     if (hp == NULL) {
-        if (errno == ENOSPC) return NS_UNAVAIL;  // glibc compatibility.
+        if (errno == ENOSPC) return false;  // glibc compatibility.
         *info->he = HOST_NOT_FOUND;
-        return NS_NOTFOUND;
+        return false;
     }
-    return NS_SUCCESS;
+    return true;
 }
