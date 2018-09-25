@@ -35,11 +35,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-struct hostent* netbsd_gethostent_r(FILE*, struct hostent*, char*, size_t, int*);
-
-/*
- * The following are internal API's and are used only for testing.
- */
 struct getnamaddr {
     struct hostent* hp;
     char* buf;
@@ -47,9 +42,10 @@ struct getnamaddr {
     int* he;
 };
 
-/* /etc/hosts lookup */
-int _hf_gethtbyaddr(void*, void*, va_list);
+// /etc/hosts lookup
+bool _hf_gethtbyaddr(const unsigned char* uaddr, int len, int af, getnamaddr* info);
 hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info);
+hostent* netbsd_gethostent_r(FILE*, struct hostent*, char*, size_t, int*);
 
 #define HENT_ARRAY(dst, anum, ptr, len) do {     \
         size_t _len = (anum + 1) * sizeof(*dst); \
