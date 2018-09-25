@@ -33,16 +33,16 @@ static_assert(kVerboseLogging == false,
               "Do not enable in release builds.");
 #endif
 
-/* Calculate the round-trip-time from start time t0 and end time t1. */
-int _res_stats_calculate_rtt(const struct timespec* t1, const struct timespec* t0) {
+// Calculate the round-trip-time from start time t0 and end time t1.
+int _res_stats_calculate_rtt(const timespec* t1, const timespec* t0) {
     // Divide ns by one million to get ms, multiply s by thousand to get ms (obvious)
     long ms0 = t0->tv_sec * 1000 + t0->tv_nsec / 1000000;
     long ms1 = t1->tv_sec * 1000 + t1->tv_nsec / 1000000;
     return (int) (ms1 - ms0);
 }
 
-/* Create a sample for calculating server reachability statistics. */
-void _res_stats_set_sample(struct __res_sample* sample, time_t now, int rcode, int rtt) {
+// Create a sample for calculating server reachability statistics.
+void _res_stats_set_sample(__res_sample* sample, time_t now, int rcode, int rtt) {
     VLOG << __func__ << ": rcode = " << rcode << ", sec = " << rtt;
     sample->at = now;
     sample->rcode = rcode;
@@ -116,7 +116,10 @@ void android_net_res_stats_aggregate(struct __res_stats* stats, int* successes, 
     *last_sample_time = last;
 }
 
-bool _res_stats_usable_server(const struct __res_params* params, struct __res_stats* stats) {
+// Returns true if the server is considered unusable, i.e. if the success rate is not lower than the
+// threshold for the stored stored samples. If not enough samples are stored, the server is
+// considered usable.
+static bool res_stats_usable_server(const struct __res_params* params, struct __res_stats* stats) {
     int successes = -1;
     int errors = -1;
     int timeouts = -1;
@@ -160,7 +163,7 @@ void android_net_res_stats_get_usable_servers(const struct __res_params* params,
                                               bool usable_servers[]) {
     unsigned usable_servers_found = 0;
     for (int ns = 0; ns < nscount; ns++) {
-        bool usable = _res_stats_usable_server(params, &stats[ns]);
+        bool usable = res_stats_usable_server(params, &stats[ns]);
         if (usable) {
             ++usable_servers_found;
         }
