@@ -105,7 +105,6 @@
 #include <stdarg.h>
 #include <syslog.h>
 
-#include "nsswitch.h"
 
 typedef union sockaddr_union {
     struct sockaddr generic;
@@ -161,13 +160,6 @@ static const struct explore explore[] = {
 };
 
 #define PTON_MAX 16
-
-static const ns_src default_dns_files[] = {
-    {NSSRC_FILES, NS_SUCCESS},
-    {NSSRC_DNS, NS_SUCCESS},
-    {0, 0}
-};
-
 #define MAXPACKET (8 * 1024)
 
 typedef union {
@@ -200,11 +192,12 @@ static const struct afd* find_afd(int);
 static int ip6_str2scopeid(const char*, struct sockaddr_in6*, u_int32_t*);
 
 static struct addrinfo* getanswer(const querybuf*, int, const char*, int, const struct addrinfo*);
-static int _dns_getaddrinfo(void*, void*, va_list);
+static int dns_getaddrinfo(const char* name, const addrinfo* pai,
+                           const android_net_context* netcontext, addrinfo** rv);
 static void _sethtent(FILE**);
 static void _endhtent(FILE**);
 static struct addrinfo* _gethtent(FILE**, const char*, const struct addrinfo*);
-static int _files_getaddrinfo(void*, void*, va_list);
+static bool files_getaddrinfo(const char* name, const addrinfo* pai, addrinfo** res);
 static int _find_src_addr(const struct sockaddr*, struct sockaddr*, unsigned, uid_t);
 
 static int res_queryN(const char*, struct res_target*, res_state);
@@ -261,7 +254,6 @@ static const char* const ai_errlist[] = {
         /* external reference: error, and label bad */ \
         error = (err);                                 \
         goto bad;                                      \
-        /*NOTREACHED*/                                 \
     } while (0)
 
 #define MATCH_FAMILY(x, y, w) \
@@ -523,13 +515,7 @@ bad:
 static int explore_fqdn(const struct addrinfo* pai, const char* hostname, const char* servname,
                         struct addrinfo** res, const struct android_net_context* netcontext) {
     struct addrinfo* result;
-    struct addrinfo* cur;
     int error = 0;
-    static const ns_dtab dtab[] = {
-        {NSSRC_FILES, _files_getaddrinfo, NULL},
-        {NSSRC_DNS, _dns_getaddrinfo, NULL},
-        {0, 0, 0}
-    };
 
     assert(pai != NULL);
     /* hostname may be NULL */
@@ -538,34 +524,21 @@ static int explore_fqdn(const struct addrinfo* pai, const char* hostname, const 
 
     result = NULL;
 
-    /*
-     * if the servname does not match socktype/protocol, ignore it.
-     */
+    // If the servname does not match socktype/protocol, ignore it.
     if (get_portmatch(pai, servname) != 0) return 0;
 
-    switch (nsdispatch(&result, dtab, NSDB_HOSTS, "getaddrinfo", default_dns_files, hostname, pai,
-                       netcontext)) {
-        case NS_TRYAGAIN:
-            error = EAI_AGAIN;
-            goto free;
-        case NS_UNAVAIL:
-            error = EAI_FAIL;
-            goto free;
-        case NS_NOTFOUND:
-            error = EAI_NODATA;
-            goto free;
-        case NS_SUCCESS:
-            error = 0;
-            for (cur = result; cur; cur = cur->ai_next) {
-                GET_PORT(cur, servname);
-                /* canonname should be filled already */
-            }
-            break;
+    if (!files_getaddrinfo(hostname, pai, &result)) {
+        error = dns_getaddrinfo(hostname, pai, netcontext, &result);
     }
-
-    *res = result;
-
-    return 0;
+    if (!error) {
+        struct addrinfo* cur;
+        for (cur = result; cur; cur = cur->ai_next) {
+            GET_PORT(cur, servname);
+            /* canonname should be filled already */
+        }
+        *res = result;
+        return 0;
+    }
 
 free:
     if (result) freeaddrinfo(result);
@@ -1512,19 +1485,12 @@ error:
     free(elems);
 }
 
-static int _dns_getaddrinfo(void* rv, void* /*cb_data*/, va_list ap) {
+static int dns_getaddrinfo(const char* name, const addrinfo* pai,
+                           const android_net_context* netcontext, addrinfo** rv) {
     struct addrinfo* ai;
-    const char* name;
-    const struct addrinfo* pai;
     struct addrinfo sentinel, *cur;
     struct res_target q, q2;
     res_state res;
-    const struct android_net_context* netcontext;
-
-    name = va_arg(ap, char*);
-    pai = va_arg(ap, const struct addrinfo*);
-    netcontext = va_arg(ap, const struct android_net_context*);
-    // fprintf(stderr, "_dns_getaddrinfo() name = '%s'\n", name);
 
     memset(&q, 0, sizeof(q));
     memset(&q2, 0, sizeof(q2));
@@ -1534,13 +1500,13 @@ static int _dns_getaddrinfo(void* rv, void* /*cb_data*/, va_list ap) {
     querybuf* buf = (querybuf*) malloc(sizeof(*buf));
     if (buf == NULL) {
         h_errno = NETDB_INTERNAL;
-        return NS_NOTFOUND;
+        return EAI_MEMORY;
     }
     querybuf* buf2 = (querybuf*) malloc(sizeof(*buf2));
     if (buf2 == NULL) {
         free(buf);
         h_errno = NETDB_INTERNAL;
-        return NS_NOTFOUND;
+        return EAI_MEMORY;
     }
 
     switch (pai->ai_family) {
@@ -1570,7 +1536,7 @@ static int _dns_getaddrinfo(void* rv, void* /*cb_data*/, va_list ap) {
             } else {
                 free(buf);
                 free(buf2);
-                return NS_NOTFOUND;
+                return EAI_NODATA;
             }
             break;
         }
@@ -1591,14 +1557,14 @@ static int _dns_getaddrinfo(void* rv, void* /*cb_data*/, va_list ap) {
         default:
             free(buf);
             free(buf2);
-            return NS_UNAVAIL;
+            return EAI_FAMILY;
     }
 
     res = __res_get_state();
     if (res == NULL) {
         free(buf);
         free(buf2);
-        return NS_NOTFOUND;
+        return EAI_MEMORY;
     }
 
     /* this just sets our netid val in the thread private data so we don't have to
@@ -1611,7 +1577,7 @@ static int _dns_getaddrinfo(void* rv, void* /*cb_data*/, va_list ap) {
         __res_put_state(res);
         free(buf);
         free(buf2);
-        return NS_NOTFOUND;
+        return EAI_NODATA;  // TODO: Decode error from h_errno like we do below
     }
     ai = getanswer(buf, q.n, q.name, q.qtype, pai);
     if (ai) {
@@ -1628,11 +1594,11 @@ static int _dns_getaddrinfo(void* rv, void* /*cb_data*/, va_list ap) {
         __res_put_state(res);
         switch (h_errno) {
             case HOST_NOT_FOUND:
-                return NS_NOTFOUND;
+                return EAI_NODATA;
             case TRY_AGAIN:
-                return NS_TRYAGAIN;
+                return EAI_AGAIN;
             default:
-                return NS_UNAVAIL;
+                return EAI_FAIL;
         }
     }
 
@@ -1640,8 +1606,8 @@ static int _dns_getaddrinfo(void* rv, void* /*cb_data*/, va_list ap) {
 
     __res_put_state(res);
 
-    *((struct addrinfo**) rv) = sentinel.ai_next;
-    return NS_SUCCESS;
+    *rv = sentinel.ai_next;
+    return 0;
 }
 
 static void _sethtent(FILE** hostf) {
@@ -1666,7 +1632,6 @@ static struct addrinfo* _gethtent(FILE** hostf, const char* name, const struct a
     const char* addr;
     char hostbuf[8 * 1024];
 
-    //	fprintf(stderr, "_gethtent() name = '%s'\n", name);
     assert(name != NULL);
     assert(pai != NULL);
 
@@ -1713,17 +1678,11 @@ found:
     return res0;
 }
 
-static int _files_getaddrinfo(void* rv, void* /*cb_data*/, va_list ap) {
-    const char* name;
-    const struct addrinfo* pai;
+static bool files_getaddrinfo(const char* name, const addrinfo* pai, addrinfo** res) {
     struct addrinfo sentinel, *cur;
     struct addrinfo* p;
     FILE* hostf = NULL;
 
-    name = va_arg(ap, char*);
-    pai = va_arg(ap, struct addrinfo*);
-
-    //	fprintf(stderr, "_files_getaddrinfo() name = '%s'\n", name);
     memset(&sentinel, 0, sizeof(sentinel));
     cur = &sentinel;
 
@@ -1734,9 +1693,8 @@ static int _files_getaddrinfo(void* rv, void* /*cb_data*/, va_list ap) {
     }
     _endhtent(&hostf);
 
-    *((struct addrinfo**) rv) = sentinel.ai_next;
-    if (sentinel.ai_next == NULL) return NS_NOTFOUND;
-    return NS_SUCCESS;
+    *res = sentinel.ai_next;
+    return sentinel.ai_next != NULL;
 }
 
 /* resolver logic */
