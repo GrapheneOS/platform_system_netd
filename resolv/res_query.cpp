@@ -197,7 +197,6 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
 {
     const char *cp, *const *domain;
     HEADER* hp = (HEADER*) (void*) answer;
-    char tmp[NS_MAXDNAME];
     u_int dots;
     int trailing_dot, ret, saved_herrno;
     int got_nodata = 0, got_servfail = 0, root_on_list = 0;
@@ -211,10 +210,6 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
     for (cp = name; *cp != '\0'; cp++) dots += (*cp == '.');
     trailing_dot = 0;
     if (cp > name && *--cp == '.') trailing_dot++;
-
-    /* If there aren't any dots, it could be a user-level alias. */
-    if (!dots && (cp = res_hostalias(statp, name, tmp, sizeof tmp)) != NULL)
-        return res_nquery(statp, cp, cl, type, answer, anslen);
 
     /*
      * If there are enough dots in the name, let's just give it a
@@ -371,9 +366,4 @@ int res_nquerydomain(res_state statp, const char* name, const char* domain,
         snprintf(nbuf, sizeof(nbuf), "%s.%s", name, domain);
     }
     return res_nquery(statp, longname, cl, type, answer, anslen);
-}
-
-const char* res_hostalias(const res_state /*statp*/, const char* /*name*/, char* /*dst*/,
-                          size_t /*siz*/) {
-    return NULL;
 }
