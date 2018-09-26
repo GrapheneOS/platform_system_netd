@@ -23,12 +23,10 @@
 #include <netdutils/Status.h>
 #include <netdutils/StatusOr.h>
 
-// TODO: move InterfaceController into android::net namespace.
 namespace android {
 namespace net {
+
 class StablePrivacyTest;
-}  // namespace net
-}  // namespace android
 
 class InterfaceController {
 public:
@@ -82,5 +80,8 @@ private:
   InterfaceController() = delete;
   ~InterfaceController() = delete;
 };
+
+}  // namespace net
+}  // namespace android
 
 #endif

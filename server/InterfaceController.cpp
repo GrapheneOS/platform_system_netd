@@ -192,6 +192,9 @@ Status setProperty(const std::string& key, const std::string& val) {
 
 }  // namespace
 
+namespace android {
+namespace net {
+
 android::netdutils::Status InterfaceController::enableStablePrivacyAddresses(
         const std::string& iface,
         const GetPropertyFn& getProperty,
@@ -439,3 +442,6 @@ StatusOr<std::map<std::string, uint32_t>> InterfaceController::getIfaceList() {
     }
     return ifacePairs;
 }
+
+}  // namespace net
+}  // namespace android
