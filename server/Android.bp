@@ -24,12 +24,22 @@ filegroup {
     ],
 }
 
+aidl_interface {
+    name: "netd_aidl_interface",
+    local_include_dir: "binder",
+    srcs: [
+        "binder/android/net/TetherStatsParcel.aidl",
+    ],
+    api_dir: "binder/api",
+}
+
 cc_library {
     name: "libnetdaidl",
     defaults: ["netd_defaults"],
     shared_libs: [
         "libbinder",
         "libutils",
+        "netd_aidl_interface-cpp",
     ],
     aidl: {
         export_aidl_headers: true,
@@ -86,6 +96,7 @@ cc_library_static {
         "libpcap",
         "libqtaguid",
         "libssl",
+        "netd_aidl_interface-cpp",
     ],
     aidl: {
         export_aidl_headers: true,
@@ -125,6 +136,7 @@ cc_binary {
         "libssl",
         "libsysutils",
         "libutils",
+        "netd_aidl_interface-cpp",
     ],
     static_libs: [
         "libnetd_server",
@@ -209,5 +221,6 @@ cc_test {
         "libqtaguid",
         "libsysutils",
         "libutils",
+        "netd_aidl_interface-cpp",
     ],
 }
