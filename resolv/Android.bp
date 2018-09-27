@@ -19,7 +19,6 @@ cc_library_shared {
     // TODO: stop depending on internal bionic headers
     include_dirs: [
         "bionic/libc/async_safe/include",  // For async_safe/log.h
-        "bionic/libc/dns/include",  // For nsswitch.h
     ],
     export_include_dirs: ["."],  // Export resolv_netid.h
     // TODO: pie in the sky: make this code clang-tidy clean
