@@ -38,7 +38,7 @@
 // TODO: make this dynamic and stop depending on implementation details.
 #define TEST_NETID 30
 
-#include "resolv_netid.h"
+#include "resolv_netid.h"  // NETID_UNSET
 #include "NetdClient.h"
 
 #include <gtest/gtest.h>

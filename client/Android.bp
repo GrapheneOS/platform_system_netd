@@ -24,7 +24,7 @@ cc_library {
     export_header_lib_headers: ["libnetd_client_headers"],
 
     include_dirs: [
-        "bionic/libc/dns/include",
+        "system/netd/resolv",
         "system/netd/include",
     ],
 
