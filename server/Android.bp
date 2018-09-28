@@ -46,7 +46,6 @@ cc_library_static {
     name: "libnetd_server",
     defaults: ["netd_defaults"],
     include_dirs: [
-        "bionic/libc/dns/include",
         "system/netd/include",
         "system/netd/server/binder",
     ],

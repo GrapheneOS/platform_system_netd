@@ -3,11 +3,6 @@
 cc_benchmark {
     name: "netd_benchmark",
     defaults: ["netd_defaults"],
-    cflags: [
-        "-Wall",
-        "-Werror",
-        "-Wunused-parameter",
-    ],
     shared_libs: [
         "libbase",
         "libbinder",
@@ -20,17 +15,16 @@ cc_benchmark {
         "libnetd_test_dnsresponder",
         "libutils",
     ],
-
     aidl: {
         include_dirs: ["system/netd/server/binder"],
     },
     include_dirs: [
         "system/netd/include",
         "system/netd/client",
+        "system/netd/resolv",
         "system/netd/server",
         "system/netd/server/binder",
         "system/netd/tests/dns_responder",
-        "bionic/libc/dns/include",
     ],
     srcs: [
         ":netd_metrics_aidl",
@@ -43,11 +37,6 @@ cc_benchmark {
 cc_benchmark {
     name: "bpf_benchmark",
     defaults: ["netd_defaults"],
-    cflags: [
-        "-Wall",
-        "-Werror",
-        "-Wunused-parameter",
-    ],
     shared_libs: [
         "libbase",
         "libbpf",
@@ -56,7 +45,6 @@ cc_benchmark {
     static_libs: [
         "libutils",
     ],
-
     srcs: [
         "bpf_benchmark.cpp",
     ],
