@@ -25,6 +25,9 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+
+#define LOG_TAG "res_state"
+
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <netdb.h>
@@ -32,21 +35,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <unistd.h> /* for gettid() */
+
+#include <android-base/logging.h>
+
 #include "resolv_cache.h"
 #include "resolv_private.h"
-
-/* Set to 1 to enable debug traces */
-#define DEBUG 0
-
-#if DEBUG
-#include <async_safe/log.h>
-#include <unistd.h> /* for gettid() */
-#define D(...) async_safe_format_log(ANDROID_LOG_DEBUG, "libc", __VA_ARGS__)
-#else
-#define D(...) \
-    do {       \
-    } while (0)
-#endif
 
 typedef struct {
     int _h_errno;
@@ -80,7 +74,7 @@ static void _res_static_done(struct res_static* rs) {
 static void _res_thread_free(void* _rt) {
     _res_thread* rt = (_res_thread*) _rt;
 
-    D("%s: rt=%p for thread=%d", __FUNCTION__, rt, gettid());
+    LOG(VERBOSE) << __func__ << ": rt=" << rt << " for thread=" << gettid();
 
     _res_static_done(rt->_rstatic);
     res_ndestroy(rt->_nres);
@@ -106,16 +100,16 @@ static _res_thread* _res_thread_get(void) {
         return NULL;
     }
     pthread_setspecific(_res_key, rt);
-    D("%s: tid=%d Created new DNS state rt=%p", __FUNCTION__, gettid(), rt);
 
     /* Reset the state, note that res_ninit() can now properly reset
      * an existing state without leaking memory.
      */
-    D("%s: tid=%d, rt=%p, setting DNS state (options RES_INIT=%d)", __FUNCTION__, gettid(), rt,
-      (rt->_nres->options & RES_INIT) != 0);
+    LOG(VERBOSE) << __func__ << ": tid=" << gettid() << ", rt=" << rt
+                 << " setting DNS state (options=" << rt->_nres->options << ")";
     if (res_ninit(rt->_nres) < 0) {
         /* This should not happen */
-        D("%s: tid=%d rt=%p, woot, res_ninit() returned < 0", __FUNCTION__, gettid(), rt);
+        LOG(VERBOSE) << __func__ << ": tid=" << gettid() << " rt=" << rt
+                     << ", res_ninit() returned < 0";
         _res_thread_free(rt);
         pthread_setspecific(_res_key, NULL);
         return NULL;
