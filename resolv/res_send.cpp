@@ -74,6 +74,9 @@
  * Send query to name server and wait for reply.
  */
 
+constexpr bool kVerboseLogging = false;
+#define LOG_TAG "res_send"
+
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -95,7 +98,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <async_safe/log.h>
+#include <android-base/logging.h>
 
 #include "private/android_filesystem_config.h"
 #include "res_private.h"
@@ -104,17 +107,33 @@
 #include "resolv_private.h"
 #include "resolv_stats.h"
 
-/* Options.  Leave them on. */
-#ifndef DEBUG
-#define DEBUG
+#define EXT(res) ((res)->_u._ext)
+
+#define VLOG if (!kVerboseLogging) {} else LOG(INFO)
+
+#ifndef RESOLV_ALLOW_VERBOSE_LOGGING
+static_assert(kVerboseLogging == false,
+              "Verbose logging floods logs at high-rate and exposes privacy-sensitive information. "
+              "Do not enable in release builds.");
 #endif
 
-#include "res_debug.h"
-
-#define EXT(res) ((res)->_u._ext)
-#define DBG 0
-
-/* Forward. */
+#ifndef DEBUG
+#define Dprint(cond, args)               /*empty*/
+#define DprintQ(cond, args, query, size) /*empty*/
+#else
+// TODO: convert to Android logging
+#define Dprint(cond, args) \
+    if (cond) {            \
+        fprintf args;      \
+    } else {               \
+    }
+#define DprintQ(cond, args, query, size)        \
+    if (cond) {                                 \
+        fprintf args;                           \
+        res_pquery(statp, query, size, stdout); \
+    } else {                                    \
+    }
+#endif  // DEBUG
 
 static int get_salen(const struct sockaddr*);
 static struct sockaddr* get_nsaddr(res_state, size_t);
@@ -125,7 +144,6 @@ static int send_dg(res_state, struct __res_params* params, const u_char*, int, u
 static void Aerror(const res_state, FILE*, const char*, int, const struct sockaddr*, int);
 static void Perror(const res_state, FILE*, const char*, int);
 static int sock_eq(struct sockaddr*, struct sockaddr*);
-void res_pquery(const res_state, const u_char*, int, FILE*);
 static int connect_with_timeout(int sock, const struct sockaddr* nsap, socklen_t salen,
                                 const struct timespec timeout);
 static int retrying_poll(const int sock, short events, const struct timespec* finish);
@@ -247,8 +265,6 @@ static int random_bind(int s, int family) {
     return bind(s, &u.sa, slen);
 }
 /* BIONIC-END */
-
-static const int niflags = NI_NUMERICHOST | NI_NUMERICSERV;
 
 /* Public. */
 
@@ -372,7 +388,6 @@ int res_queriesmatch(const u_char* buf1, const u_char* eom1, const u_char* buf2,
 
 int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int anssiz) {
     int gotsomewhere, terrno, v_circuit, resplen, n;
-    char abuf[NI_MAXHOST];
     ResolvCacheStatus cache_status = RESOLV_CACHE_UNSUPPORTED;
 
     if (anssiz < HFIXEDSZ) {
@@ -539,6 +554,8 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                 } while (!done);
             }
 
+            [[maybe_unused]] static const int niflags = NI_NUMERICHOST | NI_NUMERICSERV;
+            [[maybe_unused]] char abuf[NI_MAXHOST];
             Dprint(((statp->options & RES_DEBUG) &&
                     getnameinfo(nsap, (socklen_t) nsaplen, abuf, sizeof(abuf), NULL, 0, niflags) ==
                             0),
@@ -563,18 +580,14 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                                                             params.max_samples);
                 }
 
-                if (DBG) {
-                    async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "used send_vc %d\n", n);
-                }
+                VLOG << "used send_vc " << n;
 
                 if (n < 0) goto fail;
                 if (n == 0) goto next_ns;
                 resplen = n;
             } else {
                 /* Use datagrams. */
-                if (DBG) {
-                    async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "using send_dg\n");
-                }
+                VLOG << "using send_dg";
 
                 n = send_dg(statp, &params, buf, buflen, ans, anssiz, &terrno, ns, &v_circuit,
                             &gotsomewhere, &now, &rcode, &delay);
@@ -587,15 +600,11 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                                                             params.max_samples);
                 }
 
-                if (DBG) {
-                    async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "used send_dg %d\n", n);
-                }
+                VLOG << "used send_dg " << n;
 
                 if (n < 0) goto fail;
                 if (n == 0) goto next_ns;
-                if (DBG) {
-                    async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "time=%ld\n", time(NULL));
-                }
+                VLOG << "time=" << time(NULL);
                 if (v_circuit) goto same_ns;
                 resplen = n;
             }
@@ -719,9 +728,7 @@ static struct timespec get_timeout(const res_state statp, const struct __res_par
             msec = 1000;  // Use at least 100ms
         }
     }
-    if (DBG) {
-        async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "using timeout of %d msec\n", msec);
-    }
+    VLOG << "using timeout of " << msec << " msec";
 
     struct timespec result;
     result.tv_sec = msec / 1000;
@@ -744,9 +751,7 @@ static int send_vc(res_state statp, struct __res_params* params, const u_char* b
     u_short len;
     u_char* cp;
 
-    if (DBG) {
-        async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "using send_vc\n");
-    }
+    VLOG << "using send_vc";
 
     nsap = get_nsaddr(statp, (size_t) ns);
     nsaplen = get_salen(nsap);
@@ -782,11 +787,11 @@ same_ns:
                 case EPFNOSUPPORT:
                 case EAFNOSUPPORT:
                     Perror(statp, stderr, "socket(vc)", errno);
-                    return (0);
+                    return 0;
                 default:
                     *terrno = errno;
                     Perror(statp, stderr, "socket(vc)", errno);
-                    return (-1);
+                    return -1;
             }
         }
         fchown(statp->_vcsock, AID_DNS, -1);
@@ -912,7 +917,7 @@ read_len:
         }
     }
     /*
-     * If the calling applicating has bailed out of
+     * If the calling application has bailed out of
      * a previous call and failed to arrange to have
      * the circuit closed or the server has got
      * itself confused, then drop the packet and
@@ -953,10 +958,7 @@ static int connect_with_timeout(int sock, const struct sockaddr* nsap, socklen_t
     if (res != 0) {
         struct timespec now = evNowTime();
         struct timespec finish = evAddTime(now, timeout);
-        if (DBG) {
-            async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "  %d send_vc\n", sock);
-        }
-
+        VLOG << sock << " send_vc";
         res = retrying_poll(sock, POLLIN | POLLOUT, &finish);
         if (res <= 0) {
             res = -1;
@@ -964,10 +966,7 @@ static int connect_with_timeout(int sock, const struct sockaddr* nsap, socklen_t
     }
 done:
     fcntl(sock, F_SETFL, origflags);
-    if (DBG) {
-        async_safe_format_log(ANDROID_LOG_DEBUG, "libc",
-                              "  %d connect_with_const timeout returning %d\n", sock, res);
-    }
+    VLOG << sock << " connect_with_const timeout returning " << res;
     return res;
 }
 
@@ -975,9 +974,7 @@ static int retrying_poll(const int sock, const short events, const struct timesp
     struct timespec now, timeout;
 
 retry:
-    if (DBG) {
-        async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "  %d retrying_poll\n", sock);
-    }
+    VLOG << "  " << sock << " retrying_poll";
 
     now = evNowTime();
     if (evCmpTime(*finish, now) > 0)
@@ -987,18 +984,13 @@ retry:
     struct pollfd fds = {.fd = sock, .events = events};
     int n = ppoll(&fds, 1, &timeout, /*sigmask=*/NULL);
     if (n == 0) {
-        if (DBG) {
-            async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "  %d retrying_poll timeout\n", sock);
-        }
+        VLOG << "  " << sock << "retrying_poll timeout";
         errno = ETIMEDOUT;
         return 0;
     }
     if (n < 0) {
         if (errno == EINTR) goto retry;
-        if (DBG) {
-            async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "  %d retrying_poll got error %d\n",
-                                  sock, n);
-        }
+        VLOG << "  " << sock << " retrying_poll got error " << n;
         return n;
     }
     if (fds.revents & (POLLIN | POLLOUT | POLLERR)) {
@@ -1006,19 +998,11 @@ retry:
         socklen_t len = sizeof(error);
         if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error) {
             errno = error;
-            if (DBG) {
-                async_safe_format_log(ANDROID_LOG_DEBUG, "libc",
-                                      "  %d retrying_poll dot error2 %d\n", sock, errno);
-            }
-
+            VLOG << "  " << sock << " retrying_poll dot error2 " << errno;
             return -1;
         }
     }
-    if (DBG) {
-        async_safe_format_log(ANDROID_LOG_DEBUG, "libc", "  %d retrying_poll returning %d\n", sock,
-                              n);
-    }
-
+    VLOG << "  " << sock << " retrying_poll returning " << n;
     return n;
 }
 
@@ -1224,9 +1208,12 @@ retry:
 
 static void Aerror(const res_state statp, FILE* file, const char* string, int error,
                    const struct sockaddr* address, int alen) {
-    int save = errno;
+    if (!kVerboseLogging) return;
+
+    const int save = errno;
     char hbuf[NI_MAXHOST];
     char sbuf[NI_MAXSERV];
+    constexpr int niflags = NI_NUMERICHOST | NI_NUMERICSERV;
 
     if ((statp->options & RES_DEBUG) != 0U) {
         if (getnameinfo(address, (socklen_t) alen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf),
@@ -1242,8 +1229,9 @@ static void Aerror(const res_state statp, FILE* file, const char* string, int er
 }
 
 static void Perror(const res_state statp, FILE* file, const char* string, int error) {
-    int save = errno;
+    if (!kVerboseLogging) return;
 
+    const int save = errno;
     if ((statp->options & RES_DEBUG) != 0U)
         fprintf(file, "res_send: %s: %s\n", string, strerror(error));
     errno = save;

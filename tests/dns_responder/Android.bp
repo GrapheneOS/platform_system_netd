@@ -23,10 +23,10 @@ cc_library_static {
     },
     include_dirs: [
         "system/netd/include",
+        "system/netd/resolv",
         "system/netd/server",
         "system/netd/server/binder",
         "system/netd/tests/dns_responder",
-        "bionic/libc/dns/include",
     ],
     srcs: [
         "dns_responder.cpp",
