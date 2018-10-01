@@ -277,7 +277,7 @@ static int random_bind(int s, int family) {
  * author:
  *	paul vixie, 29may94
  */
-__LIBC_HIDDEN__ int res_ourserver_p(const res_state statp, const struct sockaddr* sa) {
+int res_ourserver_p(const res_state statp, const struct sockaddr* sa) {
     const struct sockaddr_in *inp, *srv;
     const struct sockaddr_in6 *in6p, *srv6;
     int ns;

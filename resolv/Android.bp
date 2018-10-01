@@ -16,9 +16,20 @@ cc_library_shared {
         "res_state.cpp",
         "res_stats.cpp",
     ],
+    // Link everything statically (except for libc) to minimize our dependence
+    // on system ABIs
+    stl: "libc++_static",
     static_libs: [
         "libbase",
         "liblog",
+    ],
+    // Only export the symbols that we explicitly mark as visible
+    cflags: [
+        "-fvisibility=hidden",
+    ],
+    // Also hide symbols defined by the static libraries we depend on
+    ldflags: [
+        "-Wl,--exclude-libs,ALL",
     ],
     export_include_dirs: ["."],  // Export resolv_netid.h
     // TODO: pie in the sky: make this code clang-tidy clean
