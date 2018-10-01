@@ -109,13 +109,6 @@ extern void _resolv_flush_cache_for_net(unsigned netid) __used_in_netd;
 /* delete the cache associated with a certain network */
 extern void _resolv_delete_cache_for_net(unsigned netid) __used_in_netd;
 
-/* Internal use only. */
-struct hostent* android_gethostbyaddrfornetcontext_proxy(
-        const void*, socklen_t, int, const struct android_net_context*);
-int android_getnameinfofornet(const struct sockaddr*, socklen_t, char*, size_t, char*, size_t, int,
-                              unsigned, unsigned);
-FILE* android_open_proxy(void);
-
 __END_DECLS
 
 #endif /* _RESOLV_NETID_H */

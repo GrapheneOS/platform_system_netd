@@ -148,6 +148,8 @@ static struct hostent* gethostbyname_internal(const char*, int, res_state, struc
 static struct hostent* android_gethostbyaddrfornetcontext_proxy_internal(
         const void*, socklen_t, int, struct hostent*, char*, size_t, int*,
         const struct android_net_context*);
+static struct hostent* android_gethostbyaddrfornetcontext_proxy(
+        const void* addr, socklen_t len, int af, const struct android_net_context* netcontext);
 
 static int h_errno_to_result(int* herrno_p) {
     // glibc considers ERANGE a special case (and BSD uses ENOSPC instead).
@@ -1080,7 +1082,7 @@ struct hostent* android_gethostbyaddrfornetcontext(const void* addr, socklen_t l
     return android_gethostbyaddrfornetcontext_proxy(addr, len, af, netcontext);
 }
 
-struct hostent* android_gethostbyaddrfornetcontext_proxy(
+static struct hostent* android_gethostbyaddrfornetcontext_proxy(
         const void* addr, socklen_t len, int af, const struct android_net_context* netcontext) {
     struct res_static* rs = __res_get_static();  // For thread-safety.
     return android_gethostbyaddrfornetcontext_proxy_internal(
