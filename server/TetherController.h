@@ -74,11 +74,13 @@ private:
     size_t forwardingRequestCount();
 
     int startTethering(int num_addrs, char **dhcp_ranges);
+    int startTethering(const std::vector<std::string>& dhcpRanges);
     int stopTethering();
     bool isTetheringStarted();
 
     unsigned getDnsNetId();
     int setDnsForwarders(unsigned netId, char **servers, int numServers);
+    int setDnsForwarders(unsigned netId, const std::vector<std::string>& servers);
     const std::list<std::string> &getDnsForwarders() const;
 
     int tetherInterface(const char *interface);
@@ -142,7 +144,7 @@ private:
 
 private:
     bool setIpFwdEnabled();
-
+    std::vector<char*> toCstrVec(const std::vector<std::string>& addrs);
     int setupIPv6CountersChain();
     static std::string makeTetherCountingRule(const char *if1, const char *if2);
     ForwardingDownstream* findForwardingDownstream(const std::string& intIface,
