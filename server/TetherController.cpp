@@ -192,7 +192,7 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
     if (mDaemonPid != 0) {
         ALOGE("Tethering already started");
         errno = EBUSY;
-        return -1;
+        return -errno;
     }
 
     ALOGD("Starting tethering services");
@@ -201,8 +201,9 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
     int pipefd[2];
 
     if (pipe(pipefd) < 0) {
+        int res = errno;
         ALOGE("pipe failed (%s)", strerror(errno));
-        return -1;
+        return -res;
     }
 
     /*
@@ -210,18 +211,20 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
      * the daemon if it exits prematurely
      */
     if ((pid = fork()) < 0) {
+        int res = errno;
         ALOGE("fork failed (%s)", strerror(errno));
         close(pipefd[0]);
         close(pipefd[1]);
-        return -1;
+        return -res;
     }
 
     if (!pid) {
         close(pipefd[1]);
         if (pipefd[0] != STDIN_FILENO) {
             if (dup2(pipefd[0], STDIN_FILENO) != STDIN_FILENO) {
+                int res = errno;
                 ALOGE("dup2 failed (%s)", strerror(errno));
-                return -1;
+                return -res;
             }
             close(pipefd[0]);
         }
@@ -275,6 +278,26 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
     return 0;
 }
 
+std::vector<char*> TetherController::toCstrVec(const std::vector<std::string>& addrs) {
+    std::vector<char*> addrsCstrVec{};
+    addrsCstrVec.reserve(addrs.size());
+    for (const auto& addr : addrs) {
+        addrsCstrVec.push_back(const_cast<char*>(addr.data()));
+    }
+    return addrsCstrVec;
+}
+
+int TetherController::startTethering(const std::vector<std::string>& dhcpRanges) {
+    struct in_addr v4_addr;
+    for (const auto& dhcpRange : dhcpRanges) {
+        if (!inet_aton(dhcpRange.c_str(), &v4_addr)) {
+            return -EINVAL;
+        }
+    }
+    auto dhcp_ranges = toCstrVec(dhcpRanges);
+    return startTethering(dhcp_ranges.size(), dhcp_ranges.data());
+}
+
 int TetherController::stopTethering() {
     configureForTethering(false);
 
@@ -326,7 +349,7 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
             ALOGE("Failed to parse DNS server '%s'", servers[i]);
             mDnsForwarders.clear();
             errno = EINVAL;
-            return -1;
+            return -errno;
         }
 
         if (daemonCmd.size() + 1 + strlen(servers[i]) >= MAX_CMD_SIZE) {
@@ -345,10 +368,23 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
         if (mDnsmasqState.sendAllState(mDaemonFd) != 0) {
             mDnsForwarders.clear();
             errno = EREMOTEIO;
-            return -1;
+            return -errno;
         }
     }
     return 0;
+}
+
+int TetherController::setDnsForwarders(unsigned netId, const std::vector<std::string>& servers) {
+    struct in_addr v4_addr;
+    struct in6_addr v6_addr;
+    for (const auto& server : servers) {
+        if (!inet_pton(AF_INET, server.c_str(), &v4_addr) &&
+            !inet_pton(AF_INET6, server.c_str(), &v6_addr)) {
+            return -EINVAL;
+        }
+    }
+    auto dnsServers = toCstrVec(servers);
+    return setDnsForwarders(netId, dnsServers.data(), dnsServers.size());
 }
 
 unsigned TetherController::getDnsNetId() {
@@ -387,19 +423,19 @@ int TetherController::tetherInterface(const char *interface) {
     ALOGD("tetherInterface(%s)", interface);
     if (!isIfaceName(interface)) {
         errno = ENOENT;
-        return -1;
+        return -errno;
     }
 
     if (!configureForIPv6Router(interface)) {
         configureForIPv6Client(interface);
-        return -1;
+        return -EREMOTEIO;
     }
     mInterfaces.push_back(interface);
 
     if (!applyDnsInterfaces()) {
         mInterfaces.pop_back();
         configureForIPv6Client(interface);
-        return -1;
+        return -EREMOTEIO;
     } else {
         return 0;
     }
@@ -413,11 +449,11 @@ int TetherController::untetherInterface(const char *interface) {
             mInterfaces.erase(it);
 
             configureForIPv6Client(interface);
-            return applyDnsInterfaces() ? 0 : -1;
+            return applyDnsInterfaces() ? 0 : -EREMOTEIO;
         }
     }
     errno = ENOENT;
-    return -1;
+    return -errno;
 }
 
 const std::list<std::string> &TetherController::getTetheredInterfaceList() const {

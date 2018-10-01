@@ -969,5 +969,77 @@ binder::Status NetdNativeService::ipfwdRemoveInterfaceForward(const std::string&
     return statusFromErrcode(res);
 }
 
+binder::Status NetdNativeService::tetherStart(const std::vector<std::string>& dhcpRanges) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(dhcpRanges);
+    if (dhcpRanges.size() % 2 == 1) {
+        return statusFromErrcode(-EINVAL);
+    }
+    int res = gCtls->tetherCtrl.startTethering(dhcpRanges);
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherStop() {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+    int res = gCtls->tetherCtrl.stopTethering();
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherIsEnabled(bool* enabled) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+    *enabled = gCtls->tetherCtrl.isTetheringStarted();
+    gLog.log(entry.returns(*enabled).withAutomaticDuration());
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::tetherInterfaceAdd(const std::string& ifName) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
+    int res = gCtls->tetherCtrl.tetherInterface(ifName.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherInterfaceRemove(const std::string& ifName) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
+    int res = gCtls->tetherCtrl.untetherInterface(ifName.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherInterfaceList(std::vector<std::string>* ifList) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+    for (const auto& ifname : gCtls->tetherCtrl.getTetheredInterfaceList()) {
+        ifList->push_back(ifname);
+    }
+    gLog.log(entry.returns(true).withAutomaticDuration());
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::tetherDnsSet(int32_t netId,
+                                               const std::vector<std::string>& dnsAddrs) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(netId).arg(dnsAddrs);
+    int res = gCtls->tetherCtrl.setDnsForwarders(netId, dnsAddrs);
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherDnsList(std::vector<std::string>* dnsList) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+    for (const auto& fwdr : gCtls->tetherCtrl.getDnsForwarders()) {
+        dnsList->push_back(fwdr);
+    }
+    gLog.log(entry.returns(true).withAutomaticDuration());
+    return binder::Status::ok();
+}
+
 }  // namespace net
 }  // namespace android
