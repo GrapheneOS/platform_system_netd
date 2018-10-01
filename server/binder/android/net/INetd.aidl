@@ -765,4 +765,73 @@ interface INetd {
     */
     void bandwidthRemoveNiceApp(int uid);
 
+   /**
+    * Start tethering
+    *
+    * @param dhcpRanges dhcp ranges to set.
+    *                   dhcpRanges might contain many addresss {addr1, addr2, aadr3, addr4...}
+    *                   Netd splits them into ranges: addr1-addr2, addr3-addr4, etc.
+    *                   An odd number of addrs will fail.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void tetherStart(in @utf8InCpp String[] dhcpRanges);
+
+   /**
+    * Stop tethering
+    *
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void tetherStop();
+
+   /**
+    * Get status of tethering
+    *
+    * @return true if tethering is enabled, false otherwise.
+    */
+    boolean tetherIsEnabled();
+
+   /**
+    * Setup interface for tethering
+    *
+    * @param ifName interface name to add
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void tetherInterfaceAdd(in @utf8InCpp String ifName);
+
+   /**
+    * Reset interface for tethering
+    *
+    * @param ifName interface name to remove
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void tetherInterfaceRemove(in @utf8InCpp String ifName);
+
+   /**
+    * Get the interface list which is stored in netd
+    * The list contains the interfaces managed by tetherInterfaceAdd/tetherInterfaceRemove
+    *
+    * @return ifList interface list result
+    */
+    @utf8InCpp List<String> tetherInterfaceList();
+
+   /**
+    * Set dns forwarder server
+    *
+    * @param netId the upstream network to forward DNS queries to
+    * @param dnsAddrs DNS server address to set
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void tetherDnsSet(int netId, in @utf8InCpp String[] dnsAddrs);
+
+   /**
+    * Return the DNS list set by tetherDnsSet
+    *
+    * @return dnsList dns list result
+    */
+    @utf8InCpp List<String> tetherDnsList();
 }
