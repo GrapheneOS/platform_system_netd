@@ -41,9 +41,9 @@ cc_test {
         "resolver_test.cpp",
     ],
     include_dirs: [
+        "system/netd/resolv/include",
         "system/netd/server",
         "system/netd/tests/dns_responder",
-        "system/netd/resolv",
     ],
     shared_libs: [
         "libbase",

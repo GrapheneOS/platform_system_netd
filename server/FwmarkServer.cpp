@@ -16,13 +16,6 @@
 
 #include "FwmarkServer.h"
 
-#include "Fwmark.h"
-#include "FwmarkCommand.h"
-#include "NetdConstants.h"
-#include "NetworkController.h"
-#include "TrafficController.h"
-#include "resolv_netid.h"
-
 #include <netinet/in.h>
 #include <selinux/selinux.h>
 #include <sys/socket.h>
@@ -30,6 +23,13 @@
 #include <utils/String16.h>
 
 #include <binder/IServiceManager.h>
+#include <netd_resolv/resolv.h>  // NETID_UNSET
+
+#include "Fwmark.h"
+#include "FwmarkCommand.h"
+#include "NetdConstants.h"
+#include "NetworkController.h"
+#include "TrafficController.h"
 
 using android::String16;
 using android::net::metrics::INetdEventListener;

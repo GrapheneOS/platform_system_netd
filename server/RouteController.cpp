@@ -33,13 +33,13 @@
 #include "NetlinkCommands.h"
 #include "UidRanges.h"
 
-#include "android-base/file.h"
+#include <android-base/file.h>
 #include <android-base/stringprintf.h>
 #define LOG_TAG "Netd"
 #include "log/log.h"
 #include "logwrap/logwrap.h"
+#include "netid_client.h"
 #include "netutils/ifc.h"
-#include "resolv_netid.h"
 
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;

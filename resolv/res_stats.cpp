@@ -23,7 +23,7 @@ constexpr bool kVerboseLogging = false;
 
 #include <android-base/logging.h>
 
-#include "resolv_stats.h"
+#include "netd_resolv/stats.h"
 
 #define VLOG if (!kVerboseLogging) {} else LOG(INFO)
 
@@ -42,7 +42,7 @@ int _res_stats_calculate_rtt(const timespec* t1, const timespec* t0) {
 }
 
 // Create a sample for calculating server reachability statistics.
-void _res_stats_set_sample(__res_sample* sample, time_t now, int rcode, int rtt) {
+void _res_stats_set_sample(res_sample* sample, time_t now, int rcode, int rtt) {
     VLOG << __func__ << ": rcode = " << rcode << ", sec = " << rtt;
     sample->at = now;
     sample->rcode = rcode;
@@ -50,14 +50,13 @@ void _res_stats_set_sample(__res_sample* sample, time_t now, int rcode, int rtt)
 }
 
 /* Clears all stored samples for the given server. */
-void _res_stats_clear_samples(struct __res_stats* stats) {
+void _res_stats_clear_samples(res_stats* stats) {
     stats->sample_count = stats->sample_next = 0;
 }
 
 /* Aggregates the reachability statistics for the given server based on on the stored samples. */
-void android_net_res_stats_aggregate(struct __res_stats* stats, int* successes, int* errors,
-                                     int* timeouts, int* internal_errors, int* rtt_avg,
-                                     time_t* last_sample_time) {
+void android_net_res_stats_aggregate(res_stats* stats, int* successes, int* errors, int* timeouts,
+                                     int* internal_errors, int* rtt_avg, time_t* last_sample_time) {
     int s = 0;   // successes
     int e = 0;   // errors
     int t = 0;   // timouts
@@ -119,7 +118,7 @@ void android_net_res_stats_aggregate(struct __res_stats* stats, int* successes, 
 // Returns true if the server is considered unusable, i.e. if the success rate is not lower than the
 // threshold for the stored stored samples. If not enough samples are stored, the server is
 // considered usable.
-static bool res_stats_usable_server(const struct __res_params* params, struct __res_stats* stats) {
+static bool res_stats_usable_server(const struct __res_params* params, res_stats* stats) {
     int successes = -1;
     int errors = -1;
     int timeouts = -1;
@@ -158,9 +157,8 @@ static bool res_stats_usable_server(const struct __res_params* params, struct __
     return 1;
 }
 
-void android_net_res_stats_get_usable_servers(const struct __res_params* params,
-                                              struct __res_stats stats[], int nscount,
-                                              bool usable_servers[]) {
+void android_net_res_stats_get_usable_servers(const struct __res_params* params, res_stats stats[],
+                                              int nscount, bool usable_servers[]) {
     unsigned usable_servers_found = 0;
     for (int ns = 0; ns < nscount; ns++) {
         bool usable = res_stats_usable_server(params, &stats[ns]);

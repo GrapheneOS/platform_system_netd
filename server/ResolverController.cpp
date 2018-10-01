@@ -32,12 +32,6 @@
 #include <netdb.h>
 
 #include <arpa/inet.h>
-// NOTE: <resolv_netid.h> is a private C library header that provides
-//       declarations for _resolv_set_nameservers_for_net and
-//       _resolv_flush_cache_for_net
-#include <resolv_netid.h>
-#include <resolv_params.h>
-#include <resolv_stats.h>
 
 #include <android-base/strings.h>
 #include <android-base/thread_annotations.h>
@@ -49,8 +43,11 @@
 #include "NetdConstants.h"
 #include "ResolverController.h"
 #include "ResolverStats.h"
-#include "dns/DnsTlsTransport.h"
 #include "dns/DnsTlsServer.h"
+#include "dns/DnsTlsTransport.h"
+#include "netd_resolv/params.h"
+#include "netd_resolv/resolv.h"
+#include "netd_resolv/stats.h"
 #include "netdutils/BackoffSequence.h"
 
 namespace android {
@@ -400,7 +397,7 @@ int ResolverController::setDnsServers(unsigned netId, const char* searchDomains,
     if (DBG) {
         ALOGD("setDnsServers netId = %u, numservers = %d", netId, numservers);
     }
-    return -_resolv_set_nameservers_for_net(netId, servers, numservers, searchDomains, params);
+    return -resolv_set_nameservers_for_net(netId, servers, numservers, searchDomains, params);
 }
 
 ResolverController::PrivateDnsStatus
@@ -409,7 +406,7 @@ ResolverController::getPrivateDnsStatus(unsigned netId) const {
 }
 
 int ResolverController::clearDnsServers(unsigned netId) {
-    _resolv_set_nameservers_for_net(netId, nullptr, 0, "", nullptr);
+    resolv_set_nameservers_for_net(netId, nullptr, 0, "", nullptr);
     if (DBG) {
         ALOGD("clearDnsServers netId = %u\n", netId);
     }
@@ -423,7 +420,7 @@ int ResolverController::flushDnsCache(unsigned netId) {
         ALOGD("flushDnsCache netId = %u\n", netId);
     }
 
-    _resolv_flush_cache_for_net(netId);
+    resolv_flush_cache_for_net(netId);
 
     return 0;
 }
@@ -446,7 +443,7 @@ int ResolverController::getDnsInfo(unsigned netId, std::vector<std::string>* ser
     sockaddr_storage res_servers[MAXNS];
     int dcount = -1;
     char res_domains[MAXDNSRCH][MAXDNSRCHPATH];
-    __res_stats res_stats[MAXNS];
+    res_stats res_stats[MAXNS];
     servers->clear();
     domains->clear();
     *params = __res_params{};

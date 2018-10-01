@@ -78,12 +78,13 @@
 #include <netinet/in.h>
 #include <sys/param.h>
 #include <sys/types.h>
-#include "resolv_cache.h"
-#include "resolv_private.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "resolv_cache.h"
+#include "resolv_private.h"
 
 /* Options.  Leave them on. */
 #ifndef DEBUG
