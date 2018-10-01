@@ -58,10 +58,18 @@ const char DUMP[] = "android.permission.DUMP";
 const char OPT_SHORT[] = "--short";
 
 binder::Status checkPermission(const char *permission) {
-    pid_t pid;
-    uid_t uid;
+    pid_t pid = IPCThreadState::self()->getCallingPid();
+    uid_t uid = IPCThreadState::self()->getCallingUid();
 
-    if (checkCallingPermission(String16(permission), (int32_t *) &pid, (int32_t *) &uid)) {
+    // If the caller is the system UID, don't check permissions.
+    // Otherwise, if the system server's binder thread pool is full, and all the threads are
+    // blocked on a thread that's waiting for us to complete, we deadlock. http://b/69389492
+    //
+    // From a security perspective, there is currently no difference, because:
+    // 1. The only permissions we check in netd's binder interface are CONNECTIVITY_INTERNAL
+    //    and NETWORK_STACK, which the system server will always need to have.
+    // 2. AID_SYSTEM always has all permissions. See ActivityManager#checkComponentPermission.
+    if (uid == AID_SYSTEM || checkPermission(String16(permission), pid, uid)) {
         return binder::Status::ok();
     } else {
         auto err = StringPrintf("UID %d / PID %d lacks permission %s", uid, pid, permission);
