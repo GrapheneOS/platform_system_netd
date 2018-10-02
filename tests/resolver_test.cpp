@@ -1024,7 +1024,7 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
     test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
     ASSERT_TRUE(dns.startServer());
     for (int chain_length = 1; chain_length <= 3; ++chain_length) {
-        const char* host_name = StringPrintf("tlsfingerprint%d.example.com.", chain_length).c_str();
+        std::string host_name = StringPrintf("tlsfingerprint%d.example.com.", chain_length);
         dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
         std::vector<std::string> servers = { listen_addr };
 
