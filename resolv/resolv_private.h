@@ -54,8 +54,6 @@
 #ifndef _RESOLV_PRIVATE_H_
 #define _RESOLV_PRIVATE_H_
 
-#include <sys/cdefs.h>
-
 #include <net/if.h>
 #include <resolv.h>
 #include <time.h>
@@ -157,17 +155,14 @@ typedef struct __res_state* res_state;
 /* Retrieve a local copy of the stats for the given netid. The buffer must have space for
  * MAXNS __resolver_stats. Returns the revision id of the resolvers used.
  */
-__LIBC_HIDDEN__
-extern int _resolv_cache_get_resolver_stats(unsigned netid, struct __res_params* params,
+int _resolv_cache_get_resolver_stats(unsigned netid, struct __res_params* params,
                                             struct __res_stats stats[MAXNS]);
 
 /* Add a sample to the shared struct for the given netid and server, provided that the
  * revision_id of the stored servers has not changed.
  */
-__LIBC_HIDDEN__
-extern void _resolv_cache_add_resolver_stats_sample(unsigned netid, int revision_id, int ns,
-                                                    const struct __res_sample* sample,
-                                                    int max_samples);
+void _resolv_cache_add_resolver_stats_sample(unsigned netid, int revision_id, int ns,
+                                             const struct __res_sample* sample, int max_samples);
 
 /* End of stats related definitions */
 
@@ -255,8 +250,8 @@ union res_sockaddr_union {
 /* Things involving an internal (static) resolver context. */
 __BEGIN_DECLS
 
-__LIBC_HIDDEN__ extern struct __res_state* __res_get_state(void);
-__LIBC_HIDDEN__ extern void __res_put_state(struct __res_state*);
+struct __res_state* __res_get_state(void);
+void __res_put_state(struct __res_state*);
 
 __END_DECLS
 
@@ -272,13 +267,11 @@ __END_DECLS
 #define res_sendsigned __res_sendsigned
 
 __BEGIN_DECLS
-void fp_nquery(const u_char*, int, FILE*);
-void fp_query(const u_char*, FILE*);
 const char* hostalias(const char*);
 void p_query(const u_char*);
 void res_close(void);
 int res_init(void);
-__LIBC_HIDDEN__ int res_opt(int, u_char*, int, int);
+int res_opt(int, u_char*, int, int);
 int res_isourserver(const struct sockaddr_in*);
 int res_mkquery(int, const char*, int, int, const u_char*, int, const u_char*, u_char*, int);
 int res_query(const char*, int, int, u_char*, int);
@@ -330,11 +323,7 @@ __END_DECLS
 #define res_setservers __res_setservers
 #define res_getservers __res_getservers
 #define res_buildprotolist __res_buildprotolist
-#define res_destroyprotolist __res_destroyprotolist
-#define res_destroyservicelist __res_destroyservicelist
 #define res_ourserver_p __res_ourserver_p
-#define res_protocolname __res_protocolname
-#define res_protocolnumber __res_protocolnumber
 #define res_send_setqhook __res_send_setqhook
 #define res_send_setrhook __res_send_setrhook
 #define res_servicename __res_servicename
@@ -355,7 +344,7 @@ const char* p_class(int);
 const char* p_time(uint32_t);
 const char* p_type(int);
 const char* p_rcode(int);
-__LIBC_HIDDEN__ const char* p_sockun(union res_sockaddr_union, char*, size_t);
+const char* p_sockun(union res_sockaddr_union, char*, size_t);
 const u_char* p_cdnname(const u_char*, const u_char*, int, FILE*);
 const u_char* p_cdname(const u_char*, const u_char*, FILE*);
 const u_char* p_fqnname(const u_char*, const u_char*, int, char*, int);
@@ -365,12 +354,12 @@ char* p_secstodate(u_long);
 int dn_count_labels(const char*);
 int res_nameinquery(const char*, int, int, const u_char*, const u_char*);
 int res_queriesmatch(const u_char*, const u_char*, const u_char*, const u_char*);
-__LIBC_HIDDEN__ const char* p_section(int, int);
+const char* p_section(int, int);
 /* Things involving a resolver context. */
 int res_ninit(res_state);
 int res_nisourserver(const res_state, const struct sockaddr_in*);
 void fp_resstat(const res_state, FILE*);
-__LIBC_HIDDEN__ void res_pquery(const res_state, const u_char*, int, FILE*);
+void res_pquery(const res_state, const u_char*, int, FILE*);
 const char* res_hostalias(const res_state, const char*, char*, size_t);
 int res_nquery(res_state, const char*, int, int, u_char*, int);
 int res_nsearch(res_state, const char*, int, int, u_char*, int);
@@ -383,21 +372,18 @@ int res_findzonecut(res_state, const char*, ns_class, int, char*, size_t, struct
 int res_findzonecut2(res_state, const char*, ns_class, int, char*, size_t,
                      union res_sockaddr_union*, int);
 void res_nclose(res_state);
-__LIBC_HIDDEN__ int res_nopt(res_state, int, u_char*, int, int);
+int res_nopt(res_state, int, u_char*, int, int);
 void res_send_setqhook(res_send_qhook);
 void res_send_setrhook(res_send_rhook);
-__LIBC_HIDDEN__ int __res_vinit(res_state, int);
-void res_destroyservicelist(void);
+int __res_vinit(res_state, int);
 const char* res_servicename(uint16_t, const char*);
-const char* res_protocolname(int);
-void res_destroyprotolist(void);
 void res_buildprotolist(void);
-__LIBC_HIDDEN__ void res_ndestroy(res_state);
-__LIBC_HIDDEN__ void res_setservers(res_state, const union res_sockaddr_union*, int);
-__LIBC_HIDDEN__ int res_getservers(res_state, union res_sockaddr_union*, int);
+void res_ndestroy(res_state);
+void res_setservers(res_state, const union res_sockaddr_union*, int);
+int res_getservers(res_state, union res_sockaddr_union*, int);
 
 struct android_net_context; /* forward */
-__LIBC_HIDDEN__ void res_setnetcontext(res_state, const struct android_net_context*);
+void res_setnetcontext(res_state, const struct android_net_context*);
 
 u_int res_randomid(void);
 

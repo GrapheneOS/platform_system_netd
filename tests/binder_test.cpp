@@ -1478,11 +1478,9 @@ TEST_F(BinderTest, BandwidthSetRemoveInterfaceQuota) {
 
 TEST_F(BinderTest, BandwidthSetRemoveInterfaceAlert) {
     long testAlertBytes = 373;
-
     // Add test physical network
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, "").isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
-
     // Need to have a prior interface quota set to set an alert
     binder::Status status = mNetd->bandwidthSetInterfaceQuota(sTun.name(), testAlertBytes);
     status = mNetd->bandwidthSetInterfaceAlert(sTun.name(), testAlertBytes);
@@ -1541,4 +1539,129 @@ TEST_F(BinderTest, BandwidthManipulateSpecialApp) {
     status = mNetd->bandwidthRemoveNiceApp(uid);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectBandwidthManipulateSpecialAppRuleDoesNotExist(BANDWIDTH_NICE, uid);
+}
+
+namespace {
+
+int readIntFromPath(const std::string& path) {
+    std::string result = "";
+    EXPECT_TRUE(ReadFileToString(path, &result));
+    return std::stoi(result);
+}
+
+int getTetherAcceptIPv6Ra(const std::string& ifName) {
+    std::string path = StringPrintf("/proc/sys/net/ipv6/conf/%s/accept_ra", ifName.c_str());
+    return readIntFromPath(path);
+}
+
+bool getTetherAcceptIPv6Dad(const std::string& ifName) {
+    std::string path = StringPrintf("/proc/sys/net/ipv6/conf/%s/accept_dad", ifName.c_str());
+    return readIntFromPath(path);
+}
+
+int getTetherIPv6DadTransmits(const std::string& ifName) {
+    std::string path = StringPrintf("/proc/sys/net/ipv6/conf/%s/dad_transmits", ifName.c_str());
+    return readIntFromPath(path);
+}
+
+bool getTetherEnableIPv6(const std::string& ifName) {
+    std::string path = StringPrintf("/proc/sys/net/ipv6/conf/%s/disable_ipv6", ifName.c_str());
+    int disableIPv6 = readIntFromPath(path);
+    return !disableIPv6;
+}
+
+bool interfaceListContains(const std::vector<std::string>& ifList, const std::string& ifName) {
+    for (const auto& iface : ifList) {
+        if (iface == ifName) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void expectTetherInterfaceConfigureForIPv6Router(const std::string& ifName) {
+    EXPECT_EQ(getTetherAcceptIPv6Ra(ifName), 0);
+    EXPECT_FALSE(getTetherAcceptIPv6Dad(ifName));
+    EXPECT_EQ(getTetherIPv6DadTransmits(ifName), 0);
+    EXPECT_TRUE(getTetherEnableIPv6(ifName));
+}
+
+void expectTetherInterfaceConfigureForIPv6Client(const std::string& ifName) {
+    EXPECT_EQ(getTetherAcceptIPv6Ra(ifName), 2);
+    EXPECT_TRUE(getTetherAcceptIPv6Dad(ifName));
+    EXPECT_EQ(getTetherIPv6DadTransmits(ifName), 1);
+    EXPECT_FALSE(getTetherEnableIPv6(ifName));
+}
+
+void expectTetherInterfaceExists(const std::vector<std::string>& ifList,
+                                 const std::string& ifName) {
+    EXPECT_TRUE(interfaceListContains(ifList, ifName));
+}
+
+void expectTetherInterfaceNotExists(const std::vector<std::string>& ifList,
+                                    const std::string& ifName) {
+    EXPECT_FALSE(interfaceListContains(ifList, ifName));
+}
+
+void expectTetherDnsListEquals(const std::vector<std::string>& dnsList,
+                               const std::vector<std::string>& testDnsAddrs) {
+    EXPECT_TRUE(dnsList == testDnsAddrs);
+}
+
+}  // namespace
+
+TEST_F(BinderTest, TetherStartStopStatus) {
+    std::vector<std::string> noDhcpRange = {};
+    static const char dnsdName[] = "dnsmasq";
+
+    binder::Status status = mNetd->tetherStart(noDhcpRange);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    EXPECT_TRUE(processExists(dnsdName));
+
+    bool tetherEnabled;
+    status = mNetd->tetherIsEnabled(&tetherEnabled);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    EXPECT_TRUE(tetherEnabled);
+
+    status = mNetd->tetherStop();
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    EXPECT_FALSE(processExists(dnsdName));
+
+    status = mNetd->tetherIsEnabled(&tetherEnabled);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    EXPECT_FALSE(tetherEnabled);
+}
+
+TEST_F(BinderTest, TetherInterfaceAddRemoveList) {
+    // TODO: verify if dnsmasq update interface successfully
+
+    binder::Status status = mNetd->tetherInterfaceAdd(sTun.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectTetherInterfaceConfigureForIPv6Router(sTun.name());
+
+    std::vector<std::string> ifList;
+    status = mNetd->tetherInterfaceList(&ifList);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectTetherInterfaceExists(ifList, sTun.name());
+
+    status = mNetd->tetherInterfaceRemove(sTun.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectTetherInterfaceConfigureForIPv6Client(sTun.name());
+
+    status = mNetd->tetherInterfaceList(&ifList);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectTetherInterfaceNotExists(ifList, sTun.name());
+}
+
+TEST_F(BinderTest, TetherDnsSetList) {
+    // TODO: verify if dnsmasq update dns successfully
+    std::vector<std::string> testDnsAddrs = {"192.168.1.37", "213.137.100.3"};
+
+    binder::Status status = mNetd->tetherDnsSet(TEST_NETID1, testDnsAddrs);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    std::vector<std::string> dnsList;
+    status = mNetd->tetherDnsList(&dnsList);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectTetherDnsListEquals(dnsList, testDnsAddrs);
 }

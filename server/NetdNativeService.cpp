@@ -58,10 +58,18 @@ const char DUMP[] = "android.permission.DUMP";
 const char OPT_SHORT[] = "--short";
 
 binder::Status checkPermission(const char *permission) {
-    pid_t pid;
-    uid_t uid;
+    pid_t pid = IPCThreadState::self()->getCallingPid();
+    uid_t uid = IPCThreadState::self()->getCallingUid();
 
-    if (checkCallingPermission(String16(permission), (int32_t *) &pid, (int32_t *) &uid)) {
+    // If the caller is the system UID, don't check permissions.
+    // Otherwise, if the system server's binder thread pool is full, and all the threads are
+    // blocked on a thread that's waiting for us to complete, we deadlock. http://b/69389492
+    //
+    // From a security perspective, there is currently no difference, because:
+    // 1. The only permissions we check in netd's binder interface are CONNECTIVITY_INTERNAL
+    //    and NETWORK_STACK, which the system server will always need to have.
+    // 2. AID_SYSTEM always has all permissions. See ActivityManager#checkComponentPermission.
+    if (uid == AID_SYSTEM || checkPermission(String16(permission), pid, uid)) {
         return binder::Status::ok();
     } else {
         auto err = StringPrintf("UID %d / PID %d lacks permission %s", uid, pid, permission);
@@ -967,6 +975,78 @@ binder::Status NetdNativeService::ipfwdRemoveInterfaceForward(const std::string&
     int res = RouteController::disableTethering(fromIface.c_str(), toIface.c_str());
     gLog.log(entry.returns(res).withAutomaticDuration());
     return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherStart(const std::vector<std::string>& dhcpRanges) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(dhcpRanges);
+    if (dhcpRanges.size() % 2 == 1) {
+        return statusFromErrcode(-EINVAL);
+    }
+    int res = gCtls->tetherCtrl.startTethering(dhcpRanges);
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherStop() {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+    int res = gCtls->tetherCtrl.stopTethering();
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherIsEnabled(bool* enabled) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+    *enabled = gCtls->tetherCtrl.isTetheringStarted();
+    gLog.log(entry.returns(*enabled).withAutomaticDuration());
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::tetherInterfaceAdd(const std::string& ifName) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
+    int res = gCtls->tetherCtrl.tetherInterface(ifName.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherInterfaceRemove(const std::string& ifName) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
+    int res = gCtls->tetherCtrl.untetherInterface(ifName.c_str());
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherInterfaceList(std::vector<std::string>* ifList) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+    for (const auto& ifname : gCtls->tetherCtrl.getTetheredInterfaceList()) {
+        ifList->push_back(ifname);
+    }
+    gLog.log(entry.returns(true).withAutomaticDuration());
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::tetherDnsSet(int32_t netId,
+                                               const std::vector<std::string>& dnsAddrs) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(netId).arg(dnsAddrs);
+    int res = gCtls->tetherCtrl.setDnsForwarders(netId, dnsAddrs);
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::tetherDnsList(std::vector<std::string>* dnsList) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+    for (const auto& fwdr : gCtls->tetherCtrl.getDnsForwarders()) {
+        dnsList->push_back(fwdr);
+    }
+    gLog.log(entry.returns(true).withAutomaticDuration());
+    return binder::Status::ok();
 }
 
 }  // namespace net

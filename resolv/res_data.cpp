@@ -35,7 +35,6 @@
 #include "res_private.h"  // res_ourserver_p()
 #include "resolv_private.h"
 
-__LIBC_HIDDEN__
 extern const char* const _res_opcodes[] = {
         "QUERY",  "IQUERY", "CQUERYM", "CQUERYU", /* experimental */
         "NOTIFY",                                 /* experimental */
@@ -84,18 +83,17 @@ int res_init(void) {
     return rv;
 }
 
-void p_query(const u_char* msg) {
-    fp_query(msg, stdout);
+static void fp_nquery(const u_char* msg, int len, FILE* file) {
+    if (res_need_init() && res_init() == -1) return;
+    res_pquery(&_nres, msg, len, file);
 }
 
-void fp_query(const u_char* msg, FILE* file) {
+static void fp_query(const u_char* msg, FILE* file) {
     fp_nquery(msg, PACKETSZ, file);
 }
 
-void fp_nquery(const u_char* msg, int len, FILE* file) {
-    if (res_need_init() && res_init() == -1) return;
-
-    res_pquery(&_nres, msg, len, file);
+void p_query(const u_char* msg) {
+    fp_query(msg, stdout);
 }
 
 int res_mkquery(int op,                 // opcode of query
