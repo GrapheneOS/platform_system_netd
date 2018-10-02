@@ -14,26 +14,17 @@
 
 cc_library {
     name: "libnetd_client",
-
     srcs: [
         "FwmarkClient.cpp",
         "NetdClient.cpp",
     ],
-
     header_libs: ["libnetd_client_headers"],
     export_header_lib_headers: ["libnetd_client_headers"],
-
     include_dirs: [
         "system/netd/resolv",
         "system/netd/include",
     ],
-
     defaults: ["netd_defaults"],
-    cflags: [
-        "-Wall",
-        "-Werror",
-    ],
-
     product_variables: {
         debuggable: {
             cflags: ["-DNETD_CLIENT_DEBUGGABLE_BUILD"],
