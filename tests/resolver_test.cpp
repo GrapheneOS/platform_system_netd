@@ -282,7 +282,10 @@ TEST_F(ResolverTest, GetHostByName) {
 
 TEST_F(ResolverTest, GetHostByName_localhost) {
     constexpr char name[] = "localhost";
+    constexpr char name_camelcase[] = "LocalHost";
     constexpr char addr[] = "127.0.0.1";
+    constexpr char name_ip6[] = "ip6-localhost";
+    constexpr char addr_ip6[] = "::1";
 
     // Add a dummy nameserver which shouldn't receive any queries
     constexpr char listen_addr[] = "127.0.0.3";
@@ -291,15 +294,41 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
     ASSERT_TRUE(dns.startServer());
     std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
-
     dns.clearQueries();
-    const hostent* result = gethostbyname(name);
+
     // Expect no DNS queries; localhost is resolved via /etc/hosts
+    const hostent* result = gethostbyname(name);
     EXPECT_EQ(0, GetNumQueriesForType(dns, ns_type::ns_t_a, name));
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
     EXPECT_EQ(addr, ToString(result));
+    EXPECT_TRUE(result->h_addr_list[1] == nullptr);
+
+    // Ensure the hosts file resolver ignores case of hostnames
+    result = gethostbyname(name_camelcase);
+    EXPECT_EQ(0, GetNumQueriesForType(dns, ns_type::ns_t_a, name_camelcase));
+    ASSERT_FALSE(result == nullptr);
+    ASSERT_EQ(4, result->h_length);
+    ASSERT_FALSE(result->h_addr_list[0] == nullptr);
+    EXPECT_EQ(addr, ToString(result));
+    EXPECT_TRUE(result->h_addr_list[1] == nullptr);
+
+    // The hosts file also contains ip6-localhost, but gethostbyname() won't
+    // return unless the RES_USE_INET6 option is set. This would be easy to
+    // change, but there's no point in changing the legacy behavior.
+    // New code should call getaddrinfo() anyway.
+    result = gethostbyname(name_ip6);
+    EXPECT_EQ(0, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6));
+    ASSERT_TRUE(result == nullptr);
+
+    // Finally, use gethostbyname2() to resolve localhost-v6 to ::1
+    result = gethostbyname2(name_ip6, AF_INET6);
+    EXPECT_EQ(0, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6));
+    ASSERT_FALSE(result == nullptr);
+    ASSERT_EQ(16, result->h_length);
+    ASSERT_FALSE(result->h_addr_list[0] == nullptr);
+    EXPECT_EQ(addr_ip6, ToString(result));
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
 
     dns.stopServer();
