@@ -34,9 +34,9 @@ class StatusOr {
     StatusOr(T&& value) : mStatus(status::ok), mValue(std::move(value)) {}
 
     // Move constructor ok (if T supports move)
-    StatusOr(StatusOr&&) = default;
+    StatusOr(StatusOr&&) noexcept = default;
     // Move assignment ok (if T supports move)
-    StatusOr& operator=(StatusOr&&) = default;
+    StatusOr& operator=(StatusOr&&) noexcept = default;
     // Copy constructor ok (if T supports copy)
     StatusOr(const StatusOr&) = default;
     // Copy assignment ok (if T supports copy)
