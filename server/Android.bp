@@ -2,12 +2,14 @@
 filegroup {
     name: "netd_aidl",
     srcs: ["binder/android/net/INetd.aidl"],
+    path: "binder",
 }
 
 // AIDL interface between netd and services.core
 filegroup {
     name: "netd_metrics_aidl",
     srcs: ["binder/android/net/metrics/INetdEventListener.aidl"],
+    path: "binder",
 }
 
 // These are used in netd_integration_test
@@ -35,7 +37,7 @@ cc_library {
         include_dirs: ["frameworks/native/aidl/binder"],
     },
     srcs: [
-        "binder/android/net/INetd.aidl",
+        ":netd_aidl",
         "binder/android/net/UidRange.cpp",
     ],
     export_include_dirs: ["binder"],
@@ -70,7 +72,7 @@ cc_library_static {
         "UidRanges.cpp",
         "WakeupController.cpp",
         "XfrmController.cpp",
-        "binder/android/net/metrics/INetdEventListener.aidl",
+        ":netd_metrics_aidl",
     ],
     shared_libs: [
         "libbpf",
