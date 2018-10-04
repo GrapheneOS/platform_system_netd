@@ -1560,7 +1560,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
             return EAI_FAMILY;
     }
 
-    res = __res_get_state();
+    res = res_get_state();
     if (res == NULL) {
         free(buf);
         free(buf2);
@@ -1574,7 +1574,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
      */
     res_setnetcontext(res, netcontext);
     if (res_searchN(name, &q, res) < 0) {
-        __res_put_state(res);
+        res_put_state(res);
         free(buf);
         free(buf2);
         return EAI_NODATA;  // TODO: Decode error from h_errno like we do below
@@ -1591,7 +1591,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
     free(buf);
     free(buf2);
     if (sentinel.ai_next == NULL) {
-        __res_put_state(res);
+        res_put_state(res);
         switch (h_errno) {
             case HOST_NOT_FOUND:
                 return EAI_NODATA;
@@ -1604,7 +1604,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
 
     _rfc6724_sort(&sentinel, netcontext->app_mark, netcontext->uid);
 
-    __res_put_state(res);
+    res_put_state(res);
 
     *rv = sentinel.ai_next;
     return 0;
@@ -1827,16 +1827,6 @@ static int res_searchN(const char* name, struct res_target* target, res_state re
     for (cp = name; *cp; cp++) dots += (*cp == '.');
     trailing_dot = 0;
     if (cp > name && *--cp == '.') trailing_dot++;
-
-    // fprintf(stderr, "res_searchN() name = '%s'\n", name);
-
-    /*
-     * if there aren't any dots, it could be a user-level alias
-     */
-    if (!dots && (cp = __hostalias(name)) != NULL) {
-        ret = res_queryN(cp, target, res);
-        return ret;
-    }
 
     /*
      * If there are dots in the name already, let's just give it a try
