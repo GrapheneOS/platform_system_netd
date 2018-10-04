@@ -28,6 +28,6 @@ struct res_static {
     struct hostent host;
 };
 
-extern struct res_static* __res_get_static(void);
+res_static* res_get_static(void);
 
 #endif // _RESOLV_STATIC_H_
