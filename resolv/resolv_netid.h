@@ -48,12 +48,9 @@
  */
 #define MARK_UNSET 0u
 
-__BEGIN_DECLS
-
 struct __res_params;
 struct addrinfo;
-
-#define __used_in_netd __attribute__((visibility("default")))
+struct hostent;
 
 /*
  * A struct to capture context relevant to network operations.
@@ -81,34 +78,33 @@ struct android_net_context {
 #define NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS 0x00000001
 #define NET_CONTEXT_FLAG_USE_EDNS 0x00000002
 
-struct hostent* android_gethostbyaddrfornet(const void*, socklen_t, int, unsigned,
-                                            unsigned) __used_in_netd;
-struct hostent* android_gethostbynamefornet(const char*, int, unsigned, unsigned) __used_in_netd;
-int android_getaddrinfofornet(const char*, const char*, const struct addrinfo*, unsigned, unsigned,
-                              struct addrinfo**) __used_in_netd;
+LIBNETD_RESOLV_PUBLIC hostent* android_gethostbyaddrfornet(const void*, socklen_t, int, unsigned,
+                                                           unsigned);
+LIBNETD_RESOLV_PUBLIC hostent* android_gethostbynamefornet(const char*, int, unsigned, unsigned);
+LIBNETD_RESOLV_PUBLIC int android_getaddrinfofornet(const char*, const char*,
+                                                    const addrinfo*, unsigned, unsigned,
+                                                    addrinfo**);
 /*
  * TODO: consider refactoring android_getaddrinfo_proxy() to serve as an
  * explore_fqdn() dispatch table method, with the below function only making DNS calls.
  */
-struct hostent* android_gethostbyaddrfornetcontext(
-        const void*, socklen_t, int, const struct android_net_context*) __used_in_netd;
-struct hostent* android_gethostbynamefornetcontext(
-        const char*, int, const struct android_net_context*) __used_in_netd;
-int android_getaddrinfofornetcontext(const char*, const char*, const struct addrinfo*,
-                                     const struct android_net_context*,
-                                     struct addrinfo**) __used_in_netd;
+LIBNETD_RESOLV_PUBLIC hostent* android_gethostbyaddrfornetcontext(const void*, socklen_t, int,
+                                                                  const android_net_context*);
+LIBNETD_RESOLV_PUBLIC hostent* android_gethostbynamefornetcontext(const char*, int,
+                                                                  const android_net_context*);
+LIBNETD_RESOLV_PUBLIC int android_getaddrinfofornetcontext(const char*, const char*,
+                                                           const addrinfo*,
+                                                           const android_net_context*, addrinfo**);
 
-/* set name servers for a network */
-extern int _resolv_set_nameservers_for_net(unsigned netid, const char** servers,
-                                           unsigned numservers, const char* domains,
-                                           const struct __res_params* params) __used_in_netd;
+// Set name servers for a network
+LIBNETD_RESOLV_PUBLIC int _resolv_set_nameservers_for_net(unsigned netid, const char** servers,
+                                                          unsigned numservers, const char* domains,
+                                                          const __res_params* params);
 
-/* flush the cache associated with a certain network */
-extern void _resolv_flush_cache_for_net(unsigned netid) __used_in_netd;
+// Flush the cache associated with a certain network
+LIBNETD_RESOLV_PUBLIC void _resolv_flush_cache_for_net(unsigned netid);
 
-/* delete the cache associated with a certain network */
-extern void _resolv_delete_cache_for_net(unsigned netid) __used_in_netd;
-
-__END_DECLS
+// Delete the cache associated with a certain network
+LIBNETD_RESOLV_PUBLIC void _resolv_delete_cache_for_net(unsigned netid);
 
 #endif /* _RESOLV_NETID_H */
