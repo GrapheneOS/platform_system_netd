@@ -164,6 +164,13 @@ int _resolv_cache_get_resolver_stats(unsigned netid, struct __res_params* params
 void _resolv_cache_add_resolver_stats_sample(unsigned netid, int revision_id, int ns,
                                              const struct __res_sample* sample, int max_samples);
 
+
+// Calculate the round-trip-time from start time t0 and end time t1.
+int _res_stats_calculate_rtt(const timespec* t1, const timespec* t0);
+
+// Create a sample for calculating server reachability statistics.
+void _res_stats_set_sample(__res_sample* sample, time_t now, int rcode, int rtt);
+
 /* End of stats related definitions */
 
 union res_sockaddr_union {
@@ -248,12 +255,8 @@ union res_sockaddr_union {
 /*			0x00010000	*/
 
 /* Things involving an internal (static) resolver context. */
-__BEGIN_DECLS
-
 struct __res_state* __res_get_state(void);
 void __res_put_state(struct __res_state*);
-
-__END_DECLS
 
 #define fp_nquery __fp_nquery
 #define fp_query __fp_query
@@ -266,7 +269,6 @@ __END_DECLS
 #define res_send __res_send
 #define res_sendsigned __res_sendsigned
 
-__BEGIN_DECLS
 const char* hostalias(const char*);
 void p_query(const u_char*);
 void res_close(void);
@@ -279,7 +281,6 @@ int res_querydomain(const char*, const char*, int, int, u_char*, int);
 int res_search(const char*, int, int, u_char*, int);
 int res_send(const u_char*, int, u_char*, int);
 int res_sendsigned(const u_char*, int, ns_tsig_key*, u_char*, int);
-__END_DECLS
 
 #define dn_count_labels __dn_count_labels
 #define dn_skipname __dn_skipname
@@ -328,7 +329,6 @@ __END_DECLS
 #define res_send_setrhook __res_send_setrhook
 #define res_servicename __res_servicename
 #define res_servicenumber __res_servicenumber
-__BEGIN_DECLS
 int res_hnok(const char*);
 int res_ownok(const char*);
 int res_mailok(const char*);
@@ -338,8 +338,6 @@ const char* loc_ntoa(const u_char*, char*, size_t);
 int dn_skipname(const u_char*, const u_char*);
 void putlong(uint32_t, u_char*);
 void putshort(uint16_t, u_char*);
-uint16_t _getshort(const u_char*);
-uint32_t _getlong(const u_char*);
 const char* p_class(int);
 const char* p_time(uint32_t);
 const char* p_type(int);
@@ -395,7 +393,5 @@ int ns_name_eq(ns_nname_ct, size_t, ns_nname_ct, size_t);
 int ns_name_owned(ns_namemap_ct, int, ns_namemap_ct, int);
 int ns_name_map(ns_nname_ct, size_t, ns_namemap_t, int);
 int ns_name_labels(ns_nname_ct, size_t);
-
-__END_DECLS
 
 #endif /* !_RESOLV_PRIVATE_H_ */

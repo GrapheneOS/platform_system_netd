@@ -1012,11 +1012,11 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
         }
         cp += n; /* name */
         BOUNDS_CHECK(cp, 3 * INT16SZ + INT32SZ);
-        type = _getshort(cp);
+        type = ns_get16(cp);
         cp += INT16SZ; /* type */
-        int cl = _getshort(cp);
+        int cl = ns_get16(cp);
         cp += INT16SZ + INT32SZ; /* class, TTL */
-        n = _getshort(cp);
+        n = ns_get16(cp);
         cp += INT16SZ; /* len */
         BOUNDS_CHECK(cp, n);
         if (cl != C_IN) {
