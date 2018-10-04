@@ -46,35 +46,20 @@ struct __res_stats {
     uint8_t sample_next;
 };
 
-/* Calculate the round-trip-time from start time t0 and end time t1. */
-extern int _res_stats_calculate_rtt(const struct timespec* t1, const struct timespec* t0);
+// Aggregates the reachability statistics for the given server based on on the stored samples.
+LIBNETD_RESOLV_PUBLIC void android_net_res_stats_aggregate(__res_stats* stats,
+                                                           int* successes, int* errors,
+                                                           int* timeouts, int* internal_errors,
+                                                           int* rtt_avg, time_t* last_sample_time);
 
-/* Initialize a sample for calculating server reachability statistics. */
-extern void _res_stats_set_sample(struct __res_sample* sample, time_t now, int rcode, int rtt);
+LIBNETD_RESOLV_PUBLIC int android_net_res_stats_get_info_for_net(
+        unsigned netid, int* nscount, sockaddr_storage servers[MAXNS], int* dcount,
+        char domains[MAXDNSRCH][MAXDNSRCHPATH], __res_params* params, __res_stats stats[MAXNS]);
 
-/* Returns true if the server is considered unusable, i.e. if the success rate is not lower than the
- * threshold for the stored stored samples. If not enough samples are stored, the server is
- * considered usable.
- */
-extern bool _res_stats_usable_server(const struct __res_params* params, struct __res_stats* stats);
-
-__BEGIN_DECLS
-/* Aggregates the reachability statistics for the given server based on on the stored samples. */
-extern void android_net_res_stats_aggregate(struct __res_stats* stats, int* successes, int* errors,
-                                            int* timeouts, int* internal_errors, int* rtt_avg,
-                                            time_t* last_sample_time)
-        __attribute__((visibility("default")));
-
-extern int android_net_res_stats_get_info_for_net(
-        unsigned netid, int* nscount, struct sockaddr_storage servers[MAXNS], int* dcount,
-        char domains[MAXDNSRCH][MAXDNSRCHPATH], struct __res_params* params,
-        struct __res_stats stats[MAXNS]) __attribute__((visibility("default")));
-
-/* Returns an array of bools indicating which servers are considered good */
-extern void android_net_res_stats_get_usable_servers(const struct __res_params* params,
-                                                     struct __res_stats stats[], int nscount,
-                                                     bool valid_servers[])
-        __attribute__((visibility("default")));
-__END_DECLS
+// Returns an array of bools indicating which servers are considered good
+LIBNETD_RESOLV_PUBLIC void android_net_res_stats_get_usable_servers(const __res_params* params,
+                                                                    __res_stats stats[],
+                                                                    int nscount,
+                                                                    bool valid_servers[]);
 
 #endif  // _RES_STATS_H_

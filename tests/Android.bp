@@ -41,12 +41,13 @@ cc_test {
         "resolver_test.cpp",
     ],
     include_dirs: [
-        "system/netd/include",
-        "system/netd/server",
-        "system/core/logwrapper/include",
-        "system/netd/tests/dns_responder",
-        "system/netd/resolv",
         "system/core/libnetutils/include",
+        "system/core/logwrapper/include",
+        "system/netd/include",
+        // TODO: clean separation of client-side resolver headers
+        "system/netd/resolv",
+        "system/netd/server",
+        "system/netd/tests/dns_responder",
     ],
     shared_libs: [
         "libbase",
