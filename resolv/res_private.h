@@ -18,6 +18,4 @@ struct __res_state_ext {
     char nsuffix2[64];
 };
 
-extern int res_ourserver_p(const res_state statp, const struct sockaddr* sa);
-
 #endif  // _RES_PRIVATE_H_

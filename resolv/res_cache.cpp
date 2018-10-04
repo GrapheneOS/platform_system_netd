@@ -1359,7 +1359,7 @@ static void dump_answer(const u_char* answer, int answerlen) {
 
     fp = fopen("/data/reslog.txt", "w+e");
     if (fp != NULL) {
-        statep = __res_get_state();
+        statep = res_get_state();
 
         res_pquery(statep, answer, answerlen, fp);
 
