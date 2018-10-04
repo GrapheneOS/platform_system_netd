@@ -58,4 +58,6 @@ typedef res_sendhookact (*res_send_qhook)(struct sockaddr* const*, const u_char*
 typedef res_sendhookact (*res_send_rhook)(const struct sockaddr*, const u_char*, int, u_char*, int,
                                           int*);
 
+#define LIBNETD_RESOLV_PUBLIC extern "C" [[gnu::visibility("default")]]
+
 #endif  // _RESOLV_PARAMS_H
