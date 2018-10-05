@@ -40,9 +40,6 @@
  *   says to use inet_aton() to convert IPv4 numeric to binary (alows
  *   classful form as a result).
  *   current code - disallow classful form for IPv4 (due to use of inet_pton).
- * - freeaddrinfo(NULL).  RFC2553 is silent about it.  XNET 5.2 says it is
- *   invalid.
- *   current code - SEGV on freeaddrinfo(NULL)
  * Note:
  * - We use getipnodebyname() just for thread-safeness.  There's no intent
  *   to let it do PF_UNSPEC (actually we never pass PF_UNSPEC to
@@ -266,17 +263,13 @@ const char* gai_strerror(int ecode) {
 }
 
 void freeaddrinfo(struct addrinfo* ai) {
-    struct addrinfo* next;
-
-    if (ai == NULL) return;
-
-    do {
-        next = ai->ai_next;
+    while (ai) {
+        struct addrinfo* next = ai->ai_next;
         if (ai->ai_canonname) free(ai->ai_canonname);
-        /* no need to free(ai->ai_addr) */
+        // Also frees ai->ai_addr which points to extra space beyond addrinfo
         free(ai);
         ai = next;
-    } while (ai);
+    }
 }
 
 static int str2number(const char* p) {
@@ -506,7 +499,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
     }
 free:
 bad:
-    if (sentinel.ai_next) freeaddrinfo(sentinel.ai_next);
+    freeaddrinfo(sentinel.ai_next);
     *res = NULL;
     return error;
 }
@@ -541,7 +534,7 @@ static int explore_fqdn(const struct addrinfo* pai, const char* hostname, const 
     }
 
 free:
-    if (result) freeaddrinfo(result);
+    freeaddrinfo(result);
     return error;
 }
 
@@ -602,7 +595,7 @@ static int explore_null(const struct addrinfo* pai, const char* servname, struct
     return 0;
 
 free:
-    if (sentinel.ai_next) freeaddrinfo(sentinel.ai_next);
+    freeaddrinfo(sentinel.ai_next);
     return error;
 }
 
@@ -682,7 +675,7 @@ static int explore_numeric(const struct addrinfo* pai, const char* hostname, con
 
 free:
 bad:
-    if (sentinel.ai_next) freeaddrinfo(sentinel.ai_next);
+    freeaddrinfo(sentinel.ai_next);
     return error;
 }
 
