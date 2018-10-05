@@ -28,8 +28,8 @@
 #include <numeric>
 #include <thread>
 
-#include <cutils/sockets.h>
 #include <android-base/stringprintf.h>
+#include <cutils/sockets.h>
 #include <private/android_filesystem_config.h>
 
 #include <openssl/base64.h>
@@ -98,11 +98,8 @@ bool UnorderedCompareArray(const A& a, const B& b) {
 }
 
 class ResolverTest : public ::testing::Test, public DnsResponderClient {
-private:
-    int mOriginalMetricsLevel;
-
-protected:
-    virtual void SetUp() {
+  protected:
+    void SetUp() {
         // Ensure resolutions go via proxy.
         DnsResponderClient::SetUp();
 
@@ -115,7 +112,7 @@ protected:
         }
     }
 
-    virtual void TearDown() {
+    void TearDown() {
         if (mOriginalMetricsLevel != INetdEventListener::REPORTING_LEVEL_FULL) {
             auto rv = mNetdSrv->setMetricsReportingLevel(mOriginalMetricsLevel);
             ASSERT_TRUE(rv.isOk());
@@ -184,7 +181,7 @@ protected:
     }
 
     size_t GetNumQueriesForType(const test::DNSResponder& dns, ns_type type,
-            const char* name) const {
+                                const char* name) const {
         auto queries = dns.queries();
         size_t found = 0;
         for (const auto& p : queries) {
@@ -247,6 +244,9 @@ protected:
             8,   8,  // {MIN,MAX}_SAMPLES
             100,     // BASE_TIMEOUT_MSEC
     };
+
+  private:
+    int mOriginalMetricsLevel;
 };
 
 TEST_F(ResolverTest, GetHostByName) {
@@ -286,6 +286,8 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
     constexpr char addr[] = "127.0.0.1";
     constexpr char name_ip6[] = "ip6-localhost";
     constexpr char addr_ip6[] = "::1";
+    constexpr char name_ip6_dot[] = "ip6-localhost.";
+    constexpr char name_ip6_fqdn[] = "ip6-localhost.example.com.";
 
     // Add a dummy nameserver which shouldn't receive any queries
     constexpr char listen_addr[] = "127.0.0.3";
@@ -298,7 +300,7 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
 
     // Expect no DNS queries; localhost is resolved via /etc/hosts
     const hostent* result = gethostbyname(name);
-    EXPECT_EQ(0, GetNumQueriesForType(dns, ns_type::ns_t_a, name));
+    EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
@@ -307,7 +309,7 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
 
     // Ensure the hosts file resolver ignores case of hostnames
     result = gethostbyname(name_camelcase);
-    EXPECT_EQ(0, GetNumQueriesForType(dns, ns_type::ns_t_a, name_camelcase));
+    EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
@@ -315,16 +317,23 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
 
     // The hosts file also contains ip6-localhost, but gethostbyname() won't
-    // return unless the RES_USE_INET6 option is set. This would be easy to
-    // change, but there's no point in changing the legacy behavior.
-    // New code should call getaddrinfo() anyway.
+    // return it unless the RES_USE_INET6 option is set. This would be easy to
+    // change, but there's no point in changing the legacy behavior; new code
+    // should be calling getaddrinfo() anyway.
+    // So we check the legacy behavior, which results in amusing A-record
+    // lookups for ip6-localhost, with and without search domains appended.
+    dns.clearQueries();
     result = gethostbyname(name_ip6);
-    EXPECT_EQ(0, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6));
+    EXPECT_EQ(2, dns.queries().size()) << dns.dumpQueries();
+    EXPECT_EQ(1, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6_dot)) << dns.dumpQueries();
+    EXPECT_EQ(1, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6_fqdn)) << dns.dumpQueries();
     ASSERT_TRUE(result == nullptr);
 
-    // Finally, use gethostbyname2() to resolve localhost-v6 to ::1
+    // Finally, use gethostbyname2() to resolve ip6-localhost to ::1 from
+    // the hosts file.
+    dns.clearQueries();
     result = gethostbyname2(name_ip6, AF_INET6);
-    EXPECT_EQ(0, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6));
+    EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(16, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
@@ -498,13 +507,13 @@ TEST_F(ResolverTest, GetAddrInfo_localhost) {
     ScopedAddrinfo result = safe_getaddrinfo(name, nullptr, nullptr);
     EXPECT_TRUE(result != nullptr);
     // Expect no DNS queries; localhost is resolved via /etc/hosts
-    EXPECT_EQ(0, GetNumQueries(dns, name));
+    EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
     EXPECT_EQ(addr, ToString(result));
 
     result = safe_getaddrinfo(name_ip6, nullptr, nullptr);
     EXPECT_TRUE(result != nullptr);
-    // Expect no DNS queries; localhost is resolved via /etc/hosts
-    EXPECT_EQ(0, GetNumQueries(dns, name));
+    // Expect no DNS queries; ip6-localhost is resolved via /etc/hosts
+    EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
     EXPECT_EQ(addr_ip6, ToString(result));
 }
 
