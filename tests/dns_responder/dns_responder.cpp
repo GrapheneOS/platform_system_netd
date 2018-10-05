@@ -674,6 +674,15 @@ std::vector<std::pair<std::string, ns_type >> DNSResponder::queries() const {
     return queries_;
 }
 
+std::string DNSResponder::dumpQueries() const {
+    std::lock_guard lock(queries_mutex_);
+    std::string out;
+    for (const auto& q : queries_) {
+        out += "{\"" + q.first + "\", " + std::to_string(q.second) + "} ";
+    }
+    return out;
+}
+
 void DNSResponder::clearQueries() {
     std::lock_guard lock(queries_mutex_);
     queries_.clear();
