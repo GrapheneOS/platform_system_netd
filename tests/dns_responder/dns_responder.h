@@ -59,6 +59,7 @@ class DNSResponder {
         return listen_service_;
     }
     std::vector<std::pair<std::string, ns_type>> queries() const;
+    std::string dumpQueries() const;
     void clearQueries();
 
   private:

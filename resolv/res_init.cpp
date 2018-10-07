@@ -127,13 +127,11 @@ static void res_setoptions(res_state, const char*, const char*);
  * Return 0 if completes successfully, -1 on error
  */
 int res_ninit(res_state statp) {
-    extern int __res_vinit(res_state, int);
-
-    return (__res_vinit(statp, 0));
+    return res_vinit(statp, 0);
 }
 
 /* This function has to be reachable by res_data.c but not publicly. */
-int __res_vinit(res_state statp, int preinit) {
+int res_vinit(res_state statp, int preinit) {
     char *cp, **pp;
     char buf[BUFSIZ];
     int nserv = 0; /* number of nameserver records read from file */

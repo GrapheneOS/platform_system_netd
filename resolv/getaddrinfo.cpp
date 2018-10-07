@@ -40,9 +40,6 @@
  *   says to use inet_aton() to convert IPv4 numeric to binary (alows
  *   classful form as a result).
  *   current code - disallow classful form for IPv4 (due to use of inet_pton).
- * - freeaddrinfo(NULL).  RFC2553 is silent about it.  XNET 5.2 says it is
- *   invalid.
- *   current code - SEGV on freeaddrinfo(NULL)
  * Note:
  * - We use getipnodebyname() just for thread-safeness.  There's no intent
  *   to let it do PF_UNSPEC (actually we never pass PF_UNSPEC to
@@ -266,17 +263,13 @@ const char* gai_strerror(int ecode) {
 }
 
 void freeaddrinfo(struct addrinfo* ai) {
-    struct addrinfo* next;
-
-    if (ai == NULL) return;
-
-    do {
-        next = ai->ai_next;
+    while (ai) {
+        struct addrinfo* next = ai->ai_next;
         if (ai->ai_canonname) free(ai->ai_canonname);
-        /* no need to free(ai->ai_addr) */
+        // Also frees ai->ai_addr which points to extra space beyond addrinfo
         free(ai);
         ai = next;
-    } while (ai);
+    }
 }
 
 static int str2number(const char* p) {
@@ -506,7 +499,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
     }
 free:
 bad:
-    if (sentinel.ai_next) freeaddrinfo(sentinel.ai_next);
+    freeaddrinfo(sentinel.ai_next);
     *res = NULL;
     return error;
 }
@@ -541,7 +534,7 @@ static int explore_fqdn(const struct addrinfo* pai, const char* hostname, const 
     }
 
 free:
-    if (result) freeaddrinfo(result);
+    freeaddrinfo(result);
     return error;
 }
 
@@ -602,7 +595,7 @@ static int explore_null(const struct addrinfo* pai, const char* servname, struct
     return 0;
 
 free:
-    if (sentinel.ai_next) freeaddrinfo(sentinel.ai_next);
+    freeaddrinfo(sentinel.ai_next);
     return error;
 }
 
@@ -682,7 +675,7 @@ static int explore_numeric(const struct addrinfo* pai, const char* hostname, con
 
 free:
 bad:
-    if (sentinel.ai_next) freeaddrinfo(sentinel.ai_next);
+    freeaddrinfo(sentinel.ai_next);
     return error;
 }
 
@@ -1012,11 +1005,11 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
         }
         cp += n; /* name */
         BOUNDS_CHECK(cp, 3 * INT16SZ + INT32SZ);
-        type = _getshort(cp);
+        type = ns_get16(cp);
         cp += INT16SZ; /* type */
-        int cl = _getshort(cp);
+        int cl = ns_get16(cp);
         cp += INT16SZ + INT32SZ; /* class, TTL */
-        n = _getshort(cp);
+        n = ns_get16(cp);
         cp += INT16SZ; /* len */
         BOUNDS_CHECK(cp, n);
         if (cl != C_IN) {
@@ -1560,7 +1553,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
             return EAI_FAMILY;
     }
 
-    res = __res_get_state();
+    res = res_get_state();
     if (res == NULL) {
         free(buf);
         free(buf2);
@@ -1574,7 +1567,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
      */
     res_setnetcontext(res, netcontext);
     if (res_searchN(name, &q, res) < 0) {
-        __res_put_state(res);
+        res_put_state(res);
         free(buf);
         free(buf2);
         return EAI_NODATA;  // TODO: Decode error from h_errno like we do below
@@ -1591,7 +1584,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
     free(buf);
     free(buf2);
     if (sentinel.ai_next == NULL) {
-        __res_put_state(res);
+        res_put_state(res);
         switch (h_errno) {
             case HOST_NOT_FOUND:
                 return EAI_NODATA;
@@ -1604,7 +1597,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
 
     _rfc6724_sort(&sentinel, netcontext->app_mark, netcontext->uid);
 
-    __res_put_state(res);
+    res_put_state(res);
 
     *rv = sentinel.ai_next;
     return 0;
@@ -1827,16 +1820,6 @@ static int res_searchN(const char* name, struct res_target* target, res_state re
     for (cp = name; *cp; cp++) dots += (*cp == '.');
     trailing_dot = 0;
     if (cp > name && *--cp == '.') trailing_dot++;
-
-    // fprintf(stderr, "res_searchN() name = '%s'\n", name);
-
-    /*
-     * if there aren't any dots, it could be a user-level alias
-     */
-    if (!dots && (cp = __hostalias(name)) != NULL) {
-        ret = res_queryN(cp, target, res);
-        return ret;
-    }
 
     /*
      * If there are dots in the name already, let's just give it a try

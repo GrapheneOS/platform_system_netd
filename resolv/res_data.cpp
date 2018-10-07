@@ -32,7 +32,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "res_private.h"  // res_ourserver_p()
 #include "resolv_private.h"
 
 extern const char* const _res_opcodes[] = {
@@ -48,7 +47,6 @@ extern struct __res_state _nres;
 
 int res_init(void) {
     int rv;
-    extern int __res_vinit(res_state, int);
 
     /*
      * These three fields used to be statically initialized.  This made
@@ -79,21 +77,8 @@ int res_init(void) {
      */
     if (!_nres.id) _nres.id = res_randomid();
 
-    rv = __res_vinit(&_nres, 1);
+    rv = res_vinit(&_nres, 1);
     return rv;
-}
-
-static void fp_nquery(const u_char* msg, int len, FILE* file) {
-    if (res_need_init() && res_init() == -1) return;
-    res_pquery(&_nres, msg, len, file);
-}
-
-static void fp_query(const u_char* msg, FILE* file) {
-    fp_nquery(msg, PACKETSZ, file);
-}
-
-void p_query(const u_char* msg) {
-    fp_query(msg, stdout);
 }
 
 int res_mkquery(int op,                 // opcode of query
@@ -124,18 +109,6 @@ int res_query(const char* name,    // domain name
     return res_nquery(&_nres, name, cl, type, answer, anslen);
 }
 
-void res_send_setqhook(res_send_qhook hook) {
-    _nres.qhook = hook;
-}
-
-void res_send_setrhook(res_send_rhook hook) {
-    _nres.rhook = hook;
-}
-
-int res_isourserver(const struct sockaddr_in* inp) {
-    return res_ourserver_p(&_nres, (const struct sockaddr*) (const void*) inp);
-}
-
 int res_send(const u_char* buf, int buflen, u_char* ans, int anssiz) {
     if (res_need_init() && res_init() == -1) {
         /* errno should have been set by res_init() in this case. */
@@ -143,10 +116,6 @@ int res_send(const u_char* buf, int buflen, u_char* ans, int anssiz) {
     }
 
     return res_nsend(&_nres, buf, buflen, ans, anssiz);
-}
-
-void res_close(void) {
-    res_nclose(&_nres);
 }
 
 int res_search(const char* name,    // domain name
@@ -160,25 +129,4 @@ int res_search(const char* name,    // domain name
     }
 
     return res_nsearch(&_nres, name, cl, type, answer, anslen);
-}
-
-int res_querydomain(const char* name, const char* domain,
-                    int cl, int type,  // class and type of query
-                    u_char* answer,    // buffer to put answer
-                    int anslen)        // size of answer
-{
-    if (res_need_init() && res_init() == -1) {
-        RES_SET_H_ERRNO(&_nres, NETDB_INTERNAL);
-        return -1;
-    }
-
-    return res_nquerydomain(&_nres, name, domain, cl, type, answer, anslen);
-}
-
-int res_opt(int a, u_char* b, int c, int d) {
-    return res_nopt(&_nres, a, b, c, d);
-}
-
-const char* hostalias(const char* /*name*/) {
-    return NULL;
 }

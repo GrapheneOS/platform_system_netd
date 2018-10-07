@@ -41,12 +41,9 @@ cc_test {
         "resolver_test.cpp",
     ],
     include_dirs: [
-        "system/netd/include",
         "system/netd/server",
-        "system/core/logwrapper/include",
         "system/netd/tests/dns_responder",
         "system/netd/resolv",
-        "system/core/libnetutils/include",
     ],
     shared_libs: [
         "libbase",

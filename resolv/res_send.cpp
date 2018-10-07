@@ -266,8 +266,6 @@ static int random_bind(int s, int family) {
 }
 /* BIONIC-END */
 
-/* Public. */
-
 /* int
  * res_isourserver(ina)
  *	looks up "ina" in _res.ns_addr_list[]
@@ -277,9 +275,9 @@ static int random_bind(int s, int family) {
  * author:
  *	paul vixie, 29may94
  */
-int res_ourserver_p(const res_state statp, const struct sockaddr* sa) {
-    const struct sockaddr_in *inp, *srv;
-    const struct sockaddr_in6 *in6p, *srv6;
+static int res_ourserver_p(const res_state statp, const sockaddr* sa) {
+    const sockaddr_in *inp, *srv;
+    const sockaddr_in6 *in6p, *srv6;
     int ns;
 
     switch (sa->sa_family) {
@@ -290,7 +288,7 @@ int res_ourserver_p(const res_state statp, const struct sockaddr* sa) {
                 if (srv->sin_family == inp->sin_family && srv->sin_port == inp->sin_port &&
                     (srv->sin_addr.s_addr == INADDR_ANY ||
                      srv->sin_addr.s_addr == inp->sin_addr.s_addr))
-                    return (1);
+                    return 1;
             }
             break;
         case AF_INET6:
@@ -304,13 +302,13 @@ int res_ourserver_p(const res_state statp, const struct sockaddr* sa) {
 #endif
                     (IN6_IS_ADDR_UNSPECIFIED(&srv6->sin6_addr) ||
                      IN6_ARE_ADDR_EQUAL(&srv6->sin6_addr, &in6p->sin6_addr)))
-                    return (1);
+                    return 1;
             }
             break;
         default:
             break;
     }
-    return (0);
+    return 0;
 }
 
 /* int

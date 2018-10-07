@@ -85,29 +85,25 @@
 #define DEBUG
 #endif
 
-#define UNUSED(a) (void) &a
-
 extern const char* _res_opcodes[];
 
 /*
  * Form all types of queries.
  * Returns the size of the result or -1.
  */
-int res_nmkquery(res_state statp, int op, /* opcode of query */
-                 const char* dname,       /* domain name */
-                 int cl, int type,        /* class and type of query */
-                 const u_char* data,      /* resource record data */
-                 int datalen,             /* length of data */
-                 const u_char* newrr_in,  /* new rr for modify or append */
-                 u_char* buf,             /* buffer to put query */
-                 int buflen)              /* size of buffer */
+int res_nmkquery(res_state statp, int op,    /* opcode of query */
+                 const char* dname,          /* domain name */
+                 int cl, int type,           /* class and type of query */
+                 const u_char* data,         /* resource record data */
+                 int datalen,                /* length of data */
+                 const u_char* /*newrr_in*/, /* new rr for modify or append */
+                 u_char* buf,                /* buffer to put query */
+                 int buflen)                 /* size of buffer */
 {
     HEADER* hp;
     u_char *cp, *ep;
     int n;
     u_char *dnptrs[20], **dpp, **lastdnptr;
-
-    UNUSED(newrr_in);
 
 #ifdef DEBUG
     if (statp->options & RES_DEBUG)
