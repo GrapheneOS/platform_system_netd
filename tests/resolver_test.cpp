@@ -343,6 +343,57 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
     dns.stopServer();
 }
 
+TEST_F(ResolverTest, GetHostByName_numeric) {
+    // Add a dummy nameserver which shouldn't receive any queries
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_srv[] = "53";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    ASSERT_TRUE(dns.startServer());
+    ASSERT_TRUE(
+            SetResolversForNetwork({listen_addr}, mDefaultSearchDomains, mDefaultParams_Binder));
+
+    // Numeric v4 address: expect no DNS queries
+    constexpr char numeric_v4[] = "192.168.0.1";
+    dns.clearQueries();
+    const hostent* result = gethostbyname(numeric_v4);
+    EXPECT_EQ(0, dns.queries().size());
+    ASSERT_FALSE(result == nullptr);
+    ASSERT_EQ(4, result->h_length);  // v4
+    ASSERT_FALSE(result->h_addr_list[0] == nullptr);
+    EXPECT_EQ(numeric_v4, ToString(result));
+    EXPECT_TRUE(result->h_addr_list[1] == nullptr);
+
+    // gethostbyname() recognizes a v6 address, and fails with no DNS queries
+    constexpr char numeric_v6[] = "2001:db8::42";
+    dns.clearQueries();
+    result = gethostbyname(numeric_v6);
+    EXPECT_EQ(0, dns.queries().size());
+    EXPECT_TRUE(result == nullptr);
+
+    // Numeric v6 address with gethostbyname2(): succeeds with no DNS queries
+    dns.clearQueries();
+    result = gethostbyname2(numeric_v6, AF_INET6);
+    EXPECT_EQ(0, dns.queries().size());
+    ASSERT_FALSE(result == nullptr);
+    ASSERT_EQ(16, result->h_length);  // v6
+    ASSERT_FALSE(result->h_addr_list[0] == nullptr);
+    EXPECT_EQ(numeric_v6, ToString(result));
+    EXPECT_TRUE(result->h_addr_list[1] == nullptr);
+
+    // Numeric v6 address with scope work with getaddrinfo(),
+    // but gethostbyname2() does not understand them; it issues two dns
+    // queries, then fails. This hardly ever happens, there's no point
+    // in fixing this. This test simply verifies the current (bogus)
+    // behavior to avoid further regressions (like crashes, or leaks).
+    constexpr char numeric_v6_scope[] = "fe80::1%lo";
+    dns.clearQueries();
+    result = gethostbyname2(numeric_v6_scope, AF_INET6);
+    EXPECT_EQ(2, dns.queries().size());  // OUCH!
+    ASSERT_TRUE(result == nullptr);
+
+    dns.stopServer();
+}
+
 TEST_F(ResolverTest, BinderSerialization) {
     using android::net::INetd;
     std::vector<int> params_offsets = {
