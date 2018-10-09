@@ -18,6 +18,7 @@
 #define _CLATD_CONTROLLER_H
 
 #include <map>
+#include <mutex>
 
 namespace android {
 namespace net {
