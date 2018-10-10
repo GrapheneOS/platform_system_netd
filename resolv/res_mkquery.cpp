@@ -131,7 +131,8 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
      * perform opcode specific processing
      */
     switch (op) {
-        case QUERY: /*FALLTHROUGH*/
+        case QUERY:
+            [[fallthrough]];
         case NS_NOTIFY_OP:
             if (ep - cp < QFIXEDSZ) return (-1);
             if ((n = dn_comp(dname, cp, ep - cp - QFIXEDSZ, dnptrs, lastdnptr)) < 0) return (-1);
