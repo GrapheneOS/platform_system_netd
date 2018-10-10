@@ -45,8 +45,8 @@ class DNSResponder {
     DNSResponder(std::string listen_address, std::string listen_service, int poll_timeout_ms,
                  ns_rcode error_rcode);
     ~DNSResponder();
-    void addMapping(const char* name, ns_type type, const char* addr);
-    void removeMapping(const char* name, ns_type type);
+    void addMapping(const std::string& name, ns_type type, const std::string& addr);
+    void removeMapping(const std::string& name, ns_type type);
     void setResponseProbability(double response_probability);
     void setFailOnEdns(bool fail) { fail_on_edns_ = fail; }
     bool running() const;
@@ -67,7 +67,8 @@ class DNSResponder {
     struct QueryKey {
         std::string name;
         unsigned type;
-        QueryKey(std::string n, unsigned t) : name(n), type(t) {}
+
+        QueryKey(std::string n, unsigned t) : name(move(n)), type(t) {}
         bool operator == (const QueryKey& o) const {
             return name == o.name && type == o.type;
         }
