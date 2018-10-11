@@ -10,6 +10,7 @@ cc_benchmark {
         "libnetd_client",
         "libnetdaidl",
         "libnetdutils",
+        "netd_aidl_interface-cpp",
     ],
     static_libs: [
         "libnetd_test_dnsresponder",

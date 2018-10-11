@@ -77,10 +77,10 @@ using android::base::StringPrintf;
 using android::base::Trim;
 using android::bpf::hasBpfSupport;
 using android::net::INetd;
+using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRange;
 using android::net::XfrmController;
-using android::os::PersistableBundle;
 
 #define SKIP_IF_BPF_SUPPORTED        \
     do {                             \
@@ -1028,6 +1028,16 @@ void delTetherCounterValues(const char* path, const std::string& if1, const std:
                             path, if2.c_str(), if1.c_str()));
 }
 
+std::vector<int64_t> getStatsVectorByIf(const std::vector<TetherStatsParcel>& statsVec,
+                                        const std::string& iface) {
+    for (auto& stats : statsVec) {
+        if (stats.iface == iface) {
+            return {stats.rxBytes, stats.rxPackets, stats.txBytes, stats.txPackets};
+        }
+    }
+    return {};
+}
+
 }  // namespace
 
 TEST_F(BinderTest, TetherGetStats) {
@@ -1063,17 +1073,13 @@ TEST_F(BinderTest, TetherGetStats) {
     addTetherCounterValues(IP6TABLES_PATH, extIface2, intIface3, 2000,  35);
     std::vector<int64_t> expected2 = { 8000, 519, 5000, 388 };
 
-    PersistableBundle stats;
-    binder::Status status = mNetd->tetherGetStats(&stats);
+    std::vector<TetherStatsParcel> statsVec;
+    binder::Status status = mNetd->tetherGetStats(&statsVec);
     EXPECT_TRUE(status.isOk()) << "Getting tethering stats failed: " << status;
 
-    std::vector<int64_t> actual1;
-    EXPECT_TRUE(stats.getLongVector(String16(extIface1.c_str()), &actual1));
-    EXPECT_EQ(expected1, actual1);
+    EXPECT_EQ(expected1, getStatsVectorByIf(statsVec, extIface1));
 
-    std::vector<int64_t> actual2;
-    EXPECT_TRUE(stats.getLongVector(String16(extIface2.c_str()), &actual2));
-    EXPECT_EQ(expected2, actual2);
+    EXPECT_EQ(expected2, getStatsVectorByIf(statsVec, extIface2));
 
     for (const auto& path : { IPTABLES_PATH, IP6TABLES_PATH }) {
         delTetherCounterValues(path, intIface1, extIface1);
