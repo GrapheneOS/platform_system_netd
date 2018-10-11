@@ -536,28 +536,25 @@ DNSResponder::~DNSResponder() {
     stopServer();
 }
 
-void DNSResponder::addMapping(const char* name, ns_type type,
-        const char* addr) {
+void DNSResponder::addMapping(const std::string& name, ns_type type, const std::string& addr) {
     std::lock_guard lock(mappings_mutex_);
     auto it = mappings_.find(QueryKey(name, type));
     if (it != mappings_.end()) {
         ALOGI("Overwriting mapping for (%s, %s), previous address %s, new "
-            "address %s", name, dnstype2str(type), it->second.c_str(),
-            addr);
+              "address %s",
+              name.c_str(), dnstype2str(type), it->second.c_str(), addr.c_str());
         it->second = addr;
         return;
     }
-    mappings_.emplace(std::piecewise_construct,
-                      std::forward_as_tuple(name, type),
-                      std::forward_as_tuple(addr));
+    mappings_.try_emplace({name, type}, addr);
 }
 
-void DNSResponder::removeMapping(const char* name, ns_type type) {
+void DNSResponder::removeMapping(const std::string& name, ns_type type) {
     std::lock_guard lock(mappings_mutex_);
     auto it = mappings_.find(QueryKey(name, type));
     if (it != mappings_.end()) {
-        ALOGI("Cannot remove mapping mapping from (%s, %s), not present", name,
-            dnstype2str(type));
+        ALOGI("Cannot remove mapping mapping from (%s, %s), not present", name.c_str(),
+              dnstype2str(type));
         return;
     }
     mappings_.erase(it);
@@ -867,4 +864,3 @@ bool DNSResponder::makeErrorResponse(DNSHeader* header, ns_rcode rcode,
 }
 
 }  // namespace test
-

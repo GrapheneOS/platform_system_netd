@@ -76,4 +76,8 @@ cc_test {
             suffix: "64",
         },
     },
+    sanitize: {
+        address: true,
+        recover: [ "all" ],
+    },
 }
