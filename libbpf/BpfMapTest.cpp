@@ -165,7 +165,7 @@ TEST_F(BpfMapTest, moveConstructor) {
 
 TEST_F(BpfMapTest, pinnedToPath) {
     BpfMap<uint32_t, uint32_t> testMap1(mMapFd);
-    EXPECT_TRUE(isOk(testMap1.pinToPath(PINNED_MAP_PATH)));
+    EXPECT_OK(testMap1.pinToPath(PINNED_MAP_PATH));
     EXPECT_EQ(0, access(PINNED_MAP_PATH, R_OK));
     EXPECT_EQ(0, testMap1.getPinnedPath().compare(PINNED_MAP_PATH));
     BpfMap<uint32_t, uint32_t> testMap2(mapRetrieve(PINNED_MAP_PATH, 0));
@@ -179,12 +179,12 @@ TEST_F(BpfMapTest, pinnedToPath) {
 
 TEST_F(BpfMapTest, SetUpMap) {
     BpfMap<uint32_t, uint32_t> testMap1;
-    EXPECT_TRUE(isOk(testMap1.getOrCreate(TEST_MAP_SIZE, PINNED_MAP_PATH, BPF_MAP_TYPE_HASH)));
+    EXPECT_OK(testMap1.getOrCreate(TEST_MAP_SIZE, PINNED_MAP_PATH, BPF_MAP_TYPE_HASH));
     EXPECT_EQ(0, access(PINNED_MAP_PATH, R_OK));
     checkMapValid(testMap1);
     EXPECT_EQ(0, testMap1.getPinnedPath().compare(PINNED_MAP_PATH));
     BpfMap<uint32_t, uint32_t> testMap2;
-    testMap2.getOrCreate(TEST_MAP_SIZE, PINNED_MAP_PATH, BPF_MAP_TYPE_HASH);
+    EXPECT_OK(testMap2.getOrCreate(TEST_MAP_SIZE, PINNED_MAP_PATH, BPF_MAP_TYPE_HASH));
     checkMapValid(testMap2);
     EXPECT_EQ(0, testMap2.getPinnedPath().compare(PINNED_MAP_PATH));
     uint32_t key = TEST_KEY1;
@@ -206,7 +206,7 @@ TEST_F(BpfMapTest, iterate) {
         totalSum += key;
         return map.deleteValue(key);
     };
-    EXPECT_TRUE(isOk(testMap.iterate(iterateWithDeletion)));
+    EXPECT_OK(testMap.iterate(iterateWithDeletion));
     EXPECT_EQ((int)TEST_MAP_SIZE, totalCount);
     EXPECT_EQ(((1 + TEST_MAP_SIZE - 1) * (TEST_MAP_SIZE - 1)) / 2, (uint32_t)totalSum);
     expectMapEmpty(testMap);
@@ -226,7 +226,7 @@ TEST_F(BpfMapTest, iterateWithValue) {
         totalSum += value;
         return map.deleteValue(key);
     };
-    EXPECT_TRUE(isOk(testMap.iterateWithValue(iterateWithDeletion)));
+    EXPECT_OK(testMap.iterateWithValue(iterateWithDeletion));
     EXPECT_EQ((int)TEST_MAP_SIZE, totalCount);
     EXPECT_EQ(((1 + TEST_MAP_SIZE - 1) * (TEST_MAP_SIZE - 1)) * 5, (uint32_t)totalSum);
     expectMapEmpty(testMap);
@@ -246,18 +246,19 @@ TEST_F(BpfMapTest, mapIsEmpty) {
     ASSERT_EQ(ENOENT, errno);
     expectMapEmpty(testMap);
     int entriesSeen = 0;
-    testMap.iterate([&entriesSeen](const unsigned int&,
-                                   const BpfMap<unsigned int, unsigned int>&) -> netdutils::Status {
-        entriesSeen++;
-        return netdutils::status::ok;
-    });
+    EXPECT_OK(testMap.iterate(
+            [&entriesSeen](const unsigned int&,
+                           const BpfMap<unsigned int, unsigned int>&) -> netdutils::Status {
+                entriesSeen++;
+                return netdutils::status::ok;
+            }));
     EXPECT_EQ(0, entriesSeen);
-    testMap.iterateWithValue(
+    EXPECT_OK(testMap.iterateWithValue(
             [&entriesSeen](const unsigned int&, const unsigned int&,
                            const BpfMap<unsigned int, unsigned int>&) -> netdutils::Status {
                 entriesSeen++;
                 return netdutils::status::ok;
-            });
+            }));
     EXPECT_EQ(0, entriesSeen);
 }
 

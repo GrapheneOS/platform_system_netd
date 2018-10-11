@@ -81,7 +81,7 @@ class NFLogListenerTest : public testing::Test {
     void subscribe(uint16_t type, const NFLogListenerInterface::DispatchFn& fn) {
         // Two sends for cfgCmdBind() & cfgMode(), one send at destruction time for cfgCmdUnbind()
         EXPECT_CALL(*mNLListener, send(_)).Times(Exactly(3)).WillRepeatedly(Invoke(sendOk));
-        mListener->subscribe(type, fn);
+        EXPECT_OK(mListener->subscribe(type, fn));
     }
 
     void sendEmptyMsg(uint16_t type) {
