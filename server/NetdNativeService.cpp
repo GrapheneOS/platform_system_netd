@@ -16,6 +16,7 @@
 
 #define LOG_TAG "Netd"
 
+#include <cinttypes>
 #include <set>
 #include <tuple>
 #include <vector>
@@ -45,7 +46,7 @@
 #include "UidRanges.h"
 
 using android::base::StringPrintf;
-using android::os::PersistableBundle;
+using android::net::TetherStatsParcel;
 
 namespace android {
 namespace net {
@@ -489,37 +490,68 @@ binder::Status NetdNativeService::tetherApplyDnsInterfaces(bool *ret) {
 
 namespace {
 
-void tetherAddStats(PersistableBundle *bundle, const TetherController::TetherStats& stats) {
-    String16 iface = String16(stats.extIface.c_str());
-    std::vector<int64_t> statsVector(INetd::TETHER_STATS_ARRAY_SIZE);
-
-    bundle->getLongVector(iface, &statsVector);
-    if (statsVector.size() == 0) {
-        for (int i = 0; i < INetd::TETHER_STATS_ARRAY_SIZE; i++) statsVector.push_back(0);
+void tetherAddStatsByInterface(TetherController::TetherStats* tetherStatsParcel,
+                               const TetherController::TetherStats& tetherStats) {
+    if (tetherStatsParcel->extIface == tetherStats.extIface) {
+        tetherStatsParcel->rxBytes += tetherStats.rxBytes;
+        tetherStatsParcel->rxPackets += tetherStats.rxPackets;
+        tetherStatsParcel->txBytes += tetherStats.txBytes;
+        tetherStatsParcel->txPackets += tetherStats.txPackets;
     }
+}
 
-    statsVector[INetd::TETHER_STATS_RX_BYTES]   += stats.rxBytes;
-    statsVector[INetd::TETHER_STATS_RX_PACKETS] += stats.rxPackets;
-    statsVector[INetd::TETHER_STATS_TX_BYTES]   += stats.txBytes;
-    statsVector[INetd::TETHER_STATS_TX_PACKETS] += stats.txPackets;
+TetherStatsParcel toTetherStatsParcel(const TetherController::TetherStats& stats) {
+    TetherStatsParcel result;
+    result.iface = stats.extIface;
+    result.rxBytes = stats.rxBytes;
+    result.rxPackets = stats.rxPackets;
+    result.txBytes = stats.txBytes;
+    result.txPackets = stats.txPackets;
+    return result;
+}
 
-    bundle->putLongVector(iface, statsVector);
+void setTetherStatsParcelVecByInterface(std::vector<TetherStatsParcel>* tetherStatsVec,
+                                        const TetherController::TetherStatsList& statsList) {
+    std::map<std::string, TetherController::TetherStats> statsMap;
+    for (const auto& stats : statsList) {
+        auto iter = statsMap.find(stats.extIface);
+        if (iter != statsMap.end()) {
+            tetherAddStatsByInterface(&(iter->second), stats);
+        } else {
+            statsMap.insert(
+                    std::pair<std::string, TetherController::TetherStats>(stats.extIface, stats));
+        }
+    }
+    for (auto iter = statsMap.begin(); iter != statsMap.end(); iter++) {
+        tetherStatsVec->push_back(toTetherStatsParcel(iter->second));
+    }
+}
+
+std::vector<std::string> tetherStatsParcelVecToStringVec(std::vector<TetherStatsParcel>* tVec) {
+    std::vector<std::string> result;
+    for (const auto& t : *tVec) {
+        result.push_back(StringPrintf("%s:%" PRId64 ",%" PRId64 ",%" PRId64 ",%" PRId64,
+                                      t.iface.c_str(), t.rxBytes, t.rxPackets, t.txBytes,
+                                      t.txPackets));
+    }
+    return result;
 }
 
 }  // namespace
 
-binder::Status NetdNativeService::tetherGetStats(PersistableBundle *bundle) {
+binder::Status NetdNativeService::tetherGetStats(
+        std::vector<TetherStatsParcel>* tetherStatsParcelVec) {
     NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
+
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
 
     const auto& statsList = gCtls->tetherCtrl.getTetherStats();
     if (!isOk(statsList)) {
         return asBinderStatus(statsList);
     }
-
-    for (const auto& stats : statsList.value()) {
-        tetherAddStats(bundle, stats);
-    }
-
+    setTetherStatsParcelVecByInterface(tetherStatsParcelVec, statsList.value());
+    auto statsResults = tetherStatsParcelVecToStringVec(tetherStatsParcelVec);
+    gLog.log(entry.returns(base::Join(statsResults, ";")).withAutomaticDuration());
     return binder::Status::ok();
 }
 

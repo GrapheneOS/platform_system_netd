@@ -13,6 +13,7 @@ cc_library_static {
         "libnetdaidl",
         "libnetdutils",
         "libssl",
+        "netd_aidl_interface-cpp",
     ],
     static_libs: ["libutils"],
     aidl: {
