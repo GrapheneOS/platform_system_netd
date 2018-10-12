@@ -560,7 +560,7 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
             // direction is ultimately input.
             saInfo.encap.srcPort = encapLocalPort;
             saInfo.encap.dstPort = encapRemotePort;
-        // fall through
+            [[fallthrough]];
         case XfrmEncapType::NONE:
             saInfo.encap.type = static_cast<XfrmEncapType>(encapType);
             break;
