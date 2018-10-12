@@ -543,9 +543,9 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                             /* give the hook another try */
                             if (++loops < 42) /*doug adams*/
                                 break;
-                            /*FALLTHROUGH*/
+                            [[fallthrough]];
                         case res_error:
-                            /*FALLTHROUGH*/
+                            [[fallthrough]];
                         default:
                             goto fail;
                     }
@@ -645,9 +645,9 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                             /* give the hook another try */
                             if (++loops < 42) /*doug adams*/
                                 break;
-                            /*FALLTHROUGH*/
+                            [[fallthrough]];
                         case res_error:
-                            /*FALLTHROUGH*/
+                            [[fallthrough]];
                         default:
                             goto fail;
                     }
