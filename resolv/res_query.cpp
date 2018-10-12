@@ -273,7 +273,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
             switch (statp->res_h_errno) {
                 case NO_DATA:
                     got_nodata++;
-                    [[fallthrough]];
+                    break;
                 case HOST_NOT_FOUND:
                     /* keep trying */
                     break;
