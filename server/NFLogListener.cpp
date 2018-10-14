@@ -169,8 +169,8 @@ NFLogListener::~NFLogListener() {
     expectOk(mListener->unsubscribe(kNFLogPacketMsgType));
     expectOk(mListener->unsubscribe(kNetlinkDoneMsgType));
     const auto sendFn = [this](const Slice msg) { return mListener->send(msg); };
-    for (auto pair : mDispatchMap) {
-        expectOk(cfgCmdUnbind(sendFn, pair.first));
+    for (const auto& [key, value] : mDispatchMap) {
+        expectOk(cfgCmdUnbind(sendFn, key));
     }
 }
 

@@ -1874,7 +1874,7 @@ static int res_searchN(const char* name, struct res_target* target, res_state re
             switch (h_errno) {
                 case NO_DATA:
                     got_nodata++;
-                    /* FALLTHROUGH */
+                    [[fallthrough]];
                 case HOST_NOT_FOUND:
                     /* keep trying */
                     break;
@@ -1884,7 +1884,7 @@ static int res_searchN(const char* name, struct res_target* target, res_state re
                         got_servfail++;
                         break;
                     }
-                    /* FALLTHROUGH */
+                    [[fallthrough]];
                 default:
                     /* anything else implies that we're done */
                     done++;
