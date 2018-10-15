@@ -35,6 +35,7 @@
 #include "Fwmark.h"
 #include "IptablesBaseTest.h"
 #include "bpf/BpfUtils.h"
+#include "bpf/bpf_shared.h"
 #include "tun_interface.h"
 
 using ::testing::ByMove;
@@ -46,10 +47,6 @@ using ::testing::_;
 
 using android::base::Join;
 using android::base::StringPrintf;
-using android::bpf::XT_BPF_BLACKLIST_PROG_PATH;
-using android::bpf::XT_BPF_EGRESS_PROG_PATH;
-using android::bpf::XT_BPF_INGRESS_PROG_PATH;
-using android::bpf::XT_BPF_WHITELIST_PROG_PATH;
 using android::net::TunInterface;
 using android::netdutils::status::ok;
 using android::netdutils::UniqueFile;
