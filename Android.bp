@@ -9,6 +9,8 @@ cc_defaults {
     cflags: [
         "-Wall",
         "-Werror",
+        // Override -Wno-error=implicit-fallthrough from soong
+        "-Werror=implicit-fallthrough",
         "-Wnullable-to-nonnull-conversion",
         "-Wthread-safety",
         "-Wunused-parameter",
