@@ -28,6 +28,7 @@
 static const char* ANDROID_DNS_MODE = "ANDROID_DNS_MODE";
 
 using android::base::StringPrintf;
+using android::net::INetd;
 
 void DnsResponderClient::SetupMappings(unsigned num_hosts, const std::vector<std::string>& domains,
         std::vector<Mapping>* mappings) {
@@ -90,7 +91,7 @@ void DnsResponderClient::ShutdownDNSServers(std::vector<std::unique_ptr<test::DN
 
 int DnsResponderClient::SetupOemNetwork() {
     mNetdSrv->networkDestroy(TEST_NETID);
-    auto ret = mNetdSrv->networkCreatePhysical(TEST_NETID, "");
+    auto ret = mNetdSrv->networkCreatePhysical(TEST_NETID, INetd::PERMISSION_NONE);
     if (!ret.isOk()) {
         fprintf(stderr, "Creating physical network %d failed, %s\n", TEST_NETID,
                 ret.toString8().string());
