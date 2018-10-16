@@ -54,8 +54,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status bandwidthRemoveNiceApp(int32_t uid) override;
 
     // Network and routing commands.
-    binder::Status networkCreatePhysical(int32_t netId, const std::string& permission)
-            override;
+    binder::Status networkCreatePhysical(int32_t netId, int32_t permission) override;
     binder::Status networkCreateVpn(int32_t netId, bool hasDns, bool secure) override;
     binder::Status networkDestroy(int32_t netId) override;
 
@@ -68,6 +67,29 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             override;
     binder::Status networkRejectNonSecureVpn(bool enable, const std::vector<UidRange>& uids)
             override;
+    binder::Status networkAddRoute(int32_t netId, const std::string& ifName,
+                                   const std::string& destination,
+                                   const std::string& nextHop) override;
+    binder::Status networkRemoveRoute(int32_t netId, const std::string& ifName,
+                                      const std::string& destination,
+                                      const std::string& nextHop) override;
+    binder::Status networkAddLegacyRoute(int32_t netId, const std::string& ifName,
+                                         const std::string& destination, const std::string& nextHop,
+                                         int32_t uid) override;
+    binder::Status networkRemoveLegacyRoute(int32_t netId, const std::string& ifName,
+                                            const std::string& destination,
+                                            const std::string& nextHop, int32_t uid) override;
+    binder::Status networkSetDefault(int32_t netId) override;
+    binder::Status networkClearDefault() override;
+    binder::Status networkSetPermissionForNetwork(int32_t netId, int32_t permission) override;
+    binder::Status networkSetPermissionForUser(int32_t permission,
+                                               const std::vector<int32_t>& uids) override;
+    binder::Status networkClearPermissionForUser(const std::vector<int32_t>& uids) override;
+    binder::Status networkSetProtectAllow(int32_t uid) override;
+    binder::Status networkSetProtectDeny(int32_t uid) override;
+    // For test (internal use only).
+    binder::Status networkGetDefault(int32_t* netId) override;
+    binder::Status networkCanProtect(int32_t uid, bool* ret) override;
 
     // SOCK_DIAG commands.
     binder::Status socketDestroy(const std::vector<UidRange>& uids,
@@ -223,6 +245,10 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
                                             const std::string& toIface) override;
     binder::Status ipfwdRemoveInterfaceForward(const std::string& fromIface,
                                                const std::string& toIface) override;
+
+  private:
+    std::vector<uid_t> intsToUids(const std::vector<int32_t>& intUids);
+    Permission convertPermission(int32_t permission);
 };
 
 }  // namespace net
