@@ -625,47 +625,21 @@ static int explore_numeric(const struct addrinfo* pai, const char* hostname, con
     afd = find_afd(pai->ai_family);
     if (afd == NULL) return 0;
 
-    switch (afd->a_af) {
-#if 0 /*X/Open spec*/
-	case AF_INET:
-		if (inet_aton(hostname, (struct in_addr *)pton) == 1) {
-			if (pai->ai_family == afd->a_af ||
-			    pai->ai_family == PF_UNSPEC /*?*/) {
-				GET_AI(cur->ai_next, afd, pton);
-				GET_PORT(cur->ai_next, servname);
-				if ((pai->ai_flags & AI_CANONNAME)) {
-					/*
-					 * Set the numeric address itself as
-					 * the canonical name, based on a
-					 * clarification in rfc2553bis-03.
-					 */
-					GET_CANONNAME(cur->ai_next, canonname);
-				}
-				while (cur && cur->ai_next)
-					cur = cur->ai_next;
-			} else
-				ERR(EAI_FAMILY);	/*xxx*/
-		}
-		break;
-#endif
-        default:
-            if (inet_pton(afd->a_af, hostname, pton) == 1) {
-                if (pai->ai_family == afd->a_af || pai->ai_family == PF_UNSPEC /*?*/) {
-                    GET_AI(cur->ai_next, afd, pton);
-                    GET_PORT(cur->ai_next, servname);
-                    if ((pai->ai_flags & AI_CANONNAME)) {
-                        /*
-                         * Set the numeric address itself as
-                         * the canonical name, based on a
-                         * clarification in rfc2553bis-03.
-                         */
-                        GET_CANONNAME(cur->ai_next, canonname);
-                    }
-                    while (cur->ai_next) cur = cur->ai_next;
-                } else
-                    ERR(EAI_FAMILY); /*xxx*/
+    if (inet_pton(afd->a_af, hostname, pton) == 1) {
+        if (pai->ai_family == afd->a_af || pai->ai_family == PF_UNSPEC /*?*/) {
+            GET_AI(cur->ai_next, afd, pton);
+            GET_PORT(cur->ai_next, servname);
+            if ((pai->ai_flags & AI_CANONNAME)) {
+                /*
+                 * Set the numeric address itself as
+                 * the canonical name, based on a
+                 * clarification in rfc2553bis-03.
+                 */
+                GET_CANONNAME(cur->ai_next, canonname);
             }
-            break;
+            while (cur->ai_next) cur = cur->ai_next;
+        } else
+            ERR(EAI_FAMILY); /*xxx*/
     }
 
     *res = sentinel.ai_next;
@@ -765,9 +739,6 @@ static struct addrinfo* get_ai(const struct addrinfo* pai, const struct afd* afd
     memset(ai->ai_addr, 0, (size_t) afd->a_socklen);
 
     ai->ai_addrlen = afd->a_socklen;
-#if defined(__alpha__) || (defined(__i386__) && defined(_LP64)) || defined(__sparc64__)
-    ai->__ai_pad0 = 0;
-#endif
     ai->ai_addr->sa_family = ai->ai_family = afd->a_af;
     p = (char*) (void*) (ai->ai_addr);
     memcpy(p + afd->a_off, addr, (size_t) afd->a_addrlen);
