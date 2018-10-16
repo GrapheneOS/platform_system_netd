@@ -14,15 +14,16 @@
  * limitations under the License.
  */
 
-#include <cstdint>
-
-#include <gtest/gtest.h>
-
 #include "netdutils/Status.h"
 #include "netdutils/StatusOr.h"
 
+#include <sstream>
+
+#include <gtest/gtest.h>
+
 namespace android {
 namespace netdutils {
+namespace {
 
 TEST(StatusTest, smoke) {
     // Expect the following lines to compile
@@ -35,6 +36,43 @@ TEST(StatusTest, smoke) {
 
     // Default constructor
     EXPECT_EQ(status::ok, Status());
+}
+
+TEST(StatusTest, error) {
+    Status s(42, "for tea too");
+    EXPECT_EQ(42, s.code());
+    EXPECT_FALSE(s.ok());
+    EXPECT_EQ(s.msg(), "for tea too");
+}
+
+TEST(StatusOrTest, moveSemantics) {
+    // Status objects should be cheaply movable.
+    EXPECT_TRUE(std::is_nothrow_move_constructible<Status>::value);
+    EXPECT_TRUE(std::is_nothrow_move_assignable<Status>::value);
+
+    // Should move from a temporary Status (twice)
+    Status s(Status(Status(42, "move me")));
+    EXPECT_EQ(42, s.code());
+    EXPECT_EQ(s.msg(), "move me");
+
+    Status s2(666, "EDAEMON");
+    EXPECT_NE(s, s2);
+    s = s2;  // Invokes the move-assignment operator.
+    EXPECT_EQ(666, s.code());
+    EXPECT_EQ(s.msg(), "EDAEMON");
+    EXPECT_EQ(s, s2);
+
+    // A moved-from Status can be re-used.
+    s2 = s;
+
+    // Now both objects are valid.
+    EXPECT_EQ(666, s.code());
+    EXPECT_EQ(s.msg(), "EDAEMON");
+    EXPECT_EQ(s, s2);
+}
+
+TEST(StatusTest, ignoredStatus) {
+    statusFromErrno(ENOTTY, "Not a typewriter, what did you expect?").ignoreError();
 }
 
 TEST(StatusOrTest, ostream) {
@@ -53,5 +91,6 @@ TEST(StatusOrTest, ostream) {
     }
 }
 
+}  // namespace
 }  // namespace netdutils
 }  // namespace android

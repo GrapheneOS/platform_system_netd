@@ -115,7 +115,7 @@ class BinderTest : public ::testing::Test {
         mNetd->networkDestroy(TEST_NETID2);
     }
 
-    bool allocateIpSecResources(bool expectOk, int32_t *spi);
+    bool allocateIpSecResources(bool expectOk, int32_t* spi);
 
     // Static because setting up the tun interface takes about 40ms.
     static void SetUpTestCase() {
@@ -312,7 +312,7 @@ static const int ADDRESS_FAMILIES[] = {AF_INET, AF_INET6};
 
 #define RETURN_FALSE_IF_NEQ(_expect_, _ret_) \
         do { if ((_expect_) != (_ret_)) return false; } while(false)
-bool BinderTest::allocateIpSecResources(bool expectOk, int32_t *spi) {
+bool BinderTest::allocateIpSecResources(bool expectOk, int32_t* spi) {
     netdutils::Status status = XfrmController::ipSecAllocateSpi(0, "::", "::1", 123, spi);
     SCOPED_TRACE(status);
     RETURN_FALSE_IF_NEQ(status.ok(), expectOk);

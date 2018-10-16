@@ -93,7 +93,7 @@ Status DnsTlsSocket::tcpConnect() {
     }
 
     // Send 5 keepalives, 3 seconds apart, after 15 seconds of inactivity.
-    enableTcpKeepAlives(mSslFd.get(), 15U, 5U, 3U);
+    enableTcpKeepAlives(mSslFd.get(), 15U, 5U, 3U).ignoreError();
 
     if (connect(mSslFd.get(), reinterpret_cast<const struct sockaddr *>(&mServer.ss),
                 sizeof(mServer.ss)) != 0 &&

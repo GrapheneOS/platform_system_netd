@@ -925,8 +925,8 @@ TEST_F(ResolverTest, GetHostByName_TlsBroken) {
         .sin_port = htons(853),
     };
     ASSERT_TRUE(inet_pton(AF_INET, listen_addr, &tlsServer.sin_addr));
-    enableSockopt(s, SOL_SOCKET, SO_REUSEPORT);
-    enableSockopt(s, SOL_SOCKET, SO_REUSEADDR);
+    ASSERT_TRUE(enableSockopt(s, SOL_SOCKET, SO_REUSEPORT).ok());
+    ASSERT_TRUE(enableSockopt(s, SOL_SOCKET, SO_REUSEADDR).ok());
     ASSERT_FALSE(bind(s, reinterpret_cast<struct sockaddr*>(&tlsServer), sizeof(tlsServer)));
     ASSERT_FALSE(listen(s, 1));
 
