@@ -823,8 +823,7 @@ interface INetd {
     */
     @utf8InCpp List<String> tetherDnsList();
 
-    // Keep in sync with system/netd/NetworkController.cpp
-    const int NETID_LOCAL = 99;
+    const int LOCAL_NET_ID = 99;
 
     // Route does not specify a next hop
     const String NEXTHOP_NONE = "";
@@ -933,7 +932,9 @@ interface INetd {
     */
     void networkClearDefault();
 
-    // PERMISSION_NONE is used for regular networks and apps
+    /**
+     * PERMISSION_NONE is used for regular networks and apps
+     */
     const int PERMISSION_NONE = 0;
     /**
      * PERMISSION_NETWORK indicates that the network is only accessible
@@ -992,7 +993,7 @@ interface INetd {
     * Get the status of network protect for user
     *
     * @param uids uid of user
-    * @return true if the user is protected, false otherwise.
+    * @return true if the user can protect sockets from VPN, false otherwise.
     */
     boolean networkCanProtect(int uid);
 }
