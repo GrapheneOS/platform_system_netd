@@ -19,7 +19,6 @@
 
 #include <linux/bpf.h>
 
-#include <netdutils/StatusOr.h>
 #include "BandwidthController.h"
 #include "FirewallController.h"
 #include "NetlinkListener.h"
@@ -28,6 +27,8 @@
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
 #include "netdbpf/bpf_shared.h"
+#include "netdutils/StatusOr.h"
+#include "utils/String16.h"
 
 using android::bpf::BpfMap;
 using android::bpf::IfaceValue;

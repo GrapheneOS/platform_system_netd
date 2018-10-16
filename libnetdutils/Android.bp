@@ -18,7 +18,6 @@ cc_library {
     cflags: ["-Wall", "-Werror"],
     shared_libs: [
         "libbase",
-        "libbinder",
         "liblog",
     ],
     export_shared_lib_headers: [
