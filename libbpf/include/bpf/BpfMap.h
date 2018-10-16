@@ -39,7 +39,7 @@ namespace bpf {
 //
 // NOTE: A kernel eBPF map may be accessed by both kernel and userspace
 // processes at the same time. Or if the map is pinned as a virtual file, it can
-// be obtained by multiple eBPF map class object and and accessed concurrently.
+// be obtained by multiple eBPF map class object and accessed concurrently.
 // Though the map class object and the underlying kernel map are thread safe, it
 // is not safe to iterate over a map while another thread or process is deleting
 // from it. In this case the iteration can return duplicate entries.
@@ -169,7 +169,7 @@ class BpfMap {
             }
             return netdutils::status::ok;
         };
-        iterate(deleteAllEntries);
+        RETURN_IF_NOT_OK(iterate(deleteAllEntries));
         return netdutils::status::ok;
     }
 
