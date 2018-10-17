@@ -64,6 +64,7 @@ cc_test {
         "libbpf",
         "liblogwrap",
         "libnetdaidl",
+        "libnetdbpf",
         "libnetddns",
         "libnetdutils",
     ],
