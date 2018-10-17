@@ -62,22 +62,6 @@ using android::netdutils::Slice;
         return ret;                                    \
     } while (0)
 
-using android::bpf::APP_UID_STATS_MAP_PATH;
-using android::bpf::BPF_EGRESS_PROG_PATH;
-using android::bpf::BPF_INGRESS_PROG_PATH;
-using android::bpf::CGROUP_ROOT_PATH;
-using android::bpf::CONFIGURATION_MAP_PATH;
-using android::bpf::COOKIE_TAG_MAP_PATH;
-using android::bpf::IFACE_STATS_MAP_PATH;
-using android::bpf::TAG_STATS_MAP_PATH;
-using android::bpf::UID_COUNTERSET_MAP_PATH;
-using android::bpf::UID_OWNER_MAP_PATH;
-using android::bpf::UID_STATS_MAP_PATH;
-using android::bpf::XT_BPF_BLACKLIST_PROG_PATH;
-using android::bpf::XT_BPF_EGRESS_PROG_PATH;
-using android::bpf::XT_BPF_INGRESS_PROG_PATH;
-using android::bpf::XT_BPF_WHITELIST_PROG_PATH;
-
 using android::bpf::BpfMapInfo;
 using android::bpf::BpfProgInfo;
 
