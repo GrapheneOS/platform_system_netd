@@ -48,7 +48,6 @@ cc_test {
     shared_libs: [
         "libbase",
         "libbinder",
-        "libbpf",
         "libcrypto",
         "libcutils",
         "liblog",
