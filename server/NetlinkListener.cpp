@@ -60,7 +60,7 @@ const NetlinkListener::DispatchFn kDefaultDispatchFn = [](const nlmsghdr& nlmsg,
 NetlinkListener::NetlinkListener(UniqueFd event, UniqueFd sock, const std::string& name)
     : mEvent(std::move(event)),
       mSock(std::move(sock)),
-      mWorker([this]() { run(); }),
+      mWorker([this]() { run().ignoreError(); }),
       mThreadName(name) {
     const auto rxErrorHandler = [](const nlmsghdr& nlmsg, const Slice msg) {
         std::stringstream ss;

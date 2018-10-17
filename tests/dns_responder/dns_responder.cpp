@@ -590,8 +590,8 @@ bool DNSResponder::startServer() {
     for (const addrinfo* ai = ai_res ; ai ; ai = ai->ai_next) {
         s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (s < 0) continue;
-        enableSockopt(s, SOL_SOCKET, SO_REUSEPORT);
-        enableSockopt(s, SOL_SOCKET, SO_REUSEADDR);
+        enableSockopt(s, SOL_SOCKET, SO_REUSEPORT).ignoreError();
+        enableSockopt(s, SOL_SOCKET, SO_REUSEADDR).ignoreError();
         if (bind(s, ai->ai_addr, ai->ai_addrlen)) {
             APLOGI("bind failed for socket %d", s);
             close(s);

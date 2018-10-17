@@ -115,7 +115,7 @@ class BinderTest : public ::testing::Test {
         mNetd->networkDestroy(TEST_NETID2);
     }
 
-    bool allocateIpSecResources(bool expectOk, int32_t *spi);
+    bool allocateIpSecResources(bool expectOk, int32_t* spi);
 
     // Static because setting up the tun interface takes about 40ms.
     static void SetUpTestCase() {
@@ -312,7 +312,7 @@ static const int ADDRESS_FAMILIES[] = {AF_INET, AF_INET6};
 
 #define RETURN_FALSE_IF_NEQ(_expect_, _ret_) \
         do { if ((_expect_) != (_ret_)) return false; } while(false)
-bool BinderTest::allocateIpSecResources(bool expectOk, int32_t *spi) {
+bool BinderTest::allocateIpSecResources(bool expectOk, int32_t* spi) {
     netdutils::Status status = XfrmController::ipSecAllocateSpi(0, "::", "::1", 123, spi);
     SCOPED_TRACE(status);
     RETURN_FALSE_IF_NEQ(status.ok(), expectOk);
@@ -518,8 +518,9 @@ static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
 }
 
 TEST_F(BinderTest, NetworkInterfaces) {
-    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, "").isOk());
-    EXPECT_EQ(EEXIST, mNetd->networkCreatePhysical(TEST_NETID1, "").serviceSpecificErrorCode());
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_EQ(EEXIST, mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE)
+                              .serviceSpecificErrorCode());
     EXPECT_EQ(EEXIST, mNetd->networkCreateVpn(TEST_NETID1, false, true).serviceSpecificErrorCode());
     EXPECT_TRUE(mNetd->networkCreateVpn(TEST_NETID2, false, true).isOk());
 
@@ -530,6 +531,7 @@ TEST_F(BinderTest, NetworkInterfaces) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID2, sTun.name()).isOk());
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID2).isOk());
+    EXPECT_EQ(ENONET, mNetd->networkDestroy(TEST_NETID1).serviceSpecificErrorCode());
 }
 
 TEST_F(BinderTest, NetworkUidRules) {
@@ -1467,7 +1469,7 @@ TEST_F(BinderTest, BandwidthSetRemoveInterfaceQuota) {
     long testQuotaBytes = 5550;
 
     // Add test physical network
-    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, "").isOk());
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
 
     binder::Status status = mNetd->bandwidthSetInterfaceQuota(sTun.name(), testQuotaBytes);
@@ -1485,7 +1487,7 @@ TEST_F(BinderTest, BandwidthSetRemoveInterfaceQuota) {
 TEST_F(BinderTest, BandwidthSetRemoveInterfaceAlert) {
     long testAlertBytes = 373;
     // Add test physical network
-    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, "").isOk());
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
     // Need to have a prior interface quota set to set an alert
     binder::Status status = mNetd->bandwidthSetInterfaceQuota(sTun.name(), testAlertBytes);
@@ -1545,6 +1547,270 @@ TEST_F(BinderTest, BandwidthManipulateSpecialApp) {
     status = mNetd->bandwidthRemoveNiceApp(uid);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectBandwidthManipulateSpecialAppRuleDoesNotExist(BANDWIDTH_NICE, uid);
+}
+
+namespace {
+
+std::vector<std::string> listIpRoutes(const char* ipVersion, const char* table) {
+    std::string command = StringPrintf("%s %s route ls table %s", IP_PATH, ipVersion, table);
+    return runCommand(command);
+}
+
+bool ipRouteExists(const char* ipVersion, const char* table, const std::string ipRoute) {
+    std::vector<std::string> routes = listIpRoutes(ipVersion, table);
+    for (const auto& route : routes) {
+        if (route.find(ipRoute) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void expectNetworkRouteExists(const char* ipVersion, const char* ifName, const std::string& dst,
+                              const std::string& nextHop, const char* table) {
+    std::string ipNetworkRoute = {};
+    if ((dst == "0.0.0.0/0" || dst == "::/0") && nextHop.empty()) {
+        ipNetworkRoute = StringPrintf("default dev %s proto static", ifName);
+    } else if (nextHop.empty()) {
+        ipNetworkRoute = StringPrintf("%s dev %s proto static", dst.c_str(), ifName);
+    }
+
+    EXPECT_TRUE(ipRouteExists(ipVersion, table, ipNetworkRoute));
+}
+
+void expectNetworkRouteDoesNotExist(const char* ipVersion, const char* ifName,
+                                    const std::string& dst, const std::string& nextHop,
+                                    const char* table) {
+    std::string ipNetworkRoute = {};
+    if ((dst == "0.0.0.0/0" || dst == "::/0") && nextHop.empty()) {
+        ipNetworkRoute = StringPrintf("default dev %s proto static", ifName);
+    } else if (nextHop.empty()) {
+        ipNetworkRoute = StringPrintf("%s dev %s proto static", dst.c_str(), ifName);
+    }
+
+    EXPECT_FALSE(ipRouteExists(ipVersion, table, ipNetworkRoute));
+}
+
+bool ipRuleExists(const char* ipVersion, const std::string& ipRule) {
+    std::vector<std::string> rules = listIpRules(ipVersion);
+    for (const auto& rule : rules) {
+        if (rule.find(ipRule) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void expectNetworkDefaultIpRuleExists(const char* ifName) {
+    std::string networkDefaultRule =
+            StringPrintf("22000:\tfrom all fwmark 0x0/0xffff iif lo lookup %s", ifName);
+
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_TRUE(ipRuleExists(ipVersion, networkDefaultRule));
+    }
+}
+
+void expectNetworkDefaultIpRuleDoesNotExist() {
+    static const char networkDefaultRule[] = "22000:\tfrom all fwmark 0x0/0xffff iif lo";
+
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_FALSE(ipRuleExists(ipVersion, networkDefaultRule));
+    }
+}
+
+void expectNetworkPermissionIpRuleExists(const char* ifName, int permission) {
+    std::string networkPermissionRule = "";
+    switch (permission) {
+        case INetd::PERMISSION_NONE:
+            networkPermissionRule = StringPrintf(
+                    "13000:\tfrom all fwmark 0x1ffdd/0x1ffff iif lo lookup %s", ifName);
+            break;
+        case INetd::PERMISSION_NETWORK:
+            networkPermissionRule = StringPrintf(
+                    "13000:\tfrom all fwmark 0x5ffdd/0x5ffff iif lo lookup %s", ifName);
+            break;
+        case INetd::PERMISSION_SYSTEM:
+            networkPermissionRule = StringPrintf(
+                    "13000:\tfrom all fwmark 0xdffdd/0xdffff iif lo lookup %s", ifName);
+            break;
+    }
+
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_TRUE(ipRuleExists(ipVersion, networkPermissionRule));
+    }
+}
+
+// TODO: It is a duplicate function, need to remove it
+bool iptablesNetworkPermissionIptablesRuleExists(const char* binary, const char* chainName,
+                                                 const std::string& expectedInterface,
+                                                 const std::string& expectedRule,
+                                                 const char* table) {
+    std::vector<std::string> rules = listIptablesRuleByTable(binary, table, chainName);
+    for (const auto& rule : rules) {
+        if (rule.find(expectedInterface) != std::string::npos) {
+            if (rule.find(expectedRule) != std::string::npos) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void expectNetworkPermissionIptablesRuleExists(const char* ifName, int permission) {
+    static const char ROUTECTRL_INPUT[] = "routectrl_mangle_INPUT";
+    std::string networkIncomingPacketMarkRule = "";
+    switch (permission) {
+        case INetd::PERMISSION_NONE:
+            networkIncomingPacketMarkRule = "MARK xset 0x3ffdd/0xffefffff";
+            break;
+        case INetd::PERMISSION_NETWORK:
+            networkIncomingPacketMarkRule = "MARK xset 0x7ffdd/0xffefffff";
+            break;
+        case INetd::PERMISSION_SYSTEM:
+            networkIncomingPacketMarkRule = "MARK xset 0xfffdd/0xffefffff";
+            break;
+    }
+
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesNetworkPermissionIptablesRuleExists(
+                binary, ROUTECTRL_INPUT, ifName, networkIncomingPacketMarkRule, MANGLE_TABLE));
+    }
+}
+
+}  // namespace
+
+TEST_F(BinderTest, NetworkAddRemoveRouteUserPermission) {
+    static const struct TestData {
+        const char* ipVersion;
+        const char* testDest;
+        const char* testNextHop;
+        const bool expectSuccess;
+    } kTestData[] = {
+            {IP_RULE_V4, "0.0.0.0/0", "", true},
+            {IP_RULE_V4, "10.152.83.112/30", "", true},
+            {IP_RULE_V4, "10.152.83.112/30", "fe80::/64", false},
+            {IP_RULE_V6, "::/0", "", true},
+            {IP_RULE_V6, "fe80::/64", "", true},
+            {IP_RULE_V4, "fe80::/64", "0.0.0.0", false},
+    };
+
+    static const char testTableLegacySystem[] = "legacy_system";
+    const int testUid = randomUid();
+    const std::vector<int32_t> testUids = {testUid};
+
+    // Add test physical network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    for (unsigned int i = 0; i < arraysize(kTestData); i++) {
+        const auto& td = kTestData[i];
+
+        binder::Status status =
+                mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        if (td.expectSuccess) {
+            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+            expectNetworkRouteExists(td.ipVersion, sTun.name().c_str(), td.testDest, td.testNextHop,
+                                     sTun.name().c_str());
+        } else {
+            ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            ASSERT_NE(0, status.serviceSpecificErrorCode());
+        }
+
+        status = mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        if (td.expectSuccess) {
+            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+            expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name().c_str(), td.testDest,
+                                           td.testNextHop, sTun.name().c_str());
+        } else {
+            ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            ASSERT_NE(0, status.serviceSpecificErrorCode());
+        }
+
+        // Add system permission for test uid
+        status = mNetd->networkSetPermissionForUser(INetd::PERMISSION_SYSTEM, testUids);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+        status = mNetd->networkAddLegacyRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop,
+                                              testUid);
+        if (td.expectSuccess) {
+            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+            expectNetworkRouteExists(td.ipVersion, sTun.name().c_str(), td.testDest, td.testNextHop,
+                                     testTableLegacySystem);
+        } else {
+            ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            ASSERT_NE(0, status.serviceSpecificErrorCode());
+        }
+
+        status = mNetd->networkRemoveLegacyRoute(TEST_NETID1, sTun.name(), td.testDest,
+                                                 td.testNextHop, testUid);
+        if (td.expectSuccess) {
+            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+            expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name().c_str(), td.testDest,
+                                           td.testNextHop, testTableLegacySystem);
+        } else {
+            ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            ASSERT_NE(0, status.serviceSpecificErrorCode());
+        }
+
+        // Remove system permission for test uid
+        status = mNetd->networkClearPermissionForUser(testUids);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    }
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
+TEST_F(BinderTest, NetworkPermissionDefault) {
+    // Add test physical network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    // Get current default netowork NetId
+    int currentNetid;
+    binder::Status status = mNetd->networkGetDefault(&currentNetid);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Test SetDefault
+    status = mNetd->networkSetDefault(TEST_NETID1);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectNetworkDefaultIpRuleExists(sTun.name().c_str());
+
+    status = mNetd->networkClearDefault();
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectNetworkDefaultIpRuleDoesNotExist();
+
+    // Add default network back
+    status = mNetd->networkSetDefault(currentNetid);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Test SetPermission
+    status = mNetd->networkSetPermissionForNetwork(TEST_NETID1, INetd::PERMISSION_SYSTEM);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectNetworkPermissionIpRuleExists(sTun.name().c_str(), INetd::PERMISSION_SYSTEM);
+    expectNetworkPermissionIptablesRuleExists(sTun.name().c_str(), INetd::PERMISSION_SYSTEM);
+
+    status = mNetd->networkSetPermissionForNetwork(TEST_NETID1, INetd::PERMISSION_NONE);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectNetworkPermissionIpRuleExists(sTun.name().c_str(), INetd::PERMISSION_NONE);
+    expectNetworkPermissionIptablesRuleExists(sTun.name().c_str(), INetd::PERMISSION_NONE);
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
+TEST_F(BinderTest, NetworkSetProtectAllowDeny) {
+    const int testUid = randomUid();
+    binder::Status status = mNetd->networkSetProtectAllow(testUid);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    bool ret = false;
+    status = mNetd->networkCanProtect(testUid, &ret);
+    EXPECT_TRUE(ret);
+
+    status = mNetd->networkSetProtectDeny(testUid);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    status = mNetd->networkCanProtect(testUid, &ret);
+    EXPECT_FALSE(ret);
 }
 
 namespace {

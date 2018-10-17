@@ -33,15 +33,21 @@ BENCHMARK_DEFINE_F(BpfBenchMark, MapWriteNewEntry)(benchmark::State& state) {
 }
 
 BENCHMARK_DEFINE_F(BpfBenchMark, MapUpdateEntry)(benchmark::State& state) {
-    for (int i = 0; i < TEST_MAP_SIZE; i++) mBpfTestMap.writeValue(i, i, BPF_NOEXIST);
-    for (auto _ : state) mBpfTestMap.writeValue(state.range(0), state.range(0) + 1, BPF_EXIST);
+    for (int i = 0; i < TEST_MAP_SIZE; i++) {
+        expectOk(mBpfTestMap.writeValue(i, i, BPF_NOEXIST));
+    }
+    for (auto _ : state) {
+        expectOk(mBpfTestMap.writeValue(state.range(0), state.range(0) + 1, BPF_EXIST));
+    }
 }
 
 BENCHMARK_DEFINE_F(BpfBenchMark, MapDeleteAddEntry)(benchmark::State& state) {
-    for (int i = 0; i < TEST_MAP_SIZE; i++) mBpfTestMap.writeValue(i, i, BPF_NOEXIST);
+    for (int i = 0; i < TEST_MAP_SIZE; i++) {
+        expectOk(mBpfTestMap.writeValue(i, i, BPF_NOEXIST));
+    }
     for (auto _ : state) {
-        mBpfTestMap.deleteValue(state.range(0));
-        mBpfTestMap.writeValue(state.range(0), state.range(0) + 1, BPF_NOEXIST);
+        expectOk(mBpfTestMap.deleteValue(state.range(0)));
+        expectOk(mBpfTestMap.writeValue(state.range(0), state.range(0) + 1, BPF_NOEXIST));
     }
 }
 

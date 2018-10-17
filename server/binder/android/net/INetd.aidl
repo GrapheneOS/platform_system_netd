@@ -61,21 +61,17 @@ interface INetd {
      */
     boolean bandwidthEnableDataSaver(boolean enable);
 
-    // Network permission values.
-    const String PERMISSION_NETWORK = "NETWORK";
-    const String PERMISSION_SYSTEM = "SYSTEM";
-
     /**
      * Creates a physical network (i.e., one containing physical interfaces.
      *
      * @param netId the networkId to create.
-     * @param permission the permission necessary to use the network. Must be one of the
-     *         PERMISSION_xxx values above.
+     * @param permission the permission necessary to use the network. Must be one of
+     *         PERMISSION_NONE/PERMISSION_NETWORK/PERMISSION_SYSTEM.
      *
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
      */
-    void networkCreatePhysical(int netId, in @utf8InCpp String permission);
+    void networkCreatePhysical(int netId, int permission);
 
     /**
      * Creates a VPN network.
@@ -826,4 +822,177 @@ interface INetd {
     * @return dnsList dns list result
     */
     @utf8InCpp List<String> tetherDnsList();
+
+    // Keep in sync with system/netd/NetworkController.cpp
+    const int NETID_LOCAL = 99;
+
+    // Route does not specify a next hop
+    const String NEXTHOP_NONE = "";
+    // Route next hop is unreachable
+    const String NEXTHOP_UNREACHABLE = "unreachable";
+    // Route next hop is throw
+    const String NEXTHOP_THROW = "throw";
+
+   /**
+    * Add a route for specific network
+    *
+    * @param netId the network to add the route to
+    * @param ifName the name of interface of the route.
+    *               This interface should be assigned to the netID.
+    * @param destination the destination of the route
+    * @param nextHop The route's next hop address,
+    *                or it could be either NEXTHOP_NONE, NEXTHOP_UNREACHABLE, NEXTHOP_THROW.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void networkAddRoute(
+            int netId,
+            in @utf8InCpp String ifName,
+            in @utf8InCpp String destination,
+            in @utf8InCpp String nextHop);
+
+   /**
+    * Remove a route for specific network
+    *
+    * @param netId the network to remove the route from
+    * @param ifName the name of interface of the route.
+    *               This interface should be assigned to the netID.
+    * @param destination the destination of the route
+    * @param nextHop The route's next hop address,
+    *                or it could be either NEXTHOP_NONE, NEXTHOP_UNREACHABLE, NEXTHOP_THROW.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void networkRemoveRoute(
+            int netId,
+            in @utf8InCpp String ifName,
+            in @utf8InCpp String destination,
+            in @utf8InCpp String nextHop);
+
+   /**
+    * Add a route to legacy routing table for specific network
+    *
+    * @param netId the network to add the route to
+    * @param ifName the name of interface of the route.
+    *               This interface should be assigned to the netID.
+    * @param destination the destination of the route
+    * @param nextHop The route's next hop address,
+    *                or it could be either NEXTHOP_NONE, NEXTHOP_UNREACHABLE, NEXTHOP_THROW.
+    * @param uid uid of the user
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void networkAddLegacyRoute(
+            int netId,
+            in @utf8InCpp String ifName,
+            in @utf8InCpp String destination,
+            in @utf8InCpp String nextHop,
+            int uid);
+
+   /**
+    * Remove a route from legacy routing table for specific network
+    *
+    * @param netId the network to remove the route from
+    * @param ifName the name of interface of the route.
+    *               This interface should be assigned to the netID.
+    * @param destination the destination of the route
+    * @param nextHop The route's next hop address,
+    *                or it could be either NEXTHOP_NONE, NEXTHOP_UNREACHABLE, NEXTHOP_THROW.
+    * @param uid uid of the user
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void networkRemoveLegacyRoute(
+            int netId,
+            in @utf8InCpp String ifName,
+            in @utf8InCpp String destination,
+            in @utf8InCpp String nextHop,
+            int uid);
+
+   /**
+    * Get default network
+    *
+    * @return netId of default network
+    */
+    int networkGetDefault();
+
+   /**
+    * Set network as default network
+    *
+    * @param netId the network to set as the default
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void networkSetDefault(int netId);
+
+   /**
+    * Clear default network
+    *
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void networkClearDefault();
+
+    // PERMISSION_NONE is used for regular networks and apps
+    const int PERMISSION_NONE = 0;
+    /**
+     * PERMISSION_NETWORK indicates that the network is only accessible
+     * to apps that have the CHANGE_NETWORK_STATE permission.
+     */
+    const int PERMISSION_NETWORK = 1;
+    /**
+     * PERMISSION_SYSTEM is used for system UIDs and apps
+     * that have the CONNECTIVITY_USE_RESTRICTED_NETWORK permission
+     */
+    const int PERMISSION_SYSTEM = 2;
+
+   /**
+    * Sets the permission required to access a specific network.
+    *
+    * @param netId the network to set
+    * @param permission network permission to use
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void networkSetPermissionForNetwork(int netId, int permission);
+
+   /**
+    * Assigns network access permissions to the specified users.
+    *
+    * @param permission network permission to use
+    * @param uids uid of users to set permission
+    */
+    void networkSetPermissionForUser(int permission, in int[] uids);
+
+   /**
+    * Clears network access permissions for the specified users.
+    *
+    * @param uids uid of users to clear permission
+    */
+    void networkClearPermissionForUser(in int[] uids);
+
+   /**
+    * Gives the specified user permission to protect sockets from VPNs.
+    * Typically used by VPN apps themselves, to ensure that the sockets
+    * they use to communicate with the VPN server aren't routed through
+    * the VPN network.
+    *
+    * @param uid uid of user to set
+    */
+    void networkSetProtectAllow(int uid);
+
+   /**
+    * Removes the permission to protect sockets from VPN.
+    *
+    * @param uid uid of user to set
+    */
+    void networkSetProtectDeny(int uid);
+
+   /**
+    * Get the status of network protect for user
+    *
+    * @param uids uid of user
+    * @return true if the user is protected, false otherwise.
+    */
+    boolean networkCanProtect(int uid);
 }
