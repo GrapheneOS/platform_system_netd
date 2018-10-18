@@ -35,7 +35,7 @@
 #include "Fwmark.h"
 #include "IptablesBaseTest.h"
 #include "bpf/BpfUtils.h"
-#include "bpf/bpf_shared.h"
+#include "netdbpf/bpf_shared.h"
 #include "tun_interface.h"
 
 using ::testing::ByMove;

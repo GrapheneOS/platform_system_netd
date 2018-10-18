@@ -15,7 +15,7 @@
 //
 
 cc_library_headers {
-    name: "libbpf_headers",
+    name: "libnetdbpf_headers",
     vendor_available: false,
     host_supported: false,
     export_include_dirs: ["include"],
@@ -27,13 +27,12 @@ cc_library_headers {
 }
 
 cc_library {
-    name: "libbpf",
+    name: "libnetdbpf",
     vendor_available: false,
     host_supported: false,
     target: {
         android: {
             srcs: [
-                "BpfUtils.cpp",
                 "BpfNetworkStats.cpp"
             ],
             sanitize: {
@@ -44,18 +43,18 @@ cc_library {
 
     shared_libs: [
         "libbase",
+        "libbpf",
         "libutils",
         "liblog",
         "libnetdutils",
     ],
     header_libs: [
-        "libbpf_headers"
+        "libnetdbpf_headers"
     ],
-    export_header_lib_headers: ["libbpf_headers"],
+    export_header_lib_headers: ["libnetdbpf_headers"],
     local_include_dirs: ["include"],
 
-    // TODO: Enable this once sscanf errors have been fixed.
-    // defaults: ["netd_defaults"],
+    defaults: ["netd_defaults"],
     cflags: [
         "-Werror",
         "-Wall",
@@ -64,10 +63,9 @@ cc_library {
 }
 
 cc_test {
-    name: "libbpf_test",
+    name: "libnetdbpf_test",
     srcs: [
         "BpfNetworkStatsTest.cpp",
-        "BpfMapTest.cpp",
     ],
     defaults: ["netd_defaults"],
     cflags: [
@@ -77,9 +75,10 @@ cc_test {
     ],
     static_libs: ["libgmock"],
     shared_libs: [
-        "libbpf",
         "libbase",
+        "libbpf",
         "liblog",
+        "libnetdbpf",
         "libnetdutils",
         "libutils",
     ],
