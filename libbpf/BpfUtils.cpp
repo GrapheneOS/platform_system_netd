@@ -371,7 +371,8 @@ int parsePrograms(Slice fileContents, BpfProgInfo* programs, size_t size,
     // Check all the program struct passed in to make sure they all have a valid fd.
     for (size_t i = 0; i < size; i++) {
         BpfProgInfo* prog = programs + i;
-        if (prog->fd < 0) {
+        if (access(prog->path, R_OK) == -1) {
+            ALOGE("Load program %s failed", prog->name);
             return -EINVAL;
         }
     }

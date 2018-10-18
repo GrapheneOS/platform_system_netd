@@ -72,10 +72,6 @@ auto BandwidthController::iptablesRestoreFunction = execIptablesRestoreWithOutpu
 using android::base::Join;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
-using android::bpf::XT_BPF_BLACKLIST_PROG_PATH;
-using android::bpf::XT_BPF_EGRESS_PROG_PATH;
-using android::bpf::XT_BPF_INGRESS_PROG_PATH;
-using android::bpf::XT_BPF_WHITELIST_PROG_PATH;
 using android::net::gCtls;
 using android::netdutils::StatusOr;
 using android::netdutils::Status;
@@ -621,7 +617,8 @@ int BandwidthController::updateQuota(const std::string& quotaName, int64_t bytes
         ALOGE("Updating quota %s failed (%s)", quotaName.c_str(), toString(file).c_str());
         return -res;
     }
-    sys.fprintf(file.value().get(), "%" PRId64 "\n", bytes);
+    // TODO: should we propagate this error?
+    sys.fprintf(file.value().get(), "%" PRId64 "\n", bytes).ignoreError();
     return 0;
 }
 

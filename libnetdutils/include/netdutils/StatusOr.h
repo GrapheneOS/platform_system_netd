@@ -26,7 +26,7 @@ namespace netdutils {
 // Wrapper around a combination of Status and application value type.
 // T may be any copyable or movable type.
 template <typename T>
-class StatusOr {
+class [[nodiscard]] StatusOr {
   public:
     StatusOr() = default;
     StatusOr(const Status status) : mStatus(status) { assert(!isOk(status)); }
@@ -55,7 +55,10 @@ class StatusOr {
     // Return status assigned in constructor
     const Status status() const { return mStatus; }
 
-    // Implict cast to Status
+    // Explicitly ignores the Status without triggering [[nodiscard]] errors.
+    void ignoreError() const {}
+
+    // Implicit cast to Status.
     operator Status() const { return status(); }
 
   private:
