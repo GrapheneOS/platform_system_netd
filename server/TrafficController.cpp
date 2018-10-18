@@ -241,7 +241,7 @@ Status TrafficController::start() {
                                (static_cast<uint64_t>(diagmsg.id.idiag_cookie[1]) << 32);
 
         Status s = mCookieTagMap.deleteValue(sock_cookie);
-        if (!isOk(s)) {
+        if (!isOk(s) && s.code() != ENOENT) {
             ALOGE("Failed to delete cookie %" PRIx64 ": %s", sock_cookie, toString(s).c_str());
             return;
         }
