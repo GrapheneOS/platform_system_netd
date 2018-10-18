@@ -27,7 +27,7 @@
 #include "android-base/thread_annotations.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
-#include "bpf/bpf_shared.h"
+#include "netdbpf/bpf_shared.h"
 
 using android::bpf::BpfMap;
 using android::bpf::IfaceValue;
