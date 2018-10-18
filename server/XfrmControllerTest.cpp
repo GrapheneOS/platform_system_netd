@@ -48,7 +48,6 @@
 #include "Stopwatch.h"
 #include "XfrmController.h"
 #include "android/net/INetd.h"
-#include "android/net/UidRange.h"
 #include "binder/IServiceManager.h"
 #include "netdutils/MockSyscalls.h"
 #include "netdutils/Netlink.h"

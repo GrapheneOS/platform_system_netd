@@ -49,6 +49,7 @@
 
 using android::base::StringPrintf;
 using android::net::TetherStatsParcel;
+using android::net::UidRangeParcel;
 
 namespace android {
 namespace net {
@@ -356,31 +357,57 @@ binder::Status NetdNativeService::networkRemoveInterface(int32_t netId, const st
     return statusFromErrcode(ret);
 }
 
-binder::Status NetdNativeService::networkAddUidRanges(int32_t netId,
-        const std::vector<UidRange>& uidRangeArray) {
+namespace {
+
+std::string uidRangeParcelVecToString(const std::vector<UidRangeParcel>& uidRangeArray) {
+    std::vector<std::string> result;
+    result.reserve(uidRangeArray.size());
+    for (const auto& uidRange : uidRangeArray) {
+        result.push_back(StringPrintf("%d-%d", uidRange.start, uidRange.stop));
+    }
+
+    return base::Join(result, ", ");
+}
+
+}  // namespace
+
+binder::Status NetdNativeService::networkAddUidRanges(
+        int32_t netId, const std::vector<UidRangeParcel>& uidRangeArray) {
     // NetworkController::addUsersToNetwork is thread-safe.
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    auto entry = gLog.newEntry()
+                         .prettyFunction(__PRETTY_FUNCTION__)
+                         .args(netId, uidRangeParcelVecToString(uidRangeArray));
+
     int ret = gCtls->netCtrl.addUsersToNetwork(netId, UidRanges(uidRangeArray));
+    gLog.log(entry.returns(ret).withAutomaticDuration());
     return statusFromErrcode(ret);
 }
 
-binder::Status NetdNativeService::networkRemoveUidRanges(int32_t netId,
-        const std::vector<UidRange>& uidRangeArray) {
+binder::Status NetdNativeService::networkRemoveUidRanges(
+        int32_t netId, const std::vector<UidRangeParcel>& uidRangeArray) {
     // NetworkController::removeUsersFromNetwork is thread-safe.
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    auto entry = gLog.newEntry()
+                         .prettyFunction(__PRETTY_FUNCTION__)
+                         .args(netId, uidRangeParcelVecToString(uidRangeArray));
+
     int ret = gCtls->netCtrl.removeUsersFromNetwork(netId, UidRanges(uidRangeArray));
+    gLog.log(entry.returns(ret).withAutomaticDuration());
     return statusFromErrcode(ret);
 }
 
-binder::Status NetdNativeService::networkRejectNonSecureVpn(bool add,
-        const std::vector<UidRange>& uidRangeArray) {
+binder::Status NetdNativeService::networkRejectNonSecureVpn(
+        bool add, const std::vector<UidRangeParcel>& uidRangeArray) {
     // TODO: elsewhere RouteController is only used from the tethering and network controllers, so
     // it should be possible to use the same lock as NetworkController. However, every call through
     // the CommandListener "network" command will need to hold this lock too, not just the ones that
     // read/modify network internal state (that is sufficient for ::dump() because it doesn't
     // look at routes, but it's not enough here).
     NETD_BIG_LOCK_RPC(CONNECTIVITY_INTERNAL);
-
+    auto entry = gLog.newEntry()
+                         .prettyFunction(__PRETTY_FUNCTION__)
+                         .args(add, uidRangeParcelVecToString(uidRangeArray));
     UidRanges uidRanges(uidRangeArray);
 
     int err;
@@ -389,15 +416,17 @@ binder::Status NetdNativeService::networkRejectNonSecureVpn(bool add,
     } else {
         err = RouteController::removeUsersFromRejectNonSecureNetworkRule(uidRanges);
     }
-
+    gLog.log(entry.returns(err).withAutomaticDuration());
     return statusFromErrcode(err);
 }
 
-binder::Status NetdNativeService::socketDestroy(const std::vector<UidRange>& uids,
-        const std::vector<int32_t>& skipUids) {
-
+binder::Status NetdNativeService::socketDestroy(const std::vector<UidRangeParcel>& uids,
+                                                const std::vector<int32_t>& skipUids) {
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
 
+    auto entry = gLog.newEntry()
+                         .prettyFunction(__PRETTY_FUNCTION__)
+                         .arg(uidRangeParcelVecToString(uids));
     SockDiag sd;
     if (!sd.open()) {
         return binder::Status::fromServiceSpecificError(EIO,
@@ -408,6 +437,7 @@ binder::Status NetdNativeService::socketDestroy(const std::vector<UidRange>& uid
     int err = sd.destroySockets(uidRanges, std::set<uid_t>(skipUids.begin(), skipUids.end()),
                                 true /* excludeLoopback */);
 
+    gLog.log(entry.returns(err).withAutomaticDuration());
     if (err) {
         return binder::Status::fromServiceSpecificError(-err,
                 String8::format("destroySockets: %s", strerror(-err)));

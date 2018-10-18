@@ -15,12 +15,14 @@
  */
 
 #include <set>
+
+#define LOG_TAG "Netd"
+
 #include "VirtualNetwork.h"
 
 #include "SockDiag.h"
 #include "RouteController.h"
 
-#define LOG_TAG "Netd"
 #include "log/log.h"
 
 namespace android {
