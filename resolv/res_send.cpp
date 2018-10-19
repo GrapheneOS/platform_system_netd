@@ -1145,7 +1145,6 @@ retry:
                 (stdout, ";; not our server:\n"), ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
-#ifdef RES_USE_EDNS0
     if (anhp->rcode == FORMERR && (statp->options & RES_USE_EDNS0) != 0U) {
         /*
          * Do not retry if the server do not understand EDNS0.
@@ -1159,7 +1158,6 @@ retry:
         res_nclose(statp);
         return (0);
     }
-#endif
     if (!(statp->options & RES_INSECURE2) &&
         !res_queriesmatch(buf, buf + buflen, ans, ans + anssiz)) {
         /*

@@ -187,6 +187,13 @@ static_assert(kVerboseLogging == false && kDumpData == false,
  *     printf( "%s", buff );
  */
 
+/* Defaults used for initializing __res_params */
+
+// If successes * 100 / total_samples is less than this value, the server is considered failing
+#define SUCCESS_THRESHOLD 75
+// Sample validity in seconds. Set to -1 to disable skipping failing servers.
+#define NSSAMPLE_VALIDITY 1800
+
 /* add a char to a bounded buffer */
 static char* bprint_c(char* p, char* end, int c) {
     if (p < end) {
@@ -1740,7 +1747,7 @@ static struct resolv_cache_info* _find_cache_info_locked(unsigned netid) {
     return cache_info;
 }
 
-void _resolv_set_default_params(struct __res_params* params) {
+static void resolv_set_default_params(struct __res_params* params) {
     params->sample_validity = NSSAMPLE_VALIDITY;
     params->success_threshold = SUCCESS_THRESHOLD;
     params->min_samples = 0;
@@ -1791,7 +1798,7 @@ int _resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsign
         if (params != NULL) {
             cache_info->params = *params;
         } else {
-            _resolv_set_default_params(&cache_info->params);
+            resolv_set_default_params(&cache_info->params);
         }
 
         if (!resolv_is_nameservers_equal_locked(cache_info, servers, numservers)) {
