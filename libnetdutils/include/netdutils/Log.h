@@ -22,6 +22,7 @@
 #include <shared_mutex>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include <android-base/stringprintf.h>
 #include <android-base/thread_annotations.h>

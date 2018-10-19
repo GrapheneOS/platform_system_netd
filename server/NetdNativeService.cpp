@@ -104,6 +104,13 @@ binder::Status checkPermission(const char *permission) {
 
 #define NETD_BIG_LOCK_RPC(permission) NETD_LOCKING_RPC((permission), gBigNetdLock)
 
+binder::Status asBinderStatus(const netdutils::Status& status) {
+    if (isOk(status)) {
+        return binder::Status::ok();
+    }
+    return binder::Status::fromServiceSpecificError(status.code(), status.msg().c_str());
+}
+
 inline binder::Status statusFromErrcode(int ret) {
     if (ret) {
         return binder::Status::fromServiceSpecificError(-ret, strerror(-ret));
