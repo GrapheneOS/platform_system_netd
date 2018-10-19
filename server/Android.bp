@@ -20,7 +20,9 @@ filegroup {
         "NetdConstants.cpp",
         "InterfaceController.cpp",
         "NetlinkCommands.cpp",
+        "NetlinkListener.cpp",
         "XfrmController.cpp",
+        "TrafficController.cpp",
     ],
 }
 

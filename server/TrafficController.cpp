@@ -92,7 +92,7 @@ const std::string uidMatchTypeToString(uint8_t match) {
     return matchType;
 }
 
-StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener() {
+StatusOr<std::unique_ptr<NetlinkListenerInterface>> TrafficController::makeSkDestroyListener() {
     const auto& sys = sSyscalls.get();
     ASSIGN_OR_RETURN(auto event, sys.eventfd(0, EFD_CLOEXEC));
     const int domain = AF_NETLINK;
