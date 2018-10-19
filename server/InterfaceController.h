@@ -18,6 +18,7 @@
 #define _INTERFACE_CONTROLLER_H
 
 #include <functional>
+#include <map>
 #include <string>
 
 #include <netdutils/Status.h>
