@@ -17,8 +17,8 @@
 #ifndef _DNS_IDNSTLSSOCKET_H
 #define _DNS_IDNSTLSSOCKET_H
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 
 #include <netdutils/Slice.h>
 

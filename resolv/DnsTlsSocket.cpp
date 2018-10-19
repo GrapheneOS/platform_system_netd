@@ -17,7 +17,7 @@
 #define LOG_TAG "DnsTlsSocket"
 //#define LOG_NDEBUG 0
 
-#include "dns/DnsTlsSocket.h"
+#include "netd_resolv/DnsTlsSocket.h"
 
 #include <algorithm>
 #include <arpa/inet.h>
@@ -25,17 +25,15 @@
 #include <errno.h>
 #include <linux/tcp.h>
 #include <openssl/err.h>
+#include <openssl/sha.h>
 #include <sys/poll.h>
 
-#include "dns/DnsTlsSessionCache.h"
-#include "dns/IDnsTlsSocketObserver.h"
+#include "netd_resolv/DnsTlsSessionCache.h"
+#include "netd_resolv/IDnsTlsSocketObserver.h"
 
 #include "log/log.h"
 #include "netdutils/SocketOption.h"
-#include "Fwmark.h"
-#include "NetdConstants.h"
 #include "Permission.h"
-
 
 namespace android {
 
@@ -48,6 +46,7 @@ namespace net {
 namespace {
 
 constexpr const char kCaCertDir[] = "/system/etc/security/cacerts";
+constexpr size_t SHA256_SIZE = SHA256_DIGEST_LENGTH;
 
 int waitForReading(int fd) {
     struct pollfd fds = { .fd = fd, .events = POLLIN };
@@ -362,7 +361,7 @@ void DnsTlsSocket::loop() {
             fds[IPCFD].events = POLLIN;
         }
 
-        const int s = TEMP_FAILURE_RETRY(poll(fds, ARRAY_SIZE(fds), timeout_msecs));
+        const int s = TEMP_FAILURE_RETRY(poll(fds, std::size(fds), timeout_msecs));
         if (s == 0) {
             ALOGV("Idle timeout");
             break;

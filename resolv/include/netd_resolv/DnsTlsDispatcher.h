@@ -18,19 +18,18 @@
 #define _DNS_DNSTLSDISPATCHER_H
 
 #include <list>
-#include <memory>
 #include <map>
+#include <memory>
 #include <mutex>
 
 #include <android-base/thread_annotations.h>
 
 #include <netdutils/Slice.h>
 
-#include "dns/DnsTlsServer.h"
-#include "dns/DnsTlsSocket.h"
-#include "dns/DnsTlsSocketFactory.h"
-#include "dns/IDnsTlsSocketFactory.h"
-#include "dns/DnsTlsTransport.h"
+#include "DnsTlsServer.h"
+#include "DnsTlsTransport.h"
+#include "IDnsTlsSocketFactory.h"
+#include "params.h"
 
 namespace android {
 namespace net {
@@ -39,14 +38,13 @@ using netdutils::Slice;
 
 // This is a singleton class that manages the collection of active DnsTlsTransports.
 // Queries made here are dispatched to an existing or newly constructed DnsTlsTransport.
-class DnsTlsDispatcher {
+class LIBNETD_RESOLV_TLS_EXPORT DnsTlsDispatcher {
 public:
     // Default constructor.
-    DnsTlsDispatcher() {
-        mFactory.reset(new DnsTlsSocketFactory());
-    }
+    DnsTlsDispatcher();
+
     // Constructor with dependency injection for testing.
-    DnsTlsDispatcher(std::unique_ptr<IDnsTlsSocketFactory> factory) :
+    explicit DnsTlsDispatcher(std::unique_ptr<IDnsTlsSocketFactory> factory) :
             mFactory(std::move(factory)) {}
 
     // Enqueues |query| for resolution via the given |tlsServers| on the

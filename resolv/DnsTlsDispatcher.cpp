@@ -17,7 +17,8 @@
 #define LOG_TAG "DnsTlsDispatcher"
 //#define LOG_NDEBUG 0
 
-#include "dns/DnsTlsDispatcher.h"
+#include "netd_resolv/DnsTlsDispatcher.h"
+#include "netd_resolv/DnsTlsSocketFactory.h"
 
 #include "log/log.h"
 
@@ -28,6 +29,10 @@ using netdutils::Slice;
 
 // static
 std::mutex DnsTlsDispatcher::sLock;
+
+DnsTlsDispatcher::DnsTlsDispatcher() {
+    mFactory.reset(new DnsTlsSocketFactory());
+}
 
 std::list<DnsTlsServer> DnsTlsDispatcher::getOrderedServerList(
         const std::list<DnsTlsServer> &tlsServers, unsigned mark) const {
