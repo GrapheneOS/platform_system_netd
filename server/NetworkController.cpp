@@ -29,9 +29,9 @@
 #include "log/log.h"
 
 #include <android-base/strings.h>
+#include <netd_resolv/resolv.h>
 
 #include "cutils/misc.h"
-#include "resolv_netid.h"
 
 #include "Controllers.h"
 #include "DummyNetwork.h"
@@ -41,6 +41,7 @@
 #include "PhysicalNetwork.h"
 #include "RouteController.h"
 #include "VirtualNetwork.h"
+#include "netid_client.h"
 
 #define DBG 0
 
@@ -470,7 +471,7 @@ int NetworkController::destroyNetwork(unsigned netId) {
     }
     mNetworks.erase(netId);
     delete network;
-    _resolv_delete_cache_for_net(netId);
+    resolv_delete_cache_for_net(netId);
 
     for (auto iter = mIfindexToLastNetId.begin(); iter != mIfindexToLastNetId.end();) {
         if (iter->second == netId) {

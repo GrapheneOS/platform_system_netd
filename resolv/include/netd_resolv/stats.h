@@ -14,32 +14,29 @@
  * limitations under the License.
  */
 
-#ifndef _RES_STATS_H_
-#define _RES_STATS_H_
+#ifndef NETD_RES_STATS_H
+#define NETD_RES_STATS_H
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/socket.h>
 #include <time.h>
 
-#include "resolv_params.h"
+#include "params.h"
 
 #define RCODE_INTERNAL_ERROR 254
 #define RCODE_TIMEOUT 255
 
-/*
- * Resolver reachability statistics and run-time parameters.
- */
-
-struct __res_sample {
+struct res_sample {
     time_t at;      // time in s at which the sample was recorded
     uint16_t rtt;   // round-trip time in ms
     uint8_t rcode;  // the DNS rcode or RCODE_XXX defined above
 };
 
-struct __res_stats {
+// Resolver reachability statistics and run-time parameters.
+struct res_stats {
     // Stats of the last <sample_count> queries.
-    struct __res_sample samples[MAXNSSAMPLES];
+    res_sample samples[MAXNSSAMPLES];
     // The number of samples stored.
     uint8_t sample_count;
     // The next sample to modify.
@@ -47,19 +44,18 @@ struct __res_stats {
 };
 
 // Aggregates the reachability statistics for the given server based on on the stored samples.
-LIBNETD_RESOLV_PUBLIC void android_net_res_stats_aggregate(__res_stats* stats,
-                                                           int* successes, int* errors,
-                                                           int* timeouts, int* internal_errors,
-                                                           int* rtt_avg, time_t* last_sample_time);
+LIBNETD_RESOLV_PUBLIC void android_net_res_stats_aggregate(res_stats* stats, int* successes,
+                                                           int* errors, int* timeouts,
+                                                           int* internal_errors, int* rtt_avg,
+                                                           time_t* last_sample_time);
 
 LIBNETD_RESOLV_PUBLIC int android_net_res_stats_get_info_for_net(
         unsigned netid, int* nscount, sockaddr_storage servers[MAXNS], int* dcount,
-        char domains[MAXDNSRCH][MAXDNSRCHPATH], __res_params* params, __res_stats stats[MAXNS]);
+        char domains[MAXDNSRCH][MAXDNSRCHPATH], __res_params* params, res_stats stats[MAXNS]);
 
 // Returns an array of bools indicating which servers are considered good
 LIBNETD_RESOLV_PUBLIC void android_net_res_stats_get_usable_servers(const __res_params* params,
-                                                                    __res_stats stats[],
-                                                                    int nscount,
+                                                                    res_stats stats[], int nscount,
                                                                     bool valid_servers[]);
 
-#endif  // _RES_STATS_H_
+#endif  // NETD_RES_STATS_H

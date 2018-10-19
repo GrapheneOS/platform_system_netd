@@ -100,12 +100,12 @@ constexpr bool kVerboseLogging = false;
 
 #include <android-base/logging.h>
 
+#include "netd_resolv/resolv.h"
+#include "netd_resolv/stats.h"
 #include "private/android_filesystem_config.h"
-#include "res_private.h"
+#include "res_state_ext.h"
 #include "resolv_cache.h"
-#include "resolv_netid.h"
 #include "resolv_private.h"
-#include "resolv_stats.h"
 
 #define EXT(res) ((res)->_u._ext)
 
@@ -501,9 +501,9 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
      * Send request, RETRY times, or until successful.
      */
     for (int attempt = 0; attempt < statp->retry; ++attempt) {
-        struct __res_stats stats[MAXNS];
+        struct res_stats stats[MAXNS];
         struct __res_params params;
-        int revision_id = _resolv_cache_get_resolver_stats(statp->netid, &params, stats);
+        int revision_id = resolv_cache_get_resolver_stats(statp->netid, &params, stats);
         bool usable_servers[MAXNS];
         android_net_res_stats_get_usable_servers(&params, stats, statp->nscount, usable_servers);
 
@@ -572,7 +572,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                  * SERVFAIL or times out) do not unduly affect the stats.
                  */
                 if (attempt == 0) {
-                    struct __res_sample sample;
+                    res_sample sample;
                     _res_stats_set_sample(&sample, now, rcode, delay);
                     _resolv_cache_add_resolver_stats_sample(statp->netid, revision_id, ns, &sample,
                                                             params.max_samples);
@@ -592,7 +592,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
 
                 /* Only record stats the first time we try a query. See above. */
                 if (attempt == 0) {
-                    struct __res_sample sample;
+                    res_sample sample;
                     _res_stats_set_sample(&sample, now, rcode, delay);
                     _resolv_cache_add_resolver_stats_sample(statp->netid, revision_id, ns, &sample,
                                                             params.max_samples);

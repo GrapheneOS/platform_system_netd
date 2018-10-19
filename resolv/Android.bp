@@ -31,7 +31,7 @@ cc_library_shared {
     ldflags: [
         "-Wl,--exclude-libs,ALL",
     ],
-    export_include_dirs: ["."],  // Export resolv_netid.h
+    export_include_dirs: ["include"],
     // TODO: pie in the sky: make this code clang-tidy clean
     tidy: false,
     product_variables: {

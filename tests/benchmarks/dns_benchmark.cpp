@@ -69,9 +69,10 @@
 #include <utils/String16.h>
 #include <utils/StrongPointer.h>
 
-#include "dns_responder_client.h"
 #include "NetdClient.h"
 #include "android/net/metrics/INetdEventListener.h"
+#include "dns_responder_client.h"
+#include "netd_resolv/params.h"  // MAXNS
 
 using android::base::StringPrintf;
 using android::net::metrics::INetdEventListener;
