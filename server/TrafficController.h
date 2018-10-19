@@ -114,6 +114,8 @@ class TrafficController {
 
     int toggleUidOwnerMap(ChildChain chain, bool enable);
 
+    static netdutils::StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener();
+
   private:
     /*
      * mCookieTagMap: Store the corresponding tag and uid for a specific socket.
