@@ -132,7 +132,7 @@ res_state res_get_state(void) {
     return rt ? rt->_nres : NULL;
 }
 
-void res_put_state(res_state res __unused) {
+void res_put_state(res_state /*res*/) {
     /* nothing to do */
 }
 

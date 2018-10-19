@@ -75,10 +75,11 @@
 #include <netinet/in.h>
 #include <sys/param.h>
 #include <sys/types.h>
-#include "resolv_private.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "resolv_private.h"
 
 /*
  * Expand compressed domain name 'src' to full domain name.

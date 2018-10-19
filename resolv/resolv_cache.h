@@ -25,8 +25,8 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-#ifndef _RESOLV_CACHE_H_
-#define _RESOLV_CACHE_H_
+#ifndef NETD_RESOLV_CACHE_H
+#define NETD_RESOLV_CACHE_H
 
 #include <stddef.h>
 
@@ -57,4 +57,4 @@ void _resolv_cache_add(unsigned netid, const void* query, int querylen, const vo
 /* Notify the cache a request failed */
 void _resolv_cache_query_failed(unsigned netid, const void* query, int querylen);
 
-#endif /* _RESOLV_CACHE_H_ */
+#endif  // NETD_RESOLV_CACHE_H

@@ -49,9 +49,9 @@ constexpr bool kDumpData = false;
 
 #include <android-base/logging.h>
 
-#include "res_private.h"
+#include "netd_resolv/resolv.h"
+#include "res_state_ext.h"
 #include "resolv_cache.h"
-#include "resolv_netid.h"
 #include "resolv_private.h"
 
 #define VLOG if (!kVerboseLogging) {} else LOG(INFO)
@@ -1149,7 +1149,7 @@ struct resolv_cache_info {
     struct addrinfo* nsaddrinfo[MAXNS];
     int revision_id;  // # times the nameservers have been replaced
     struct __res_params params;
-    struct __res_stats nsstats[MAXNS];
+    struct res_stats nsstats[MAXNS];
     char defdname[MAXDNSRCHPATH];
     int dnsrch_offset[MAXDNSRCH + 1];  // offsets into defdname
 };
@@ -1693,7 +1693,7 @@ static void flush_cache_for_net_locked(unsigned netid) {
     res_cache_clear_stats_locked(cache_info);
 }
 
-void _resolv_delete_cache_for_net(unsigned netid) {
+void resolv_delete_cache_for_net(unsigned netid) {
     pthread_once(&_res_cache_once, res_cache_init);
     pthread_mutex_lock(&res_cache_list_lock);
 
@@ -1755,8 +1755,8 @@ static void resolv_set_default_params(struct __res_params* params) {
     params->base_timeout_msec = 0;  // 0 = legacy algorithm
 }
 
-int _resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigned numservers,
-                                    const char* domains, const struct __res_params* params) {
+int resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigned numservers,
+                                   const char* domains, const __res_params* params) {
     char sbuf[NI_MAXSERV];
     char* cp;
     int* offset;
@@ -1953,8 +1953,8 @@ void _resolv_populate_res_for_net(res_state statp) {
 
 /* Resolver reachability statistics. */
 
-static void _res_cache_add_stats_sample_locked(struct __res_stats* stats,
-                                               const struct __res_sample* sample, int max_samples) {
+static void _res_cache_add_stats_sample_locked(res_stats* stats, const res_sample* sample,
+                                               int max_samples) {
     // Note: This function expects max_samples > 0, otherwise a (harmless) modification of the
     // allocated but supposedly unused memory for samples[0] will happen
     VLOG << __func__ << ": adding sample to stats, next = " << stats->sample_next
@@ -1980,7 +1980,7 @@ int android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
                                            struct sockaddr_storage servers[MAXNS], int* dcount,
                                            char domains[MAXDNSRCH][MAXDNSRCHPATH],
                                            struct __res_params* params,
-                                           struct __res_stats stats[MAXNS]) {
+                                           struct res_stats stats[MAXNS]) {
     int revision_id = -1;
     pthread_mutex_lock(&res_cache_list_lock);
 
@@ -2028,7 +2028,7 @@ int android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
             // dnsrch_offset[i] can either be -1 or point to an empty string to indicate the end
             // of the search offsets. Checking for < 0 is not strictly necessary, but safer.
             // TODO: Pass in a search domain array instead of a string to
-            // _resolv_set_nameservers_for_net() and make this double check unnecessary.
+            // resolv_set_nameservers_for_net() and make this double check unnecessary.
             if (info->dnsrch_offset[i] < 0 ||
                 ((size_t) info->dnsrch_offset[i]) >= sizeof(info->defdname) || !cur_domain[0]) {
                 break;
@@ -2044,8 +2044,7 @@ int android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
     return revision_id;
 }
 
-int _resolv_cache_get_resolver_stats(unsigned netid, struct __res_params* params,
-                                     struct __res_stats stats[MAXNS]) {
+int resolv_cache_get_resolver_stats(unsigned netid, __res_params* params, res_stats stats[MAXNS]) {
     int revision_id = -1;
     pthread_mutex_lock(&res_cache_list_lock);
 
@@ -2061,7 +2060,7 @@ int _resolv_cache_get_resolver_stats(unsigned netid, struct __res_params* params
 }
 
 void _resolv_cache_add_resolver_stats_sample(unsigned netid, int revision_id, int ns,
-                                             const struct __res_sample* sample, int max_samples) {
+                                             const res_sample* sample, int max_samples) {
     if (max_samples <= 0) return;
 
     pthread_mutex_lock(&res_cache_list_lock);

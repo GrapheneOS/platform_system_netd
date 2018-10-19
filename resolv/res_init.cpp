@@ -88,11 +88,9 @@
 #include <string.h>
 #include <unistd.h>
 
-/* ensure that sockaddr_in6 and IN6ADDR_ANY_INIT are declared / defined */
-#include "resolv_netid.h"
+#include "netd_resolv/resolv.h"
+#include "res_state_ext.h"
 #include "resolv_private.h"
-
-#include "res_private.h"
 
 /* Options.  Should all be left alone. */
 #ifndef DEBUG
@@ -163,7 +161,7 @@ int res_vinit(res_state statp, int preinit) {
     statp->qhook = NULL;
     statp->rhook = NULL;
     statp->_u._ext.nscount = 0;
-    statp->_u._ext.ext = (struct __res_state_ext*) malloc(sizeof(*statp->_u._ext.ext));
+    statp->_u._ext.ext = (res_state_ext*) malloc(sizeof(*statp->_u._ext.ext));
     if (statp->_u._ext.ext != NULL) {
         memset(statp->_u._ext.ext, 0, sizeof(*statp->_u._ext.ext));
         statp->_u._ext.ext->nsaddrs[0].sin = statp->nsaddr;
@@ -214,7 +212,7 @@ int res_vinit(res_state statp, int preinit) {
 static void res_setoptions(res_state statp, const char* options, const char* source) {
     const char* cp = options;
     int i;
-    struct __res_state_ext* ext = statp->_u._ext.ext;
+    res_state_ext* ext = statp->_u._ext.ext;
 
 #ifdef DEBUG
     if (statp->options & RES_DEBUG)

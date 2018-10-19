@@ -1,5 +1,5 @@
-#ifndef _RESOLV_STATIC_H_
-#define _RESOLV_STATIC_H_
+#ifndef NETD_RESOLV_STATIC_H
+#define NETD_RESOLV_STATIC_H
 
 #include <netdb.h>
 #include <stdio.h>
@@ -28,6 +28,6 @@ struct res_static {
     struct hostent host;
 };
 
-res_static* res_get_static(void);
+res_static* res_get_static();
 
-#endif // _RESOLV_STATIC_H_
+#endif  // NETD_RESOLV_STATIC_H

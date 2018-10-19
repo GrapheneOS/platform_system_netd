@@ -94,14 +94,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
-#include <unistd.h>
-#include "resolv_cache.h"
-#include "resolv_netid.h"
-#include "resolv_private.h"
-
-#include <stdarg.h>
 #include <syslog.h>
+#include <unistd.h>
 
+#include "netd_resolv/resolv.h"
+#include "resolv_cache.h"
+#include "resolv_private.h"
 
 typedef union sockaddr_union {
     struct sockaddr generic;

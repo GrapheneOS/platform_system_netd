@@ -25,7 +25,6 @@
 #include <android-base/strings.h>
 #include <cutils/properties.h>
 #include <log/log.h>
-#include <resolv_netid.h>
 #include <utils/Errors.h>
 #include <utils/String16.h>
 
@@ -46,6 +45,7 @@
 #include "RouteController.h"
 #include "SockDiag.h"
 #include "UidRanges.h"
+#include "netid_client.h"  // NETID_UNSET
 
 using android::base::StringPrintf;
 using android::net::TetherStatsParcel;

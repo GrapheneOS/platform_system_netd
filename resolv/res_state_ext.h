@@ -1,11 +1,12 @@
 /*	$NetBSD: res_private.h,v 1.1.1.1 2004/05/20 17:18:54 christos Exp $	*/
 
-#ifndef _RES_PRIVATE_H_
-#define _RES_PRIVATE_H_
+#ifndef NETD_RES_STATE_EXT_H
+#define NETD_RES_STATE_EXT_H
 
 #include "resolv_private.h"
 
-struct __res_state_ext {
+// TODO: consider inlining into res_state
+struct res_state_ext {
     union res_sockaddr_union nsaddrs[MAXNS];
     struct sort_list {
         int af;
@@ -18,4 +19,4 @@ struct __res_state_ext {
     char nsuffix2[64];
 };
 
-#endif  // _RES_PRIVATE_H_
+#endif  // NETD_RES_STATE_EXT_H

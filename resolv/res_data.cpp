@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
 #include "resolv_private.h"
 
 extern const char* const _res_opcodes[] = {

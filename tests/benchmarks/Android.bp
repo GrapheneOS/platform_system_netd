@@ -22,7 +22,7 @@ cc_benchmark {
     include_dirs: [
         "system/netd/include",
         "system/netd/client",
-        "system/netd/resolv",
+        "system/netd/resolv/include",
         "system/netd/server",
         "system/netd/server/binder",
         "system/netd/tests/dns_responder",

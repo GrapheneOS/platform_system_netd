@@ -25,17 +25,16 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-#ifndef _RESOLV_NETID_H
-#define _RESOLV_NETID_H
+#ifndef NETD_RESOLV_RESOLV_H
+#define NETD_RESOLV_RESOLV_H
 
-/* This header contains declarations related to per-network DNS
- * server selection. They are used by system/netd/ and should not be
- * exposed by the C library's public NDK headers.
+/*
+ * This header contains declarations related to per-network DNS server selection.
+ * They are used by system/netd/ and should not be exposed by the public NDK headers.
  */
 #include <netinet/in.h>
-#include <stdio.h>
 
-#include "resolv_params.h"
+#include "params.h"
 
 /*
  * Passing NETID_UNSET as the netId causes system/netd/server/DnsProxyListener.cpp to
@@ -81,9 +80,8 @@ struct android_net_context {
 LIBNETD_RESOLV_PUBLIC hostent* android_gethostbyaddrfornet(const void*, socklen_t, int, unsigned,
                                                            unsigned);
 LIBNETD_RESOLV_PUBLIC hostent* android_gethostbynamefornet(const char*, int, unsigned, unsigned);
-LIBNETD_RESOLV_PUBLIC int android_getaddrinfofornet(const char*, const char*,
-                                                    const addrinfo*, unsigned, unsigned,
-                                                    addrinfo**);
+LIBNETD_RESOLV_PUBLIC int android_getaddrinfofornet(const char*, const char*, const addrinfo*,
+                                                    unsigned, unsigned, addrinfo**);
 /*
  * TODO: consider refactoring android_getaddrinfo_proxy() to serve as an
  * explore_fqdn() dispatch table method, with the below function only making DNS calls.
@@ -97,14 +95,14 @@ LIBNETD_RESOLV_PUBLIC int android_getaddrinfofornetcontext(const char*, const ch
                                                            const android_net_context*, addrinfo**);
 
 // Set name servers for a network
-LIBNETD_RESOLV_PUBLIC int _resolv_set_nameservers_for_net(unsigned netid, const char** servers,
-                                                          unsigned numservers, const char* domains,
-                                                          const __res_params* params);
+LIBNETD_RESOLV_PUBLIC int resolv_set_nameservers_for_net(unsigned netid, const char** servers,
+                                                         unsigned numservers, const char* domains,
+                                                         const __res_params* params);
 
 // Flush the cache associated with a certain network
-LIBNETD_RESOLV_PUBLIC void _resolv_flush_cache_for_net(unsigned netid);
+LIBNETD_RESOLV_PUBLIC void resolv_flush_cache_for_net(unsigned netid);
 
 // Delete the cache associated with a certain network
-LIBNETD_RESOLV_PUBLIC void _resolv_delete_cache_for_net(unsigned netid);
+LIBNETD_RESOLV_PUBLIC void resolv_delete_cache_for_net(unsigned netid);
 
-#endif /* _RESOLV_NETID_H */
+#endif  // NETD_RESOLV_RESOLV_H
