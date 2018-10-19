@@ -19,12 +19,15 @@ cc_defaults {
     tidy_checks: [
         "android-*",
         "cert-*",
-        "clang-analyzer-security*",
-    ],
-    tidy_flags: [
         // Disabling cert-err34-c for now because it complains about each use
         // of atoi() and sscanf() in protocol parsers.
         // TODO: re-aneble cert-err34-c once we move to Binder.
-        "-warnings-as-errors=android-*,clang-analyzer-security*,cert-*,-cert-err34-c"
+        "-cert-err34-c",
+        "clang-analyzer-security*",
+        // Disabling due to many unavoidable warnings from strtol() usage.
+        "-google-runtime-int",
+    ],
+    tidy_flags: [
+        "-warnings-as-errors=android-*,clang-analyzer-security*,cert-*"
     ],
 }
