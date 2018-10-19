@@ -35,3 +35,23 @@ cc_library_shared {
         },
     },
 }
+
+cc_test {
+    name: "libnetd_resolv_test",
+    defaults: ["netd_defaults"],
+    srcs: [
+        "dns_tls_test.cpp",
+    ],
+    include_dirs: [
+        "system/netd/server",
+    ],
+    shared_libs: [
+        "libbase",
+        "liblog",
+        "libssl",
+    ],
+    static_libs: [
+        "libnetddns",
+        "libnetdutils",
+    ],
+}
