@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef _RESOLV_PARAMS_H
-#define _RESOLV_PARAMS_H
+#ifndef NETD_RESOLV_PARAMS_H
+#define NETD_RESOLV_PARAMS_H
 
 #include <stdint.h>
 
@@ -25,7 +25,8 @@
 #define MAXDNSRCHPATH 256 /* max length of domain search paths */
 #define MAXNSSAMPLES 64   /* max # samples to store per server */
 
-/* per-netid configuration parameters passed from netd to the resolver */
+// Per-netid configuration parameters passed from netd to the resolver
+// TODO: rename to res_params
 struct __res_params {
     uint16_t sample_validity;  // sample lifetime in s
     // threshold of success / total samples below which a server is considered broken
@@ -37,12 +38,12 @@ struct __res_params {
 
 typedef enum { res_goahead, res_nextns, res_modified, res_done, res_error } res_sendhookact;
 
-typedef res_sendhookact (*res_send_qhook)(struct sockaddr* const*, const u_char**, int*, u_char*,
+typedef res_sendhookact (*res_send_qhook)(struct sockaddr* const*, const uint8_t**, int*, uint8_t*,
                                           int, int*);
 
-typedef res_sendhookact (*res_send_rhook)(const struct sockaddr*, const u_char*, int, u_char*, int,
-                                          int*);
+typedef res_sendhookact (*res_send_rhook)(const struct sockaddr*, const uint8_t*, int, uint8_t*,
+                                          int, int*);
 
 #define LIBNETD_RESOLV_PUBLIC extern "C" [[gnu::visibility("default")]]
 
-#endif  // _RESOLV_PARAMS_H
+#endif  // NETD_RESOLV_PARAMS_H

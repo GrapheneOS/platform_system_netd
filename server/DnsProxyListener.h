@@ -23,7 +23,7 @@
 #include "EventReporter.h"
 #include "NetdCommand.h"
 #include "android/net/metrics/INetdEventListener.h"
-#include "resolv_netid.h"  // struct android_net_context
+#include "netd_resolv/resolv.h"  // struct android_net_context
 
 namespace android {
 namespace net {

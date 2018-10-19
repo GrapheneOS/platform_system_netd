@@ -27,8 +27,8 @@
 #include "Fwmark.h"
 #include "FwmarkClient.h"
 #include "FwmarkCommand.h"
-#include "resolv_netid.h"
 #include "Stopwatch.h"
+#include "netid_client.h"
 
 namespace {
 

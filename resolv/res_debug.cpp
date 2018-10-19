@@ -112,8 +112,14 @@
 #include <string.h>
 #include <strings.h>
 #include <time.h>
+
 #include "resolv_private.h"
 
+struct res_sym {
+    int number;            /* Identifying number, like T_MX */
+    const char* name;      /* Its symbolic name, like "MX" */
+    const char* humanname; /* Its fun name, like "mail exchanger" */
+};
 
 extern const char* const _res_opcodes[];
 
@@ -328,7 +334,7 @@ const u_char* p_fqname(const u_char* cp, const u_char* msg, FILE* file) {
  * that C_ANY is a qclass but not a class.  (You can ask for records of class
  * C_ANY, but you can't have any records of that class in the database.)
  */
-const struct res_sym __p_class_syms[] = {
+static const struct res_sym p_class_syms[] = {
         {C_IN, "IN", (char*) 0},     {C_CHAOS, "CH", (char*) 0},  {C_CHAOS, "CHAOS", (char*) 0},
         {C_HS, "HS", (char*) 0},     {C_HS, "HESIOD", (char*) 0}, {C_ANY, "ANY", (char*) 0},
         {C_NONE, "NONE", (char*) 0}, {C_IN, (char*) 0, (char*) 0}};
@@ -336,24 +342,24 @@ const struct res_sym __p_class_syms[] = {
 /*
  * Names of message sections.
  */
-static const struct res_sym __p_default_section_syms[] = {{ns_s_qd, "QUERY", (char*) 0},
-                                                          {ns_s_an, "ANSWER", (char*) 0},
-                                                          {ns_s_ns, "AUTHORITY", (char*) 0},
-                                                          {ns_s_ar, "ADDITIONAL", (char*) 0},
-                                                          {0, (char*) 0, (char*) 0}};
+static const struct res_sym p_default_section_syms[] = {{ns_s_qd, "QUERY", (char*) 0},
+                                                        {ns_s_an, "ANSWER", (char*) 0},
+                                                        {ns_s_ns, "AUTHORITY", (char*) 0},
+                                                        {ns_s_ar, "ADDITIONAL", (char*) 0},
+                                                        {0, (char*) 0, (char*) 0}};
 
-static const struct res_sym __p_update_section_syms[] = {{S_ZONE, "ZONE", (char*) 0},
-                                                         {S_PREREQ, "PREREQUISITE", (char*) 0},
-                                                         {S_UPDATE, "UPDATE", (char*) 0},
-                                                         {S_ADDT, "ADDITIONAL", (char*) 0},
-                                                         {0, (char*) 0, (char*) 0}};
+static const struct res_sym p_update_section_syms[] = {{S_ZONE, "ZONE", (char*) 0},
+                                                       {S_PREREQ, "PREREQUISITE", (char*) 0},
+                                                       {S_UPDATE, "UPDATE", (char*) 0},
+                                                       {S_ADDT, "ADDITIONAL", (char*) 0},
+                                                       {0, (char*) 0, (char*) 0}};
 
 /*
  * Names of RR types and qtypes.  Types and qtypes are the same, except
  * that T_ANY is a qtype but not a type.  (You can ask for records of type
  * T_ANY, but you can't have any records of that type in the database.)
  */
-const struct res_sym __p_type_syms[] = {
+const struct res_sym p_type_syms[] = {
         {ns_t_a, "A", "address"},
         {ns_t_ns, "NS", "name server"},
         {ns_t_md, "MD", "mail destination (deprecated)"},
@@ -427,22 +433,22 @@ const struct res_sym __p_type_syms[] = {
 /*
  * Names of DNS rcodes.
  */
-const struct res_sym __p_rcode_syms[] = {{ns_r_noerror, "NOERROR", "no error"},
-                                         {ns_r_formerr, "FORMERR", "format error"},
-                                         {ns_r_servfail, "SERVFAIL", "server failed"},
-                                         {ns_r_nxdomain, "NXDOMAIN", "no such domain name"},
-                                         {ns_r_notimpl, "NOTIMP", "not implemented"},
-                                         {ns_r_refused, "REFUSED", "refused"},
-                                         {ns_r_yxdomain, "YXDOMAIN", "domain name exists"},
-                                         {ns_r_yxrrset, "YXRRSET", "rrset exists"},
-                                         {ns_r_nxrrset, "NXRRSET", "rrset doesn't exist"},
-                                         {ns_r_notauth, "NOTAUTH", "not authoritative"},
-                                         {ns_r_notzone, "NOTZONE", "Not in zone"},
-                                         {ns_r_max, "", ""},
-                                         {ns_r_badsig, "BADSIG", "bad signature"},
-                                         {ns_r_badkey, "BADKEY", "bad key"},
-                                         {ns_r_badtime, "BADTIME", "bad time"},
-                                         {0, NULL, NULL}};
+static const struct res_sym p_rcode_syms[] = {{ns_r_noerror, "NOERROR", "no error"},
+                                              {ns_r_formerr, "FORMERR", "format error"},
+                                              {ns_r_servfail, "SERVFAIL", "server failed"},
+                                              {ns_r_nxdomain, "NXDOMAIN", "no such domain name"},
+                                              {ns_r_notimpl, "NOTIMP", "not implemented"},
+                                              {ns_r_refused, "REFUSED", "refused"},
+                                              {ns_r_yxdomain, "YXDOMAIN", "domain name exists"},
+                                              {ns_r_yxrrset, "YXRRSET", "rrset exists"},
+                                              {ns_r_nxrrset, "NXRRSET", "rrset doesn't exist"},
+                                              {ns_r_notauth, "NOTAUTH", "not authoritative"},
+                                              {ns_r_notzone, "NOTZONE", "Not in zone"},
+                                              {ns_r_max, "", ""},
+                                              {ns_r_badsig, "BADSIG", "bad signature"},
+                                              {ns_r_badkey, "BADKEY", "bad key"},
+                                              {ns_r_badtime, "BADTIME", "bad time"},
+                                              {0, NULL, NULL}};
 
 static const char* sym_ntos(const struct res_sym* syms, int number, int* success) {
     static char unname[20];
@@ -467,7 +473,7 @@ const char* p_type(int type) {
     const char* result;
     static char typebuf[20];
 
-    result = sym_ntos(__p_type_syms, type, &success);
+    result = sym_ntos(p_type_syms, type, &success);
     if (success) return (result);
     if (type < 0 || type > 0xffff) return ("BADTYPE");
     snprintf(typebuf, sizeof(typebuf), "TYPE%d", type);
@@ -482,10 +488,10 @@ const char* p_section(int section, int opcode) {
 
     switch (opcode) {
         case ns_o_update:
-            symbols = __p_update_section_syms;
+            symbols = p_update_section_syms;
             break;
         default:
-            symbols = __p_default_section_syms;
+            symbols = p_default_section_syms;
             break;
     }
     return (sym_ntos(symbols, section, (int*) 0));
@@ -499,7 +505,7 @@ const char* p_class(int cl) {
     const char* result;
     static char classbuf[20];
 
-    result = sym_ntos(__p_class_syms, cl, &success);
+    result = sym_ntos(p_class_syms, cl, &success);
     if (success) return (result);
     if (cl < 0 || cl > 0xffff) return ("BADCLASS");
     snprintf(classbuf, sizeof(classbuf), "CLASS%d", cl);
@@ -510,5 +516,5 @@ const char* p_class(int cl) {
  * Return a string for the rcode.
  */
 const char* p_rcode(int rcode) {
-    return (sym_ntos(__p_rcode_syms, rcode, (int*) 0));
+    return (sym_ntos(p_rcode_syms, rcode, (int*) 0));
 }

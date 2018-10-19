@@ -26,7 +26,6 @@
 #include <sys/types.h>
 #include <string.h>
 #include <pthread.h>
-#include <resolv_netid.h>
 #include <net/if.h>
 
 #define LOG_TAG "DnsProxyListener"

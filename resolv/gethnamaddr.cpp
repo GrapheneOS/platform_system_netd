@@ -69,8 +69,8 @@
 #include <syslog.h>
 #include <unistd.h>
 
+#include "netd_resolv/resolv.h"
 #include "resolv_cache.h"
-#include "resolv_netid.h"
 #include "resolv_private.h"
 
 // NetBSD uses _DIAGASSERT to null-check arguments and the like,
