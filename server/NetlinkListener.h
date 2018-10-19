@@ -87,8 +87,8 @@ class NetlinkListener : public NetlinkListenerInterface {
     netdutils::UniqueFd mSock;
     std::mutex mMutex;
     std::map<uint16_t, DispatchFn> mDispatchMap;  // guarded by mMutex
-    std::thread mWorker;
     std::string mThreadName;
+    std::thread mWorker;
 };
 
 }  // namespace net
