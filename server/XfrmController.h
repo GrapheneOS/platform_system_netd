@@ -27,11 +27,13 @@
 #include <linux/netlink.h>
 #include <linux/udp.h>
 #include <linux/xfrm.h>
-#include <sysutils/SocketClient.h>
+#include <unistd.h>
 
 #include "NetdConstants.h"
+#include "android-base/unique_fd.h"
 #include "netdutils/Slice.h"
 #include "netdutils/Status.h"
+#include "sysutils/SocketClient.h"
 
 namespace android {
 namespace net {
