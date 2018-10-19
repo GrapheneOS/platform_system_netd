@@ -56,7 +56,7 @@ cc_test {
         "libnetutils",
         "libssl",
         "libutils",
-	"libqtaguid",
+        "libqtaguid",
         "netd_aidl_interface-cpp",
     ],
     static_libs: [
