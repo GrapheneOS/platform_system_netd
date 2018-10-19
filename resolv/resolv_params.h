@@ -25,21 +25,6 @@
 #define MAXDNSRCHPATH 256 /* max length of domain search paths */
 #define MAXNSSAMPLES 64   /* max # samples to store per server */
 
-/* Defaults used for initializing __res_params */
-#define SUCCESS_THRESHOLD                                 \
-    75 /* if successes * 100 / total_samples is less than \
-        * this value, the server is considered failing    \
-        */
-#define NSSAMPLE_VALIDITY                         \
-    1800 /* Sample validity in seconds.           \
-          * Set to -1 to disable skipping failing \
-          * servers.                              \
-          */
-
-/* If EDNS0_PADDING is defined, queries will be padded to a multiple of this length
-when EDNS0 is active. */
-#define EDNS0_PADDING 128
-
 /* per-netid configuration parameters passed from netd to the resolver */
 struct __res_params {
     uint16_t sample_validity;  // sample lifetime in s

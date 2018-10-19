@@ -70,12 +70,13 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <algorithm>  // std::min()
+
 #include <arpa/nameser.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/param.h>
 #include <sys/types.h>
 
 #include "resolv_private.h"
@@ -85,6 +86,10 @@
 #define DEBUG
 #endif
 
+// Queries will be padded to a multiple of this length when EDNS0 is active.
+constexpr uint16_t kEdns0Padding = 128;
+
+// Defined in res_data.cpp
 extern const char* _res_opcodes[];
 
 /*
@@ -150,7 +155,7 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
             n = dn_comp((const char*) data, cp, ep - cp - RRFIXEDSZ, dnptrs, lastdnptr);
             if (n < 0) return (-1);
             cp += n;
-            ns_put16(T_NULL, cp);
+            ns_put16(ns_t_null, cp);
             cp += INT16SZ;
             ns_put16(cl, cp);
             cp += INT16SZ;
@@ -188,12 +193,6 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
     return (cp - buf);
 }
 
-#ifdef RES_USE_EDNS0
-/* attach OPT pseudo-RR, as documented in RFC2671 (EDNS0). */
-#ifndef T_OPT
-#define T_OPT 41
-#endif
-
 int res_nopt(res_state statp, int n0, /* current offset in buffer */
              u_char* buf,             /* buffer to put query */
              int buflen,              /* size of buffer */
@@ -215,7 +214,8 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
 
     *cp++ = 0; /* "." */
 
-    ns_put16(T_OPT, cp); /* TYPE */
+    // Attach OPT pseudo-RR, as documented in RFC2671 (EDNS0).
+    ns_put16(ns_t_opt, cp); /* TYPE */
     cp += INT16SZ;
     if (anslen > 0xffff) anslen = 0xffff;
     ns_put16(anslen, cp); /* CLASS = UDP payload size */
@@ -230,30 +230,24 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
     }
     ns_put16(flags, cp);
     cp += INT16SZ;
-#ifdef EDNS0_PADDING
-    {
-        u_int16_t minlen = (cp - buf) + 3 * INT16SZ;
-        u_int16_t extra = minlen % EDNS0_PADDING;
-        u_int16_t padlen = (EDNS0_PADDING - extra) % EDNS0_PADDING;
-        if (minlen > buflen) {
-            return (-1);
-        }
-        padlen = MIN(padlen, buflen - minlen);
-        ns_put16(padlen + 2 * INT16SZ, cp); /* RDLEN */
-        cp += INT16SZ;
-        ns_put16(NS_OPT_PADDING, cp); /* OPTION-CODE */
-        cp += INT16SZ;
-        ns_put16(padlen, cp); /* OPTION-LENGTH */
-        cp += INT16SZ;
-        memset(cp, 0, padlen);
-        cp += padlen;
-    }
-#else
-    ns_put16(0, cp); /* RDLEN */
-    cp += INT16SZ;
-#endif
-    hp->arcount = htons(ntohs(hp->arcount) + 1);
 
+    // EDNS0 padding
+    const uint16_t minlen = static_cast<uint16_t>(cp - buf) + 3 * INT16SZ;
+    const uint16_t extra = minlen % kEdns0Padding;
+    uint16_t padlen = (kEdns0Padding - extra) % kEdns0Padding;
+    if (minlen > buflen) {
+        return -1;
+    }
+    padlen = std::min(padlen, static_cast<uint16_t>(buflen - minlen));
+    ns_put16(padlen + 2 * INT16SZ, cp); /* RDLEN */
+    cp += INT16SZ;
+    ns_put16(NS_OPT_PADDING, cp); /* OPTION-CODE */
+    cp += INT16SZ;
+    ns_put16(padlen, cp); /* OPTION-LENGTH */
+    cp += INT16SZ;
+    memset(cp, 0, padlen);
+    cp += padlen;
+
+    hp->arcount = htons(ntohs(hp->arcount) + 1);
     return (cp - buf);
 }
-#endif

@@ -269,11 +269,9 @@ static void res_setoptions(res_state statp, const char* options, const char* sou
         } else if (!strncmp(cp, "no-check-names", sizeof("no-check-names") - 1)) {
             statp->options |= RES_NOCHECKNAME;
         }
-#ifdef RES_USE_EDNS0
         else if (!strncmp(cp, "edns0", sizeof("edns0") - 1)) {
             statp->options |= RES_USE_EDNS0;
         }
-#endif
         else if (!strncmp(cp, "dname", sizeof("dname") - 1)) {
             statp->options |= RES_USE_DNAME;
         } else if (!strncmp(cp, "nibble:", sizeof("nibble:") - 1)) {
