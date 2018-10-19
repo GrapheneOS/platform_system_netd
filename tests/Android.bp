@@ -39,6 +39,7 @@ cc_test {
         "dns_tls_test.cpp",
         "netd_test.cpp",
         "resolver_test.cpp",
+        "netlink_listener_test.cpp",
     ],
     include_dirs: [
         "system/netd/resolv/include",
@@ -55,6 +56,7 @@ cc_test {
         "libnetutils",
         "libssl",
         "libutils",
+	"libqtaguid",
         "netd_aidl_interface-cpp",
     ],
     static_libs: [
