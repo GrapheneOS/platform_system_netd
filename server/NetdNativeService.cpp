@@ -25,7 +25,6 @@
 #include <android-base/strings.h>
 #include <cutils/properties.h>
 #include <log/log.h>
-#include <resolv_netid.h>
 #include <utils/Errors.h>
 #include <utils/String16.h>
 
@@ -46,6 +45,7 @@
 #include "RouteController.h"
 #include "SockDiag.h"
 #include "UidRanges.h"
+#include "netid_client.h"  // NETID_UNSET
 
 using android::base::StringPrintf;
 using android::net::TetherStatsParcel;
@@ -103,6 +103,13 @@ binder::Status checkPermission(const char *permission) {
     std::lock_guard _lock(lock);
 
 #define NETD_BIG_LOCK_RPC(permission) NETD_LOCKING_RPC((permission), gBigNetdLock)
+
+binder::Status asBinderStatus(const netdutils::Status& status) {
+    if (isOk(status)) {
+        return binder::Status::ok();
+    }
+    return binder::Status::fromServiceSpecificError(status.code(), status.msg().c_str());
+}
 
 inline binder::Status statusFromErrcode(int ret) {
     if (ret) {

@@ -35,8 +35,8 @@
 
 #include <netdutils/MockSyscalls.h>
 #include "bpf/BpfMap.h"
-#include "bpf/BpfNetworkStats.h"
 #include "bpf/BpfUtils.h"
+#include "netdbpf/BpfNetworkStats.h"
 
 using namespace android::bpf;
 

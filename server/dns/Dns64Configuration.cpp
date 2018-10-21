@@ -25,14 +25,13 @@
 #include <utility>
 
 #include <arpa/inet.h>
-// NOTE: <resolv_netid.h> is a private C library header that provides
-//       declarations for _resolv_set_nameservers_for_net and
-//       _resolv_flush_cache_for_net
-#include <resolv_netid.h>
+
+#include <netd_resolv/resolv.h>
 
 #include "DumpWriter.h"
 #include "NetworkController.h"
 #include "netdutils/BackoffSequence.h"
+#include "netid_client.h"
 
 namespace android {
 

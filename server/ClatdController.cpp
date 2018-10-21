@@ -27,11 +27,10 @@
 #define LOG_TAG "ClatdController"
 #include <log/log.h>
 
-#include <resolv_netid.h>
-
 #include "Fwmark.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
+#include "netid_client.h"
 
 static const char* kClatdPath = "/system/bin/clatd";
 

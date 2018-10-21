@@ -92,7 +92,7 @@ const std::string uidMatchTypeToString(uint8_t match) {
     return matchType;
 }
 
-StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener() {
+StatusOr<std::unique_ptr<NetlinkListenerInterface>> TrafficController::makeSkDestroyListener() {
     const auto& sys = sSyscalls.get();
     ASSIGN_OR_RETURN(auto event, sys.eventfd(0, EFD_CLOEXEC));
     const int domain = AF_NETLINK;
@@ -241,7 +241,7 @@ Status TrafficController::start() {
                                (static_cast<uint64_t>(diagmsg.id.idiag_cookie[1]) << 32);
 
         Status s = mCookieTagMap.deleteValue(sock_cookie);
-        if (!isOk(s)) {
+        if (!isOk(s) && s.code() != ENOENT) {
             ALOGE("Failed to delete cookie %" PRIx64 ": %s", sock_cookie, toString(s).c_str());
             return;
         }

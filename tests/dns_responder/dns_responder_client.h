@@ -1,6 +1,10 @@
 #ifndef DNS_RESPONDER_CLIENT_H
 #define DNS_RESPONDER_CLIENT_H
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <cutils/sockets.h>
 
 #include <private/android_filesystem_config.h>
@@ -10,7 +14,6 @@
 #include "binder/IServiceManager.h"
 #include "NetdClient.h"
 #include "dns_responder.h"
-#include "resolv_params.h"
 
 class DnsResponderClient {
 public:

@@ -20,7 +20,9 @@ filegroup {
         "NetdConstants.cpp",
         "InterfaceController.cpp",
         "NetlinkCommands.cpp",
+        "NetlinkListener.cpp",
         "XfrmController.cpp",
+        "TrafficController.cpp",
     ],
 }
 
@@ -91,6 +93,7 @@ cc_library_static {
         "libbase",
         "libbinder",
         "liblogwrap",
+        "libnetdbpf",
         "libnetutils",
         "libnetdutils",
         "libpcap",
@@ -128,6 +131,7 @@ cc_binary {
         "libmdnssd",
         "libnetd_resolv",
         "libnetdaidl",
+        "libnetdbpf",
         "libnetdutils",
         "libnetutils",
         "libpcap",
@@ -216,6 +220,7 @@ cc_test {
         "libcutils",
         "liblog",
         "libnetdaidl",
+        "libnetdbpf",
         "libnetdutils",
         "libnetutils",
         "libqtaguid",

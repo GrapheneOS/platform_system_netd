@@ -28,11 +28,10 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _DNS_NET_HOSTENT_H
-#define _DNS_NET_HOSTENT_H
+#ifndef NETD_RESOLV_HOSTENT_H
+#define NETD_RESOLV_HOSTENT_H
 
 #include <netdb.h>
-#include <stdarg.h>
 #include <stdio.h>
 
 struct getnamaddr {
@@ -68,4 +67,4 @@ hostent* netbsd_gethostent_r(FILE*, struct hostent*, char*, size_t, int*);
         HENT_COPY(dst, src, _len, ptr, len); \
     } while (0)
 
-#endif /* _DNS_NET_HOSTENT_H */
+#endif  // NETD_RESOLV_HOSTENT_H

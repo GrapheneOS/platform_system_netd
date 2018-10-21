@@ -34,6 +34,8 @@ class NetlinkListenerInterface {
   public:
     using DispatchFn = std::function<void(const nlmsghdr& nlmsg, const netdutils::Slice msg)>;
 
+    using SkErrorHandler = std::function<void(const int fd, const int err)>;
+
     virtual ~NetlinkListenerInterface() = default;
 
     // Send message to the kernel using the underlying netlink socket
@@ -49,6 +51,8 @@ class NetlinkListenerInterface {
     // Halt delivery of future messages with nlmsghdr.nlmsg_type == type.
     // Threadsafe.
     virtual netdutils::Status unsubscribe(uint16_t type) = 0;
+
+    virtual void registerSkErrorHandler(const SkErrorHandler& handler) = 0;
 };
 
 // NetlinkListener manages a netlink socket and associated blocking
@@ -80,6 +84,8 @@ class NetlinkListener : public NetlinkListenerInterface {
 
     netdutils::Status unsubscribe(uint16_t type) override;
 
+    void registerSkErrorHandler(const SkErrorHandler& handler) override;
+
   private:
     netdutils::Status run();
 
@@ -87,8 +93,9 @@ class NetlinkListener : public NetlinkListenerInterface {
     netdutils::UniqueFd mSock;
     std::mutex mMutex;
     std::map<uint16_t, DispatchFn> mDispatchMap;  // guarded by mMutex
-    std::thread mWorker;
     std::string mThreadName;
+    std::thread mWorker;
+    SkErrorHandler mErrorHandler;
 };
 
 }  // namespace net

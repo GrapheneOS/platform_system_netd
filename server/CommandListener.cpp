@@ -25,8 +25,6 @@
 #include <errno.h>
 #include <string.h>
 #include <linux/if.h>
-#include <resolv_netid.h>
-#include <resolv_params.h>
 
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
@@ -34,21 +32,23 @@
 #define LOG_TAG "CommandListener"
 
 #include <log/log.h>
+#include <netd_resolv/params.h>
 #include <netdutils/Status.h>
 #include <netdutils/StatusOr.h>
 #include <netutils/ifc.h>
 #include <sysutils/SocketClient.h>
 
-#include "Controllers.h"
-#include "CommandListener.h"
-#include "ResponseCode.h"
 #include "BandwidthController.h"
+#include "CommandListener.h"
+#include "Controllers.h"
+#include "FirewallController.h"
 #include "IdletimerController.h"
 #include "InterfaceController.h"
 #include "NetdConstants.h"
-#include "FirewallController.h"
+#include "ResponseCode.h"
 #include "RouteController.h"
 #include "UidRanges.h"
+#include "netid_client.h"
 
 #include <string>
 #include <vector>

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef _RESOLV_PARAMS_H
-#define _RESOLV_PARAMS_H
+#ifndef NETD_RESOLV_PARAMS_H
+#define NETD_RESOLV_PARAMS_H
 
 #include <stdint.h>
 
@@ -25,22 +25,8 @@
 #define MAXDNSRCHPATH 256 /* max length of domain search paths */
 #define MAXNSSAMPLES 64   /* max # samples to store per server */
 
-/* Defaults used for initializing __res_params */
-#define SUCCESS_THRESHOLD                                 \
-    75 /* if successes * 100 / total_samples is less than \
-        * this value, the server is considered failing    \
-        */
-#define NSSAMPLE_VALIDITY                         \
-    1800 /* Sample validity in seconds.           \
-          * Set to -1 to disable skipping failing \
-          * servers.                              \
-          */
-
-/* If EDNS0_PADDING is defined, queries will be padded to a multiple of this length
-when EDNS0 is active. */
-#define EDNS0_PADDING 128
-
-/* per-netid configuration parameters passed from netd to the resolver */
+// Per-netid configuration parameters passed from netd to the resolver
+// TODO: rename to res_params
 struct __res_params {
     uint16_t sample_validity;  // sample lifetime in s
     // threshold of success / total samples below which a server is considered broken
@@ -52,12 +38,12 @@ struct __res_params {
 
 typedef enum { res_goahead, res_nextns, res_modified, res_done, res_error } res_sendhookact;
 
-typedef res_sendhookact (*res_send_qhook)(struct sockaddr* const*, const u_char**, int*, u_char*,
+typedef res_sendhookact (*res_send_qhook)(struct sockaddr* const*, const uint8_t**, int*, uint8_t*,
                                           int, int*);
 
-typedef res_sendhookact (*res_send_rhook)(const struct sockaddr*, const u_char*, int, u_char*, int,
-                                          int*);
+typedef res_sendhookact (*res_send_rhook)(const struct sockaddr*, const uint8_t*, int, uint8_t*,
+                                          int, int*);
 
 #define LIBNETD_RESOLV_PUBLIC extern "C" [[gnu::visibility("default")]]
 
-#endif  // _RESOLV_PARAMS_H
+#endif  // NETD_RESOLV_PARAMS_H

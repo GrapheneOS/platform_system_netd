@@ -25,20 +25,29 @@ namespace android {
 namespace netdutils {
 namespace {
 
-TEST(StatusTest, smoke) {
-    // Expect the following lines to compile
-    Status status1(1);
-    Status status2(status1);
-    Status status3 = status1;
-    const Status status4(8);
-    const Status status5(status4);
-    const Status status6 = status4;
-
+TEST(StatusTest, valueSemantics) {
     // Default constructor
     EXPECT_EQ(status::ok, Status());
+
+    // Copy constructor
+    Status status1(1);
+    Status status2(status1);  // NOLINT(performance-unnecessary-copy-initialization)
+    EXPECT_EQ(1, status2.code());
+
+    // Copy assignment
+    Status status3;
+    status3 = status2;
+    EXPECT_EQ(1, status3.code());
+
+    // Same with const objects
+    const Status status4(4);
+    const Status status5(status4);  // NOLINT(performance-unnecessary-copy-initialization)
+    Status status6;
+    status6 = status5;
+    EXPECT_EQ(4, status6.code());
 }
 
-TEST(StatusTest, error) {
+TEST(StatusTest, errorMessages) {
     Status s(42, "for tea too");
     EXPECT_EQ(42, s.code());
     EXPECT_FALSE(s.ok());

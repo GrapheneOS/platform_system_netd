@@ -60,14 +60,18 @@ const NetlinkListener::DispatchFn kDefaultDispatchFn = [](const nlmsghdr& nlmsg,
 NetlinkListener::NetlinkListener(UniqueFd event, UniqueFd sock, const std::string& name)
     : mEvent(std::move(event)),
       mSock(std::move(sock)),
-      mWorker([this]() { run().ignoreError(); }),
-      mThreadName(name) {
+      mThreadName(name),
+      mWorker([this]() { run().ignoreError(); }) {
     const auto rxErrorHandler = [](const nlmsghdr& nlmsg, const Slice msg) {
         std::stringstream ss;
         ss << nlmsg << " " << msg << " " << netdutils::toHex(msg, 32);
         ALOGE("unhandled netlink message: %s", ss.str().c_str());
     };
     expectOk(NetlinkListener::subscribe(kNetlinkMsgErrorType, rxErrorHandler));
+
+    mErrorHandler = [this](const int fd, const int err) {
+        ALOGE("Error on NetlinkListener(%s) fd=%d: %s", mThreadName.c_str(), fd, strerror(err));
+    };
 }
 
 NetlinkListener::~NetlinkListener() {
@@ -97,6 +101,10 @@ Status NetlinkListener::unsubscribe(uint16_t type) {
     std::lock_guard guard(mMutex);
     mDispatchMap.erase(type);
     return ok;
+}
+
+void NetlinkListener::registerSkErrorHandler(const SkErrorHandler& handler) {
+    mErrorHandler = handler;
 }
 
 Status NetlinkListener::run() {
@@ -132,7 +140,7 @@ Status NetlinkListener::run() {
                 // nothing we can do about that. The recvfrom above will already have cleared the
                 // error indication and ensured we won't get EPOLLERR again.
                 // TODO: Consider using NETLINK_NO_ENOBUFS.
-                ALOGE("Failed to read from netlink socket: %s", strerror(err));
+                mErrorHandler(((Fd) mSock).get(), err);
                 continue;
             }
             forEachNetlinkMessage(rx.value(), rxHandler);

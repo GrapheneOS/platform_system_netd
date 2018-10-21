@@ -19,7 +19,6 @@
 
 #include <linux/bpf.h>
 
-#include <netdutils/StatusOr.h>
 #include "BandwidthController.h"
 #include "FirewallController.h"
 #include "NetlinkListener.h"
@@ -27,7 +26,9 @@
 #include "android-base/thread_annotations.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
-#include "bpf/bpf_shared.h"
+#include "netdbpf/bpf_shared.h"
+#include "netdutils/StatusOr.h"
+#include "utils/String16.h"
 
 using android::bpf::BpfMap;
 using android::bpf::IfaceValue;
@@ -112,6 +113,8 @@ class TrafficController {
     static const String16 DUMP_KEYWORD;
 
     int toggleUidOwnerMap(ChildChain chain, bool enable);
+
+    static netdutils::StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener();
 
   private:
     /*

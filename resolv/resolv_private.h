@@ -51,15 +51,16 @@
  *	Id: resolv.h,v 1.7.2.11.4.2 2004/06/25 00:41:05 marka Exp
  */
 
-#ifndef _RESOLV_PRIVATE_H_
-#define _RESOLV_PRIVATE_H_
+#ifndef NETD_RESOLV_PRIVATE_H
+#define NETD_RESOLV_PRIVATE_H
 
 #include <net/if.h>
 #include <resolv.h>
 #include <time.h>
-#include "resolv_params.h"
+
+#include "netd_resolv/params.h"
+#include "netd_resolv/stats.h"
 #include "resolv_static.h"
-#include "resolv_stats.h"
 
 // Linux defines MAXHOSTNAMELEN as 64, while the domain name limit in
 // RFC 1034 and RFC 1035 is 255 octets.
@@ -89,12 +90,6 @@
 
 #define RES_SET_H_ERRNO(r, x) (h_errno = (r)->res_h_errno = (x))
 
-struct res_sym {
-    int number;            /* Identifying number, like T_MX */
-    const char* name;      /* Its symbolic name, like "MX" */
-    const char* humanname; /* Its fun name, like "mail exchanger" */
-};
-
 /*
  * Global defines and variables for resolver stub.
  */
@@ -109,7 +104,7 @@ struct res_sym {
 #define RES_DFLRETRY 2    /* Default #/tries. */
 #define RES_MAXTIME 65535 /* Infinity, in milliseconds. */
 
-struct __res_state_ext;
+struct res_state_ext;
 
 struct __res_state {
     unsigned netid;                        /* NetId: cache key and socket mark */
@@ -144,7 +139,7 @@ struct __res_state {
             uint16_t nscount;
             uint16_t nstimes[MAXNS]; /* ms. */
             int nssocks[MAXNS];
-            struct __res_state_ext* ext; /* extention for IPv6 */
+            struct res_state_ext* ext; /* extention for IPv6 */
         } _ext;
     } _u;
     struct res_static rstatic[1];
@@ -155,21 +150,19 @@ typedef struct __res_state* res_state;
 /* Retrieve a local copy of the stats for the given netid. The buffer must have space for
  * MAXNS __resolver_stats. Returns the revision id of the resolvers used.
  */
-int _resolv_cache_get_resolver_stats(unsigned netid, struct __res_params* params,
-                                            struct __res_stats stats[MAXNS]);
+int resolv_cache_get_resolver_stats(unsigned netid, __res_params* params, res_stats stats[MAXNS]);
 
 /* Add a sample to the shared struct for the given netid and server, provided that the
  * revision_id of the stored servers has not changed.
  */
 void _resolv_cache_add_resolver_stats_sample(unsigned netid, int revision_id, int ns,
-                                             const struct __res_sample* sample, int max_samples);
-
+                                             const res_sample* sample, int max_samples);
 
 // Calculate the round-trip-time from start time t0 and end time t1.
 int _res_stats_calculate_rtt(const timespec* t1, const timespec* t0);
 
 // Create a sample for calculating server reachability statistics.
-void _res_stats_set_sample(__res_sample* sample, time_t now, int rcode, int rtt);
+void _res_stats_set_sample(res_sample* sample, time_t now, int rcode, int rtt);
 
 /* End of stats related definitions */
 
@@ -308,4 +301,4 @@ void res_setnetcontext(res_state, const struct android_net_context*);
 
 u_int res_randomid(void);
 
-#endif /* !_RESOLV_PRIVATE_H_ */
+#endif  // NETD_RESOLV_PRIVATE_H
