@@ -531,15 +531,13 @@ int TetherController::enableNat(const char* intIface, const char* extIface) {
     ALOGV("enableNat(intIface=<%s>, extIface=<%s>)",intIface, extIface);
 
     if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
-        errno = ENODEV;
-        return -1;
+        return -ENODEV;
     }
 
     /* Bug: b/9565268. "enableNat wlan0 wlan0". For now we fail until java-land is fixed */
     if (!strcmp(intIface, extIface)) {
         ALOGE("Duplicate interface specified: %s %s", intIface, extIface);
-        errno = EINVAL;
-        return -1;
+        return -EINVAL;
     }
 
     if (isForwardingPairEnabled(intIface, extIface)) {
@@ -561,7 +559,7 @@ int TetherController::enableNat(const char* intIface, const char* extIface) {
                 // unwind what's been done, but don't care about success - what more could we do?
                 setDefaults();
             }
-            return -1;
+            return -EREMOTEIO;
         }
     }
 
@@ -570,8 +568,7 @@ int TetherController::enableNat(const char* intIface, const char* extIface) {
         if (!isAnyForwardingPairEnabled()) {
             setDefaults();
         }
-        errno = ENODEV;
-        return -1;
+        return -ENODEV;
     }
 
     return 0;
@@ -678,7 +675,7 @@ int TetherController::setForwardRules(bool add, const char *intIface, const char
         "%s %s -i %s -m rpfilter --invert ! -s fe80::/64 -j DROP\n"
         "COMMIT\n", op, LOCAL_RAW_PREROUTING, intIface);
     if (iptablesRestoreFunction(V6, rpfilterCmd, nullptr) == -1 && add) {
-        return -1;
+        return -EREMOTEIO;
     }
 
     std::vector<std::string> v4 = {
@@ -727,7 +724,7 @@ int TetherController::setForwardRules(bool add, const char *intIface, const char
         if (add) {
             setForwardRules(false, intIface, extIface);
         }
-        return -1;
+        return -EREMOTEIO;
     }
 
     if (add) {
@@ -741,8 +738,7 @@ int TetherController::setForwardRules(bool add, const char *intIface, const char
 
 int TetherController::disableNat(const char* intIface, const char* extIface) {
     if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
-        errno = ENODEV;
-        return -1;
+        return -ENODEV;
     }
 
     setForwardRules(false, intIface, extIface);
