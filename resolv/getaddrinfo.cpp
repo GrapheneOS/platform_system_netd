@@ -101,12 +101,6 @@
 #include "resolv_cache.h"
 #include "resolv_private.h"
 
-typedef union sockaddr_union {
-    struct sockaddr generic;
-    struct sockaddr_in in;
-    struct sockaddr_in6 in6;
-} sockaddr_union;
-
 #define ANY 0
 
 static const char in_addrany[] = {0, 0, 0, 0};
@@ -300,8 +294,8 @@ static int _have_ipv6(unsigned mark, uid_t uid) {
             .sin6_family = AF_INET6,
             .sin6_addr.s6_addr = {// 2000::
                                   0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
-    sockaddr_union addr = {.in6 = sin6_test};
-    return _find_src_addr(&addr.generic, NULL, mark, uid) == 1;
+    sockaddr_union addr = {.sin6 = sin6_test};
+    return _find_src_addr(&addr.sa, NULL, mark, uid) == 1;
 }
 
 static int _have_ipv4(unsigned mark, uid_t uid) {
@@ -309,8 +303,8 @@ static int _have_ipv4(unsigned mark, uid_t uid) {
             .sin_family = AF_INET,
             .sin_addr.s_addr = __constant_htonl(0x08080808L)  // 8.8.8.8
     };
-    sockaddr_union addr = {.in = sin_test};
-    return _find_src_addr(&addr.generic, NULL, mark, uid) == 1;
+    sockaddr_union addr = {.sin = sin_test};
+    return _find_src_addr(&addr.sa, NULL, mark, uid) == 1;
 }
 
 bool readBE32(FILE* fp, int32_t* result) {
@@ -1258,11 +1252,11 @@ static int _rfc6724_compare(const void* ptr1, const void* ptr2) {
     }
 
     /* Rule 2: Prefer matching scope. */
-    scope_src1 = _get_scope(&a1->src_addr.generic);
+    scope_src1 = _get_scope(&a1->src_addr.sa);
     scope_dst1 = _get_scope(a1->ai->ai_addr);
     scope_match1 = (scope_src1 == scope_dst1);
 
-    scope_src2 = _get_scope(&a2->src_addr.generic);
+    scope_src2 = _get_scope(&a2->src_addr.sa);
     scope_dst2 = _get_scope(a2->ai->ai_addr);
     scope_match2 = (scope_src2 == scope_dst2);
 
@@ -1281,11 +1275,11 @@ static int _rfc6724_compare(const void* ptr1, const void* ptr2) {
      */
 
     /* Rule 5: Prefer matching label. */
-    label_src1 = _get_label(&a1->src_addr.generic);
+    label_src1 = _get_label(&a1->src_addr.sa);
     label_dst1 = _get_label(a1->ai->ai_addr);
     label_match1 = (label_src1 == label_dst1);
 
-    label_src2 = _get_label(&a2->src_addr.generic);
+    label_src2 = _get_label(&a2->src_addr.sa);
     label_dst2 = _get_label(a2->ai->ai_addr);
     label_match2 = (label_src2 == label_dst2);
 
@@ -1318,9 +1312,9 @@ static int _rfc6724_compare(const void* ptr1, const void* ptr2) {
      */
     if (a1->has_src_addr && a1->ai->ai_addr->sa_family == AF_INET6 && a2->has_src_addr &&
         a2->ai->ai_addr->sa_family == AF_INET6) {
-        const struct sockaddr_in6* a1_src = &a1->src_addr.in6;
+        const struct sockaddr_in6* a1_src = &a1->src_addr.sin6;
         const struct sockaddr_in6* a1_dst = (const struct sockaddr_in6*) a1->ai->ai_addr;
-        const struct sockaddr_in6* a2_src = &a2->src_addr.in6;
+        const struct sockaddr_in6* a2_src = &a2->src_addr.sin6;
         const struct sockaddr_in6* a2_dst = (const struct sockaddr_in6*) a2->ai->ai_addr;
         prefixlen1 = _common_prefix_len(&a1_src->sin6_addr, &a1_dst->sin6_addr);
         prefixlen2 = _common_prefix_len(&a2_src->sin6_addr, &a2_dst->sin6_addr);
@@ -1427,7 +1421,7 @@ static void _rfc6724_sort(struct addrinfo* list_sentinel, unsigned mark, uid_t u
         elems[i].ai = cur;
         elems[i].original_order = i;
 
-        has_src_addr = _find_src_addr(cur->ai_addr, &elems[i].src_addr.generic, mark, uid);
+        has_src_addr = _find_src_addr(cur->ai_addr, &elems[i].src_addr.sa, mark, uid);
         if (has_src_addr == -1) {
             goto error;
         }
