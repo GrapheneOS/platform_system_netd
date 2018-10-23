@@ -107,7 +107,6 @@ constexpr bool kVerboseLogging = false;
 #include "resolv_cache.h"
 #include "resolv_private.h"
 
-#define EXT(res) ((res)->_u._ext)
 
 #define VLOG if (!kVerboseLogging) {} else LOG(INFO)
 
@@ -292,7 +291,7 @@ static int res_ourserver_p(const res_state statp, const sockaddr* sa) {
             }
             break;
         case AF_INET6:
-            if (EXT(statp).ext == NULL) break;
+            if (statp->_u._ext.ext == NULL) break;
             in6p = (const struct sockaddr_in6*) (const void*) sa;
             for (ns = 0; ns < statp->nscount; ns++) {
                 srv6 = (struct sockaddr_in6*) (void*) get_nsaddr(statp, (size_t) ns);
@@ -421,25 +420,25 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
      * If the ns_addr_list in the resolver context has changed, then
      * invalidate our cached copy and the associated timing data.
      */
-    if (EXT(statp).nscount != 0) {
+    if (statp->_u._ext.nscount != 0) {
         int needclose = 0;
         struct sockaddr_storage peer;
         socklen_t peerlen;
 
-        if (EXT(statp).nscount != statp->nscount) {
+        if (statp->_u._ext.nscount != statp->nscount) {
             needclose++;
         } else {
             for (int ns = 0; ns < statp->nscount; ns++) {
                 if (statp->nsaddr_list[ns].sin_family &&
                     !sock_eq((struct sockaddr*) (void*) &statp->nsaddr_list[ns],
-                             (struct sockaddr*) (void*) &EXT(statp).ext->nsaddrs[ns])) {
+                             (struct sockaddr*) (void*) &statp->_u._ext.ext->nsaddrs[ns])) {
                     needclose++;
                     break;
                 }
 
-                if (EXT(statp).nssocks[ns] == -1) continue;
+                if (statp->_u._ext.nssocks[ns] == -1) continue;
                 peerlen = sizeof(peer);
-                if (getpeername(EXT(statp).nssocks[ns], (struct sockaddr*) (void*) &peer,
+                if (getpeername(statp->_u._ext.nssocks[ns], (struct sockaddr*) (void*) &peer,
                                 &peerlen) < 0) {
                     needclose++;
                     break;
@@ -452,21 +451,21 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         }
         if (needclose) {
             res_nclose(statp);
-            EXT(statp).nscount = 0;
+            statp->_u._ext.nscount = 0;
         }
     }
 
     /*
      * Maybe initialize our private copy of the ns_addr_list.
      */
-    if (EXT(statp).nscount == 0) {
+    if (statp->_u._ext.nscount == 0) {
         for (int ns = 0; ns < statp->nscount; ns++) {
-            EXT(statp).nstimes[ns] = RES_MAXTIME;
-            EXT(statp).nssocks[ns] = -1;
+            statp->_u._ext.nstimes[ns] = RES_MAXTIME;
+            statp->_u._ext.nssocks[ns] = -1;
             if (!statp->nsaddr_list[ns].sin_family) continue;
-            EXT(statp).ext->nsaddrs[ns].sin = statp->nsaddr_list[ns];
+            statp->_u._ext.ext->nsaddrs[ns].sin = statp->nsaddr_list[ns];
         }
-        EXT(statp).nscount = statp->nscount;
+        statp->_u._ext.nscount = statp->nscount;
     }
 
     /*
@@ -480,21 +479,21 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         int fd;
         u_int16_t nstime;
 
-        if (EXT(statp).ext != NULL) inu = EXT(statp).ext->nsaddrs[0];
+        if (statp->_u._ext.ext != NULL) inu = statp->_u._ext.ext->nsaddrs[0];
         ina = statp->nsaddr_list[0];
-        fd = EXT(statp).nssocks[0];
-        nstime = EXT(statp).nstimes[0];
+        fd = statp->_u._ext.nssocks[0];
+        nstime = statp->_u._ext.nstimes[0];
         for (int ns = 0; ns < lastns; ns++) {
-            if (EXT(statp).ext != NULL)
-                EXT(statp).ext->nsaddrs[ns] = EXT(statp).ext->nsaddrs[ns + 1];
+            if (statp->_u._ext.ext != NULL)
+                statp->_u._ext.ext->nsaddrs[ns] = statp->_u._ext.ext->nsaddrs[ns + 1];
             statp->nsaddr_list[ns] = statp->nsaddr_list[ns + 1];
-            EXT(statp).nssocks[ns] = EXT(statp).nssocks[ns + 1];
-            EXT(statp).nstimes[ns] = EXT(statp).nstimes[ns + 1];
+            statp->_u._ext.nssocks[ns] = statp->_u._ext.nssocks[ns + 1];
+            statp->_u._ext.nstimes[ns] = statp->_u._ext.nstimes[ns + 1];
         }
-        if (EXT(statp).ext != NULL) EXT(statp).ext->nsaddrs[lastns] = inu;
+        if (statp->_u._ext.ext != NULL) statp->_u._ext.ext->nsaddrs[lastns] = inu;
         statp->nsaddr_list[lastns] = ina;
-        EXT(statp).nssocks[lastns] = fd;
-        EXT(statp).nstimes[lastns] = nstime;
+        statp->_u._ext.nssocks[lastns] = fd;
+        statp->_u._ext.nstimes[lastns] = nstime;
     }
 
     /*
@@ -691,18 +690,18 @@ static int get_salen(const struct sockaddr* sa) {
  * pick appropriate nsaddr_list for use.  see res_init() for initialization.
  */
 static struct sockaddr* get_nsaddr(res_state statp, size_t n) {
-    if (!statp->nsaddr_list[n].sin_family && EXT(statp).ext) {
+    if (!statp->nsaddr_list[n].sin_family && statp->_u._ext.ext) {
         /*
-         * - EXT(statp).ext->nsaddrs[n] holds an address that is larger
+         * - statp->_u._ext.ext->nsaddrs[n] holds an address that is larger
          *   than struct sockaddr, and
          * - user code did not update statp->nsaddr_list[n].
          */
-        return (struct sockaddr*) (void*) &EXT(statp).ext->nsaddrs[n];
+        return (struct sockaddr*) (void*) &statp->_u._ext.ext->nsaddrs[n];
     } else {
         /*
          * - user code updated statp->nsaddr_list[n], or
          * - statp->nsaddr_list[n] has the same content as
-         *   EXT(statp).ext->nsaddrs[n].
+         *   statp->_u._ext.ext->nsaddrs[n].
          */
         return (struct sockaddr*) (void*) &statp->nsaddr_list[n];
     }
@@ -1021,9 +1020,9 @@ static int send_dg(res_state statp, struct __res_params* params, const u_char* b
 
     nsap = get_nsaddr(statp, (size_t) ns);
     nsaplen = get_salen(nsap);
-    if (EXT(statp).nssocks[ns] == -1) {
-        EXT(statp).nssocks[ns] = socket(nsap->sa_family, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-        if (EXT(statp).nssocks[ns] < 0) {
+    if (statp->_u._ext.nssocks[ns] == -1) {
+        statp->_u._ext.nssocks[ns] = socket(nsap->sa_family, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+        if (statp->_u._ext.nssocks[ns] < 0) {
             switch (errno) {
                 case EPROTONOSUPPORT:
                 case EPFNOSUPPORT:
@@ -1037,9 +1036,9 @@ static int send_dg(res_state statp, struct __res_params* params, const u_char* b
             }
         }
 
-        fchown(EXT(statp).nssocks[ns], AID_DNS, -1);
+        fchown(statp->_u._ext.nssocks[ns], AID_DNS, -1);
         if (statp->_mark != MARK_UNSET) {
-            if (setsockopt(EXT(statp).nssocks[ns], SOL_SOCKET, SO_MARK, &(statp->_mark),
+            if (setsockopt(statp->_u._ext.nssocks[ns], SOL_SOCKET, SO_MARK, &(statp->_mark),
                            sizeof(statp->_mark)) < 0) {
                 res_nclose(statp);
                 return -1;
@@ -1057,12 +1056,12 @@ static int send_dg(res_state statp, struct __res_params* params, const u_char* b
          * error message is received.  We can thus detect
          * the absence of a nameserver without timing out.
          */
-        if (random_bind(EXT(statp).nssocks[ns], nsap->sa_family) < 0) {
+        if (random_bind(statp->_u._ext.nssocks[ns], nsap->sa_family) < 0) {
             Aerror(statp, stderr, "bind(dg)", errno, nsap, nsaplen);
             res_nclose(statp);
             return (0);
         }
-        if (connect(EXT(statp).nssocks[ns], nsap, (socklen_t) nsaplen) < 0) {
+        if (connect(statp->_u._ext.nssocks[ns], nsap, (socklen_t) nsaplen) < 0) {
             Aerror(statp, stderr, "connect(dg)", errno, nsap, nsaplen);
             res_nclose(statp);
             return (0);
@@ -1070,7 +1069,7 @@ static int send_dg(res_state statp, struct __res_params* params, const u_char* b
 #endif /* !CANNOT_CONNECT_DGRAM */
         Dprint(statp->options & RES_DEBUG, (stdout, ";; new DG socket\n"))
     }
-    s = EXT(statp).nssocks[ns];
+    s = statp->_u._ext.nssocks[ns];
 #ifndef CANNOT_CONNECT_DGRAM
     if (send(s, (const char*) buf, (size_t) buflen, 0) != buflen) {
         Perror(statp, stderr, "send", errno);
