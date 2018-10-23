@@ -131,7 +131,7 @@ public:
     static const char *opToString(IptOp op);
     static const char *jumpToString(IptJumpOp jumpHandling);
 
-    bool mBpfSupported;
+    bool mBpfSupported = false;
 
     int64_t mSharedQuotaBytes = 0;
     int64_t mSharedAlertBytes = 0;
