@@ -43,6 +43,9 @@ cc_library {
         "libutils",
         "netd_aidl_interface-cpp",
     ],
+    export_shared_lib_headers: [
+        "netd_aidl_interface-cpp",
+    ],
     aidl: {
         export_aidl_headers: true,
         local_include_dirs: ["binder"],
@@ -99,7 +102,6 @@ cc_library_static {
         "libpcap",
         "libqtaguid",
         "libssl",
-        "netd_aidl_interface-cpp",
     ],
     aidl: {
         export_aidl_headers: true,
@@ -226,6 +228,5 @@ cc_test {
         "libqtaguid",
         "libsysutils",
         "libutils",
-        "netd_aidl_interface-cpp",
     ],
 }
