@@ -282,7 +282,7 @@ TEST_F(BinderTest, VirtualTunnelInterface) {
         {"IPV6", "test_vti6", "::1", "2001:4860:4860::8888", 0x1234 + 50, 0x1234 + 50},
     };
 
-    for (unsigned int i = 0; i < arraysize(kTestData); i++) {
+    for (unsigned int i = 0; i < std::size(kTestData); i++) {
         const auto& td = kTestData[i];
 
         binder::Status status;
@@ -811,7 +811,7 @@ TEST_F(BinderTest, InterfaceAddRemoveAddress) {
         { "foo:bar::bad", 64, false },
     };
 
-    for (unsigned int i = 0; i < arraysize(kTestData); i++) {
+    for (unsigned int i = 0; i < std::size(kTestData); i++) {
         const auto &td = kTestData[i];
 
         // [1.a] Add the address.
@@ -864,7 +864,7 @@ TEST_F(BinderTest, GetProcSysNet) {
             {INetd::IPV6, INetd::NEIGH, LOOPBACK, "ucast_solicit", "3", 0},
     };
 
-    for (int i = 0; i < arraysize(kTestData); i++) {
+    for (int i = 0; i < std::size(kTestData); i++) {
         const auto& td = kTestData[i];
 
         std::string value;
@@ -902,7 +902,7 @@ TEST_F(BinderTest, SetProcSysNet) {
             {INetd::IPV6, INetd::NEIGH, sTun.name().c_str(), "ucast_solicit", "7", 0},
     };
 
-    for (int i = 0; i < arraysize(kTestData); i++) {
+    for (int i = 0; i < std::size(kTestData); i++) {
         const auto& td = kTestData[i];
 
         const binder::Status status =
@@ -980,7 +980,7 @@ TEST_F(BinderTest, SetResolverConfiguration_Tls) {
         { {"192.0.2.14"}, "", { fp, short_fp }, EINVAL },
     };
 
-    for (unsigned int i = 0; i < arraysize(kTlsTestData); i++) {
+    for (unsigned int i = 0; i < std::size(kTlsTestData); i++) {
         const auto &td = kTlsTestData[i];
 
         std::vector<std::string> fingerprints;
@@ -1556,7 +1556,7 @@ std::vector<std::string> listIpRoutes(const char* ipVersion, const char* table) 
     return runCommand(command);
 }
 
-bool ipRouteExists(const char* ipVersion, const char* table, const std::string ipRoute) {
+bool ipRouteExists(const char* ipVersion, const char* table, const std::string& ipRoute) {
     std::vector<std::string> routes = listIpRoutes(ipVersion, table);
     for (const auto& route : routes) {
         if (route.find(ipRoute) != std::string::npos) {
@@ -1566,29 +1566,27 @@ bool ipRouteExists(const char* ipVersion, const char* table, const std::string i
     return false;
 }
 
-void expectNetworkRouteExists(const char* ipVersion, const char* ifName, const std::string& dst,
-                              const std::string& nextHop, const char* table) {
-    std::string ipNetworkRoute = {};
-    if ((dst == "0.0.0.0/0" || dst == "::/0") && nextHop.empty()) {
-        ipNetworkRoute = StringPrintf("default dev %s proto static", ifName);
-    } else if (nextHop.empty()) {
-        ipNetworkRoute = StringPrintf("%s dev %s proto static", dst.c_str(), ifName);
+std::string ipRouteString(const std::string& ifName, const std::string& dst,
+                          const std::string& nextHop) {
+    std::string dstString = (dst == "0.0.0.0/0" || dst == "::/0") ? "default" : dst;
+
+    if (!nextHop.empty()) {
+        dstString += " via " + nextHop;
     }
 
-    EXPECT_TRUE(ipRouteExists(ipVersion, table, ipNetworkRoute));
+    return dstString + " dev " + ifName;
 }
 
-void expectNetworkRouteDoesNotExist(const char* ipVersion, const char* ifName,
+void expectNetworkRouteExists(const char* ipVersion, const std::string& ifName,
+                              const std::string& dst, const std::string& nextHop,
+                              const char* table) {
+    EXPECT_TRUE(ipRouteExists(ipVersion, table, ipRouteString(ifName, dst, nextHop)));
+}
+
+void expectNetworkRouteDoesNotExist(const char* ipVersion, const std::string& ifName,
                                     const std::string& dst, const std::string& nextHop,
                                     const char* table) {
-    std::string ipNetworkRoute = {};
-    if ((dst == "0.0.0.0/0" || dst == "::/0") && nextHop.empty()) {
-        ipNetworkRoute = StringPrintf("default dev %s proto static", ifName);
-    } else if (nextHop.empty()) {
-        ipNetworkRoute = StringPrintf("%s dev %s proto static", dst.c_str(), ifName);
-    }
-
-    EXPECT_FALSE(ipRouteExists(ipVersion, table, ipNetworkRoute));
+    EXPECT_FALSE(ipRouteExists(ipVersion, table, ipRouteString(ifName, dst, nextHop)));
 }
 
 bool ipRuleExists(const char* ipVersion, const std::string& ipRule) {
@@ -1680,21 +1678,34 @@ void expectNetworkPermissionIptablesRuleExists(const char* ifName, int permissio
 }  // namespace
 
 TEST_F(BinderTest, NetworkAddRemoveRouteUserPermission) {
-    static const struct TestData {
+    static const struct {
         const char* ipVersion;
         const char* testDest;
         const char* testNextHop;
         const bool expectSuccess;
     } kTestData[] = {
             {IP_RULE_V4, "0.0.0.0/0", "", true},
-            {IP_RULE_V4, "10.152.83.112/30", "", true},
-            {IP_RULE_V4, "10.152.83.112/30", "fe80::/64", false},
+            {IP_RULE_V4, "0.0.0.0/0", "10.251.10.0", true},
+            {IP_RULE_V4, "10.251.0.0/16", "", true},
+            {IP_RULE_V4, "10.251.0.0/16", "10.251.10.0", true},
+            {IP_RULE_V4, "10.251.0.0/16", "fe80::/64", false},
             {IP_RULE_V6, "::/0", "", true},
-            {IP_RULE_V6, "fe80::/64", "", true},
+            {IP_RULE_V6, "::/0", "2001:db8::", true},
+            {IP_RULE_V6, "2001:db8:cafe::/64", "2001:db8::", true},
             {IP_RULE_V4, "fe80::/64", "0.0.0.0", false},
     };
 
+    static const struct {
+        const char* ipVersion;
+        const char* testDest;
+        const char* testNextHop;
+    } kTestDataWithNextHop[] = {
+            {IP_RULE_V4, "10.251.10.0/30", ""},
+            {IP_RULE_V6, "2001:db8::/32", ""},
+    };
+
     static const char testTableLegacySystem[] = "legacy_system";
+    static const char testTableLegacyNetwork[] = "legacy_network";
     const int testUid = randomUid();
     const std::vector<int32_t> testUids = {testUid};
 
@@ -1702,59 +1713,109 @@ TEST_F(BinderTest, NetworkAddRemoveRouteUserPermission) {
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
 
-    for (unsigned int i = 0; i < arraysize(kTestData); i++) {
+    // Setup route for testing nextHop
+    for (unsigned int i = 0; i < std::size(kTestDataWithNextHop); i++) {
+        const auto& td = kTestDataWithNextHop[i];
+
+        // All route for test tun will disappear once the tun interface is deleted.
+        binder::Status status =
+                mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                 sTun.name().c_str());
+
+        // Add system permission for test uid, setup route in legacy system table.
+        EXPECT_TRUE(mNetd->networkSetPermissionForUser(INetd::PERMISSION_SYSTEM, testUids).isOk());
+
+        status = mNetd->networkAddLegacyRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop,
+                                              testUid);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                 testTableLegacySystem);
+
+        // Remove system permission for test uid, setup route in legacy network table.
+        EXPECT_TRUE(mNetd->networkClearPermissionForUser(testUids).isOk());
+
+        status = mNetd->networkAddLegacyRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop,
+                                              testUid);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                 testTableLegacyNetwork);
+    }
+
+    for (unsigned int i = 0; i < std::size(kTestData); i++) {
         const auto& td = kTestData[i];
 
         binder::Status status =
                 mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
         if (td.expectSuccess) {
             EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-            expectNetworkRouteExists(td.ipVersion, sTun.name().c_str(), td.testDest, td.testNextHop,
+            expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
                                      sTun.name().c_str());
         } else {
-            ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-            ASSERT_NE(0, status.serviceSpecificErrorCode());
+            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            EXPECT_NE(0, status.serviceSpecificErrorCode());
         }
 
         status = mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
         if (td.expectSuccess) {
             EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-            expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name().c_str(), td.testDest,
-                                           td.testNextHop, sTun.name().c_str());
+            expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                           sTun.name().c_str());
         } else {
-            ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-            ASSERT_NE(0, status.serviceSpecificErrorCode());
+            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            EXPECT_NE(0, status.serviceSpecificErrorCode());
         }
 
-        // Add system permission for test uid
-        status = mNetd->networkSetPermissionForUser(INetd::PERMISSION_SYSTEM, testUids);
-        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        // Add system permission for test uid, route will be added into legacy system table.
+        EXPECT_TRUE(mNetd->networkSetPermissionForUser(INetd::PERMISSION_SYSTEM, testUids).isOk());
 
         status = mNetd->networkAddLegacyRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop,
                                               testUid);
         if (td.expectSuccess) {
             EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-            expectNetworkRouteExists(td.ipVersion, sTun.name().c_str(), td.testDest, td.testNextHop,
+            expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
                                      testTableLegacySystem);
         } else {
-            ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-            ASSERT_NE(0, status.serviceSpecificErrorCode());
+            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            EXPECT_NE(0, status.serviceSpecificErrorCode());
         }
 
         status = mNetd->networkRemoveLegacyRoute(TEST_NETID1, sTun.name(), td.testDest,
                                                  td.testNextHop, testUid);
         if (td.expectSuccess) {
             EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-            expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name().c_str(), td.testDest,
-                                           td.testNextHop, testTableLegacySystem);
+            expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                           testTableLegacySystem);
         } else {
-            ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-            ASSERT_NE(0, status.serviceSpecificErrorCode());
+            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            EXPECT_NE(0, status.serviceSpecificErrorCode());
         }
 
-        // Remove system permission for test uid
-        status = mNetd->networkClearPermissionForUser(testUids);
-        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        // Remove system permission for test uid, route will be added into legacy network table.
+        EXPECT_TRUE(mNetd->networkClearPermissionForUser(testUids).isOk());
+
+        status = mNetd->networkAddLegacyRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop,
+                                              testUid);
+        if (td.expectSuccess) {
+            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+            expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                     testTableLegacyNetwork);
+        } else {
+            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            EXPECT_NE(0, status.serviceSpecificErrorCode());
+        }
+
+        status = mNetd->networkRemoveLegacyRoute(TEST_NETID1, sTun.name(), td.testDest,
+                                                 td.testNextHop, testUid);
+        if (td.expectSuccess) {
+            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+            expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                           testTableLegacyNetwork);
+        } else {
+            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            EXPECT_NE(0, status.serviceSpecificErrorCode());
+        }
     }
 
     // Remove test physical network
@@ -1766,7 +1827,7 @@ TEST_F(BinderTest, NetworkPermissionDefault) {
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
 
-    // Get current default netowork NetId
+    // Get current default network NetId
     int currentNetid;
     binder::Status status = mNetd->networkGetDefault(&currentNetid);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
