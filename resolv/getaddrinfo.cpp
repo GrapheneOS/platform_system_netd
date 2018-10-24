@@ -731,12 +731,12 @@ static struct addrinfo* get_ai(const struct addrinfo* pai, const struct afd* afd
     assert(afd != NULL);
     assert(addr != NULL);
 
-    ai = (struct addrinfo*) malloc(sizeof(struct addrinfo) + (afd->a_socklen));
+    ai = (struct addrinfo*) malloc(sizeof(struct addrinfo) + sizeof(sockaddr_union));
     if (ai == NULL) return NULL;
 
     memcpy(ai, pai, sizeof(struct addrinfo));
     ai->ai_addr = (struct sockaddr*) (void*) (ai + 1);
-    memset(ai->ai_addr, 0, (size_t) afd->a_socklen);
+    memset(ai->ai_addr, 0, sizeof(sockaddr_union));
 
     ai->ai_addrlen = afd->a_socklen;
     ai->ai_addr->sa_family = ai->ai_family = afd->a_af;
