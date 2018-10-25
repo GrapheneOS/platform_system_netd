@@ -1,0 +1,36 @@
+#
+# Copyright (C) 2018 The Android Open Source Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# This lists the entry points visible to applications that use the
+# libnetd_resolv library. Other entry points present in the library won't be
+# usable.
+
+LIBNETD_RESOLV {
+  global:
+    android_getaddrinfofornet;
+    android_getaddrinfofornetcontext;
+    android_gethostbyaddrfornet;
+    android_gethostbyaddrfornetcontext;
+    android_gethostbynamefornet;
+    android_gethostbynamefornetcontext;
+    android_net_res_stats_aggregate;
+    android_net_res_stats_get_info_for_net;
+    android_net_res_stats_get_usable_servers;
+    resolv_delete_cache_for_net;
+    resolv_set_nameservers_for_net;
+  local:
+    *;
+};
