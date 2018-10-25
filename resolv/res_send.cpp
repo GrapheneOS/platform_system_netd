@@ -148,11 +148,6 @@ static int connect_with_timeout(int sock, const struct sockaddr* nsap, socklen_t
 static int retrying_poll(const int sock, short events, const struct timespec* finish);
 
 /* BIONIC-BEGIN: implement source port randomization */
-typedef union {
-    struct sockaddr sa;
-    struct sockaddr_in sin;
-    struct sockaddr_in6 sin6;
-} _sockaddr_union;
 
 // BEGIN: Code copied from ISC eventlib
 // TODO: move away from this code
@@ -221,7 +216,7 @@ static struct iovec evConsIovec(void* buf, size_t cnt) {
 // END: Code copied from ISC eventlib
 
 static int random_bind(int s, int family) {
-    _sockaddr_union u;
+    sockaddr_union u;
     int j;
     socklen_t slen;
 
@@ -473,7 +468,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
      * Note that RES_BLAST overrides RES_ROTATE.
      */
     if ((statp->options & RES_ROTATE) != 0U && (statp->options & RES_BLAST) == 0U) {
-        union res_sockaddr_union inu;
+        sockaddr_union inu;
         struct sockaddr_in ina;
         int lastns = statp->nscount - 1;
         int fd;
