@@ -16,6 +16,8 @@
 
 #define LOG_TAG "NetlinkListener"
 
+#include "NetlinkListener.h"
+
 #include <sstream>
 #include <vector>
 
@@ -24,8 +26,6 @@
 #include <log/log.h>
 #include <netdutils/Misc.h>
 #include <netdutils/Syscalls.h>
-
-#include "NetlinkListener.h"
 
 namespace android {
 namespace net {
@@ -58,10 +58,7 @@ const NetlinkListener::DispatchFn kDefaultDispatchFn = [](const nlmsghdr& nlmsg,
 }  // namespace
 
 NetlinkListener::NetlinkListener(UniqueFd event, UniqueFd sock, const std::string& name)
-    : mEvent(std::move(event)),
-      mSock(std::move(sock)),
-      mThreadName(name),
-      mWorker([this]() { run().ignoreError(); }) {
+    : mEvent(std::move(event)), mSock(std::move(sock)), mThreadName(name) {
     const auto rxErrorHandler = [](const nlmsghdr& nlmsg, const Slice msg) {
         std::stringstream ss;
         ss << nlmsg << " " << msg << " " << netdutils::toHex(msg, 32);
@@ -69,9 +66,12 @@ NetlinkListener::NetlinkListener(UniqueFd event, UniqueFd sock, const std::strin
     };
     expectOk(NetlinkListener::subscribe(kNetlinkMsgErrorType, rxErrorHandler));
 
-    mErrorHandler = [this](const int fd, const int err) {
-        ALOGE("Error on NetlinkListener(%s) fd=%d: %s", mThreadName.c_str(), fd, strerror(err));
+    mErrorHandler = [& name = mThreadName](const int fd, const int err) {
+        ALOGE("Error on NetlinkListener(%s) fd=%d: %s", name.c_str(), fd, strerror(err));
     };
+
+    // Start the thread
+    mWorker = std::thread([this]() { run().ignoreError(); });
 }
 
 NetlinkListener::~NetlinkListener() {
