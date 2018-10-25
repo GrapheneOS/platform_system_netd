@@ -959,6 +959,7 @@ binder::Status NetdNativeService::strictUidCleartextPenalty(int32_t uid, int32_t
     gLog.log(entry.returns(res).withAutomaticDuration());
     return statusFromErrcode(res);
 }
+
 binder::Status NetdNativeService::clatdStart(const std::string& ifName) {
     NETD_LOCKING_RPC(NETWORK_STACK, gCtls->clatdCtrl.mutex);
     auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(ifName);
@@ -1257,6 +1258,96 @@ binder::Status NetdNativeService::networkCanProtect(int32_t uid, bool* ret) {
     *ret = gCtls->netCtrl.canProtect((uid_t) uid);
     gLog.log(entry.returns(*ret).withAutomaticDuration());
     return binder::Status::ok();
+}
+
+namespace {
+std::string ruleToString(int32_t rule) {
+    switch (rule) {
+        case INetd::FIREWALL_RULE_DENY:
+            return "DENY";
+        case INetd::FIREWALL_RULE_ALLOW:
+            return "ALLOW";
+        default:
+            return "INVALID";
+    }
+}
+
+std::string typeToString(int32_t type) {
+    switch (type) {
+        case INetd::FIREWALL_WHITELIST:
+            return "WHITELIST";
+        case INetd::FIREWALL_BLACKLIST:
+            return "BLACKLIST";
+        default:
+            return "INVALID";
+    }
+}
+
+std::string chainToString(int32_t chain) {
+    switch (chain) {
+        case INetd::FIREWALL_CHAIN_NONE:
+            return "NONE";
+        case INetd::FIREWALL_CHAIN_DOZABLE:
+            return "DOZABLE";
+        case INetd::FIREWALL_CHAIN_STANDBY:
+            return "STANDBY";
+        case INetd::FIREWALL_CHAIN_POWERSAVE:
+            return "POWERSAVE";
+        default:
+            return "INVALID";
+    }
+}
+
+}  // namespace
+
+binder::Status NetdNativeService::firewallSetFirewallType(int32_t firewallType) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->firewallCtrl.lock);
+    auto entry =
+            gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(typeToString(firewallType));
+    auto type = static_cast<FirewallType>(firewallType);
+
+    int res = gCtls->firewallCtrl.setFirewallType(type);
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::firewallSetInterfaceRule(const std::string& ifName,
+                                                           int32_t firewallRule) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->firewallCtrl.lock);
+    auto entry = gLog.newEntry()
+                         .prettyFunction(__PRETTY_FUNCTION__)
+                         .args(ifName, ruleToString(firewallRule));
+    auto rule = static_cast<FirewallRule>(firewallRule);
+
+    int res = gCtls->firewallCtrl.setInterfaceRule(ifName.c_str(), rule);
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::firewallSetUidRule(int32_t childChain, int32_t uid,
+                                                     int32_t firewallRule) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->firewallCtrl.lock);
+    auto entry = gLog.newEntry()
+                         .prettyFunction(__PRETTY_FUNCTION__)
+                         .args(chainToString(childChain), uid, ruleToString(firewallRule));
+    auto chain = static_cast<ChildChain>(childChain);
+    auto rule = static_cast<FirewallRule>(firewallRule);
+
+    int res = gCtls->firewallCtrl.setUidRule(chain, uid, rule);
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::firewallEnableChildChain(int32_t childChain, bool enable) {
+    NETD_LOCKING_RPC(NETWORK_STACK, gCtls->firewallCtrl.lock);
+    auto entry = gLog.newEntry()
+                         .prettyFunction(__PRETTY_FUNCTION__)
+                         .args(chainToString(childChain), enable);
+    auto chain = static_cast<ChildChain>(childChain);
+
+    int res = gCtls->firewallCtrl.enableChildChains(chain, enable);
+    gLog.log(entry.returns(res).withAutomaticDuration());
+    return statusFromErrcode(res);
 }
 
 }  // namespace net
