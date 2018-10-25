@@ -53,6 +53,7 @@ class MemBlock {
     Slice get() const noexcept { return Slice(mData.get(), mLen); }
 
     // Implicit cast to Slice.
+    // NOLINTNEXTLINE(google-explicit-constructor)
     operator const Slice() const noexcept { return get(); }
 
   private:
