@@ -996,4 +996,66 @@ interface INetd {
     * @return true if the user can protect sockets from VPN, false otherwise.
     */
     boolean networkCanProtect(int uid);
+
+    // Whitelist only allows packets from specific UID/Interface
+    const int FIREWALL_WHITELIST = 0;
+    // Blacklist blocks packets from specific UID/Interface
+    const int FIREWALL_BLACKLIST = 1;
+
+   /**
+    * Set type of firewall
+    * Type whitelist only allows packets from specific UID/Interface
+    * Type blacklist blocks packets from specific UID/Interface
+    *
+    * @param firewalltype type of firewall, either FIREWALL_WHITELIST or FIREWALL_BLACKLIST
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void firewallSetFirewallType(int firewalltype);
+
+    // Specify allow Rule which allows packets
+    const int FIREWALL_RULE_ALLOW = 1;
+    // Specify deny Rule which drops packets
+    const int FIREWALL_RULE_DENY = 2;
+
+    // No specific chain is chosen, use general firewall chain(fw_input, fw_output)
+    const int FIREWALL_CHAIN_NONE = 0;
+    // Specify DOZABLE chain(fw_dozable) which is used in dozable mode
+    const int FIREWALL_CHAIN_DOZABLE = 1;
+    // Specify STANDBY chain(fw_standby) which is used in standby mode
+    const int FIREWALL_CHAIN_STANDBY = 2;
+    // Specify POWERSAVE chain(fw_powersave) which is used in power save mode
+    const int FIREWALL_CHAIN_POWERSAVE = 3;
+
+   /**
+    * Set firewall rule for interface
+    *
+    * @param ifName the interface to allow/deny
+    * @param firewallRule either FIREWALL_RULE_ALLOW or FIREWALL_RULE_DENY
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void firewallSetInterfaceRule(in @utf8InCpp String ifName, int firewallRule);
+
+   /**
+    * Set firewall rule for uid
+    *
+    * @param childChain target chain
+    * @param uid uid to allow/deny
+    * @param firewallRule either FIREWALL_RULE_ALLOW or FIREWALL_RULE_DENY
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void firewallSetUidRule(int childChain, int uid, int firewallRule);
+
+   /**
+    * Enable/Disable target firewall child chain
+    *
+    * @param childChain target chain to enable
+    * @param enable whether to enable or disable child chain.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void firewallEnableChildChain(int childChain, boolean enable);
+
 }
