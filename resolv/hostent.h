@@ -46,6 +46,9 @@ bool _hf_gethtbyaddr(const unsigned char* uaddr, int len, int af, getnamaddr* in
 hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info);
 hostent* netbsd_gethostent_r(FILE*, struct hostent*, char*, size_t, int*);
 
+// Reserved padding for remapping IPv4 address to NAT64 synthesis IPv6 address
+static const char NAT64_PAD[NS_IN6ADDRSZ - NS_INADDRSZ] = {};
+
 #define HENT_ARRAY(dst, anum, ptr, len) do {     \
         size_t _len = (anum + 1) * sizeof(*dst); \
         if (_len > len) goto nospc;              \

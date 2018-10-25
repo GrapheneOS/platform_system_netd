@@ -142,7 +142,14 @@ hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
     HENT_ARRAY(hp->h_aliases, anum, ptr, len);
     HENT_ARRAY(hp->h_addr_list, num, ptr, len);
 
-    for (i = 0; i < num; i++) HENT_COPY(hp->h_addr_list[i], addr_ptrs[i], hp->h_length, ptr, len);
+    for (i = 0; i < num; i++) {
+        HENT_COPY(hp->h_addr_list[i], addr_ptrs[i], hp->h_length, ptr, len);
+
+        // reserve space for mapping IPv4 address to IPv6 address in place
+        if (hp->h_addrtype == AF_INET) {
+            HENT_COPY(ptr, NAT64_PAD, sizeof(NAT64_PAD), ptr, len);
+        }
+    }
     hp->h_addr_list[num] = NULL;
 
     HENT_SCOPY(hp->h_name, hent.h_name, ptr, len);
