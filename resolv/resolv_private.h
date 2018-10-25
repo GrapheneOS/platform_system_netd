@@ -59,6 +59,7 @@
 #include <time.h>
 
 #include "netd_resolv/params.h"
+#include "netd_resolv/resolv.h"
 #include "netd_resolv/stats.h"
 #include "resolv_static.h"
 
@@ -165,19 +166,6 @@ int _res_stats_calculate_rtt(const timespec* t1, const timespec* t0);
 void _res_stats_set_sample(res_sample* sample, time_t now, int rcode, int rtt);
 
 /* End of stats related definitions */
-
-union res_sockaddr_union {
-    struct sockaddr_in sin;
-#ifdef IN6ADDR_ANY_INIT
-    struct sockaddr_in6 sin6;
-#endif
-#ifdef ISC_ALIGN64
-    int64_t __align64; /* 64bit alignment */
-#else
-    int32_t __align32; /* 32bit alignment */
-#endif
-    char __space[128]; /* max size */
-};
 
 /*
  * Resolver flags (used to be discrete per-module statics ints).
@@ -287,14 +275,13 @@ int res_nmkquery(res_state, int, const char*, int, int, const u_char*, int, cons
 int res_nsend(res_state, const u_char*, int, u_char*, int);
 int res_nsendsigned(res_state, const u_char*, int, ns_tsig_key*, u_char*, int);
 int res_findzonecut(res_state, const char*, ns_class, int, char*, size_t, struct in_addr*, int);
-int res_findzonecut2(res_state, const char*, ns_class, int, char*, size_t,
-                     union res_sockaddr_union*, int);
+int res_findzonecut2(res_state, const char*, ns_class, int, char*, size_t, sockaddr_union*, int);
 void res_nclose(res_state);
 int res_nopt(res_state, int, u_char*, int, int);
 int res_vinit(res_state, int);
 void res_ndestroy(res_state);
-void res_setservers(res_state, const union res_sockaddr_union*, int);
-int res_getservers(res_state, union res_sockaddr_union*, int);
+void res_setservers(res_state, const sockaddr_union*, int);
+int res_getservers(res_state, sockaddr_union*, int);
 
 struct android_net_context; /* forward */
 void res_setnetcontext(res_state, const struct android_net_context*);

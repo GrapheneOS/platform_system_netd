@@ -7,7 +7,7 @@
 
 // TODO: consider inlining into res_state
 struct res_state_ext {
-    union res_sockaddr_union nsaddrs[MAXNS];
+    sockaddr_union nsaddrs[MAXNS];
     struct sort_list {
         int af;
         union {
