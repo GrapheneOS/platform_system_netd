@@ -1998,3 +1998,326 @@ TEST_F(BinderTest, TetherDnsSetList) {
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectTetherDnsListEquals(dnsList, testDnsAddrs);
 }
+
+namespace {
+
+constexpr char FIREWALL_INPUT[] = "fw_INPUT";
+constexpr char FIREWALL_OUTPUT[] = "fw_OUTPUT";
+constexpr char FIREWALL_FORWARD[] = "fw_FORWARD";
+constexpr char FIREWALL_DOZABLE[] = "fw_dozable";
+constexpr char FIREWALL_POWERSAVE[] = "fw_powersave";
+constexpr char FIREWALL_STANDBY[] = "fw_standby";
+constexpr char targetReturn[] = "RETURN";
+constexpr char targetDrop[] = "DROP";
+
+void expectFirewallWhitelistMode() {
+    static const char dropRule[] = "DROP       all";
+    static const char rejectRule[] = "REJECT     all";
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesRuleExists(binary, FIREWALL_INPUT, dropRule));
+        EXPECT_TRUE(iptablesRuleExists(binary, FIREWALL_OUTPUT, rejectRule));
+        EXPECT_TRUE(iptablesRuleExists(binary, FIREWALL_FORWARD, rejectRule));
+    }
+}
+
+void expectFirewallBlacklistMode() {
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_EQ(2, iptablesRuleLineLength(binary, FIREWALL_INPUT));
+        EXPECT_EQ(2, iptablesRuleLineLength(binary, FIREWALL_OUTPUT));
+        EXPECT_EQ(2, iptablesRuleLineLength(binary, FIREWALL_FORWARD));
+    }
+}
+
+bool iptablesFirewallInterfaceFirstRuleExists(const char* binary, const char* chainName,
+                                              const std::string& expectedInterface,
+                                              const std::string& expectedRule) {
+    std::vector<std::string> rules = listIptablesRuleByTable(binary, FILTER_TABLE, chainName);
+    // Expected rule:
+    // Chain fw_INPUT (1 references)
+    // pkts bytes target     prot opt in     out     source               destination
+    // 0     0 RETURN     all  --  expectedInterface *       0.0.0.0/0            0.0.0.0/0
+    // 0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0
+    int firstRuleIndex = 2;
+    if (rules.size() < 4) return false;
+    if (rules[firstRuleIndex].find(expectedInterface) != std::string::npos) {
+        if (rules[firstRuleIndex].find(expectedRule) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// TODO: It is a duplicate function, need to remove it
+bool iptablesFirewallInterfaceRuleExists(const char* binary, const char* chainName,
+                                         const std::string& expectedInterface,
+                                         const std::string& expectedRule) {
+    std::vector<std::string> rules = listIptablesRuleByTable(binary, FILTER_TABLE, chainName);
+    for (const auto& rule : rules) {
+        if (rule.find(expectedInterface) != std::string::npos) {
+            if (rule.find(expectedRule) != std::string::npos) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void expectFirewallInterfaceRuleAllowExists(const std::string& ifname) {
+    static const char returnRule[] = "RETURN     all";
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesFirewallInterfaceFirstRuleExists(binary, FIREWALL_INPUT, ifname,
+                                                             returnRule));
+        EXPECT_TRUE(iptablesFirewallInterfaceFirstRuleExists(binary, FIREWALL_OUTPUT, ifname,
+                                                             returnRule));
+    }
+}
+
+void expectFireWallInterfaceRuleAllowDoesNotExist(const std::string& ifname) {
+    static const char returnRule[] = "RETURN     all";
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_FALSE(
+                iptablesFirewallInterfaceRuleExists(binary, FIREWALL_INPUT, ifname, returnRule));
+        EXPECT_FALSE(
+                iptablesFirewallInterfaceRuleExists(binary, FIREWALL_OUTPUT, ifname, returnRule));
+    }
+}
+
+bool iptablesFirewallUidFirstRuleExists(const char* binary, const char* chainName,
+                                        const std::string& expectedTarget,
+                                        const std::string& expectedRule) {
+    std::vector<std::string> rules = listIptablesRuleByTable(binary, FILTER_TABLE, chainName);
+    int firstRuleIndex = 2;
+    if (rules.size() < 4) return false;
+    if (rules[firstRuleIndex].find(expectedTarget) != std::string::npos) {
+        if (rules[firstRuleIndex].find(expectedRule) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool iptablesFirewallUidLastRuleExists(const char* binary, const char* chainName,
+                                       const std::string& expectedTarget,
+                                       const std::string& expectedRule) {
+    std::vector<std::string> rules = listIptablesRuleByTable(binary, FILTER_TABLE, chainName);
+    int lastRuleIndex = rules.size() - 1;
+    if (lastRuleIndex < 0) return false;
+    if (rules[lastRuleIndex].find(expectedTarget) != std::string::npos) {
+        if (rules[lastRuleIndex].find(expectedRule) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void expectFirewallUidFirstRuleExists(const char* chainName, int32_t uid) {
+    std::string uidRule = StringPrintf("owner UID match %u", uid);
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH})
+        EXPECT_TRUE(iptablesFirewallUidFirstRuleExists(binary, chainName, targetReturn, uidRule));
+}
+
+void expectFirewallUidFirstRuleDoesNotExist(const char* chainName, int32_t uid) {
+    std::string uidRule = StringPrintf("owner UID match %u", uid);
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH})
+        EXPECT_FALSE(iptablesFirewallUidFirstRuleExists(binary, chainName, targetReturn, uidRule));
+}
+
+void expectFirewallUidLastRuleExists(const char* chainName, int32_t uid) {
+    std::string uidRule = StringPrintf("owner UID match %u", uid);
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH})
+        EXPECT_TRUE(iptablesFirewallUidLastRuleExists(binary, chainName, targetDrop, uidRule));
+}
+
+void expectFirewallUidLastRuleDoesNotExist(const char* chainName, int32_t uid) {
+    std::string uidRule = StringPrintf("owner UID match %u", uid);
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH})
+        EXPECT_FALSE(iptablesFirewallUidLastRuleExists(binary, chainName, targetDrop, uidRule));
+}
+
+bool iptablesFirewallChildChainsLastRuleExists(const char* binary, const char* chainName) {
+    std::vector<std::string> inputRules =
+            listIptablesRuleByTable(binary, FILTER_TABLE, FIREWALL_INPUT);
+    std::vector<std::string> outputRules =
+            listIptablesRuleByTable(binary, FILTER_TABLE, FIREWALL_OUTPUT);
+    int inputLastRuleIndex = inputRules.size() - 1;
+    int outputLastRuleIndex = outputRules.size() - 1;
+
+    if (inputLastRuleIndex < 0 || outputLastRuleIndex < 0) return false;
+    if (inputRules[inputLastRuleIndex].find(chainName) != std::string::npos) {
+        if (outputRules[outputLastRuleIndex].find(chainName) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void expectFirewallChildChainsLastRuleExists(const char* chainRule) {
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH})
+        EXPECT_TRUE(iptablesFirewallChildChainsLastRuleExists(binary, chainRule));
+}
+
+void expectFirewallChildChainsLastRuleDoesNotExist(const char* chainRule) {
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_FALSE(iptablesRuleExists(binary, FIREWALL_INPUT, chainRule));
+        EXPECT_FALSE(iptablesRuleExists(binary, FIREWALL_OUTPUT, chainRule));
+    }
+}
+
+}  // namespace
+
+TEST_F(BinderTest, FirewallSetFirewallType) {
+    binder::Status status = mNetd->firewallSetFirewallType(INetd::FIREWALL_WHITELIST);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallWhitelistMode();
+
+    status = mNetd->firewallSetFirewallType(INetd::FIREWALL_BLACKLIST);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallBlacklistMode();
+
+    // set firewall type blacklist twice
+    mNetd->firewallSetFirewallType(INetd::FIREWALL_BLACKLIST);
+    status = mNetd->firewallSetFirewallType(INetd::FIREWALL_BLACKLIST);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallBlacklistMode();
+
+    // set firewall type whitelist twice
+    mNetd->firewallSetFirewallType(INetd::FIREWALL_WHITELIST);
+    status = mNetd->firewallSetFirewallType(INetd::FIREWALL_WHITELIST);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallWhitelistMode();
+
+    // reset firewall type to default
+    status = mNetd->firewallSetFirewallType(INetd::FIREWALL_BLACKLIST);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallBlacklistMode();
+}
+
+TEST_F(BinderTest, FirewallSetInterfaceRule) {
+    // setinterfaceRule is not supported in BLACKLIST MODE
+    binder::Status status = mNetd->firewallSetFirewallType(INetd::FIREWALL_BLACKLIST);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    status = mNetd->firewallSetInterfaceRule(sTun.name(), INetd::FIREWALL_RULE_ALLOW);
+    EXPECT_FALSE(status.isOk()) << status.exceptionMessage();
+
+    // set WHITELIST mode first
+    status = mNetd->firewallSetFirewallType(INetd::FIREWALL_WHITELIST);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    status = mNetd->firewallSetInterfaceRule(sTun.name(), INetd::FIREWALL_RULE_ALLOW);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallInterfaceRuleAllowExists(sTun.name());
+
+    status = mNetd->firewallSetInterfaceRule(sTun.name(), INetd::FIREWALL_RULE_DENY);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFireWallInterfaceRuleAllowDoesNotExist(sTun.name());
+
+    // reset firewall mode to default
+    status = mNetd->firewallSetFirewallType(INetd::FIREWALL_BLACKLIST);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallBlacklistMode();
+}
+
+TEST_F(BinderTest, FirewallSetUidRule) {
+    SKIP_IF_BPF_SUPPORTED;
+
+    int32_t uid = randomUid();
+
+    // Doze allow
+    binder::Status status = mNetd->firewallSetUidRule(INetd::FIREWALL_CHAIN_DOZABLE, uid,
+                                                      INetd::FIREWALL_RULE_ALLOW);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallUidFirstRuleExists(FIREWALL_DOZABLE, uid);
+
+    // Doze deny
+    status = mNetd->firewallSetUidRule(INetd::FIREWALL_CHAIN_DOZABLE, uid,
+                                       INetd::FIREWALL_RULE_DENY);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallUidFirstRuleDoesNotExist(FIREWALL_DOZABLE, uid);
+
+    // Powersave allow
+    status = mNetd->firewallSetUidRule(INetd::FIREWALL_CHAIN_POWERSAVE, uid,
+                                       INetd::FIREWALL_RULE_ALLOW);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallUidFirstRuleExists(FIREWALL_POWERSAVE, uid);
+
+    // Powersave deny
+    status = mNetd->firewallSetUidRule(INetd::FIREWALL_CHAIN_POWERSAVE, uid,
+                                       INetd::FIREWALL_RULE_DENY);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallUidFirstRuleDoesNotExist(FIREWALL_POWERSAVE, uid);
+
+    // Standby deny
+    status = mNetd->firewallSetUidRule(INetd::FIREWALL_CHAIN_STANDBY, uid,
+                                       INetd::FIREWALL_RULE_DENY);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallUidLastRuleExists(FIREWALL_STANDBY, uid);
+
+    // Standby allow
+    status = mNetd->firewallSetUidRule(INetd::FIREWALL_CHAIN_STANDBY, uid,
+                                       INetd::FIREWALL_RULE_ALLOW);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallUidLastRuleDoesNotExist(FIREWALL_STANDBY, uid);
+
+    // None deny in BLACKLIST
+    status = mNetd->firewallSetUidRule(INetd::FIREWALL_CHAIN_NONE, uid, INetd::FIREWALL_RULE_DENY);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallUidLastRuleExists(FIREWALL_INPUT, uid);
+    expectFirewallUidLastRuleExists(FIREWALL_OUTPUT, uid);
+
+    // None allow in BLACKLIST
+    status = mNetd->firewallSetUidRule(INetd::FIREWALL_CHAIN_NONE, uid, INetd::FIREWALL_RULE_ALLOW);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallUidLastRuleDoesNotExist(FIREWALL_INPUT, uid);
+    expectFirewallUidLastRuleDoesNotExist(FIREWALL_OUTPUT, uid);
+
+    // set firewall type whitelist twice
+    status = mNetd->firewallSetFirewallType(INetd::FIREWALL_WHITELIST);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallWhitelistMode();
+
+    // None allow in WHITELIST
+    status = mNetd->firewallSetUidRule(INetd::FIREWALL_CHAIN_NONE, uid, INetd::FIREWALL_RULE_ALLOW);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallUidFirstRuleExists(FIREWALL_INPUT, uid);
+    expectFirewallUidFirstRuleExists(FIREWALL_OUTPUT, uid);
+
+    // None deny in WHITELIST
+    status = mNetd->firewallSetUidRule(INetd::FIREWALL_CHAIN_NONE, uid, INetd::FIREWALL_RULE_DENY);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallUidFirstRuleDoesNotExist(FIREWALL_INPUT, uid);
+    expectFirewallUidFirstRuleDoesNotExist(FIREWALL_OUTPUT, uid);
+
+    // reset firewall mode to default
+    status = mNetd->firewallSetFirewallType(INetd::FIREWALL_BLACKLIST);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallBlacklistMode();
+}
+
+TEST_F(BinderTest, FirewallEnableDisableChildChains) {
+    SKIP_IF_BPF_SUPPORTED;
+
+    binder::Status status = mNetd->firewallEnableChildChain(INetd::FIREWALL_CHAIN_DOZABLE, true);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallChildChainsLastRuleExists(FIREWALL_DOZABLE);
+
+    status = mNetd->firewallEnableChildChain(INetd::FIREWALL_CHAIN_STANDBY, true);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallChildChainsLastRuleExists(FIREWALL_STANDBY);
+
+    status = mNetd->firewallEnableChildChain(INetd::FIREWALL_CHAIN_POWERSAVE, true);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallChildChainsLastRuleExists(FIREWALL_POWERSAVE);
+
+    status = mNetd->firewallEnableChildChain(INetd::FIREWALL_CHAIN_DOZABLE, false);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallChildChainsLastRuleDoesNotExist(FIREWALL_DOZABLE);
+
+    status = mNetd->firewallEnableChildChain(INetd::FIREWALL_CHAIN_STANDBY, false);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallChildChainsLastRuleDoesNotExist(FIREWALL_STANDBY);
+
+    status = mNetd->firewallEnableChildChain(INetd::FIREWALL_CHAIN_POWERSAVE, false);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectFirewallChildChainsLastRuleDoesNotExist(FIREWALL_POWERSAVE);
+}
