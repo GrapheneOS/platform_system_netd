@@ -135,7 +135,7 @@ int res_vinit(res_state statp, int preinit) {
     int nserv = 0; /* number of nameserver records read from file */
     int havesearch = 0;
     int dots;
-    union res_sockaddr_union u[2];
+    sockaddr_union u[2];
 
     if ((statp->options & RES_INIT) != 0U) res_ndestroy(statp);
 
@@ -331,7 +331,7 @@ void res_ndestroy(res_state statp) {
     statp->_u._ext.ext = NULL;
 }
 
-void res_setservers(res_state statp, const union res_sockaddr_union* set, int cnt) {
+void res_setservers(res_state statp, const sockaddr_union* set, int cnt) {
     int i, nserv;
     size_t size;
 
@@ -376,7 +376,7 @@ void res_setservers(res_state statp, const union res_sockaddr_union* set, int cn
     statp->nscount = nserv;
 }
 
-int res_getservers(res_state statp, union res_sockaddr_union* set, int cnt) {
+int res_getservers(res_state statp, sockaddr_union* set, int cnt) {
     int i;
     size_t size;
     uint16_t family;
