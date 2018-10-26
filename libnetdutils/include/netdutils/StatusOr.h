@@ -28,9 +28,21 @@ namespace netdutils {
 template <typename T>
 class [[nodiscard]] StatusOr {
   public:
-    StatusOr() = default;
-    StatusOr(const Status status) : mStatus(status) { assert(!isOk(status)); }
+    // Constructs a new StatusOr with status::undefined status.
+    // This is marked 'explicit' to try to catch cases like 'return {};',
+    // where people think StatusOr<std::vector<int>> will be initialized
+    // with an empty vector, instead of a status::undefined.
+    explicit StatusOr() = default;
+
+    // Implicit copy constructor and construction from T.
+    // NOLINTNEXTLINE(google-explicit-constructor)
+    StatusOr(Status status) : mStatus(std::move(status)) { assert(!isOk(mStatus)); }
+
+    // Implicit construction from T. It is convenient and sensible to be able
+    // to do 'return T()' when the return type is StatusOr<T>.
+    // NOLINTNEXTLINE(google-explicit-constructor)
     StatusOr(const T& value) : mStatus(status::ok), mValue(value) {}
+    // NOLINTNEXTLINE(google-explicit-constructor)
     StatusOr(T&& value) : mStatus(status::ok), mValue(std::move(value)) {}
 
     // Move constructor ok (if T supports move)
@@ -42,23 +54,28 @@ class [[nodiscard]] StatusOr {
     // Copy assignment ok (if T supports copy)
     StatusOr& operator=(const StatusOr&) = default;
 
-    // Return const references to wrapped type
+    // Returns a const reference to wrapped type.
     // It is an error to call value() when !isOk(status())
     const T& value() const & { return mValue; }
     const T&& value() const && { return mValue; }
 
-    // Return rvalue references to wrapped type
+    // Returns an rvalue reference to wrapped type
     // It is an error to call value() when !isOk(status())
+    //
+    // If T is expensive to copy but supports efficient move, it can be moved
+    // out of a StatusOr as follows:
+    //   T value = std::move(statusor).value();
     T& value() & { return mValue; }
     T&& value() && { return mValue; }
 
-    // Return status assigned in constructor
+    // Returns the Status object assigned at construction time.
     const Status status() const { return mStatus; }
 
     // Explicitly ignores the Status without triggering [[nodiscard]] errors.
     void ignoreError() const {}
 
     // Implicit cast to Status.
+    // NOLINTNEXTLINE(google-explicit-constructor)
     operator Status() const { return status(); }
 
   private:
