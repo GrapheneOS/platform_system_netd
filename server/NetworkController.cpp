@@ -30,6 +30,7 @@
 
 #include <android-base/strings.h>
 #include <netd_resolv/resolv.h>
+#include "android/net/INetd.h"
 
 #include "cutils/misc.h"
 
@@ -60,7 +61,7 @@ const unsigned NetworkController::MIN_OEM_ID   =  1;
 const unsigned NetworkController::MAX_OEM_ID   = 50;
 const unsigned NetworkController::DUMMY_NET_ID = 51;
 // NetIds 52..98 are reserved for future use.
-const unsigned NetworkController::LOCAL_NET_ID = 99;
+const unsigned NetworkController::LOCAL_NET_ID = INetd::LOCAL_NET_ID;
 
 // All calls to methods here are made while holding a write lock on mRWLock.
 // They are mostly not called directly from this class, but from methods in PhysicalNetwork.cpp.
