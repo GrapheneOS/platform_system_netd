@@ -68,6 +68,7 @@
 #include <sys/un.h>
 #include <syslog.h>
 #include <unistd.h>
+#include <functional>
 
 #include "netd_resolv/resolv.h"
 #include "resolv_cache.h"
@@ -78,6 +79,8 @@
 // that they don't actually test or ship with this.
 #define _DIAGASSERT(e) /* nothing */
 
+// TODO: unify macro ALIGNBYTES and ALIGN for all possible data type alignment of hostent
+// buffer.
 #define ALIGNBYTES (sizeof(uintptr_t) - 1)
 #define ALIGN(p) (((uintptr_t)(p) + ALIGNBYTES) & ~ALIGNBYTES)
 
@@ -133,8 +136,12 @@ static void debugprintf(const char*, res_state, ...) __attribute__((__format__(_
 #endif
 static struct hostent* getanswer(const querybuf*, int, const char*, int, res_state, struct hostent*,
                                  char*, size_t, int*);
+static void convert_v4v6_hostent(struct hostent* hp, char** bpp, char* ep,
+                                 std::function<void(struct hostent* hp)> mapping_param,
+                                 std::function<void(char* src, char* dst)> mapping_addr);
 static void map_v4v6_address(const char*, char*);
 static void map_v4v6_hostent(struct hostent*, char**, char*);
+static void pad_v4v6_hostent(struct hostent* hp, char** bpp, char* ep);
 static void addrsort(char**, int, res_state);
 
 struct hostent* ht_gethostbyname(char*);
@@ -448,6 +455,7 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
             bp += n;
         }
         if (res->options & RES_USE_INET6) map_v4v6_hostent(hent, &bp, ep);
+        if (hent->h_addrtype == AF_INET) pad_v4v6_hostent(hent, &bp, ep);
         goto success;
     }
 no_recovery:
@@ -778,6 +786,11 @@ struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, s
     HENT_COPY(hent->h_addr_list[0], &host_addr, hent->h_length, buf, buflen);
     hent->h_addr_list[1] = NULL;
 
+    /* Reserve space for mapping IPv4 address to IPv6 address in place */
+    if (hent->h_addrtype == AF_INET) {
+        HENT_COPY(buf, NAT64_PAD, sizeof(NAT64_PAD), buf, buflen);
+    }
+
     HENT_SCOPY(hent->h_name, name, buf, buflen);
     for (size_t i = 0; i < anum; i++) HENT_SCOPY(hent->h_aliases[i], aliases[i], buf, buflen);
     hent->h_aliases[anum] = NULL;
@@ -812,17 +825,16 @@ static void map_v4v6_address(const char* src, char* dst) {
     memcpy(p, tmp, NS_INADDRSZ);
 }
 
-static void map_v4v6_hostent(struct hostent* hp, char** bpp, char* ep) {
-    char** ap;
-
+static void convert_v4v6_hostent(struct hostent* hp, char** bpp, char* ep,
+                                 std::function<void(struct hostent* hp)> map_param,
+                                 std::function<void(char* src, char* dst)> map_addr) {
     _DIAGASSERT(hp != NULL);
     _DIAGASSERT(bpp != NULL);
     _DIAGASSERT(ep != NULL);
 
     if (hp->h_addrtype != AF_INET || hp->h_length != NS_INADDRSZ) return;
-    hp->h_addrtype = AF_INET6;
-    hp->h_length = NS_IN6ADDRSZ;
-    for (ap = hp->h_addr_list; *ap; ap++) {
+    map_param(hp);
+    for (char** ap = hp->h_addr_list; *ap; ap++) {
         int i = (int) (sizeof(align) - (size_t)((u_long) *bpp % sizeof(align)));
 
         if (ep - *bpp < (i + NS_IN6ADDRSZ)) {
@@ -831,10 +843,31 @@ static void map_v4v6_hostent(struct hostent* hp, char** bpp, char* ep) {
             return;
         }
         *bpp += i;
-        map_v4v6_address(*ap, *bpp);
+        map_addr(*ap, *bpp);
         *ap = *bpp;
         *bpp += NS_IN6ADDRSZ;
     }
+}
+
+static void map_v4v6_hostent(struct hostent* hp, char** bpp, char* ep) {
+    convert_v4v6_hostent(hp, bpp, ep,
+                         [](struct hostent* hp) {
+                             hp->h_addrtype = AF_INET6;
+                             hp->h_length = NS_IN6ADDRSZ;
+                         },
+                         [](char* src, char* dst) { map_v4v6_address(src, dst); });
+}
+
+/* Reserve space for mapping IPv4 address to IPv6 address in place */
+static void pad_v4v6_hostent(struct hostent* hp, char** bpp, char* ep) {
+    convert_v4v6_hostent(hp, bpp, ep,
+                         [](struct hostent* hp) {
+                             (void) hp; /* unused */
+                         },
+                         [](char* src, char* dst) {
+                             memcpy(dst, src, NS_INADDRSZ);
+                             memcpy(dst + NS_INADDRSZ, NAT64_PAD, sizeof(NAT64_PAD));
+                         });
 }
 
 static void addrsort(char** ap, int num, res_state res) {
@@ -995,6 +1028,13 @@ static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
         map_v4v6_address(bf, bf);
         hp->h_addrtype = AF_INET6;
         hp->h_length = NS_IN6ADDRSZ;
+    }
+
+    /* Reserve enough space for mapping IPv4 address to IPv6 address in place */
+    if (info->hp->h_addrtype == AF_INET) {
+        if (blen + NS_IN6ADDRSZ > info->buflen) goto nospc;
+        // Pad zero to the unused address space
+        memcpy(bf + NS_INADDRSZ, NAT64_PAD, sizeof(NAT64_PAD));
     }
 
     res_put_state(res);
