@@ -59,6 +59,9 @@ bool getBpfOwnerStatus() {
 
 }  // namespace
 
+namespace android {
+namespace net {
+
 auto FirewallController::execIptablesRestore = ::execIptablesRestore;
 
 const char* FirewallController::TABLE = "filter";
@@ -101,11 +104,11 @@ int FirewallController::setupIptablesHooks(void) {
     return res;
 }
 
-int FirewallController::enableFirewall(FirewallType ftype) {
+int FirewallController::setFirewallType(FirewallType ftype) {
     int res = 0;
     if (mFirewallType != ftype) {
         // flush any existing rules
-        disableFirewall();
+        resetFirewall();
 
         if (ftype == WHITELIST) {
             // create default rule to drop all traffic
@@ -121,10 +124,10 @@ int FirewallController::enableFirewall(FirewallType ftype) {
         // Set this after calling disableFirewall(), since it defaults to WHITELIST there
         mFirewallType = ftype;
     }
-    return res;
+    return res ? -EREMOTEIO : 0;
 }
 
-int FirewallController::disableFirewall(void) {
+int FirewallController::resetFirewall(void) {
     mFirewallType = WHITELIST;
     mIfaceRules.clear();
 
@@ -136,7 +139,7 @@ int FirewallController::disableFirewall(void) {
         ":fw_FORWARD -\n"
         "COMMIT\n";
 
-    return execIptablesRestore(V4V6, command.c_str());
+    return (execIptablesRestore(V4V6, command.c_str()) == 0) ? 0 : -EREMOTEIO;
 }
 
 int FirewallController::enableChildChains(ChildChain chain, bool enable) {
@@ -177,12 +180,12 @@ int FirewallController::isFirewallEnabled(void) {
 int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
     if (mFirewallType == BLACKLIST) {
         // Unsupported in BLACKLIST mode
-        return -1;
+        return -EINVAL;
     }
 
     if (!isIfaceName(iface)) {
         errno = ENOENT;
-        return -1;
+        return -ENOENT;
     }
 
     // Only delete rules if we actually added them, because otherwise our iptables-restore
@@ -205,7 +208,7 @@ int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
         StringPrintf("%s fw_OUTPUT -o %s -j RETURN", op, iface),
         "COMMIT\n"
     }, "\n");
-    return execIptablesRestore(V4V6, command);
+    return (execIptablesRestore(V4V6, command) == 0) ? 0 : -EREMOTEIO;
 }
 
 FirewallType FirewallController::getFirewallType(ChildChain chain) {
@@ -253,7 +256,7 @@ int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule)
             break;
         default:
             ALOGW("Unknown child chain: %d", chain);
-            return -1;
+            return -EINVAL;
     }
     if (mUseBpfOwnerMatch) {
         return gCtls->trafficCtrl.changeUidOwnerRule(chain, uid, rule, firewallType);
@@ -266,7 +269,7 @@ int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule)
     }
     StringAppendF(&command, "COMMIT\n");
 
-    return execIptablesRestore(V4V6, command);
+    return (execIptablesRestore(V4V6, command) == 0) ? 0 : -EREMOTEIO;
 }
 
 int FirewallController::createChain(const char* chain, FirewallType type) {
@@ -393,3 +396,6 @@ uid_t FirewallController::discoverMaximumValidUid(const std::string& fileName) {
 
     return maxUid;
 }
+
+}  // namespace net
+}  // namespace android

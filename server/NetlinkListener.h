@@ -22,9 +22,10 @@
 #include <mutex>
 #include <thread>
 
+#include <android-base/thread_annotations.h>
 #include <netdutils/Netlink.h>
 #include <netdutils/Slice.h>
-#include <netdutils/StatusOr.h>
+#include <netdutils/Status.h>
 #include <netdutils/UniqueFd.h>
 
 namespace android {
@@ -80,20 +81,20 @@ class NetlinkListener : public NetlinkListenerInterface {
 
     netdutils::Status send(const netdutils::Slice msg) override;
 
-    netdutils::Status subscribe(uint16_t type, const DispatchFn& fn) override;
+    netdutils::Status subscribe(uint16_t type, const DispatchFn& fn) override EXCLUDES(mMutex);
 
-    netdutils::Status unsubscribe(uint16_t type) override;
+    netdutils::Status unsubscribe(uint16_t type) override EXCLUDES(mMutex);
 
     void registerSkErrorHandler(const SkErrorHandler& handler) override;
 
   private:
     netdutils::Status run();
 
-    netdutils::UniqueFd mEvent;
-    netdutils::UniqueFd mSock;
+    const netdutils::UniqueFd mEvent;
+    const netdutils::UniqueFd mSock;
+    const std::string mThreadName;
     std::mutex mMutex;
-    std::map<uint16_t, DispatchFn> mDispatchMap;  // guarded by mMutex
-    std::string mThreadName;
+    std::map<uint16_t, DispatchFn> mDispatchMap GUARDED_BY(mMutex);
     std::thread mWorker;
     SkErrorHandler mErrorHandler;
 };

@@ -21,7 +21,6 @@
 #include <sys/socket.h>
 
 #include <functional>
-
 #define LOG_TAG "InterfaceController"
 #include <android-base/file.h>
 #include <android-base/properties.h>

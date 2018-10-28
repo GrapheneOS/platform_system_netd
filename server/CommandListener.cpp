@@ -1058,11 +1058,7 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
         }
         FirewallType firewallType = parseFirewallType(argv[2]);
 
-        int res = gCtls->firewallCtrl.enableFirewall(firewallType);
-        return sendGenericOkFail(cli, res);
-    }
-    if (!strcmp(argv[1], "disable")) {
-        int res = gCtls->firewallCtrl.disableFirewall();
+        int res = gCtls->firewallCtrl.setFirewallType(firewallType);
         return sendGenericOkFail(cli, res);
     }
     if (!strcmp(argv[1], "is_enabled")) {

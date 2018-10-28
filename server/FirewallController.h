@@ -23,16 +23,27 @@
 #include <string>
 #include <vector>
 
+#include "android/net/INetd.h"
+
 #include "NetdConstants.h"
 
-enum FirewallRule { DENY, ALLOW };
+namespace android {
+namespace net {
+
+enum FirewallRule { ALLOW = INetd::FIREWALL_RULE_ALLOW, DENY = INetd::FIREWALL_RULE_DENY };
 
 // WHITELIST means the firewall denies all by default, uids must be explicitly ALLOWed
 // BLACKLIST means the firewall allows all by default, uids must be explicitly DENYed
 
-enum FirewallType { WHITELIST, BLACKLIST };
+enum FirewallType { WHITELIST = INetd::FIREWALL_WHITELIST, BLACKLIST = INetd::FIREWALL_BLACKLIST };
 
-enum ChildChain { NONE, DOZABLE, STANDBY, POWERSAVE, INVALID_CHAIN };
+enum ChildChain {
+    NONE = INetd::FIREWALL_CHAIN_NONE,
+    DOZABLE = INetd::FIREWALL_CHAIN_DOZABLE,
+    STANDBY = INetd::FIREWALL_CHAIN_STANDBY,
+    POWERSAVE = INetd::FIREWALL_CHAIN_POWERSAVE,
+    INVALID_CHAIN
+};
 
 /*
  * Simple firewall that drops all packets except those matching explicitly
@@ -48,8 +59,8 @@ public:
 
     int setupIptablesHooks(void);
 
-    int enableFirewall(FirewallType);
-    int disableFirewall(void);
+    int setFirewallType(FirewallType);
+    int resetFirewall(void);
     int isFirewallEnabled(void);
 
     /* Match traffic going in/out over the given iface. */
@@ -99,5 +110,8 @@ private:
   int createChain(const char*, FirewallType);
   FirewallType getFirewallType(ChildChain);
 };
+
+}  // namespace net
+}  // namespace android
 
 #endif
