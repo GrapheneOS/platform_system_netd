@@ -27,6 +27,8 @@
 
 #include <map>
 
+#define LOG_TAG "Netd"
+
 #include "DummyNetwork.h"
 #include "Fwmark.h"
 #include "NetdConstants.h"
@@ -35,7 +37,6 @@
 
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
-#define LOG_TAG "Netd"
 #include "log/log.h"
 #include "logwrap/logwrap.h"
 #include "netid_client.h"
@@ -43,7 +44,7 @@
 
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
-using android::net::UidRange;
+using android::net::UidRangeParcel;
 
 namespace android {
 namespace net {
@@ -766,11 +767,10 @@ WARN_UNUSED_RESULT int modifyRejectNonSecureNetworkRule(const UidRanges& uidRang
     fwmark.protectedFromVpn = false;
     mask.protectedFromVpn = true;
 
-    for (const UidRange& range : uidRanges.getRanges()) {
-        if (int ret = modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE,
-                                   RULE_PRIORITY_PROHIBIT_NON_VPN, FR_ACT_PROHIBIT, RT_TABLE_UNSPEC,
-                                   fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE,
-                                   range.getStart(), range.getStop())) {
+    for (const UidRangeParcel& range : uidRanges.getRanges()) {
+        if (int ret = modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_PROHIBIT_NON_VPN,
+                                   FR_ACT_PROHIBIT, RT_TABLE_UNSPEC, fwmark.intValue, mask.intValue,
+                                   IIF_LOOPBACK, OIF_NONE, range.start, range.stop)) {
             return ret;
         }
     }
@@ -787,17 +787,16 @@ WARN_UNUSED_RESULT int RouteController::modifyVirtualNetwork(unsigned netId, con
         return -ESRCH;
     }
 
-    for (const UidRange& range : uidRanges.getRanges()) {
-        if (int ret = modifyVpnUidRangeRule(table, range.getStart(), range.getStop(), secure, add))
-                {
+    for (const UidRangeParcel& range : uidRanges.getRanges()) {
+        if (int ret = modifyVpnUidRangeRule(table, range.start, range.stop, secure, add)) {
             return ret;
         }
-        if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, range.getStart(),
-                                                range.getStop(), add)) {
+        if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, range.start,
+                                                range.stop, add)) {
             return ret;
         }
-        if (int ret = modifyOutputInterfaceRules(interface, table, PERMISSION_NONE,
-                                                 range.getStart(), range.getStop(), add)) {
+        if (int ret = modifyOutputInterfaceRules(interface, table, PERMISSION_NONE, range.start,
+                                                 range.stop, add)) {
             return ret;
         }
     }
