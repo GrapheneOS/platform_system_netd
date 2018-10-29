@@ -23,7 +23,6 @@
 #include <netdutils/Log.h>
 
 #include "android/net/BnNetd.h"
-#include "android/net/UidRange.h"
 
 namespace android {
 namespace net {
@@ -67,12 +66,12 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status networkAddInterface(int32_t netId, const std::string& iface) override;
     binder::Status networkRemoveInterface(int32_t netId, const std::string& iface) override;
 
-    binder::Status networkAddUidRanges(int32_t netId, const std::vector<UidRange>& uids)
-            override;
-    binder::Status networkRemoveUidRanges(int32_t netId, const std::vector<UidRange>& uids)
-            override;
-    binder::Status networkRejectNonSecureVpn(bool enable, const std::vector<UidRange>& uids)
-            override;
+    binder::Status networkAddUidRanges(int32_t netId,
+                                       const std::vector<UidRangeParcel>& uids) override;
+    binder::Status networkRemoveUidRanges(int32_t netId,
+                                          const std::vector<UidRangeParcel>& uids) override;
+    binder::Status networkRejectNonSecureVpn(bool enable,
+                                             const std::vector<UidRangeParcel>& uids) override;
     binder::Status networkAddRoute(int32_t netId, const std::string& ifName,
                                    const std::string& destination,
                                    const std::string& nextHop) override;
@@ -98,8 +97,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status networkCanProtect(int32_t uid, bool* ret) override;
 
     // SOCK_DIAG commands.
-    binder::Status socketDestroy(const std::vector<UidRange>& uids,
-            const std::vector<int32_t>& skipUids) override;
+    binder::Status socketDestroy(const std::vector<UidRangeParcel>& uids,
+                                 const std::vector<int32_t>& skipUids) override;
 
     // Resolver commands.
     binder::Status setResolverConfiguration(int32_t netId, const std::vector<std::string>& servers,

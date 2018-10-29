@@ -31,6 +31,7 @@ aidl_interface {
     local_include_dir: "binder",
     srcs: [
         "binder/android/net/TetherStatsParcel.aidl",
+        "binder/android/net/UidRangeParcel.aidl",
     ],
     api_dir: "binder/api",
 }
@@ -53,7 +54,6 @@ cc_library {
     },
     srcs: [
         ":netd_aidl",
-        "binder/android/net/UidRange.cpp",
     ],
     export_include_dirs: ["binder"],
 }
@@ -228,5 +228,6 @@ cc_test {
         "libqtaguid",
         "libsysutils",
         "libutils",
+        "netd_aidl_interface-cpp",
     ],
 }

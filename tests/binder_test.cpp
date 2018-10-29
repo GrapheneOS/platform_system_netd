@@ -50,7 +50,6 @@
 #include "XfrmController.h"
 #include "tun_interface.h"
 #include "android/net/INetd.h"
-#include "android/net/UidRange.h"
 #include "binder/IServiceManager.h"
 #include "netdutils/Syscalls.h"
 
@@ -79,7 +78,7 @@ using android::bpf::hasBpfSupport;
 using android::net::INetd;
 using android::net::TetherStatsParcel;
 using android::net::TunInterface;
-using android::net::UidRange;
+using android::net::UidRangeParcel;
 using android::net::XfrmController;
 
 #define SKIP_IF_BPF_SUPPORTED        \
@@ -492,15 +491,15 @@ TEST_F(BinderTest, BandwidthEnableDataSaver) {
     }
 }
 
-static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
-        const std::string& action, const char* ipVersion) {
+static bool ipRuleExistsForRange(const uint32_t priority, const UidRangeParcel& range,
+                                 const std::string& action, const char* ipVersion) {
     // Output looks like this:
     //   "12500:\tfrom all fwmark 0x0/0x20000 iif lo uidrange 1000-2000 prohibit"
     std::vector<std::string> rules = listIpRules(ipVersion);
 
     std::string prefix = StringPrintf("%" PRIu32 ":", priority);
-    std::string suffix = StringPrintf(" iif lo uidrange %d-%d %s\n",
-            range.getStart(), range.getStop(), action.c_str());
+    std::string suffix =
+            StringPrintf(" iif lo uidrange %d-%d %s\n", range.start, range.stop, action.c_str());
     for (const auto& line : rules) {
         if (android::base::StartsWith(line, prefix) && android::base::EndsWith(line, suffix)) {
             return true;
@@ -509,13 +508,25 @@ static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
     return false;
 }
 
-static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
-        const std::string& action) {
+static bool ipRuleExistsForRange(const uint32_t priority, const UidRangeParcel& range,
+                                 const std::string& action) {
     bool existsIp4 = ipRuleExistsForRange(priority, range, action, IP_RULE_V4);
     bool existsIp6 = ipRuleExistsForRange(priority, range, action, IP_RULE_V6);
     EXPECT_EQ(existsIp4, existsIp6);
     return existsIp4;
 }
+
+namespace {
+
+UidRangeParcel makeUidRangeParcel(int start, int stop) {
+    UidRangeParcel res;
+    res.start = start;
+    res.stop = stop;
+
+    return res;
+}
+
+}  // namespace
 
 TEST_F(BinderTest, NetworkInterfaces) {
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
@@ -541,11 +552,9 @@ TEST_F(BinderTest, NetworkUidRules) {
     EXPECT_EQ(EEXIST, mNetd->networkCreateVpn(TEST_NETID1, false, true).serviceSpecificErrorCode());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
 
-    std::vector<UidRange> uidRanges = {
-        {BASE_UID + 8005, BASE_UID + 8012},
-        {BASE_UID + 8090, BASE_UID + 8099}
-    };
-    UidRange otherRange(BASE_UID + 8190, BASE_UID + 8299);
+    std::vector<UidRangeParcel> uidRanges = {makeUidRangeParcel(BASE_UID + 8005, BASE_UID + 8012),
+                                             makeUidRangeParcel(BASE_UID + 8090, BASE_UID + 8099)};
+    UidRangeParcel otherRange = makeUidRangeParcel(BASE_UID + 8190, BASE_UID + 8299);
     std::string suffix = StringPrintf("lookup %s ", sTun.name().c_str());
 
     EXPECT_TRUE(mNetd->networkAddUidRanges(TEST_NETID1, uidRanges).isOk());
@@ -566,10 +575,8 @@ TEST_F(BinderTest, NetworkUidRules) {
 TEST_F(BinderTest, NetworkRejectNonSecureVpn) {
     constexpr uint32_t RULE_PRIORITY = 12500;
 
-    std::vector<UidRange> uidRanges = {
-        {BASE_UID + 150, BASE_UID + 224},
-        {BASE_UID + 226, BASE_UID + 300}
-    };
+    std::vector<UidRangeParcel> uidRanges = {makeUidRangeParcel(BASE_UID + 150, BASE_UID + 224),
+                                             makeUidRangeParcel(BASE_UID + 226, BASE_UID + 300)};
 
     const std::vector<std::string> initialRulesV4 = listIpRules(IP_RULE_V4);
     const std::vector<std::string> initialRulesV6 = listIpRules(IP_RULE_V6);
@@ -654,11 +661,11 @@ TEST_F(BinderTest, SocketDestroy) {
     EXPECT_EQ(0, fchown(clientSocket, uid, -1));
 
     // UID ranges that don't contain uid.
-    std::vector<UidRange> uidRanges = {
-        {baseUid + 42, baseUid + 449},
-        {baseUid + 1536, AID_APP - 4},
-        {baseUid + 498, uid - 1},
-        {uid + 1, baseUid + 1520},
+    std::vector<UidRangeParcel> uidRanges = {
+            makeUidRangeParcel(baseUid + 42, baseUid + 449),
+            makeUidRangeParcel(baseUid + 1536, AID_APP - 4),
+            makeUidRangeParcel(baseUid + 498, uid - 1),
+            makeUidRangeParcel(uid + 1, baseUid + 1520),
     };
     // A skip list that doesn't contain UID.
     std::vector<int32_t> skipUids { baseUid + 123, baseUid + 1600 };
@@ -669,9 +676,9 @@ TEST_F(BinderTest, SocketDestroy) {
 
     // UID ranges that do contain uid.
     uidRanges = {
-        {baseUid + 42, baseUid + 449},
-        {baseUid + 1536, AID_APP - 4},
-        {baseUid + 498, baseUid + 1520},
+            makeUidRangeParcel(baseUid + 42, baseUid + 449),
+            makeUidRangeParcel(baseUid + 1536, AID_APP - 4),
+            makeUidRangeParcel(baseUid + 498, baseUid + 1520),
     };
     // Add uid to the skip list.
     skipUids.push_back(uid);
