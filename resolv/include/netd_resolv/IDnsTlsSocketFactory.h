@@ -17,7 +17,7 @@
 #ifndef _DNS_IDNSTLSSOCKETFACTORY_H
 #define _DNS_IDNSTLSSOCKETFACTORY_H
 
-#include "dns/IDnsTlsSocket.h"
+#include "IDnsTlsSocket.h"
 
 namespace android {
 namespace net {

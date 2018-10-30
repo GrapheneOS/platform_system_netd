@@ -23,12 +23,14 @@
 
 #include <netinet/in.h>
 
+#include "params.h"
+
 namespace android {
 namespace net {
 
 // DnsTlsServer represents a recursive resolver that supports, or may support, a
 // secure protocol.
-struct DnsTlsServer {
+struct LIBNETD_RESOLV_TLS_EXPORT DnsTlsServer {
     // Default constructor.
     DnsTlsServer() {}
 
@@ -66,7 +68,7 @@ struct DnsTlsServer {
 };
 
 // This comparison only checks the IP address.  It ignores ports, names, and fingerprints.
-struct AddressComparator {
+struct LIBNETD_RESOLV_TLS_EXPORT AddressComparator {
     bool operator() (const DnsTlsServer& x, const DnsTlsServer& y) const;
 };
 

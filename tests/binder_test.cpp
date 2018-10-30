@@ -48,10 +48,10 @@
 #include "NetdConstants.h"
 #include "Stopwatch.h"
 #include "XfrmController.h"
-#include "tun_interface.h"
 #include "android/net/INetd.h"
 #include "binder/IServiceManager.h"
 #include "netdutils/Syscalls.h"
+#include "tun_interface.h"
 
 #define IP_PATH "/system/bin/ip"
 #define IP6TABLES_PATH "/system/bin/ip6tables"

@@ -29,7 +29,8 @@
 
 const int MAX_SYSTEM_UID = AID_APP - 1;
 
-extern const size_t SHA256_SIZE;
+// Referred from SHA256_DIGEST_LENGTH in boringssl
+constexpr size_t SHA256_SIZE = 32;
 
 enum IptablesTarget { V4, V6, V4V6 };
 
@@ -43,6 +44,7 @@ int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, ui
 void blockSigpipe();
 void setCloseOnExec(const char *sock);
 
+// TODO: use std::size() instead.
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
 #define __INT_STRLEN(i) sizeof(#i)

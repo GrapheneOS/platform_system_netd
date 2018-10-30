@@ -25,11 +25,12 @@
 #include <android-base/thread_annotations.h>
 #include <android-base/unique_fd.h>
 
-#include "dns/DnsTlsSessionCache.h"
-#include "dns/DnsTlsQueryMap.h"
-#include "dns/DnsTlsServer.h"
-#include "dns/IDnsTlsSocket.h"
-#include "dns/IDnsTlsSocketObserver.h"
+#include "DnsTlsQueryMap.h"
+#include "DnsTlsServer.h"
+#include "DnsTlsSessionCache.h"
+#include "IDnsTlsSocket.h"
+#include "IDnsTlsSocketObserver.h"
+#include "params.h"
 
 #include <netdutils/Slice.h>
 
@@ -40,7 +41,7 @@ class IDnsTlsSocketFactory;
 
 // Manages at most one DnsTlsSocket at a time.  This class handles socket lifetime issues,
 // such as reopening the socket and reissuing pending queries.
-class DnsTlsTransport : public IDnsTlsSocketObserver {
+class LIBNETD_RESOLV_TLS_EXPORT DnsTlsTransport : public IDnsTlsSocketObserver {
 public:
     DnsTlsTransport(const DnsTlsServer& server, unsigned mark,
                     IDnsTlsSocketFactory* _Nonnull factory) :
