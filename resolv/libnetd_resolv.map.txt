@@ -20,11 +20,8 @@
 
 LIBNETD_RESOLV {
   global:
-    android_getaddrinfofornet;
     android_getaddrinfofornetcontext;
-    android_gethostbyaddrfornet;
     android_gethostbyaddrfornetcontext;
-    android_gethostbynamefornet;
     android_gethostbynamefornetcontext;
     android_net_res_stats_aggregate;
     android_net_res_stats_get_info_for_net;
