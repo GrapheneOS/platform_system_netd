@@ -1757,7 +1757,6 @@ static void resolv_set_default_params(struct __res_params* params) {
 
 int resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigned numservers,
                                    const char* domains, const __res_params* params) {
-    char sbuf[NI_MAXSERV];
     char* cp;
     int* offset;
     struct addrinfo* nsaddrinfo[MAXNS];
@@ -1769,18 +1768,20 @@ int resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigne
 
     // Parse the addresses before actually locking or changing any state, in case there is an error.
     // As a side effect this also reduces the time the lock is kept.
-    struct addrinfo hints = {
-            .ai_family = AF_UNSPEC, .ai_socktype = SOCK_DGRAM, .ai_flags = AI_NUMERICHOST};
+    char sbuf[NI_MAXSERV];
     snprintf(sbuf, sizeof(sbuf), "%u", NAMESERVER_PORT);
     for (unsigned i = 0; i < numservers; i++) {
         // The addrinfo structures allocated here are freed in free_nameservers_locked().
-        int rt = getaddrinfo(servers[i], sbuf, &hints, &nsaddrinfo[i]);
+        const addrinfo hints = {
+                .ai_family = AF_UNSPEC, .ai_socktype = SOCK_DGRAM, .ai_flags = AI_NUMERICHOST};
+        int rt = getaddrinfo_numeric(servers[i], sbuf, hints, &nsaddrinfo[i]);
         if (rt != 0) {
             for (unsigned j = 0; j < i; j++) {
                 freeaddrinfo(nsaddrinfo[j]);
                 nsaddrinfo[j] = NULL;
             }
-            VLOG << __func__ << ": getaddrinfo(" << servers[i] << ") = " << gai_strerror(rt);
+            VLOG << __func__ << ": getaddrinfo_numeric(" << servers[i]
+                 << ") = " << gai_strerror(rt);
             return EINVAL;
         }
     }

@@ -83,15 +83,6 @@ struct android_net_context {
 #define NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS 0x00000001
 #define NET_CONTEXT_FLAG_USE_EDNS 0x00000002
 
-LIBNETD_RESOLV_PUBLIC hostent* android_gethostbyaddrfornet(const void*, socklen_t, int, unsigned,
-                                                           unsigned);
-LIBNETD_RESOLV_PUBLIC hostent* android_gethostbynamefornet(const char*, int, unsigned, unsigned);
-LIBNETD_RESOLV_PUBLIC int android_getaddrinfofornet(const char*, const char*, const addrinfo*,
-                                                    unsigned, unsigned, addrinfo**);
-/*
- * TODO: consider refactoring android_getaddrinfo_proxy() to serve as an
- * explore_fqdn() dispatch table method, with the below function only making DNS calls.
- */
 LIBNETD_RESOLV_PUBLIC hostent* android_gethostbyaddrfornetcontext(const void*, socklen_t, int,
                                                                   const android_net_context*);
 LIBNETD_RESOLV_PUBLIC hostent* android_gethostbynamefornetcontext(const char*, int,
