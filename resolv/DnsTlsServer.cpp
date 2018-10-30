@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "dns/DnsTlsServer.h"
+#include "netd_resolv/DnsTlsServer.h"
 
 #include <algorithm>
 

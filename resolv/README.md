@@ -9,7 +9,7 @@ The DNS-over-TLS query forwarder consists of five classes:
  * `DnsTlsSessionCache`
  * `DnsTlsSocket`
 
-`DnsTlsDispatcher` is a singleton class whose `query` method is the `dns/` directory's
+`DnsTlsDispatcher` is a singleton class whose `query` method is the DnsTls's
 only public interface.  `DnsTlsDispatcher` is just a table holding the
 `DnsTlsTransport` for each server (represented by a `DnsTlsServer` struct) and
 network.  `DnsTlsDispatcher` also blocks each query thread, waiting on a
@@ -43,7 +43,7 @@ annotations) to minimize the likelihood of a latent threading bug.  The unit tes
 also heavily threaded to exercise this functionality.
 
 This code creates O(1) threads per socket, and does not create a new thread for each
-query or response.  However, bionic's stub resolver does create a thread for each query.
+query or response.  However, DnsProxyListener does create a thread for each query.
 
 ### Threading in `DnsTlsSocket`
 
@@ -104,10 +104,10 @@ reuse sessions more than once, it should not be possible to hit this limit.
 
 ## Testing
 
-Unit tests are in `../tests/dns_tls_test.cpp`.  They cover all the classes except
+Unit tests are in `dns_tls_test.cpp`. They cover all the classes except
 `DnsTlsSocket` (which requires `CAP_NET_ADMIN` because it uses `setsockopt(SO_MARK)`) and
 `DnsTlsSessionCache` (which requires integration with libssl).  These classes are
-exercised by the integration tests in `../tests/netd_test.cpp`.
+exercised by the integration tests in `../tests/resolv_test.cpp`.
 
 ### Dependency Injection
 

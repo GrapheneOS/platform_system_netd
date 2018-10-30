@@ -20,7 +20,7 @@
 #include <list>
 #include <vector>
 
-#include "dns/Dns64Configuration.h"
+#include "Dns64Configuration.h"
 
 struct __res_params;
 

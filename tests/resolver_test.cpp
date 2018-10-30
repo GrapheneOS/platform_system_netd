@@ -1305,7 +1305,7 @@ TEST_F(ResolverTest, TlsBypass) {
 
     const unsigned BYPASS_NETID = NETID_USE_LOCAL_NAMESERVERS | TEST_NETID;
 
-    const std::vector<uint8_t> NOOP_FINGERPRINT(test::SHA256_SIZE, 0U);
+    const std::vector<uint8_t> NOOP_FINGERPRINT(SHA256_SIZE, 0U);
 
     const char ADDR4[] = "192.0.2.1";
     const char ADDR6[] = "2001:db8::1";
@@ -1439,7 +1439,7 @@ TEST_F(ResolverTest, TlsBypass) {
 }
 
 TEST_F(ResolverTest, StrictMode_NoTlsServers) {
-    const std::vector<uint8_t> NOOP_FINGERPRINT(test::SHA256_SIZE, 0U);
+    const std::vector<uint8_t> NOOP_FINGERPRINT(SHA256_SIZE, 0U);
     const char cleartext_addr[] = "127.0.0.53";
     const char cleartext_port[] = "53";
     const std::vector<std::string> servers = { cleartext_addr };
