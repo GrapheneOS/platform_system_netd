@@ -88,7 +88,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -316,22 +315,19 @@ bool readBE32(FILE* fp, int32_t* result) {
     return true;
 }
 
-int getaddrinfo(const char* hostname, const char* servname, const struct addrinfo* hints,
-                struct addrinfo** res) {
-    return android_getaddrinfofornet(hostname, servname, hints, NETID_UNSET, MARK_UNSET, res);
-}
-
-int android_getaddrinfofornet(const char* hostname, const char* servname,
-                              const struct addrinfo* hints, unsigned netid, unsigned mark,
-                              struct addrinfo** res) {
-    struct android_net_context netcontext = {
-            .app_netid = netid,
-            .app_mark = mark,
-            .dns_netid = netid,
-            .dns_mark = mark,
+// Internal version of getaddrinfo(), but limited to AI_NUMERICHOST.
+// NOTE: also called by resolv_set_nameservers_for_net().
+int getaddrinfo_numeric(const char* hostname, const char* servname, addrinfo hints,
+                        addrinfo** result) {
+    hints.ai_flags = AI_NUMERICHOST;
+    const android_net_context netcontext = {
+            .app_netid = NETID_UNSET,
+            .app_mark = MARK_UNSET,
+            .dns_netid = NETID_UNSET,
+            .dns_mark = MARK_UNSET,
             .uid = NET_CONTEXT_INVALID_UID,
     };
-    return android_getaddrinfofornetcontext(hostname, servname, hints, &netcontext, res);
+    return android_getaddrinfofornetcontext(hostname, servname, &hints, &netcontext, result);
 }
 
 int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
@@ -1583,7 +1579,7 @@ static void _endhtent(FILE** hostf) {
 static struct addrinfo* _gethtent(FILE** hostf, const char* name, const struct addrinfo* pai) {
     char* p;
     char *cp, *tname, *cname;
-    struct addrinfo hints, *res0, *res;
+    struct addrinfo *res0, *res;
     int error;
     const char* addr;
     char hostbuf[8 * 1024];
@@ -1616,9 +1612,7 @@ again:
     goto again;
 
 found:
-    hints = *pai;
-    hints.ai_flags = AI_NUMERICHOST;
-    error = getaddrinfo(addr, NULL, &hints, &res0);
+    error = getaddrinfo_numeric(addr, nullptr, *pai, &res0);
     if (error) goto again;
     for (res = res0; res; res = res->ai_next) {
         /* cover it up */
