@@ -69,6 +69,7 @@ cc_library_static {
     srcs: [
         "BandwidthController.cpp",
         "Controllers.cpp",
+        "Dns64Configuration.cpp",
         "NetdConstants.cpp",
         "FirewallController.cpp",
         "IdletimerController.cpp",
@@ -139,14 +140,12 @@ cc_binary {
         "libpcap",
         "libqtaguid",
         "libselinux",
-        "libssl",
         "libsysutils",
         "libutils",
         "netd_aidl_interface-cpp",
     ],
     static_libs: [
         "libnetd_server",
-        "libnetddns",
     ],
     srcs: [
         "ClatdController.cpp",
@@ -212,7 +211,6 @@ cc_test {
         "libgmock",
         "libnetd_server",
         "libnetd_test_tun_interface",
-        "libnetddns",
     ],
     shared_libs: [
         "libbase",

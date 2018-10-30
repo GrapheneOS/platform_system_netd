@@ -16,6 +16,12 @@ cc_library_shared {
         "res_send.cpp",
         "res_state.cpp",
         "res_stats.cpp",
+        "DnsTlsDispatcher.cpp",
+        "DnsTlsQueryMap.cpp",
+        "DnsTlsTransport.cpp",
+        "DnsTlsServer.cpp",
+        "DnsTlsSessionCache.cpp",
+        "DnsTlsSocket.cpp",
     ],
     // Link everything statically (except for libc) to minimize our dependence
     // on system ABIs
@@ -23,6 +29,14 @@ cc_library_shared {
     static_libs: [
         "libbase",
         "liblog",
+        "libnetdutils",
+        "libssl",
+        "libcrypto",
+    ],
+    // TODO: Remove this after we find an alternative way to substitute Fwmark
+    // used in DnsTls* classes.
+    include_dirs: [
+        "system/netd/include",
     ],
     export_include_dirs: ["include"],
     // TODO: pie in the sky: make this code clang-tidy clean
@@ -48,10 +62,8 @@ cc_test {
     shared_libs: [
         "libbase",
         "liblog",
-        "libssl",
-    ],
-    static_libs: [
-        "libnetddns",
         "libnetdutils",
+        "libnetd_resolv",
+        "libssl",
     ],
 }

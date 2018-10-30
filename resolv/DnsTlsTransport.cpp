@@ -17,18 +17,16 @@
 #define LOG_TAG "DnsTlsTransport"
 //#define LOG_NDEBUG 0
 
-#include "dns/DnsTlsTransport.h"
+#include "netd_resolv/DnsTlsTransport.h"
 
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 
-#include "dns/DnsTlsServer.h"
-#include "dns/DnsTlsSocketFactory.h"
-#include "dns/IDnsTlsSocketFactory.h"
+#include "netd_resolv/DnsTlsSocketFactory.h"
+#include "netd_resolv/IDnsTlsSocketFactory.h"
 
 #include "log/log.h"
 #include "Fwmark.h"
-#include "NetdConstants.h"
 #include "Permission.h"
 
 namespace android {
@@ -156,10 +154,10 @@ bool DnsTlsTransport::validate(const DnsTlsServer& server, unsigned netid) {
             "ABCDEFHIJKLMNOPQRSTUVWXYZ"
             "0123456789";
     const auto c = [](uint8_t rnd) -> uint8_t {
-        return kDnsSafeChars[(rnd % ARRAY_SIZE(kDnsSafeChars))];
+        return kDnsSafeChars[(rnd % std::size(kDnsSafeChars))];
     };
     uint8_t rnd[8];
-    arc4random_buf(rnd, ARRAY_SIZE(rnd));
+    arc4random_buf(rnd, std::size(rnd));
     // We could try to use res_mkquery() here, but it's basically the same.
     uint8_t query[] = {
         rnd[6], rnd[7],  // [0-1]   query ID
@@ -177,7 +175,7 @@ bool DnsTlsTransport::validate(const DnsTlsServer& server, unsigned netid) {
         0, ns_t_aaaa,  // QTYPE
         0, ns_c_in     // QCLASS
     };
-    const int qlen = ARRAY_SIZE(query);
+    const int qlen = std::size(query);
 
     // At validation time, we only know the netId, so we have to guess/compute the
     // corresponding socket mark.

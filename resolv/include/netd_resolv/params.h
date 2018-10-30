@@ -46,4 +46,7 @@ typedef res_sendhookact (*res_send_rhook)(const struct sockaddr*, const uint8_t*
 
 #define LIBNETD_RESOLV_PUBLIC extern "C" [[gnu::visibility("default")]]
 
+// TODO: Remove it after we move PrivateDnsConfiguration and qhook() into libnetd_resolv.
+#define LIBNETD_RESOLV_TLS_EXPORT [[gnu::visibility("default")]]
+
 #endif  // NETD_RESOLV_PARAMS_H

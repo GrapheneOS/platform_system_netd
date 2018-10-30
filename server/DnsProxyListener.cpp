@@ -47,18 +47,17 @@
 #include <binder/IServiceManager.h>
 
 #include "Controllers.h"
-#include "Fwmark.h"
 #include "DnsProxyListener.h"
-#include "dns/DnsTlsDispatcher.h"
-#include "dns/DnsTlsTransport.h"
-#include "dns/DnsTlsServer.h"
+#include "Fwmark.h"
 #include "NetdClient.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
 #include "ResponseCode.h"
 #include "Stopwatch.h"
-#include "thread_util.h"
 #include "android/net/metrics/INetdEventListener.h"
+#include "netd_resolv/DnsTlsDispatcher.h"
+#include "netd_resolv/DnsTlsTransport.h"
+#include "thread_util.h"
 
 using android::String16;
 using android::net::metrics::INetdEventListener;

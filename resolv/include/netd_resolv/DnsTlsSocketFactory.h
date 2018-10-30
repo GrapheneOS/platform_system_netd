@@ -19,8 +19,8 @@
 
 #include <memory>
 
-#include "dns/DnsTlsSocket.h"
-#include "dns/IDnsTlsSocketFactory.h"
+#include "DnsTlsSocket.h"
+#include "IDnsTlsSocketFactory.h"
 
 namespace android {
 namespace net {

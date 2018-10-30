@@ -38,7 +38,7 @@
 #include "DumpWriter.h"
 #include "EventReporter.h"
 #include "InterfaceController.h"
-#include "NetdConstants.h"
+#include "NetdConstants.h"  // SHA256_SIZE
 #include "NetdNativeService.h"
 #include "Permission.h"
 #include "Process.h"
