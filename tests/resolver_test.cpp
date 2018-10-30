@@ -15,6 +15,8 @@
  *
  */
 
+#define LOG_TAG "netd_test"
+
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <stdarg.h>
@@ -30,22 +32,14 @@
 
 #include <android-base/stringprintf.h>
 #include <cutils/sockets.h>
-#include <private/android_filesystem_config.h>
-
+#include <gtest/gtest.h>
 #include <openssl/base64.h>
-
-#define LOG_TAG "netd_test"
-// TODO: make this dynamic and stop depending on implementation details.
-#define TEST_NETID 30
+#include <private/android_filesystem_config.h>
+#include <utils/Log.h>
 
 #include "NetdClient.h"
 #include "netid_client.h"  // NETID_UNSET
-
-#include <gtest/gtest.h>
-#include <netd_resolv/params.h>
-#include <netd_resolv/resolv.h>  // android_getaddrinfofornet()
-
-#include <utils/Log.h>
+#include "netd_resolv/params.h"  // MAX_NS
 
 #include "dns_responder.h"
 #include "dns_responder_client.h"
@@ -58,6 +52,15 @@
 #include "android/net/metrics/INetdEventListener.h"
 #include "binder/IServiceManager.h"
 #include "netdutils/SocketOption.h"
+
+// TODO: make this dynamic and stop depending on implementation details.
+#define TEST_NETID 30
+
+// Semi-public Bionic hook used by the NDK (frameworks/base/native/android/net.c)
+// Tested here for convenience.
+extern "C" int android_getaddrinfofornet(const char* hostname, const char* servname,
+                                         const addrinfo* hints, unsigned netid, unsigned mark,
+                                         struct addrinfo** result);
 
 using android::base::StringPrintf;
 using android::net::ResolverStats;
@@ -1409,8 +1412,9 @@ TEST_F(ResolverTest, TlsBypass) {
                 << ", result_str='" << result_str << "'";
         } else if (config.method == GETADDRINFOFORNET) {
             addrinfo* raw_ai_result = nullptr;
-            EXPECT_EQ(0, android_getaddrinfofornet(host_name, nullptr, nullptr, BYPASS_NETID,
-                                                   MARK_UNSET, &raw_ai_result));
+            EXPECT_EQ(0, android_getaddrinfofornet(host_name, /*servname=*/nullptr,
+                                                   /*hints=*/nullptr, BYPASS_NETID, MARK_UNSET,
+                                                   &raw_ai_result));
             ai_result.reset(raw_ai_result);
 
             EXPECT_LE(1U, GetNumQueries(dns, host_name));

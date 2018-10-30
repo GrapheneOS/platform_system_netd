@@ -288,4 +288,7 @@ void res_setnetcontext(res_state, const struct android_net_context*);
 
 u_int res_randomid(void);
 
+int getaddrinfo_numeric(const char* hostname, const char* servname, addrinfo hints,
+                        addrinfo** result);
+
 #endif  // NETD_RESOLV_PRIVATE_H
