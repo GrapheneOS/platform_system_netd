@@ -16,7 +16,7 @@
 
 package android.net;
 
-import android.net.UidRange;
+import android.net.UidRangeParcel;
 import android.net.TetherStatsParcel;
 
 /** {@hide} */
@@ -130,7 +130,7 @@ interface INetd {
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
      */
-    void networkAddUidRanges(int netId, in UidRange[] uidRanges);
+    void networkAddUidRanges(int netId, in UidRangeParcel[] uidRanges);
 
     /**
      * Adds the specified UID ranges to the specified network. The network must be a VPN. Traffic
@@ -143,7 +143,7 @@ interface INetd {
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
      */
-    void networkRemoveUidRanges(int netId, in UidRange[] uidRanges);
+    void networkRemoveUidRanges(int netId, in UidRangeParcel[] uidRanges);
 
     /**
      * Adds or removes one rule for each supplied UID range to prohibit all network activity outside
@@ -166,12 +166,12 @@ interface INetd {
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
      */
-    void networkRejectNonSecureVpn(boolean add, in UidRange[] uidRanges);
+    void networkRejectNonSecureVpn(boolean add, in UidRangeParcel[] uidRanges);
 
     /**
      * Administratively closes sockets belonging to the specified UIDs.
      */
-    void socketDestroy(in UidRange[] uidRanges, in int[] exemptUids);
+    void socketDestroy(in UidRangeParcel[] uidRanges, in int[] exemptUids);
 
     // Array indices for resolver parameters.
     const int RESOLVER_PARAMS_SAMPLE_VALIDITY = 0;

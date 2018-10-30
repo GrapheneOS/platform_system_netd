@@ -48,7 +48,6 @@
 #include "Stopwatch.h"
 #include "XfrmController.h"
 #include "android/net/INetd.h"
-#include "android/net/UidRange.h"
 #include "binder/IServiceManager.h"
 #include "netdutils/MockSyscalls.h"
 #include "netdutils/Netlink.h"
@@ -130,10 +129,8 @@ void expectAddressEquals(int family, const std::string& expected, const xfrm_add
 }
 
 class XfrmControllerTest : public ::testing::Test {
-public:
-    MockSyscalls mockSyscalls;
-
-    void SetUp() override { netdutils::sSyscalls.swap(mockSyscalls); }
+  public:
+    testing::StrictMock<netdutils::ScopedMockSyscalls> mockSyscalls;
 };
 
 // Test class allowing IPv4/IPv6 parameterized tests.
