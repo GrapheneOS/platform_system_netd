@@ -17,7 +17,7 @@
 #define LOG_TAG "DnsTlsQueryMap"
 //#define LOG_NDEBUG 0
 
-#include "dns/DnsTlsTransport.h"
+#include "netd_resolv/DnsTlsQueryMap.h"
 
 #include "log/log.h"
 

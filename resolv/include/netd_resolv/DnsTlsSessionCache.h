@@ -17,15 +17,15 @@
 #ifndef _DNS_DNSTLSSESSIONCACHE_H
 #define _DNS_DNSTLSSESSIONCACHE_H
 
-#include <mutex>
 #include <deque>
+#include <mutex>
 
 #include <openssl/ssl.h>
 
 #include <android-base/thread_annotations.h>
 #include <android-base/unique_fd.h>
 
-#include "dns/DnsTlsServer.h"
+#include "params.h"
 
 namespace android {
 namespace net {
