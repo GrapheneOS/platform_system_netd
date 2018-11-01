@@ -46,8 +46,8 @@ using netdutils::Slice;
 // or the destructor in a callback.  Doing so will result in deadlocks.
 // This class may call the observer at any time after initialize(), until the destructor
 // returns (but not after).
-class LIBNETD_RESOLV_TLS_EXPORT DnsTlsSocket : public IDnsTlsSocket {
-public:
+class DnsTlsSocket : public IDnsTlsSocket {
+  public:
     DnsTlsSocket(const DnsTlsServer& server, unsigned mark,
                  IDnsTlsSocketObserver* _Nonnull observer,
                  DnsTlsSessionCache* _Nonnull cache) :
