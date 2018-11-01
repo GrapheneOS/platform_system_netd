@@ -24,15 +24,16 @@
 #include <set>
 #include <vector>
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
-#include <netdb.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <netinet/in.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <openssl/base64.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
 #include <android-base/file.h>
 #include <android-base/macros.h>
@@ -76,10 +77,13 @@ using android::base::StringPrintf;
 using android::base::Trim;
 using android::bpf::hasBpfSupport;
 using android::net::INetd;
+using android::net::InterfaceConfigurationParcel;
+using android::net::InterfaceController;
 using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
 using android::net::XfrmController;
+using android::netdutils::sSyscalls;
 
 #define SKIP_IF_BPF_SUPPORTED        \
     do {                             \
@@ -2327,4 +2331,311 @@ TEST_F(BinderTest, FirewallEnableDisableChildChains) {
     status = mNetd->firewallEnableChildChain(INetd::FIREWALL_CHAIN_POWERSAVE, false);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectFirewallChildChainsLastRuleDoesNotExist(FIREWALL_POWERSAVE);
+}
+
+namespace {
+
+std::string hwAddrToStr(unsigned char* hwaddr) {
+    return StringPrintf("%02x:%02x:%02x:%02x:%02x:%02x", hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3],
+                        hwaddr[4], hwaddr[5]);
+}
+
+int ipv4NetmaskToPrefixLength(in_addr_t mask) {
+    int prefixLength = 0;
+    uint32_t m = ntohl(mask);
+    while (m & (1 << 31)) {
+        prefixLength++;
+        m = m << 1;
+    }
+    return prefixLength;
+}
+
+std::string toStdString(const String16& s) {
+    return std::string(String8(s.string()));
+}
+
+android::netdutils::StatusOr<ifreq> ioctlByIfName(const std::string& ifName, unsigned long flag) {
+    const auto& sys = sSyscalls.get();
+    auto fd = sys.socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    EXPECT_TRUE(isOk(fd.status()));
+
+    struct ifreq ifr = {};
+    strlcpy(ifr.ifr_name, ifName.c_str(), IFNAMSIZ);
+
+    return sys.ioctl(fd.value(), flag, &ifr);
+}
+
+std::string getInterfaceHwAddr(const std::string& ifName) {
+    auto res = ioctlByIfName(ifName, SIOCGIFHWADDR);
+
+    unsigned char hwaddr[ETH_ALEN] = {};
+    if (isOk(res.status())) {
+        memcpy((void*) hwaddr, &res.value().ifr_hwaddr.sa_data, ETH_ALEN);
+    }
+
+    return hwAddrToStr(hwaddr);
+}
+
+int getInterfaceIPv4Prefix(const std::string& ifName) {
+    auto res = ioctlByIfName(ifName, SIOCGIFNETMASK);
+
+    int prefixLength = 0;
+    if (isOk(res.status())) {
+        prefixLength = ipv4NetmaskToPrefixLength(
+                ((struct sockaddr_in*) &res.value().ifr_addr)->sin_addr.s_addr);
+    }
+
+    return prefixLength;
+}
+
+std::string getInterfaceIPv4Addr(const std::string& ifName) {
+    auto res = ioctlByIfName(ifName, SIOCGIFADDR);
+
+    struct in_addr addr = {};
+    if (isOk(res.status())) {
+        addr.s_addr = ((struct sockaddr_in*) &res.value().ifr_addr)->sin_addr.s_addr;
+    }
+
+    return std::string(inet_ntoa(addr));
+}
+
+std::vector<std::string> getInterfaceFlags(const std::string& ifName) {
+    auto res = ioctlByIfName(ifName, SIOCGIFFLAGS);
+
+    unsigned flags = 0;
+    if (isOk(res.status())) {
+        flags = res.value().ifr_flags;
+    }
+
+    std::vector<std::string> ifFlags;
+    ifFlags.push_back(flags & IFF_UP ? toStdString(INetd::IF_STATE_UP())
+                                     : toStdString(INetd::IF_STATE_DOWN()));
+
+    if (flags & IFF_BROADCAST) ifFlags.push_back(toStdString(INetd::IF_FLAG_BROADCAST()));
+    if (flags & IFF_LOOPBACK) ifFlags.push_back(toStdString(INetd::IF_FLAG_LOOPBACK()));
+    if (flags & IFF_POINTOPOINT) ifFlags.push_back(toStdString(INetd::IF_FLAG_POINTOPOINT()));
+    if (flags & IFF_RUNNING) ifFlags.push_back(toStdString(INetd::IF_FLAG_RUNNING()));
+    if (flags & IFF_MULTICAST) ifFlags.push_back(toStdString(INetd::IF_FLAG_MULTICAST()));
+
+    return ifFlags;
+}
+
+bool compareListInterface(const std::vector<std::string>& interfaceList) {
+    const auto& res = InterfaceController::getIfaceNames();
+    EXPECT_TRUE(isOk(res));
+
+    std::vector<std::string> resIfList;
+    resIfList.reserve(res.value().size());
+    resIfList.insert(end(resIfList), begin(res.value()), end(res.value()));
+
+    return resIfList == interfaceList;
+}
+
+int getInterfaceIPv6PrivacyExtensions(const std::string& ifName) {
+    std::string path = StringPrintf("/proc/sys/net/ipv6/conf/%s/use_tempaddr", ifName.c_str());
+    return readIntFromPath(path);
+}
+
+bool getInterfaceEnableIPv6(const std::string& ifName) {
+    std::string path = StringPrintf("/proc/sys/net/ipv6/conf/%s/disable_ipv6", ifName.c_str());
+
+    int disableIPv6 = readIntFromPath(path);
+    return !disableIPv6;
+}
+
+int getInterfaceMtu(const std::string& ifName) {
+    std::string path = StringPrintf("/sys/class/net/%s/mtu", ifName.c_str());
+    return readIntFromPath(path);
+}
+
+void expectInterfaceList(const std::vector<std::string>& interfaceList) {
+    EXPECT_TRUE(compareListInterface(interfaceList));
+}
+
+void expectCurrentInterfaceConfigurationEquals(const std::string& ifName,
+                                               const InterfaceConfigurationParcel& interfaceCfg) {
+    EXPECT_EQ(getInterfaceIPv4Addr(ifName), interfaceCfg.ipv4Addr);
+    EXPECT_EQ(getInterfaceIPv4Prefix(ifName), interfaceCfg.prefixLength);
+    EXPECT_EQ(getInterfaceHwAddr(ifName), interfaceCfg.hwAddr);
+    EXPECT_EQ(getInterfaceFlags(ifName), interfaceCfg.flags);
+}
+
+void expectCurrentInterfaceConfigurationAlmostEqual(const InterfaceConfigurationParcel& setCfg) {
+    EXPECT_EQ(getInterfaceIPv4Addr(setCfg.ifName), setCfg.ipv4Addr);
+    EXPECT_EQ(getInterfaceIPv4Prefix(setCfg.ifName), setCfg.prefixLength);
+
+    const auto& ifFlags = getInterfaceFlags(setCfg.ifName);
+    for (const auto& flag : setCfg.flags) {
+        EXPECT_TRUE(std::find(ifFlags.begin(), ifFlags.end(), flag) != ifFlags.end());
+    }
+}
+
+void expectInterfaceIPv6PrivacyExtensions(const std::string& ifName, bool enable) {
+    int v6PrivacyExtensions = getInterfaceIPv6PrivacyExtensions(ifName);
+    EXPECT_EQ(v6PrivacyExtensions, enable ? 2 : 0);
+}
+
+void expectInterfaceNoAddr(const std::string& ifName) {
+    // noAddr
+    EXPECT_EQ(getInterfaceIPv4Addr(ifName), "0.0.0.0");
+    // noPrefix
+    EXPECT_EQ(getInterfaceIPv4Prefix(ifName), 0);
+}
+
+void expectInterfaceEnableIPv6(const std::string& ifName, bool enable) {
+    int enableIPv6 = getInterfaceEnableIPv6(ifName);
+    EXPECT_EQ(enableIPv6, enable);
+}
+
+void expectInterfaceMtu(const std::string& ifName, const int mtu) {
+    int mtuSize = getInterfaceMtu(ifName);
+    EXPECT_EQ(mtu, mtuSize);
+}
+
+InterfaceConfigurationParcel makeInterfaceCfgParcel(const std::string& ifName,
+                                                    const std::string& addr, int prefixLength,
+                                                    const std::vector<std::string>& flags) {
+    InterfaceConfigurationParcel cfg;
+    cfg.ifName = ifName;
+    cfg.hwAddr = "";
+    cfg.ipv4Addr = addr;
+    cfg.prefixLength = prefixLength;
+    cfg.flags = flags;
+    return cfg;
+}
+
+void expectTunFlags(const InterfaceConfigurationParcel& interfaceCfg) {
+    std::vector<std::string> expectedFlags = {"up", "point-to-point", "running", "multicast"};
+    std::vector<std::string> unexpectedFlags = {"down", "broadcast"};
+
+    for (const auto& flag : expectedFlags) {
+        EXPECT_TRUE(std::find(interfaceCfg.flags.begin(), interfaceCfg.flags.end(), flag) !=
+                    interfaceCfg.flags.end());
+    }
+
+    for (const auto& flag : unexpectedFlags) {
+        EXPECT_TRUE(std::find(interfaceCfg.flags.begin(), interfaceCfg.flags.end(), flag) ==
+                    interfaceCfg.flags.end());
+    }
+}
+
+}  // namespace
+
+TEST_F(BinderTest, InterfaceList) {
+    std::vector<std::string> interfaceListResult;
+
+    binder::Status status = mNetd->interfaceGetList(&interfaceListResult);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectInterfaceList(interfaceListResult);
+}
+
+TEST_F(BinderTest, InterfaceGetCfg) {
+    InterfaceConfigurationParcel interfaceCfgResult;
+
+    // Add test physical network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    binder::Status status = mNetd->interfaceGetCfg(sTun.name(), &interfaceCfgResult);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectCurrentInterfaceConfigurationEquals(sTun.name(), interfaceCfgResult);
+    expectTunFlags(interfaceCfgResult);
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
+TEST_F(BinderTest, InterfaceSetCfg) {
+    const std::string testAddr = "192.0.2.3";
+    const int testPrefixLength = 24;
+    std::vector<std::string> upFlags = {"up"};
+    std::vector<std::string> downFlags = {"down"};
+
+    // Add test physical network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    // Set tun interface down.
+    auto interfaceCfg = makeInterfaceCfgParcel(sTun.name(), testAddr, testPrefixLength, downFlags);
+    binder::Status status = mNetd->interfaceSetCfg(interfaceCfg);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectCurrentInterfaceConfigurationAlmostEqual(interfaceCfg);
+
+    // Set tun interface up again.
+    interfaceCfg = makeInterfaceCfgParcel(sTun.name(), testAddr, testPrefixLength, upFlags);
+    status = mNetd->interfaceSetCfg(interfaceCfg);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    status = mNetd->interfaceClearAddrs(sTun.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
+TEST_F(BinderTest, InterfaceSetIPv6PrivacyExtensions) {
+    // enable
+    binder::Status status = mNetd->interfaceSetIPv6PrivacyExtensions(sTun.name(), true);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectInterfaceIPv6PrivacyExtensions(sTun.name(), true);
+
+    // disable
+    status = mNetd->interfaceSetIPv6PrivacyExtensions(sTun.name(), false);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectInterfaceIPv6PrivacyExtensions(sTun.name(), false);
+}
+
+TEST_F(BinderTest, InterfaceClearAddr) {
+    const std::string testAddr = "192.0.2.3";
+    const int testPrefixLength = 24;
+    std::vector<std::string> noFlags{};
+
+    // Add test physical network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    auto interfaceCfg = makeInterfaceCfgParcel(sTun.name(), testAddr, testPrefixLength, noFlags);
+    binder::Status status = mNetd->interfaceSetCfg(interfaceCfg);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectCurrentInterfaceConfigurationAlmostEqual(interfaceCfg);
+
+    status = mNetd->interfaceClearAddrs(sTun.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectInterfaceNoAddr(sTun.name());
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
+TEST_F(BinderTest, InterfaceSetEnableIPv6) {
+    // Add test physical network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    // disable
+    binder::Status status = mNetd->interfaceSetEnableIPv6(sTun.name(), false);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectInterfaceEnableIPv6(sTun.name(), false);
+
+    // enable
+    status = mNetd->interfaceSetEnableIPv6(sTun.name(), true);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectInterfaceEnableIPv6(sTun.name(), true);
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
+TEST_F(BinderTest, InterfaceSetMtu) {
+    const int testMtu = 1200;
+
+    // Add test physical network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    binder::Status status = mNetd->interfaceSetMtu(sTun.name(), testMtu);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectInterfaceMtu(sTun.name(), testMtu);
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
