@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
+#include "netdutils/Syscalls.h"
+
 #include <atomic>
 #include <type_traits>
 #include <utility>
-
-#include "netdutils/Syscalls.h"
 
 namespace android {
 namespace netdutils {
@@ -97,6 +97,14 @@ class RealSyscalls final : public Syscalls {
             return statusFromErrno(errno, "connect() failed");
         }
         return status::ok;
+    }
+
+    StatusOr<ifreq> ioctl(Fd sock, unsigned long request, ifreq* ifr) const override {
+        auto rv = ::ioctl(sock.get(), request, ifr);
+        if (rv == -1) {
+            return statusFromErrno(errno, "ioctl() failed");
+        }
+        return *ifr;
     }
 
     StatusOr<UniqueFd> eventfd(unsigned int initval, int flags) const override {

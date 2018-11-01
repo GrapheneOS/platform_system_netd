@@ -18,14 +18,17 @@
 #include <errno.h>
 #include <malloc.h>
 #include <net/if.h>
+#include <net/if_arp.h>
 #include <sys/socket.h>
 
 #include <functional>
+
 #define LOG_TAG "InterfaceController"
 #include <android-base/file.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <linux/if_ether.h>
 #include <log/log.h>
 #include <logwrap/logwrap.h>
 #include <netutils/ifc.h>
@@ -52,6 +55,13 @@ using android::netdutils::statusFromErrno;
 using android::netdutils::StatusOr;
 using android::netdutils::toString;
 using android::netdutils::status::ok;
+
+#define RETURN_STATUS_IF_IFCERROR(exp)                           \
+    do {                                                         \
+        if ((exp) == -1) {                                       \
+            return statusFromErrno(errno, "Failed to add addr"); \
+        }                                                        \
+    } while (0);
 
 namespace {
 
@@ -104,7 +114,7 @@ int writeValueToPath(
         const char* dirname, const char* subdirname, const char* basename,
         const char* value) {
     std::string path(StringPrintf("%s/%s/%s", dirname, subdirname, basename));
-    return WriteStringToFile(value, path) ? 0 : -1;
+    return WriteStringToFile(value, path) ? 0 : -EREMOTEIO;
 }
 
 // Run @fn on each interface as well as 'default' in the path @dirname.
@@ -193,6 +203,7 @@ Status setProperty(const std::string& key, const std::string& val) {
 
 namespace android {
 namespace net {
+std::mutex InterfaceController::mutex;
 
 android::netdutils::Status InterfaceController::enableStablePrivacyAddresses(
         const std::string& iface,
@@ -261,8 +272,7 @@ void InterfaceController::initializeAll() {
 
 int InterfaceController::setEnableIPv6(const char *interface, const int on) {
     if (!isIfaceName(interface)) {
-        errno = ENOENT;
-        return -1;
+        return -ENOENT;
     }
     // When disable_ipv6 changes from 1 to 0, the kernel starts autoconf.
     // When disable_ipv6 changes from 0 to 1, the kernel clears all autoconf
@@ -327,7 +337,7 @@ int InterfaceController::setIPv6DadTransmits(const char *interface, const char *
 int InterfaceController::setIPv6PrivacyExtensions(const char *interface, const int on) {
     if (!isIfaceName(interface)) {
         errno = ENOENT;
-        return -1;
+        return -errno;
     }
     // 0: disable IPv6 privacy addresses
     // 2: enable IPv6 privacy addresses and prefer them over non-privacy ones.
@@ -353,7 +363,7 @@ int InterfaceController::setMtu(const char *interface, const char *mtu)
 {
     if (!isIfaceName(interface)) {
         errno = ENOENT;
-        return -1;
+        return -errno;
     }
     return writeValueToPath(sys_net_path, interface, "mtu", mtu);
 }
@@ -440,6 +450,119 @@ StatusOr<std::map<std::string, uint32_t>> InterfaceController::getIfaceList() {
         }
     }
     return ifacePairs;
+}
+
+namespace {
+
+std::string hwAddrToStr(unsigned char* hwaddr) {
+    return StringPrintf("%02x:%02x:%02x:%02x:%02x:%02x", hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3],
+                        hwaddr[4], hwaddr[5]);
+}
+
+int ipv4NetmaskToPrefixLength(in_addr_t mask) {
+    int prefixLength = 0;
+    uint32_t m = ntohl(mask);
+    while (m & (1 << 31)) {
+        prefixLength++;
+        m = m << 1;
+    }
+    return prefixLength;
+}
+
+std::string toStdString(const String16& s) {
+    return std::string(String8(s.string()));
+}
+
+}  // namespace
+
+Status InterfaceController::setCfg(const InterfaceConfigurationParcel& cfg) {
+    const auto& sys = sSyscalls.get();
+    ASSIGN_OR_RETURN(auto fd, sys.socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+    struct ifreq ifr = {
+            .ifr_addr = {.sa_family = AF_INET},  // Clear the IPv4 address.
+    };
+    strlcpy(ifr.ifr_name, cfg.ifName.c_str(), IFNAMSIZ);
+
+    // Make sure that clear IPv4 address before set flag
+    // SIOCGIFFLAGS might override ifr and caused clear IPv4 addr ioctl error
+    RETURN_IF_NOT_OK(sys.ioctl(fd, SIOCSIFADDR, &ifr));
+
+    if (!cfg.flags.empty()) {
+        RETURN_IF_NOT_OK(sys.ioctl(fd, SIOCGIFFLAGS, &ifr));
+        uint16_t flags = ifr.ifr_flags;
+
+        for (const auto& flag : cfg.flags) {
+            if (flag == toStdString(INetd::IF_STATE_UP())) {
+                ifr.ifr_flags = ifr.ifr_flags | IFF_UP;
+            } else if (flag == toStdString(INetd::IF_STATE_DOWN())) {
+                ifr.ifr_flags = (ifr.ifr_flags & (~IFF_UP));
+            }
+        }
+
+        if (ifr.ifr_flags != flags) {
+            RETURN_IF_NOT_OK(sys.ioctl(fd, SIOCSIFFLAGS, &ifr));
+        }
+    }
+
+    RETURN_STATUS_IF_IFCERROR(
+            ifc_add_address(cfg.ifName.c_str(), cfg.ipv4Addr.c_str(), cfg.prefixLength));
+
+    return ok;
+}
+
+StatusOr<InterfaceConfigurationParcel> InterfaceController::getCfg(const std::string& ifName) {
+    struct in_addr addr = {};
+    int prefixLength = 0;
+    unsigned char hwaddr[ETH_ALEN] = {};
+    unsigned flags = 0;
+    InterfaceConfigurationParcel cfgResult;
+
+    const auto& sys = sSyscalls.get();
+    ASSIGN_OR_RETURN(auto fd, sys.socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+
+    struct ifreq ifr = {};
+    strlcpy(ifr.ifr_name, ifName.c_str(), IFNAMSIZ);
+
+    if (isOk(sys.ioctl(fd, SIOCGIFADDR, &ifr))) {
+        addr.s_addr = ((struct sockaddr_in*) &ifr.ifr_addr)->sin_addr.s_addr;
+    }
+
+    if (isOk(sys.ioctl(fd, SIOCGIFNETMASK, &ifr))) {
+        prefixLength =
+                ipv4NetmaskToPrefixLength(((struct sockaddr_in*) &ifr.ifr_addr)->sin_addr.s_addr);
+    }
+
+    if (isOk(sys.ioctl(fd, SIOCGIFFLAGS, &ifr))) {
+        flags = ifr.ifr_flags;
+    }
+
+    // ETH_ALEN is for ARPHRD_ETHER, it is better to check the sa_family.
+    // However, we keep old design for the consistency.
+    if (isOk(sys.ioctl(fd, SIOCGIFHWADDR, &ifr))) {
+        memcpy((void*) hwaddr, &ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    } else {
+        ALOGW("Failed to retrieve HW addr for %s (%s)", ifName.c_str(), strerror(errno));
+    }
+
+    cfgResult.ifName = ifName;
+    cfgResult.hwAddr = hwAddrToStr(hwaddr);
+    cfgResult.ipv4Addr = std::string(inet_ntoa(addr));
+    cfgResult.prefixLength = prefixLength;
+    cfgResult.flags.push_back(flags & IFF_UP ? toStdString(INetd::IF_STATE_UP())
+                                             : toStdString(INetd::IF_STATE_DOWN()));
+
+    if (flags & IFF_BROADCAST) cfgResult.flags.push_back(toStdString(INetd::IF_FLAG_BROADCAST()));
+    if (flags & IFF_LOOPBACK) cfgResult.flags.push_back(toStdString(INetd::IF_FLAG_LOOPBACK()));
+    if (flags & IFF_POINTOPOINT)
+        cfgResult.flags.push_back(toStdString(INetd::IF_FLAG_POINTOPOINT()));
+    if (flags & IFF_RUNNING) cfgResult.flags.push_back(toStdString(INetd::IF_FLAG_RUNNING()));
+    if (flags & IFF_MULTICAST) cfgResult.flags.push_back(toStdString(INetd::IF_FLAG_MULTICAST()));
+
+    return cfgResult;
+}
+
+int InterfaceController::clearAddrs(const std::string& ifName) {
+    return ifc_clear_addresses(ifName.c_str());
 }
 
 }  // namespace net
