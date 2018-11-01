@@ -18,6 +18,7 @@ package android.net;
 
 import android.net.UidRangeParcel;
 import android.net.TetherStatsParcel;
+import android.net.InterfaceConfigurationParcel;
 
 /** {@hide} */
 interface INetd {
@@ -1058,4 +1059,78 @@ interface INetd {
     */
     void firewallEnableChildChain(int childChain, boolean enable);
 
+   /**
+    * Get interface list
+    *
+    * @return A list of all the interfaces on the system.
+    * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+    *         unix errno.
+    */
+    @utf8InCpp List<String> interfaceGetList();
+
+    const String IF_STATE_UP = "up";
+    const String IF_STATE_DOWN = "down";
+    const String IF_FLAG_BROADCAST = "broadcast";
+    const String IF_FLAG_LOOPBACK = "loopback";
+    const String IF_FLAG_POINTOPOINT = "point-to-point";
+    const String IF_FLAG_RUNNING = "running";
+    const String IF_FLAG_MULTICAST = "multicast";
+
+   /**
+    * Get interface configuration
+    *
+    * @param ifName interface name
+    * @return An InterfaceConfigurationParcel for the specified interface.
+    * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+    *         unix errno.
+    */
+    InterfaceConfigurationParcel interfaceGetCfg(in @utf8InCpp String ifName);
+
+   /**
+    * Set interface configuration
+    *
+    * @param cfg Interface configuration to set
+    * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+    *         unix errno.
+    */
+    void interfaceSetCfg(in InterfaceConfigurationParcel cfg);
+
+   /**
+    * Set interface IPv6 privacy extensions
+    *
+    * @param ifName interface name
+    * @param enable whether to enable or disable this setting.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void interfaceSetIPv6PrivacyExtensions(in @utf8InCpp String ifName, boolean enable);
+
+   /**
+    * Clear all IP addresses on the given interface
+    *
+    * @param ifName interface name
+    * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+    *         POSIX errno.
+    */
+    void interfaceClearAddrs(in @utf8InCpp String ifName);
+
+   /**
+    * Enable or disable IPv6 on the given interface
+    *
+    * @param ifName interface name
+    * @param enable whether to enable or disable this setting.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void interfaceSetEnableIPv6(in @utf8InCpp String ifName, boolean enable);
+
+   /**
+    * Set interface MTU
+    *
+    * @param ifName interface name
+    * @param mtu MTU value
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void interfaceSetMtu(in @utf8InCpp String ifName, int mtu);
 }
