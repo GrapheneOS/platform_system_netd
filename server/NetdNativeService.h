@@ -137,6 +137,15 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             const std::string &addrString, int prefixLength) override;
     binder::Status interfaceDelAddress(const std::string &ifName,
             const std::string &addrString, int prefixLength) override;
+    binder::Status interfaceGetList(std::vector<std::string>* interfaceListResult) override;
+    binder::Status interfaceGetCfg(const std::string& ifName,
+                                   InterfaceConfigurationParcel* interfaceGetCfgResult) override;
+    binder::Status interfaceSetCfg(const InterfaceConfigurationParcel& cfg) override;
+    binder::Status interfaceSetIPv6PrivacyExtensions(const std::string& ifName,
+                                                     bool enable) override;
+    binder::Status interfaceClearAddrs(const std::string& ifName) override;
+    binder::Status interfaceSetEnableIPv6(const std::string& ifName, bool enable) override;
+    binder::Status interfaceSetMtu(const std::string& ifName, int32_t mtuValue) override;
 
     binder::Status getProcSysNet(int32_t ipversion, int32_t which, const std::string& ifname,
                                  const std::string& parameter, std::string* value) override;

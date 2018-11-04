@@ -67,6 +67,7 @@ cc_test {
         "libnetdaidl",
         "libnetdbpf",
         "libnetdutils",
+        "netd_aidl_interface-cpp",
     ],
     compile_multilib: "both",
     multilib: {
