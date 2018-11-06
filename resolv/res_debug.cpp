@@ -121,8 +121,6 @@ struct res_sym {
     const char* humanname; /* Its fun name, like "mail exchanger" */
 };
 
-extern const char* const _res_opcodes[];
-
 static void do_section(const res_state statp, ns_msg* handle, ns_sect section, int pflag,
                        FILE* file) {
     int n, sflag, rrnum;
