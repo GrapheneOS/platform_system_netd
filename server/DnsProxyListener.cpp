@@ -357,7 +357,7 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     Stopwatch s;
     maybeFixupNetContext(&mNetContext);
     const uid_t uid = mClient->getUid();
-    uint32_t rv = 0;
+    int32_t rv = 0;
     if (queryLimiter.start(uid)) {
         rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, &result);
         queryLimiter.finish(uid);
@@ -408,13 +408,13 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
             case INetdEventListener::REPORTING_LEVEL_METRICS:
                 // Metrics reporting is on. Send metrics.
                 mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
-                                               INetdEventListener::EVENT_GETADDRINFO, (int32_t) rv,
+                                               INetdEventListener::EVENT_GETADDRINFO, rv,
                                                latencyMs, String16(""), {}, -1, -1);
                 break;
             case INetdEventListener::REPORTING_LEVEL_FULL:
                 // Full event info reporting is on. Send full info.
                 mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
-                                               INetdEventListener::EVENT_GETADDRINFO, (int32_t) rv,
+                                               INetdEventListener::EVENT_GETADDRINFO, rv,
                                                latencyMs, String16(mHost), ip_addrs,
                                                total_ip_addr_count, mNetContext.uid);
                 break;
@@ -583,10 +583,12 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     maybeFixupNetContext(&mNetContext);
     const uid_t uid = mClient->getUid();
     struct hostent* hp = nullptr;
+    int32_t rv = 0;
     if (queryLimiter.start(uid)) {
-        hp = android_gethostbynamefornetcontext(mName, mAf, &mNetContext);
+        rv = android_gethostbynamefornetcontext(mName, mAf, &mNetContext, &hp);
         queryLimiter.finish(uid);
     } else {
+        rv = EAI_MEMORY;
         ALOGE("gethostbyname: from UID %d, max concurrent queries reached", uid);
     }
     const int latencyMs = lround(s.timeTaken());
@@ -600,6 +602,7 @@ void DnsProxyListener::GetHostByNameHandler::run() {
 
     bool success = true;
     if (hp) {
+        // hp is not nullptr iff. rv is 0.
         success = mClient->sendCode(ResponseCode::DnsProxyQueryResult) == 0;
         success &= sendhostent(mClient, hp);
     } else {
@@ -638,13 +641,13 @@ void DnsProxyListener::GetHostByNameHandler::run() {
                 // Metrics reporting is on. Send metrics.
                 mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
                                                INetdEventListener::EVENT_GETHOSTBYNAME,
-                                               h_errno, latencyMs, String16(""), {}, -1, -1);
+                                               rv, latencyMs, String16(""), {}, -1, -1);
                 break;
             case INetdEventListener::REPORTING_LEVEL_FULL:
                 // Full event info reporting is on. Send full info.
                 mNetdEventListener->onDnsEvent(mNetContext.dns_netid,
                                                INetdEventListener::EVENT_GETHOSTBYNAME,
-                                               h_errno, latencyMs, String16(mName), ip_addrs,
+                                               rv, latencyMs, String16(mName), ip_addrs,
                                                total_ip_addr_count, uid);
                 break;
         }

@@ -137,10 +137,13 @@ static void addrsort(char**, int, res_state);
 
 static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
                              const android_net_context* netcontext, getnamaddr* info);
-static bool _dns_gethtbyname(const char* name, int af, getnamaddr* info);
+static int _dns_gethtbyname(const char* name, int af, getnamaddr* info);
 
-static struct hostent* gethostbyname_internal(const char*, int, res_state, struct hostent*, char*,
-                                              size_t, int*, const struct android_net_context*);
+static int gethostbyname_internal(const char* name, int af, res_state res, hostent* hp, char* hbuf,
+                                  size_t hbuflen, int* errorp,
+                                  const android_net_context* netcontext);
+static int gethostbyname_internal_real(const char* name, int af, res_state res, hostent* hp,
+                                       char* buf, size_t buflen, int* he);
 static struct hostent* android_gethostbyaddrfornetcontext_proxy_internal(
         const void*, socklen_t, int, struct hostent*, char*, size_t, int*,
         const struct android_net_context*);
@@ -466,10 +469,9 @@ nospc:
     return NULL;
 }
 
-static struct hostent* gethostbyname_internal_real(const char* name, int af, res_state res,
-                                                   struct hostent* hp, char* buf, size_t buflen,
-                                                   int* he) {
-    struct getnamaddr info;
+static int gethostbyname_internal_real(const char* name, int af, res_state res, hostent* hp,
+                                       char* buf, size_t buflen, int* he) {
+    getnamaddr info;
     size_t size;
 
     _DIAGASSERT(name != NULL);
@@ -484,7 +486,7 @@ static struct hostent* gethostbyname_internal_real(const char* name, int af, res
         default:
             *he = NETDB_INTERNAL;
             errno = EAFNOSUPPORT;
-            return NULL;
+            return EAI_FAMILY;
     }
     if (buflen < size) goto nospc;
 
@@ -530,16 +532,18 @@ static struct hostent* gethostbyname_internal_real(const char* name, int af, res
     info.buflen = buflen;
     info.he = he;
     if (!_hf_gethtbyname2(name, af, &info)) {
-        if (!_dns_gethtbyname(name, af, &info)) {
-            return NULL;
+        int error = _dns_gethtbyname(name, af, &info);
+        if (error != 0) {
+            return error;
         }
     }
     *he = NETDB_SUCCESS;
-    return hp;
+    return 0;
 nospc:
     *he = NETDB_INTERNAL;
     errno = ENOSPC;
-    return NULL;
+    // Bad arguments
+    return EAI_FAIL;
 fake:
     HENT_ARRAY(hp->h_addr_list, 1, buf, buflen);
     HENT_ARRAY(hp->h_aliases, 0, buf, buflen);
@@ -549,7 +553,7 @@ fake:
 
     if (inet_pton(af, name, buf) <= 0) {
         *he = HOST_NOT_FOUND;
-        return NULL;
+        return EAI_NODATA;
     }
     hp->h_addr_list[0] = buf;
     hp->h_addr_list[1] = NULL;
@@ -558,14 +562,13 @@ fake:
     HENT_SCOPY(hp->h_name, name, buf, buflen);
     if (res->options & RES_USE_INET6) map_v4v6_hostent(hp, &buf, buf + buflen);
     *he = NETDB_SUCCESS;
-    return hp;
+    return 0;
 }
 
 // very similar in proxy-ness to android_getaddrinfo_proxy
-static struct hostent* gethostbyname_internal(const char* name, int af, res_state res,
-                                              struct hostent* hp, char* hbuf, size_t hbuflen,
-                                              int* errorp,
-                                              const struct android_net_context* netcontext) {
+static int gethostbyname_internal(const char* name, int af, res_state res, hostent* hp, char* hbuf,
+                                  size_t hbuflen, int* errorp,
+                                  const android_net_context* netcontext) {
     res_setnetcontext(res, netcontext);
     return gethostbyname_internal_real(name, af, res, hp, hbuf, hbuflen, errorp);
 }
@@ -691,7 +694,6 @@ struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, s
                 af = AF_INET;
                 len = NS_INADDRSZ;
             }
-            res_put_state(res);
         }
 
         /* if this is not something we're looking for, skip it. */
@@ -841,7 +843,7 @@ static void addrsort(char** ap, int num, res_state res) {
     }
 }
 
-static bool _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
+static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
     int n, type;
     struct hostent* hp;
     res_state res;
@@ -858,32 +860,37 @@ static bool _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) 
             type = T_AAAA;
             break;
         default:
-            return false;
+            return EAI_FAMILY;
     }
     querybuf* buf = (querybuf*) malloc(sizeof(querybuf));
     if (buf == NULL) {
         *info->he = NETDB_INTERNAL;
-        return false;
+        return EAI_MEMORY;
     }
     res = res_get_state();
     if (res == NULL) {
         free(buf);
-        return false;
+        return EAI_MEMORY;
     }
     n = res_nsearch(res, name, C_IN, type, buf->buf, (int) sizeof(buf->buf));
     if (n < 0) {
         free(buf);
         debugprintf("res_nsearch failed (%d)\n", res, n);
-        res_put_state(res);
-        return false;
+        return EAI_NODATA;
     }
     hp = getanswer(buf, n, name, type, res, info->hp, info->buf, info->buflen, info->he);
     free(buf);
-    res_put_state(res);
     if (hp == NULL) {
-        return false;
+        switch (h_errno) {
+            case HOST_NOT_FOUND:
+                return EAI_NODATA;
+            case TRY_AGAIN:
+                return EAI_AGAIN;
+            default:
+                return EAI_FAIL;
+        }
     }
-    return true;
+    return 0;
 }
 
 static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
@@ -940,13 +947,11 @@ static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
     if (n < 0) {
         free(buf);
         debugprintf("res_nquery failed (%d)\n", res, n);
-        res_put_state(res);
         return false;
     }
     hp = getanswer(buf, n, qbuf, T_PTR, res, info->hp, info->buf, info->buflen, info->he);
     free(buf);
     if (hp == NULL) {
-        res_put_state(res);
         return false;
     }
 
@@ -970,7 +975,6 @@ static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
         memcpy(bf + NS_INADDRSZ, NAT64_PAD, sizeof(NAT64_PAD));
     }
 
-    res_put_state(res);
     *info->he = NETDB_SUCCESS;
     return true;
 
@@ -984,16 +988,18 @@ nospc:
  * Non-reentrant versions.
  */
 
-struct hostent* android_gethostbynamefornetcontext(const char* name, int af,
-                                                   const struct android_net_context* netcontext) {
-    struct hostent* hp;
+int android_gethostbynamefornetcontext(const char* name, int af,
+                                       const struct android_net_context* netcontext, hostent** hp) {
+    int error;
     res_state res = res_get_state();
-    if (res == NULL) return NULL;
-    struct res_static* rs = res_get_static();  // For thread-safety.
-    hp = gethostbyname_internal(name, af, res, &rs->host, rs->hostbuf, sizeof(rs->hostbuf),
-                                &h_errno, netcontext);
-    res_put_state(res);
-    return hp;
+    if (res == NULL) return EAI_MEMORY;
+    res_static* rs = res_get_static();  // For thread-safety.
+    error = gethostbyname_internal(name, af, res, &rs->host, rs->hostbuf, sizeof(rs->hostbuf),
+                                   &h_errno, netcontext);
+    if (error == 0) {
+        *hp = &rs->host;
+    }
+    return error;
 }
 
 struct hostent* android_gethostbyaddrfornetcontext(const void* addr, socklen_t len, int af,
