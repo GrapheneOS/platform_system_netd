@@ -33,7 +33,6 @@
 
 #include "log/log.h"
 #include "netdutils/SocketOption.h"
-#include "Permission.h"
 
 namespace android {
 

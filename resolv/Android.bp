@@ -33,11 +33,6 @@ cc_library_shared {
         "libssl",
         "libcrypto",
     ],
-    // TODO: Remove this after we find an alternative way to substitute Fwmark
-    // used in DnsTls* classes.
-    include_dirs: [
-        "system/netd/include",
-    ],
     export_include_dirs: ["include"],
     // TODO: pie in the sky: make this code clang-tidy clean
     tidy: false,
