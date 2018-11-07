@@ -59,7 +59,7 @@ LIBNETD_RESOLV {
     _ZN7android3net15DnsTlsTransport11doReconnectEv;
     _ZN7android3net15DnsTlsTransport5queryENS_9netdutils5SliceE;
     _ZN7android3net15DnsTlsTransport8onClosedEv;
-    _ZN7android3net15DnsTlsTransport8validateERKNS0_12DnsTlsServerEj;
+    _ZN7android3net15DnsTlsTransport8validateERKNS0_12DnsTlsServerEjj;
     _ZN7android3net15DnsTlsTransport9doConnectEv;
     _ZN7android3net15DnsTlsTransport9sendQueryENS0_14DnsTlsQueryMap5QueryE;
     _ZN7android3net15DnsTlsTransportD0Ev;
