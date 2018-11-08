@@ -57,7 +57,7 @@ public:
     // Check that a given TLS server is fully working on the specified netid, and has the
     // provided SHA-256 fingerprint (if nonempty).  This function is used in ResolverController
     // to ensure that we don't enable DNS over TLS on networks where it doesn't actually work.
-    static bool validate(const DnsTlsServer& server, unsigned netid);
+    static bool validate(const DnsTlsServer& server, unsigned netid, uint32_t mark);
 
     // Implement IDnsTlsSocketObserver
     void onResponse(std::vector<uint8_t> response) override;

@@ -26,8 +26,6 @@
 #include "netd_resolv/IDnsTlsSocketFactory.h"
 
 #include "log/log.h"
-#include "Fwmark.h"
-#include "Permission.h"
 
 namespace android {
 namespace net {
@@ -145,7 +143,7 @@ DnsTlsTransport::~DnsTlsTransport() {
 // static
 // TODO: Use this function to preheat the session cache.
 // That may require moving it to DnsTlsDispatcher.
-bool DnsTlsTransport::validate(const DnsTlsServer& server, unsigned netid) {
+bool DnsTlsTransport::validate(const DnsTlsServer& server, unsigned netid, uint32_t mark) {
     ALOGV("Beginning validation on %u", netid);
     // Generate "<random>-dnsotls-ds.metric.gstatic.com", which we will lookup through |ss| in
     // order to prove that it is actually a working DNS over TLS server.
@@ -177,14 +175,6 @@ bool DnsTlsTransport::validate(const DnsTlsServer& server, unsigned netid) {
     };
     const int qlen = std::size(query);
 
-    // At validation time, we only know the netId, so we have to guess/compute the
-    // corresponding socket mark.
-    Fwmark fwmark;
-    fwmark.permission = PERMISSION_SYSTEM;
-    fwmark.explicitlySelected = true;
-    fwmark.protectedFromVpn = true;
-    fwmark.netId = netid;
-    unsigned mark = fwmark.intValue;
     int replylen = 0;
     DnsTlsSocketFactory factory;
     DnsTlsTransport transport(server, mark, &factory);

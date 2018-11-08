@@ -40,7 +40,9 @@
 
 #include "DumpWriter.h"
 #include "EventReporter.h"
+#include "Fwmark.h"
 #include "NetdConstants.h"
+#include "Permission.h"
 #include "ResolverController.h"
 #include "ResolverStats.h"
 #include "netd_resolv/DnsTlsServer.h"
@@ -108,11 +110,11 @@ class PrivateDnsConfiguration {
     typedef ResolverController::Validation Validation;
     typedef std::map<DnsTlsServer, Validation, AddressComparator> PrivateDnsTracker;
 
-    int set(int32_t netId, const std::vector<std::string>& servers, const std::string& name,
-            const std::set<std::vector<uint8_t>>& fingerprints) {
+    int set(uint32_t netId, uint32_t mark, const std::vector<std::string>& servers,
+            const std::string& name, const std::set<std::vector<uint8_t>>& fingerprints) {
         if (DBG) {
-            ALOGD("PrivateDnsConfiguration::set(%u, %zu, %s, %zu)",
-                    netId, servers.size(), name.c_str(), fingerprints.size());
+            ALOGD("PrivateDnsConfiguration::set(%u, 0x%x, %zu, %s, %zu)", netId, mark,
+                  servers.size(), name.c_str(), fingerprints.size());
         }
 
         const bool explicitlyConfigured = !name.empty() || !fingerprints.empty();
@@ -166,7 +168,7 @@ class PrivateDnsConfiguration {
         // Add any new or changed servers to the tracker, and initiate async checks for them.
         for (const auto& server : tlsServers) {
             if (needsValidation(tracker, server)) {
-                validatePrivateDnsProvider(server, tracker, netId);
+                validatePrivateDnsProvider(server, tracker, netId, mark);
             }
         }
         return 0;
@@ -234,7 +236,7 @@ class PrivateDnsConfiguration {
 
   private:
     void validatePrivateDnsProvider(const DnsTlsServer& server, PrivateDnsTracker& tracker,
-            unsigned netId) REQUIRES(mPrivateDnsLock) {
+                                    unsigned netId, uint32_t mark) REQUIRES(mPrivateDnsLock) {
         if (DBG) {
             ALOGD("validatePrivateDnsProvider(%s, %u)", addrToString(&(server.ss)).c_str(), netId);
         }
@@ -245,7 +247,7 @@ class PrivateDnsConfiguration {
                     addrToString(&(server.ss)).c_str(), tracker.size());
         }
         // Note that capturing |server| and |netId| in this lambda create copies.
-        std::thread validate_thread([this, server, netId] {
+        std::thread validate_thread([this, server, netId, mark] {
             // cat /proc/sys/net/ipv4/tcp_syn_retries yields "6".
             //
             // Start with a 1 minute delay and backoff to once per hour.
@@ -267,7 +269,7 @@ class PrivateDnsConfiguration {
             while (true) {
                 // ::validate() is a blocking call that performs network operations.
                 // It can take milliseconds to minutes, up to the SYN retry limit.
-                const bool success = DnsTlsTransport::validate(server, netId);
+                const bool success = DnsTlsTransport::validate(server, netId, mark);
                 if (DBG) {
                     ALOGD("validateDnsTlsServer returned %d for %s", success,
                             addrToString(&(server.ss)).c_str());
@@ -510,7 +512,16 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         return -EINVAL;
     }
 
-    const int err = sPrivateDnsConfiguration.set(netId, tlsServers, tlsName, tlsFingerprints);
+    // At private DNS validation time, we only know the netId, so we have to guess/compute the
+    // corresponding socket mark.
+    Fwmark fwmark;
+    fwmark.netId = netId;
+    fwmark.explicitlySelected = true;
+    fwmark.protectedFromVpn = true;
+    fwmark.permission = PERMISSION_SYSTEM;
+
+    const int err = sPrivateDnsConfiguration.set(netId, fwmark.intValue, tlsServers, tlsName,
+                                                 tlsFingerprints);
     if (err != 0) {
         return err;
     }
