@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-#ifndef _BPF_NETWORKSTATS_H
-#define _BPF_NETWORKSTATS_H
-
 #include <bpf/BpfMap.h>
 
 namespace android {
@@ -46,14 +43,7 @@ struct stats_line {
     int64_t rxPackets;
     int64_t txBytes;
     int64_t txPackets;
-
-    stats_line& operator=(const stats_line& rhs);
-    stats_line& operator+=(const stats_line& rhs);
 };
-
-bool operator==(const stats_line& lhs, const stats_line& rhs);
-bool operator<(const stats_line& lhs, const stats_line& rhs);
-
 // For test only
 int bpfGetUidStatsInternal(uid_t uid, struct Stats* stats,
                            const BpfMap<uint32_t, StatsValue>& appUidStatsMap);
@@ -117,9 +107,6 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
                                int limitUid);
 
 int parseBpfNetworkStatsDev(std::vector<stats_line>* lines);
-void groupNetworkStats(std::vector<stats_line>* lines);
 int cleanStatsMap();
 }  // namespace bpf
 }  // namespace android
-
-#endif  // _BPF_NETWORKSTATS_H
