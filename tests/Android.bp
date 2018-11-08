@@ -62,7 +62,7 @@ cc_test {
         "libcap",
         "libnetd_test_dnsresponder",
         "libnetd_test_tun_interface",
-        "libbpf",
+        "libbpf_android",
         "liblogwrap",
         "libnetdaidl",
         "libnetdbpf",
