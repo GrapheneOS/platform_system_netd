@@ -98,7 +98,7 @@ cc_library_static {
         ":netd_metrics_aidl",
     ],
     shared_libs: [
-        "libbpf",
+        "libbpf_android",
         "libnetd_resolv",
         "libnetdaidl",
         "libbase",
@@ -130,7 +130,7 @@ cc_binary {
         "android.system.net.netd@1.1",
         "libbase",
         "libbinder",
-        "libbpf",
+        "libbpf_android",
         "libcrypto",
         "libcutils",
         "libdl",
@@ -222,7 +222,7 @@ cc_test {
     shared_libs: [
         "libbase",
         "libbinder",
-        "libbpf",
+        "libbpf_android",
         "libcrypto",
         "libcutils",
         "liblog",
