@@ -39,7 +39,7 @@ cc_benchmark {
     defaults: ["netd_defaults"],
     shared_libs: [
         "libbase",
-        "libbpf",
+        "libbpf_android",
         "libnetdutils",
     ],
     static_libs: [
