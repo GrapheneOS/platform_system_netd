@@ -43,7 +43,7 @@ cc_library {
 
     shared_libs: [
         "libbase",
-        "libbpf",
+        "libbpf_android",
         "libutils",
         "liblog",
         "libnetdutils",
@@ -76,7 +76,7 @@ cc_test {
     static_libs: ["libgmock"],
     shared_libs: [
         "libbase",
-        "libbpf",
+        "libbpf_android",
         "liblog",
         "libnetdbpf",
         "libnetdutils",
