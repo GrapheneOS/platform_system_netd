@@ -1526,7 +1526,6 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
      */
     res_setnetcontext(res, netcontext);
     if (res_searchN(name, &q, res) < 0) {
-        res_put_state(res);
         free(buf);
         free(buf2);
         return EAI_NODATA;  // TODO: Decode error from h_errno like we do below
@@ -1543,7 +1542,6 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
     free(buf);
     free(buf2);
     if (sentinel.ai_next == NULL) {
-        res_put_state(res);
         switch (h_errno) {
             case HOST_NOT_FOUND:
                 return EAI_NODATA;
@@ -1555,8 +1553,6 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
     }
 
     _rfc6724_sort(&sentinel, netcontext->app_mark, netcontext->uid);
-
-    res_put_state(res);
 
     *rv = sentinel.ai_next;
     return 0;

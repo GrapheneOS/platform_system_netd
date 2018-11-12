@@ -132,10 +132,6 @@ res_state res_get_state(void) {
     return rt ? rt->_nres : NULL;
 }
 
-void res_put_state(res_state /*res*/) {
-    /* nothing to do */
-}
-
 res_static* res_get_static(void) {
     _res_thread* rt = res_thread_get();
 

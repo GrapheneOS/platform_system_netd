@@ -85,8 +85,8 @@ struct android_net_context {
 
 LIBNETD_RESOLV_PUBLIC hostent* android_gethostbyaddrfornetcontext(const void*, socklen_t, int,
                                                                   const android_net_context*);
-LIBNETD_RESOLV_PUBLIC hostent* android_gethostbynamefornetcontext(const char*, int,
-                                                                  const android_net_context*);
+LIBNETD_RESOLV_PUBLIC int android_gethostbynamefornetcontext(const char*, int,
+                                                             const android_net_context*, hostent**);
 LIBNETD_RESOLV_PUBLIC int android_getaddrinfofornetcontext(const char*, const char*,
                                                            const addrinfo*,
                                                            const android_net_context*, addrinfo**);
