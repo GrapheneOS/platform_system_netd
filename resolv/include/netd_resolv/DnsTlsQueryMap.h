@@ -35,8 +35,8 @@ using netdutils::Slice;
 
 // Keeps track of queries and responses.  This class matches responses with queries.
 // All methods are thread-safe and non-blocking.
-class LIBNETD_RESOLV_TLS_EXPORT DnsTlsQueryMap {
-public:
+class DnsTlsQueryMap {
+  public:
     struct Query {
         // The new ID number assigned to this query.
         uint16_t newId;

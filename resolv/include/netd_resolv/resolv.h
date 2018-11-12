@@ -75,13 +75,25 @@ struct android_net_context {
     unsigned dns_mark;
     uid_t uid;
     unsigned flags;
-    res_send_qhook qhook;
 };
 
 #define NET_CONTEXT_INVALID_UID ((uid_t) -1)
 
 #define NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS 0x00000001
 #define NET_CONTEXT_FLAG_USE_EDNS 0x00000002
+
+struct ExternalPrivateDnsStatus {
+    PrivateDnsMode mode;
+    unsigned numServers;
+    struct PrivateDnsInfo {
+        sockaddr_storage ss;
+        const char* hostname;
+        Validation validation;
+    } serverStatus[MAXNS];
+};
+
+typedef void (*private_dns_validated_callback)(unsigned netid, const char* server,
+                                               const char* hostname, bool success);
 
 LIBNETD_RESOLV_PUBLIC hostent* android_gethostbyaddrfornetcontext(const void*, socklen_t, int,
                                                                   const android_net_context*);
@@ -95,6 +107,22 @@ LIBNETD_RESOLV_PUBLIC int android_getaddrinfofornetcontext(const char*, const ch
 LIBNETD_RESOLV_PUBLIC int resolv_set_nameservers_for_net(unsigned netid, const char** servers,
                                                          unsigned numservers, const char* domains,
                                                          const __res_params* params);
+
+LIBNETD_RESOLV_PUBLIC int resolv_set_private_dns_for_net(unsigned netid, uint32_t mark,
+                                                         const char** servers,
+                                                         const unsigned numServers,
+                                                         const char* tlsName,
+                                                         const uint8_t** fingerprints,
+                                                         const unsigned numFingerprints);
+
+LIBNETD_RESOLV_PUBLIC void resolv_delete_private_dns_for_net(unsigned netid);
+
+LIBNETD_RESOLV_PUBLIC void resolv_get_private_dns_status_for_net(unsigned netid,
+                                                                 ExternalPrivateDnsStatus* status);
+
+// Register callback to listen whether private DNS validated
+LIBNETD_RESOLV_PUBLIC void resolv_register_private_dns_callback(
+        private_dns_validated_callback callback);
 
 // Flush the cache associated with a certain network
 LIBNETD_RESOLV_PUBLIC void resolv_flush_cache_for_net(unsigned netid);

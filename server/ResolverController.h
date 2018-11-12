@@ -27,16 +27,8 @@ struct __res_params;
 namespace android {
 namespace net {
 
-struct DnsTlsServer;
 class DumpWriter;
 struct ResolverStats;
-
-enum class PrivateDnsMode {
-    OFF,
-    OPPORTUNISTIC,
-    STRICT,
-};
-
 
 class ResolverController {
   public:
@@ -47,20 +39,6 @@ class ResolverController {
     // TODO: delete this function
     int setDnsServers(unsigned netId, const char* searchDomains, const char** servers,
             int numservers, const __res_params* params);
-
-    // Validation status of a DNS over TLS server (on a specific netId).
-    enum class Validation : uint8_t { in_process, success, fail, unknown_server, unknown_netid };
-
-    struct PrivateDnsStatus {
-        PrivateDnsMode mode;
-        std::list<DnsTlsServer> validatedServers;
-    };
-
-    // Retrieve the Private DNS status for the given |netid|.
-    //
-    // If the requested |netid| is not known, the PrivateDnsStatus's mode has a
-    // default value of PrivateDnsMode::OFF, and validatedServers is empty.
-    PrivateDnsStatus getPrivateDnsStatus(unsigned netid) const;
 
     int clearDnsServers(unsigned netid);
 
