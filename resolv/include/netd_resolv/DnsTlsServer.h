@@ -30,7 +30,7 @@ namespace net {
 
 // DnsTlsServer represents a recursive resolver that supports, or may support, a
 // secure protocol.
-struct LIBNETD_RESOLV_TLS_EXPORT DnsTlsServer {
+struct DnsTlsServer {
     // Default constructor.
     DnsTlsServer() {}
 
@@ -68,7 +68,7 @@ struct LIBNETD_RESOLV_TLS_EXPORT DnsTlsServer {
 };
 
 // This comparison only checks the IP address.  It ignores ports, names, and fingerprints.
-struct LIBNETD_RESOLV_TLS_EXPORT AddressComparator {
+struct AddressComparator {
     bool operator() (const DnsTlsServer& x, const DnsTlsServer& y) const;
 };
 

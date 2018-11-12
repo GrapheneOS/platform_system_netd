@@ -100,6 +100,10 @@ constexpr bool kVerboseLogging = false;
 
 #include <android-base/logging.h>
 
+#include <netdutils/Slice.h>
+#include "netd_resolv/DnsTlsDispatcher.h"
+#include "netd_resolv/DnsTlsTransport.h"
+#include "netd_resolv/PrivateDnsConfiguration.h"
 #include "netd_resolv/resolv.h"
 #include "netd_resolv/stats.h"
 #include "private/android_filesystem_config.h"
@@ -107,6 +111,8 @@ constexpr bool kVerboseLogging = false;
 #include "resolv_cache.h"
 #include "resolv_private.h"
 
+// TODO: use the namespace something like android::netd_resolv for libnetd_resolv
+using namespace android::net;
 
 #define VLOG if (!kVerboseLogging) {} else LOG(INFO)
 
@@ -134,6 +140,10 @@ static_assert(kVerboseLogging == false,
     }
 #endif  // DEBUG
 
+typedef enum { res_goahead, res_nextns, res_modified, res_done, res_error } res_sendhookact;
+
+static DnsTlsDispatcher sDnsTlsDispatcher;
+
 static int get_salen(const struct sockaddr*);
 static struct sockaddr* get_nsaddr(res_state, size_t);
 static int send_vc(res_state, struct __res_params* params, const u_char*, int, u_char*, int, int*,
@@ -146,6 +156,7 @@ static int sock_eq(struct sockaddr*, struct sockaddr*);
 static int connect_with_timeout(int sock, const struct sockaddr* nsap, socklen_t salen,
                                 const struct timespec timeout);
 static int retrying_poll(const int sock, short events, const struct timespec* finish);
+static res_sendhookact res_tls_send(res_state, const Slice query, const Slice answer, int* resplen);
 
 /* BIONIC-BEGIN: implement source port randomization */
 
@@ -514,37 +525,40 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             statp->_flags |= (ns << RES_F_LASTSHIFT);
 
         same_ns:
-            if (statp->qhook) {
-                int done = 0, loops = 0;
+            int done = 0, loops = 0;
 
-                do {
-                    res_sendhookact act;
+            do {
+                res_sendhookact act;
 
-                    act = (*statp->qhook)(&nsap, &buf, &buflen, ans, anssiz, &resplen);
-                    switch (act) {
-                        case res_goahead:
-                            done = 1;
+                // TODO: This function tries to query on all of private DNS servers. Putting
+                // it here is strange since we should expect there is only one DNS server
+                // being queried. Consider moving it to other reasonable place. In addition,
+                // enum res_sendhookact can be removed.
+                act = res_tls_send(statp, Slice(const_cast<u_char*>(buf), buflen),
+                                   Slice(ans, anssiz), &resplen);
+                switch (act) {
+                    case res_goahead:
+                        done = 1;
+                        break;
+                    case res_nextns:
+                        res_nclose(statp);
+                        goto next_ns;
+                    case res_done:
+                        if (cache_status == RESOLV_CACHE_NOTFOUND) {
+                            _resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
+                        }
+                        return (resplen);
+                    case res_modified:
+                        /* give the hook another try */
+                        if (++loops < 42) /*doug adams*/
                             break;
-                        case res_nextns:
-                            res_nclose(statp);
-                            goto next_ns;
-                        case res_done:
-                            if (cache_status == RESOLV_CACHE_NOTFOUND) {
-                                _resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
-                            }
-                            return (resplen);
-                        case res_modified:
-                            /* give the hook another try */
-                            if (++loops < 42) /*doug adams*/
-                                break;
-                            [[fallthrough]];
-                        case res_error:
-                            [[fallthrough]];
-                        default:
-                            goto fail;
-                    }
-                } while (!done);
-            }
+                        [[fallthrough]];
+                    case res_error:
+                        [[fallthrough]];
+                    default:
+                        goto fail;
+                }
+            } while (!done);
 
             [[maybe_unused]] static const int niflags = NI_NUMERICHOST | NI_NUMERICSERV;
             [[maybe_unused]] char abuf[NI_MAXHOST];
@@ -619,33 +633,6 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             if ((v_circuit && (statp->options & RES_USEVC) == 0U) ||
                 (statp->options & RES_STAYOPEN) == 0U) {
                 res_nclose(statp);
-            }
-            if (statp->rhook) {
-                int done = 0, loops = 0;
-
-                do {
-                    res_sendhookact act;
-
-                    act = (*statp->rhook)(nsap, buf, buflen, ans, anssiz, &resplen);
-                    switch (act) {
-                        case res_goahead:
-                        case res_done:
-                            done = 1;
-                            break;
-                        case res_nextns:
-                            res_nclose(statp);
-                            goto next_ns;
-                        case res_modified:
-                            /* give the hook another try */
-                            if (++loops < 42) /*doug adams*/
-                                break;
-                            [[fallthrough]];
-                        case res_error:
-                            [[fallthrough]];
-                        default:
-                            goto fail;
-                    }
-                } while (!done);
             }
             return (resplen);
         next_ns:;
@@ -1248,4 +1235,60 @@ static int sock_eq(struct sockaddr* a, struct sockaddr* b) {
         default:
             return 0;
     }
+}
+
+res_sendhookact res_tls_send(res_state statp, const Slice query, const Slice answer, int* resplen) {
+    const unsigned netId = statp->netid;
+    const unsigned mark = statp->_mark;
+
+    // TLS bypass
+    if (statp->use_local_nameserver) {
+        return res_goahead;
+    }
+
+    const auto privateDnsStatus = gPrivateDnsConfiguration.getStatus(netId);
+
+    if (privateDnsStatus.mode == PrivateDnsMode::OFF) return res_goahead;
+
+    if (privateDnsStatus.validatedServers.empty()) {
+        if (privateDnsStatus.mode == PrivateDnsMode::OPPORTUNISTIC) {
+            return res_goahead;
+        } else {
+            // Sleep and iterate some small number of times checking for the
+            // arrival of resolved and validated server IP addresses, instead
+            // of returning an immediate error.
+            using namespace std::chrono_literals;
+            std::this_thread::sleep_for(100ms);
+            return res_modified;
+        }
+    }
+
+    VLOG << __func__ << ": performing query over TLS";
+
+    const auto response = sDnsTlsDispatcher.query(privateDnsStatus.validatedServers, mark, query,
+                                                  answer, resplen);
+    if (response == DnsTlsTransport::Response::success) {
+        VLOG << __func__ << ": success";
+        return res_done;
+    }
+
+    VLOG << __func__ << ": abort: TLS query failed: " << static_cast<int>(response);
+
+    if (privateDnsStatus.mode == PrivateDnsMode::OPPORTUNISTIC) {
+        // In opportunistic mode, handle falling back to cleartext in some
+        // cases (DNS shouldn't fail if a validated opportunistic mode server
+        // becomes unreachable for some reason).
+        switch (response) {
+            case DnsTlsTransport::Response::network_error:
+            case DnsTlsTransport::Response::internal_error:
+                // Note: this will cause cleartext queries to be emitted, with
+                // all of the EDNS0 goodness enabled. Fingers crossed.  :-/
+                return res_goahead;
+            default:
+                break;
+        }
+    }
+
+    // There was an internal error.  Fail hard.
+    return res_error;
 }
