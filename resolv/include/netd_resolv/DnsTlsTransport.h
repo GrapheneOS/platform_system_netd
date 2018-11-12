@@ -41,8 +41,8 @@ class IDnsTlsSocketFactory;
 
 // Manages at most one DnsTlsSocket at a time.  This class handles socket lifetime issues,
 // such as reopening the socket and reissuing pending queries.
-class LIBNETD_RESOLV_TLS_EXPORT DnsTlsTransport : public IDnsTlsSocketObserver {
-public:
+class DnsTlsTransport : public IDnsTlsSocketObserver {
+  public:
     DnsTlsTransport(const DnsTlsServer& server, unsigned mark,
                     IDnsTlsSocketFactory* _Nonnull factory) :
             mMark(mark), mServer(server), mFactory(factory) {}

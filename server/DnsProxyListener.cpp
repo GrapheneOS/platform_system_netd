@@ -55,8 +55,6 @@
 #include "ResponseCode.h"
 #include "Stopwatch.h"
 #include "android/net/metrics/INetdEventListener.h"
-#include "netd_resolv/DnsTlsDispatcher.h"
-#include "netd_resolv/DnsTlsTransport.h"
 #include "thread_util.h"
 
 using android::String16;
@@ -110,90 +108,16 @@ bool checkAndClearUseLocalNameserversFlag(unsigned* netid) {
     return true;
 }
 
-thread_local android_net_context thread_netcontext = {};
-
-DnsTlsDispatcher dnsTlsDispatcher;
-
-void catnap() {
-    using namespace std::chrono_literals;
-    std::this_thread::sleep_for(100ms);
-}
-
-res_sendhookact qhook(sockaddr* const * /*ns*/, const u_char** buf, int* buflen,
-                      u_char* ans, int anssiz, int* resplen) {
-    if (!thread_netcontext.qhook) {
-        ALOGE("qhook abort: thread qhook is null");
-        return res_goahead;
-    }
-    if (thread_netcontext.flags & NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS) {
-        return res_goahead;
-    }
-    if (!net::gCtls) {
-        ALOGE("qhook abort: gCtls is null");
-        return res_goahead;
-    }
-
-    const auto privateDnsStatus =
-            net::gCtls->resolverCtrl.getPrivateDnsStatus(thread_netcontext.dns_netid);
-
-    if (privateDnsStatus.mode == PrivateDnsMode::OFF) return res_goahead;
-
-    if (privateDnsStatus.validatedServers.empty()) {
-        if (privateDnsStatus.mode == PrivateDnsMode::OPPORTUNISTIC) {
-            return res_goahead;
-        } else {
-            // Sleep and iterate some small number of times checking for the
-            // arrival of resolved and validated server IP addresses, instead
-            // of returning an immediate error.
-            catnap();
-            return res_modified;
-        }
-    }
-
-    if (DBG) ALOGD("Performing query over TLS");
-
-    Slice query = netdutils::Slice(const_cast<u_char*>(*buf), *buflen);
-    Slice answer = netdutils::Slice(const_cast<u_char*>(ans), anssiz);
-    const auto response = dnsTlsDispatcher.query(
-            privateDnsStatus.validatedServers, thread_netcontext.dns_mark,
-            query, answer, resplen);
-    if (response == DnsTlsTransport::Response::success) {
-        if (DBG) ALOGD("qhook success");
-        return res_done;
-    }
-
-    if (DBG) {
-        ALOGW("qhook abort: TLS query failed: %d", (int)response);
-    }
-
-    if (privateDnsStatus.mode == PrivateDnsMode::OPPORTUNISTIC) {
-        // In opportunistic mode, handle falling back to cleartext in some
-        // cases (DNS shouldn't fail if a validated opportunistic mode server
-        // becomes unreachable for some reason).
-        switch (response) {
-            case DnsTlsTransport::Response::network_error:
-            case DnsTlsTransport::Response::internal_error:
-                // Note: this will cause cleartext queries to be emitted, with
-                // all of the EDNS0 goodness enabled. Fingers crossed.  :-/
-                return res_goahead;
-            default:
-                break;
-        }
-    }
-
-    // There was an internal error.  Fail hard.
-    return res_error;
-}
-
 constexpr bool requestingUseLocalNameservers(unsigned flags) {
     return (flags & NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS) != 0;
 }
 
 inline bool queryingViaTls(unsigned dns_netid) {
-    const auto privateDnsStatus = net::gCtls->resolverCtrl.getPrivateDnsStatus(dns_netid);
-    switch (privateDnsStatus.mode) {
+    ExternalPrivateDnsStatus privateDnsStatus = {PrivateDnsMode::OFF, 0, {}};
+    resolv_get_private_dns_status_for_net(dns_netid, &privateDnsStatus);
+    switch (static_cast<PrivateDnsMode>(privateDnsStatus.mode)) {
         case PrivateDnsMode::OPPORTUNISTIC:
-           return !privateDnsStatus.validatedServers.empty();
+            return privateDnsStatus.numServers != 0;
         case PrivateDnsMode::STRICT:
             return true;
         default:
@@ -230,16 +154,6 @@ void maybeFixupNetContext(android_net_context* ctx) {
             ctx->flags |= NET_CONTEXT_FLAG_USE_EDNS;
         }
     }
-
-    // Always set the qhook. An opportunistic mode server might have finished
-    // validating by the time the qhook runs. Note that this races with the
-    // queryingViaTls() check above, resulting in possibly sending queries over
-    // TLS without taking advantage of features like EDNS; c'est la guerre.
-    ctx->qhook = &qhook;
-
-    // Store the android_net_context instance in a thread_local variable
-    // so that the static qhook can access other fields of the struct.
-    thread_netcontext = *ctx;
 }
 
 }  // namespace

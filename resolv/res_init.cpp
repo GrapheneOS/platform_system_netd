@@ -158,10 +158,9 @@ int res_vinit(res_state statp, int preinit) {
     statp->pfcode = 0;
     statp->_vcsock = -1;
     statp->_flags = 0;
-    statp->qhook = NULL;
-    statp->rhook = NULL;
     statp->_u._ext.nscount = 0;
     statp->_u._ext.ext = (res_state_ext*) malloc(sizeof(*statp->_u._ext.ext));
+    statp->use_local_nameserver = false;
     if (statp->_u._ext.ext != NULL) {
         memset(statp->_u._ext.ext, 0, sizeof(*statp->_u._ext.ext));
         statp->_u._ext.ext->nsaddrs[0].sin = statp->nsaddr;
@@ -419,9 +418,11 @@ void res_setnetcontext(res_state statp, const struct android_net_context* netcon
     if (statp != NULL) {
         statp->netid = netcontext->dns_netid;
         statp->_mark = netcontext->dns_mark;
-        statp->qhook = netcontext->qhook;
         if (netcontext->flags & NET_CONTEXT_FLAG_USE_EDNS) {
             statp->options |= RES_USE_EDNS0 | RES_USE_DNSSEC;
+        }
+        if (netcontext->flags & NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS) {
+            statp->use_local_nameserver = true;
         }
     }
 }
