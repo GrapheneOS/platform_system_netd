@@ -236,7 +236,6 @@ void _res_stats_set_sample(res_sample* sample, time_t now, int rcode, int rtt);
 
 /* Things involving an internal (static) resolver context. */
 struct __res_state* res_get_state(void);
-void res_put_state(struct __res_state*);
 
 void res_close(void);
 int res_init(void);
