@@ -41,9 +41,9 @@
 #include "netid_client.h"  // NETID_UNSET
 #include "netd_resolv/params.h"  // MAX_NS
 
-#include "dns_responder.h"
-#include "dns_responder_client.h"
-#include "dns_tls_frontend.h"
+#include "dns_responder/dns_responder.h"
+#include "dns_responder/dns_responder_client.h"
+#include "dns_responder/dns_tls_frontend.h"
 
 #include "NetdConstants.h"
 #include "ResolverStats.h"
