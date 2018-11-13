@@ -38,8 +38,8 @@ using netdutils::Slice;
 
 // This is a singleton class that manages the collection of active DnsTlsTransports.
 // Queries made here are dispatched to an existing or newly constructed DnsTlsTransport.
-class LIBNETD_RESOLV_TLS_EXPORT DnsTlsDispatcher {
-public:
+class DnsTlsDispatcher {
+  public:
     // Default constructor.
     DnsTlsDispatcher();
 

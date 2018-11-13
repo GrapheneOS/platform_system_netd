@@ -126,8 +126,6 @@ struct __res_state {
         struct in_addr addr;
         uint32_t mask;
     } sort_list[MAXRESOLVSORT];
-    res_send_qhook qhook; /* query hook */
-    res_send_rhook rhook; /* response hook */
     int res_h_errno;      /* last one set for this context */
     unsigned _mark;       /* If non-0 SET_MARK to _mark on all request sockets */
     int _vcsock;          /* PRIVATE: for res_send VC i/o */
@@ -144,6 +142,7 @@ struct __res_state {
         } _ext;
     } _u;
     struct res_static rstatic[1];
+    bool use_local_nameserver; /* DNS-over-TLS bypass */
 };
 
 typedef struct __res_state* res_state;
@@ -236,7 +235,6 @@ void _res_stats_set_sample(res_sample* sample, time_t now, int rcode, int rtt);
 
 /* Things involving an internal (static) resolver context. */
 struct __res_state* res_get_state(void);
-void res_put_state(struct __res_state*);
 
 void res_close(void);
 int res_init(void);

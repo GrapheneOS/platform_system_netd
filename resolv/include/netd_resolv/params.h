@@ -36,17 +36,12 @@ struct __res_params {
     int base_timeout_msec;      // base query retry timeout (if 0, use RES_TIMEOUT)
 };
 
-typedef enum { res_goahead, res_nextns, res_modified, res_done, res_error } res_sendhookact;
+// The DNS over TLS mode on a specific netId.
+enum class PrivateDnsMode : uint8_t { OFF, OPPORTUNISTIC, STRICT };
 
-typedef res_sendhookact (*res_send_qhook)(struct sockaddr* const*, const uint8_t**, int*, uint8_t*,
-                                          int, int*);
-
-typedef res_sendhookact (*res_send_rhook)(const struct sockaddr*, const uint8_t*, int, uint8_t*,
-                                          int, int*);
+// Validation status of a DNS over TLS server (on a specific netId).
+enum class Validation : uint8_t { in_process, success, fail, unknown_server, unknown_netid };
 
 #define LIBNETD_RESOLV_PUBLIC extern "C" [[gnu::visibility("default")]]
-
-// TODO: Remove it after we move PrivateDnsConfiguration and qhook() into libnetd_resolv.
-#define LIBNETD_RESOLV_TLS_EXPORT [[gnu::visibility("default")]]
 
 #endif  // NETD_RESOLV_PARAMS_H
