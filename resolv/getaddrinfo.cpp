@@ -127,24 +127,23 @@ struct explore {
     int e_af;
     int e_socktype;
     int e_protocol;
-    const char* e_protostr;
     int e_wild;
 #define WILD_AF(ex) ((ex)->e_wild & 0x01)
 #define WILD_SOCKTYPE(ex) ((ex)->e_wild & 0x02)
 #define WILD_PROTOCOL(ex) ((ex)->e_wild & 0x04)
 };
 
-static const struct explore explore[] = {
-        {PF_INET6, SOCK_DGRAM, IPPROTO_UDP, "udp", 0x07},
-        {PF_INET6, SOCK_STREAM, IPPROTO_TCP, "tcp", 0x07},
-        {PF_INET6, SOCK_RAW, ANY, NULL, 0x05},
-        {PF_INET, SOCK_DGRAM, IPPROTO_UDP, "udp", 0x07},
-        {PF_INET, SOCK_STREAM, IPPROTO_TCP, "tcp", 0x07},
-        {PF_INET, SOCK_RAW, ANY, NULL, 0x05},
-        {PF_UNSPEC, SOCK_DGRAM, IPPROTO_UDP, "udp", 0x07},
-        {PF_UNSPEC, SOCK_STREAM, IPPROTO_TCP, "tcp", 0x07},
-        {PF_UNSPEC, SOCK_RAW, ANY, NULL, 0x05},
-        {-1, 0, 0, NULL, 0},
+static const struct explore explore_options[] = {
+        {PF_INET6, SOCK_DGRAM, IPPROTO_UDP, 0x07},
+        {PF_INET6, SOCK_STREAM, IPPROTO_TCP, 0x07},
+        {PF_INET6, SOCK_RAW, ANY, 0x05},
+        {PF_INET, SOCK_DGRAM, IPPROTO_UDP, 0x07},
+        {PF_INET, SOCK_STREAM, IPPROTO_TCP, 0x07},
+        {PF_INET, SOCK_RAW, ANY, 0x05},
+        {PF_UNSPEC, SOCK_DGRAM, IPPROTO_UDP, 0x07},
+        {PF_UNSPEC, SOCK_STREAM, IPPROTO_TCP, 0x07},
+        {PF_UNSPEC, SOCK_RAW, ANY, 0x05},
+        {-1, 0, 0, 0},
 };
 
 #define PTON_MAX 16
@@ -228,20 +227,6 @@ static const char* const ai_errlist[] = {
         /* external reference: error and label free */ \
         error = get_port((ai), (serv), 0);             \
         if (error != 0) goto free;                     \
-    } while (0)
-
-#define GET_CANONNAME(ai, str)                              \
-    do {                                                    \
-        /* external reference: pai, error and label free */ \
-        error = get_canonname(pai, (ai), (str));            \
-        if (error != 0) goto free;                          \
-    } while (0)
-
-#define ERR(err)                                       \
-    do {                                               \
-        /* external reference: error, and label bad */ \
-        error = (err);                                 \
-        goto bad;                                      \
     } while (0)
 
 #define MATCH_FAMILY(x, y, w) \
@@ -334,7 +319,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
                                      const struct addrinfo* hints,
                                      const struct android_net_context* netcontext,
                                      struct addrinfo** res) {
-    struct addrinfo sentinel;
+    struct addrinfo sentinel = {};
     struct addrinfo* cur;
     int error = 0;
     struct addrinfo ai;
@@ -347,7 +332,6 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
     /* hints is allowed to be NULL */
     assert(res != NULL);
     assert(netcontext != NULL);
-    memset(&sentinel, 0, sizeof(sentinel));
     cur = &sentinel;
     pai = &ai;
     pai->ai_flags = 0;
@@ -358,137 +342,149 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
     pai->ai_canonname = NULL;
     pai->ai_addr = NULL;
     pai->ai_next = NULL;
-
-    if (hostname == NULL && servname == NULL) return EAI_NONAME;
-    if (hints) {
-        /* error check for hints */
-        if (hints->ai_addrlen || hints->ai_canonname || hints->ai_addr || hints->ai_next)
-            ERR(EAI_BADHINTS); /* xxx */
-        if (hints->ai_flags & ~AI_MASK) ERR(EAI_BADFLAGS);
-        switch (hints->ai_family) {
-            case PF_UNSPEC:
-            case PF_INET:
-            case PF_INET6:
-                break;
-            default:
-                ERR(EAI_FAMILY);
+    do {
+        if (hostname == NULL && servname == NULL) {
+            error = EAI_NONAME;
+            break;
         }
-        memcpy(pai, hints, sizeof(*pai));
+        if (hints) {
+            /* error check for hints */
+            if (hints->ai_addrlen || hints->ai_canonname || hints->ai_addr || hints->ai_next) {
+                error = EAI_BADHINTS;
+                break;
+            }
+            if (hints->ai_flags & ~AI_MASK) {
+                error = EAI_BADFLAGS;
+                break;
+            }
 
-        /*
-         * if both socktype/protocol are specified, check if they
-         * are meaningful combination.
-         */
-        if (pai->ai_socktype != ANY && pai->ai_protocol != ANY) {
-            for (ex = explore; ex->e_af >= 0; ex++) {
-                if (pai->ai_family != ex->e_af) continue;
-                if (ex->e_socktype == ANY) continue;
-                if (ex->e_protocol == ANY) continue;
-                if (pai->ai_socktype == ex->e_socktype && pai->ai_protocol != ex->e_protocol) {
-                    ERR(EAI_BADHINTS);
+            if (!(hints->ai_family == PF_UNSPEC || hints->ai_family == PF_INET ||
+                  hints->ai_family == PF_INET6)) {
+                error = EAI_FAMILY;
+                break;
+            }
+            *pai = *hints;
+
+            /*
+             * if both socktype/protocol are specified, check if they
+             * are meaningful combination.
+             */
+            if (pai->ai_socktype != ANY && pai->ai_protocol != ANY) {
+                for (ex = explore_options; ex->e_af >= 0; ex++) {
+                    if (pai->ai_family != ex->e_af) continue;
+                    if (ex->e_socktype == ANY) continue;
+                    if (ex->e_protocol == ANY) continue;
+                    if (pai->ai_socktype == ex->e_socktype && pai->ai_protocol != ex->e_protocol) {
+                        error = EAI_BADHINTS;
+                        break;
+                    }
                 }
+                if (error) break;
             }
         }
-    }
 
-    /*
-     * check for special cases.  (1) numeric servname is disallowed if
-     * socktype/protocol are left unspecified. (2) servname is disallowed
-     * for raw and other inet{,6} sockets.
-     */
-    if (MATCH_FAMILY(pai->ai_family, PF_INET, 1)
-        || MATCH_FAMILY(pai->ai_family, PF_INET6, 1)
-    ) {
-        ai0 = *pai; /* backup *pai */
+        /*
+         * check for special cases.  (1) numeric servname is disallowed if
+         * socktype/protocol are left unspecified. (2) servname is disallowed
+         * for raw and other inet{,6} sockets.
+         */
+        if (MATCH_FAMILY(pai->ai_family, PF_INET, 1)
+            || MATCH_FAMILY(pai->ai_family, PF_INET6, 1)
+        ) {
+            ai0 = *pai; /* backup *pai */
 
-        if (pai->ai_family == PF_UNSPEC) {
-            pai->ai_family = PF_INET6;
-        }
-        error = get_portmatch(pai, servname);
-        if (error) ERR(error);
+            if (pai->ai_family == PF_UNSPEC) {
+                pai->ai_family = PF_INET6;
+            }
+            error = get_portmatch(pai, servname);
+            if (error) break;
 
-        *pai = ai0;
-    }
-
-    ai0 = *pai;
-
-    /* NULL hostname, or numeric hostname */
-    for (ex = explore; ex->e_af >= 0; ex++) {
-        *pai = ai0;
-
-        /* PF_UNSPEC entries are prepared for DNS queries only */
-        if (ex->e_af == PF_UNSPEC) continue;
-
-        if (!MATCH_FAMILY(pai->ai_family, ex->e_af, WILD_AF(ex))) continue;
-        if (!MATCH(pai->ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) continue;
-        if (!MATCH(pai->ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) continue;
-
-        if (pai->ai_family == PF_UNSPEC) pai->ai_family = ex->e_af;
-        if (pai->ai_socktype == ANY && ex->e_socktype != ANY) pai->ai_socktype = ex->e_socktype;
-        if (pai->ai_protocol == ANY && ex->e_protocol != ANY) pai->ai_protocol = ex->e_protocol;
-
-        if (hostname == NULL)
-            error = explore_null(pai, servname, &cur->ai_next);
-        else
-            error = explore_numeric_scope(pai, hostname, servname, &cur->ai_next);
-
-        if (error) goto free;
-
-        while (cur->ai_next) cur = cur->ai_next;
-    }
-
-    /*
-     * XXX
-     * If numeric representation of AF1 can be interpreted as FQDN
-     * representation of AF2, we need to think again about the code below.
-     */
-    if (sentinel.ai_next) goto good;
-
-    if (hostname == NULL) ERR(EAI_NODATA);
-    if (pai->ai_flags & AI_NUMERICHOST) ERR(EAI_NONAME);
-
-    /*
-     * hostname as alphabetical name.
-     * we would like to prefer AF_INET6 than AF_INET, so we'll make a
-     * outer loop by AFs.
-     */
-    for (ex = explore; ex->e_af >= 0; ex++) {
-        *pai = ai0;
-
-        /* require exact match for family field */
-        if (pai->ai_family != ex->e_af) continue;
-
-        if (!MATCH(pai->ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) {
-            continue;
-        }
-        if (!MATCH(pai->ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) {
-            continue;
+            *pai = ai0;
         }
 
-        if (pai->ai_socktype == ANY && ex->e_socktype != ANY) pai->ai_socktype = ex->e_socktype;
-        if (pai->ai_protocol == ANY && ex->e_protocol != ANY) pai->ai_protocol = ex->e_protocol;
+        ai0 = *pai;
 
-        error = explore_fqdn(pai, hostname, servname, &cur->ai_next, netcontext);
+        /* NULL hostname, or numeric hostname */
+        for (ex = explore_options; ex->e_af >= 0; ex++) {
+            *pai = ai0;
 
-        while (cur && cur->ai_next) cur = cur->ai_next;
-    }
+            /* PF_UNSPEC entries are prepared for DNS queries only */
+            if (ex->e_af == PF_UNSPEC) continue;
 
-    /* XXX */
-    if (sentinel.ai_next) error = 0;
+            if (!MATCH_FAMILY(pai->ai_family, ex->e_af, WILD_AF(ex))) continue;
+            if (!MATCH(pai->ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) continue;
+            if (!MATCH(pai->ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) continue;
 
-    if (error) goto free;
-    if (error == 0) {
+            if (pai->ai_family == PF_UNSPEC) pai->ai_family = ex->e_af;
+            if (pai->ai_socktype == ANY && ex->e_socktype != ANY) pai->ai_socktype = ex->e_socktype;
+            if (pai->ai_protocol == ANY && ex->e_protocol != ANY) pai->ai_protocol = ex->e_protocol;
+
+            if (hostname == NULL)
+                error = explore_null(pai, servname, &cur->ai_next);
+            else
+                error = explore_numeric_scope(pai, hostname, servname, &cur->ai_next);
+
+            if (error) break;
+
+            while (cur->ai_next) cur = cur->ai_next;
+        }
+        if (error) break;
+
+        /*
+         * XXX
+         * If numeric representation of AF1 can be interpreted as FQDN
+         * representation of AF2, we need to think again about the code below.
+         */
+        if (sentinel.ai_next) break;
+
+        if (hostname == NULL) {
+            error = EAI_NODATA;
+            break;
+        }
+        if (pai->ai_flags & AI_NUMERICHOST) {
+            error = EAI_NONAME;
+            break;
+        }
+
+        /*
+         * hostname as alphabetical name.
+         * we would like to prefer AF_INET6 than AF_INET, so we'll make a
+         * outer loop by AFs.
+         */
+        for (ex = explore_options; ex->e_af >= 0; ex++) {
+            *pai = ai0;
+
+            /* require exact match for family field */
+            if (pai->ai_family != ex->e_af) continue;
+
+            if (!MATCH(pai->ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) {
+                continue;
+            }
+            if (!MATCH(pai->ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) {
+                continue;
+            }
+
+            if (pai->ai_socktype == ANY && ex->e_socktype != ANY) pai->ai_socktype = ex->e_socktype;
+            if (pai->ai_protocol == ANY && ex->e_protocol != ANY) pai->ai_protocol = ex->e_protocol;
+
+            error = explore_fqdn(pai, hostname, servname, &cur->ai_next, netcontext);
+
+            while (cur->ai_next) cur = cur->ai_next;
+        }
+
         if (sentinel.ai_next) {
-        good:
-            *res = sentinel.ai_next;
-            return 0;
-        } else
+            error = 0;
+        } else if (error == 0) {
             error = EAI_FAIL;
+        }
+    } while (0);
+
+    if (error) {
+        freeaddrinfo(sentinel.ai_next);
+        *res = NULL;
+    } else {
+        *res = sentinel.ai_next;
     }
-free:
-bad:
-    freeaddrinfo(sentinel.ai_next);
-    *res = NULL;
     return error;
 }
 
@@ -566,15 +562,9 @@ static int explore_null(const struct addrinfo* pai, const char* servname, struct
 
     if (pai->ai_flags & AI_PASSIVE) {
         GET_AI(cur->ai_next, afd, afd->a_addrany);
-        /* xxx meaningless?
-         * GET_CANONNAME(cur->ai_next, "anyaddr");
-         */
         GET_PORT(cur->ai_next, servname);
     } else {
         GET_AI(cur->ai_next, afd, afd->a_loopback);
-        /* xxx meaningless?
-         * GET_CANONNAME(cur->ai_next, "localhost");
-         */
         GET_PORT(cur->ai_next, servname);
     }
     cur = cur->ai_next;
@@ -625,18 +615,21 @@ static int explore_numeric(const struct addrinfo* pai, const char* hostname, con
                  * the canonical name, based on a
                  * clarification in rfc2553bis-03.
                  */
-                GET_CANONNAME(cur->ai_next, canonname);
+                error = get_canonname(pai, cur->ai_next, canonname);
+                if (error != 0) {
+                    freeaddrinfo(sentinel.ai_next);
+                    return error;
+                }
             }
             while (cur->ai_next) cur = cur->ai_next;
         } else
-            ERR(EAI_FAMILY); /*xxx*/
+            return EAI_FAMILY;
     }
 
     *res = sentinel.ai_next;
     return 0;
 
 free:
-bad:
     freeaddrinfo(sentinel.ai_next);
     return error;
 }
@@ -886,7 +879,8 @@ static const char AskedForGot[] = "gethostby*.getanswer: asked for \"%s\", got \
 
 static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char* qname, int qtype,
                                   const struct addrinfo* pai) {
-    struct addrinfo sentinel, *cur;
+    struct addrinfo sentinel = {};
+    struct addrinfo *cur;
     struct addrinfo ai;
     const struct afd* afd;
     char* canonname;
@@ -905,7 +899,6 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
     assert(qname != NULL);
     assert(pai != NULL);
 
-    memset(&sentinel, 0, sizeof(sentinel));
     cur = &sentinel;
 
     canonname = NULL;
@@ -1439,14 +1432,13 @@ error:
 
 static int dns_getaddrinfo(const char* name, const addrinfo* pai,
                            const android_net_context* netcontext, addrinfo** rv) {
-    struct addrinfo* ai;
-    struct addrinfo sentinel, *cur;
+    struct addrinfo *ai, *cur;
+    struct addrinfo sentinel = {};
     struct res_target q, q2;
     res_state res;
 
     memset(&q, 0, sizeof(q));
     memset(&q2, 0, sizeof(q2));
-    memset(&sentinel, 0, sizeof(sentinel));
     cur = &sentinel;
 
     querybuf* buf = (querybuf*) malloc(sizeof(*buf));
@@ -1625,11 +1617,10 @@ found:
 }
 
 static bool files_getaddrinfo(const char* name, const addrinfo* pai, addrinfo** res) {
-    struct addrinfo sentinel, *cur;
-    struct addrinfo* p;
+    struct addrinfo sentinel = {};
+    struct addrinfo *p, *cur;
     FILE* hostf = NULL;
 
-    memset(&sentinel, 0, sizeof(sentinel));
     cur = &sentinel;
 
     _sethtent(&hostf);
