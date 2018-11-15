@@ -14,52 +14,22 @@
 // limitations under the License.
 //
 
-cc_library_headers {
-    name: "libnetdbpf_headers",
-    vendor_available: false,
-    host_supported: false,
-    export_include_dirs: ["include"],
-    target: {
-        linux_bionic: {
-            enabled: true,
-        },
-    },
-}
-
 cc_library {
     name: "libnetdbpf",
     vendor_available: false,
     host_supported: false,
-    target: {
-        android: {
-            srcs: [
-                "BpfNetworkStats.cpp"
-            ],
-            sanitize: {
-                misc_undefined: ["integer"],
-            },
-        },
-    },
-
+    srcs: [
+        "BpfNetworkStats.cpp"
+    ],
     shared_libs: [
         "libbase",
         "libbpf_android",
-        "libutils",
         "liblog",
         "libnetdutils",
+        "libutils",
     ],
-    header_libs: [
-        "libnetdbpf_headers"
-    ],
-    export_header_lib_headers: ["libnetdbpf_headers"],
-    local_include_dirs: ["include"],
-
+    export_include_dirs: ["include"],
     defaults: ["netd_defaults"],
-    cflags: [
-        "-Werror",
-        "-Wall",
-        "-Wextra",
-    ],
 }
 
 cc_test {
@@ -68,11 +38,6 @@ cc_test {
         "BpfNetworkStatsTest.cpp",
     ],
     defaults: ["netd_defaults"],
-    cflags: [
-        "-Wall",
-        "-Werror",
-        "-Wno-error=unused-variable",
-    ],
     static_libs: ["libgmock"],
     shared_libs: [
         "libbase",

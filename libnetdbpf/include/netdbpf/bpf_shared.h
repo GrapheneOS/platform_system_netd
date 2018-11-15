@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#ifndef NETDBPF_BPF_SHARED_H
+#define NETDBPF_BPF_SHARED_H
+
 // const values shared by bpf kernel program bpfloader and netd
 
 
@@ -106,3 +109,5 @@ const BpfConfig DEFAULT_CONFIG = 0;
 #define MIN_SYSTEM_UID 0
 #define MAX_SYSTEM_UID 9999
 #define CONFIGURATION_KEY 1
+
+#endif  // NETDBPF_BPF_SHARED_H
