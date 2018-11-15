@@ -37,7 +37,7 @@ private:
     // std::atomic<android::net::metrics::INetdEventListener> and deleting the mutex.
     //
     // Alternatively, if this locking causes a performance penalty, have each single-threaded
-    // caller (DnsProxyListener, FwmarkServer) keep their own per-thread copy of NetdEventListener
+    // caller (FwmarkServer) keep their own per-thread copy of NetdEventListener
     // and remove mNetdEventListener entirely.
     android::sp<android::net::metrics::INetdEventListener> mNetdEventListener;
     std::mutex mutex;

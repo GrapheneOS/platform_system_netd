@@ -20,6 +20,7 @@ cc_library {
         "res_send.cpp",
         "res_state.cpp",
         "res_stats.cpp",
+        "DnsProxyListener.cpp",
         "DnsTlsDispatcher.cpp",
         "DnsTlsQueryMap.cpp",
         "DnsTlsTransport.cpp",
@@ -35,13 +36,21 @@ cc_library {
     static_libs: [
         "libbase",
         "libcrypto",
+        "libcutils",
         "liblog",
         "libnetdutils",
         "libssl",
+        "libsysutils",
         "netd_event_listener_interface-ndk_platform",
     ],
     shared_libs: [
         "libbinder_ndk",
+        "libstatslog",
+    ],
+    // TODO: Get rid of these include paths used in DnsProxyListener.
+    include_dirs: [
+        "system/netd/include",
+        "system/netd/server",
     ],
     export_include_dirs: ["include"],
     // TODO: pie in the sky: make this code clang-tidy clean
