@@ -872,23 +872,25 @@ static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
         free(buf);
         return EAI_MEMORY;
     }
-    n = res_nsearch(res, name, C_IN, type, buf->buf, (int) sizeof(buf->buf));
+
+    int ai_error = EAI_NODATA;
+    n = res_nsearch(res, name, C_IN, type, buf->buf, (int) sizeof(buf->buf), &ai_error);
     if (n < 0) {
         free(buf);
         debugprintf("res_nsearch failed (%d)\n", res, n);
-        return EAI_NODATA;
+
+        // If server responds empty answer with rcode NOERROR, adjust the error so netd will
+        // get the nulltpr hp.
+        // TODO: Adjust the error closed to res_nsend instead of here after h_errno is removed.
+        if (ai_error == 0) {
+            return herrnoToAiError(h_errno);
+        }
+        return ai_error;
     }
     hp = getanswer(buf, n, name, type, res, info->hp, info->buf, info->buflen, info->he);
     free(buf);
     if (hp == NULL) {
-        switch (h_errno) {
-            case HOST_NOT_FOUND:
-                return EAI_NODATA;
-            case TRY_AGAIN:
-                return EAI_AGAIN;
-            default:
-                return EAI_FAIL;
-        }
+        return herrnoToAiError(h_errno);
     }
     return 0;
 }
@@ -943,7 +945,8 @@ static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
         return false;
     }
     res_setnetcontext(res, netcontext);
-    n = res_nquery(res, qbuf, C_IN, T_PTR, buf->buf, (int) sizeof(buf->buf));
+    int ai_error = 0;
+    n = res_nquery(res, qbuf, C_IN, T_PTR, buf->buf, (int) sizeof(buf->buf), &ai_error);
     if (n < 0) {
         free(buf);
         debugprintf("res_nquery failed (%d)\n", res, n);
@@ -1012,4 +1015,28 @@ static struct hostent* android_gethostbyaddrfornetcontext_proxy(
     struct res_static* rs = res_get_static();  // For thread-safety.
     return android_gethostbyaddrfornetcontext_proxy_internal(
             addr, len, af, &rs->host, rs->hostbuf, sizeof(rs->hostbuf), &h_errno, netcontext);
+}
+
+int herrnoToAiError(int herror) {
+    switch (herror) {
+        case HOST_NOT_FOUND:
+            return EAI_NODATA;
+        case TRY_AGAIN:
+            return EAI_AGAIN;
+        default:
+            return EAI_FAIL;
+    }
+}
+
+int rcodeToAiError(int rcode) {
+    // Catch the two cases (success, timeout). For other cases, just set it EAI_NODATA
+    // as EAI_NODATA is returned in dns_getaddrinfo() when res_searchN() returns -1.
+    switch (rcode) {
+        case NOERROR:
+            return 0;
+        case RCODE_TIMEOUT:
+            return NETD_RESOLV_TIMEOUT;
+        default:
+            return EAI_NODATA;
+    }
 }

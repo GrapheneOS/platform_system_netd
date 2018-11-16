@@ -89,8 +89,12 @@
 // Queries will be padded to a multiple of this length when EDNS0 is active.
 constexpr uint16_t kEdns0Padding = 128;
 
-// Defined in res_data.cpp
-extern const char* _res_opcodes[];
+extern const char* const _res_opcodes[] = {
+        "QUERY",  "IQUERY", "CQUERYM", "CQUERYU", /* experimental */
+        "NOTIFY",                                 /* experimental */
+        "UPDATE", "6",      "7",       "8",        "9",       "10",
+        "11",     "12",     "13",      "ZONEINIT", "ZONEREF",
+};
 
 /*
  * Form all types of queries.
