@@ -1776,7 +1776,7 @@ int resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigne
                 .ai_family = AF_UNSPEC, .ai_socktype = SOCK_DGRAM, .ai_flags = AI_NUMERICHOST};
         int rt = getaddrinfo_numeric(servers[i], sbuf, hints, &nsaddrinfo[i]);
         if (rt != 0) {
-            for (int j = 0; j < i; j++) {
+            for (unsigned j = 0; j < i; j++) {
                 freeaddrinfo(nsaddrinfo[j]);
             }
             VLOG << __func__ << ": getaddrinfo_numeric(" << servers[i]
@@ -1830,7 +1830,7 @@ int resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigne
                 res_cache_clear_stats_locked(cache_info);
                 ++cache_info->revision_id;
             }
-            for (int j = 0; j < numservers; j++) {
+            for (unsigned j = 0; j < numservers; j++) {
                 freeaddrinfo(nsaddrinfo[j]);
             }
         }

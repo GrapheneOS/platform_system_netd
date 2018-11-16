@@ -330,9 +330,9 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
     // lookups for ip6-localhost, with and without search domains appended.
     dns.clearQueries();
     result = gethostbyname(name_ip6);
-    EXPECT_EQ(2, dns.queries().size()) << dns.dumpQueries();
-    EXPECT_EQ(1, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6_dot)) << dns.dumpQueries();
-    EXPECT_EQ(1, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6_fqdn)) << dns.dumpQueries();
+    EXPECT_EQ(2U, dns.queries().size()) << dns.dumpQueries();
+    EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6_dot)) << dns.dumpQueries();
+    EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6_fqdn)) << dns.dumpQueries();
     ASSERT_TRUE(result == nullptr);
 
     // Finally, use gethostbyname2() to resolve ip6-localhost to ::1 from
@@ -362,7 +362,7 @@ TEST_F(ResolverTest, GetHostByName_numeric) {
     constexpr char numeric_v4[] = "192.168.0.1";
     dns.clearQueries();
     const hostent* result = gethostbyname(numeric_v4);
-    EXPECT_EQ(0, dns.queries().size());
+    EXPECT_EQ(0U, dns.queries().size());
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);  // v4
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
@@ -373,13 +373,13 @@ TEST_F(ResolverTest, GetHostByName_numeric) {
     constexpr char numeric_v6[] = "2001:db8::42";
     dns.clearQueries();
     result = gethostbyname(numeric_v6);
-    EXPECT_EQ(0, dns.queries().size());
+    EXPECT_EQ(0U, dns.queries().size());
     EXPECT_TRUE(result == nullptr);
 
     // Numeric v6 address with gethostbyname2(): succeeds with no DNS queries
     dns.clearQueries();
     result = gethostbyname2(numeric_v6, AF_INET6);
-    EXPECT_EQ(0, dns.queries().size());
+    EXPECT_EQ(0U, dns.queries().size());
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(16, result->h_length);  // v6
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
@@ -394,7 +394,7 @@ TEST_F(ResolverTest, GetHostByName_numeric) {
     constexpr char numeric_v6_scope[] = "fe80::1%lo";
     dns.clearQueries();
     result = gethostbyname2(numeric_v6_scope, AF_INET6);
-    EXPECT_EQ(2, dns.queries().size());  // OUCH!
+    EXPECT_EQ(2U, dns.queries().size());  // OUCH!
     ASSERT_TRUE(result == nullptr);
 
     dns.stopServer();
@@ -454,7 +454,7 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
     EXPECT_EQ(servers.size(), res_servers.size());
     EXPECT_EQ(domains.size(), res_domains.size());
     EXPECT_EQ(0U, res_tls_servers.size());
-    ASSERT_EQ(INetd::RESOLVER_PARAMS_COUNT, mDefaultParams_Binder.size());
+    ASSERT_EQ(static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT), mDefaultParams_Binder.size());
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY],
             res_params.sample_validity);
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
@@ -818,7 +818,7 @@ TEST_F(ResolverTest, EmptySetup) {
     EXPECT_EQ(0U, res_servers.size());
     EXPECT_EQ(0U, res_domains.size());
     EXPECT_EQ(0U, res_tls_servers.size());
-    ASSERT_EQ(INetd::RESOLVER_PARAMS_COUNT, mDefaultParams_Binder.size());
+    ASSERT_EQ(static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT), mDefaultParams_Binder.size());
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY],
             res_params.sample_validity);
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
