@@ -8,7 +8,6 @@ cc_library_shared {
         "sethostent.cpp",
         "res_cache.cpp",
         "res_comp.cpp",
-        "res_data.cpp",
         "res_debug.cpp",
         "res_init.cpp",
         "res_mkquery.cpp",

@@ -140,8 +140,6 @@ static_assert(kVerboseLogging == false,
     }
 #endif  // DEBUG
 
-typedef enum { res_goahead, res_nextns, res_modified, res_done, res_error } res_sendhookact;
-
 static DnsTlsDispatcher sDnsTlsDispatcher;
 
 static int get_salen(const struct sockaddr*);
@@ -156,7 +154,8 @@ static int sock_eq(struct sockaddr*, struct sockaddr*);
 static int connect_with_timeout(int sock, const struct sockaddr* nsap, socklen_t salen,
                                 const struct timespec timeout);
 static int retrying_poll(const int sock, short events, const struct timespec* finish);
-static res_sendhookact res_tls_send(res_state, const Slice query, const Slice answer, int* resplen);
+static int res_tls_send(res_state, const Slice query, const Slice answer, int* error,
+                        bool* fallback);
 
 /* BIONIC-BEGIN: implement source port randomization */
 
@@ -389,7 +388,7 @@ int res_queriesmatch(const u_char* buf1, const u_char* eom1, const u_char* buf2,
     return (1);
 }
 
-int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int anssiz) {
+int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int anssiz, int* rcode) {
     int gotsomewhere, terrno, v_circuit, resplen, n;
     ResolvCacheStatus cache_status = RESOLV_CACHE_UNSUPPORTED;
 
@@ -517,48 +516,31 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             struct sockaddr* nsap;
             int nsaplen;
             time_t now = 0;
-            int rcode = RCODE_INTERNAL_ERROR;
             int delay = 0;
+            *rcode = RCODE_INTERNAL_ERROR;
             nsap = get_nsaddr(statp, (size_t) ns);
             nsaplen = get_salen(nsap);
             statp->_flags &= ~RES_F_LASTMASK;
             statp->_flags |= (ns << RES_F_LASTSHIFT);
 
         same_ns:
-            int done = 0, loops = 0;
-
-            do {
-                res_sendhookact act;
-
-                // TODO: This function tries to query on all of private DNS servers. Putting
-                // it here is strange since we should expect there is only one DNS server
-                // being queried. Consider moving it to other reasonable place. In addition,
-                // enum res_sendhookact can be removed.
-                act = res_tls_send(statp, Slice(const_cast<u_char*>(buf), buflen),
-                                   Slice(ans, anssiz), &resplen);
-                switch (act) {
-                    case res_goahead:
-                        done = 1;
-                        break;
-                    case res_nextns:
-                        res_nclose(statp);
-                        goto next_ns;
-                    case res_done:
-                        if (cache_status == RESOLV_CACHE_NOTFOUND) {
-                            _resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
-                        }
-                        return (resplen);
-                    case res_modified:
-                        /* give the hook another try */
-                        if (++loops < 42) /*doug adams*/
-                            break;
-                        [[fallthrough]];
-                    case res_error:
-                        [[fallthrough]];
-                    default:
-                        goto fail;
+            // TODO: Since we expect there is only one DNS server being queried here while this
+            // function tries to query all of private DNS servers. Consider moving it to other
+            // reasonable place. In addition, maybe add stats for private DNS.
+            if (!statp->use_local_nameserver) {
+                bool fallback = false;
+                resplen = res_tls_send(statp, Slice(const_cast<u_char*>(buf), buflen),
+                                       Slice(ans, anssiz), rcode, &fallback);
+                if (resplen > 0) {
+                    if (cache_status == RESOLV_CACHE_NOTFOUND) {
+                        _resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
+                    }
+                    return resplen;
                 }
-            } while (!done);
+                if (!fallback) {
+                    goto fail;
+                }
+            }
 
             [[maybe_unused]] static const int niflags = NI_NUMERICHOST | NI_NUMERICSERV;
             [[maybe_unused]] char abuf[NI_MAXHOST];
@@ -571,7 +553,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                 /* Use VC; at most one attempt per server. */
                 attempt = statp->retry;
 
-                n = send_vc(statp, &params, buf, buflen, ans, anssiz, &terrno, ns, &now, &rcode,
+                n = send_vc(statp, &params, buf, buflen, ans, anssiz, &terrno, ns, &now, rcode,
                             &delay);
 
                 /*
@@ -581,7 +563,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                  */
                 if (attempt == 0) {
                     res_sample sample;
-                    _res_stats_set_sample(&sample, now, rcode, delay);
+                    _res_stats_set_sample(&sample, now, *rcode, delay);
                     _resolv_cache_add_resolver_stats_sample(statp->netid, revision_id, ns, &sample,
                                                             params.max_samples);
                 }
@@ -596,12 +578,12 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                 VLOG << "using send_dg";
 
                 n = send_dg(statp, &params, buf, buflen, ans, anssiz, &terrno, ns, &v_circuit,
-                            &gotsomewhere, &now, &rcode, &delay);
+                            &gotsomewhere, &now, rcode, &delay);
 
                 /* Only record stats the first time we try a query. See above. */
                 if (attempt == 0) {
                     res_sample sample;
-                    _res_stats_set_sample(&sample, now, rcode, delay);
+                    _res_stats_set_sample(&sample, now, *rcode, delay);
                     _resolv_cache_add_resolver_stats_sample(statp->netid, revision_id, ns, &sample,
                                                             params.max_samples);
                 }
@@ -719,7 +701,6 @@ static int send_vc(res_state statp, struct __res_params* params, const u_char* b
                    u_char* ans, int anssiz, int* terrno, int ns, time_t* at, int* rcode,
                    int* delay) {
     *at = time(NULL);
-    *rcode = RCODE_INTERNAL_ERROR;
     *delay = 0;
     const HEADER* hp = (const HEADER*) (const void*) buf;
     HEADER* anhp = (HEADER*) (void*) ans;
@@ -989,7 +970,6 @@ static int send_dg(res_state statp, struct __res_params* params, const u_char* b
                    u_char* ans, int anssiz, int* terrno, int ns, int* v_circuit, int* gotsomewhere,
                    time_t* at, int* rcode, int* delay) {
     *at = time(NULL);
-    *rcode = RCODE_INTERNAL_ERROR;
     *delay = 0;
     const HEADER* hp = (const HEADER*) (const void*) buf;
     HEADER* anhp = (HEADER*) (void*) ans;
@@ -1237,58 +1217,77 @@ static int sock_eq(struct sockaddr* a, struct sockaddr* b) {
     }
 }
 
-res_sendhookact res_tls_send(res_state statp, const Slice query, const Slice answer, int* resplen) {
+static int res_tls_send(res_state statp, const Slice query, const Slice answer, int* error,
+                        bool* fallback) {
+    int resplen = 0;
     const unsigned netId = statp->netid;
     const unsigned mark = statp->_mark;
 
-    // TLS bypass
-    if (statp->use_local_nameserver) {
-        return res_goahead;
+    PrivateDnsStatus privateDnsStatus = gPrivateDnsConfiguration.getStatus(netId);
+
+    if (privateDnsStatus.mode == PrivateDnsMode::OFF) {
+        *fallback = true;
+        return -1;
     }
-
-    const auto privateDnsStatus = gPrivateDnsConfiguration.getStatus(netId);
-
-    if (privateDnsStatus.mode == PrivateDnsMode::OFF) return res_goahead;
 
     if (privateDnsStatus.validatedServers.empty()) {
         if (privateDnsStatus.mode == PrivateDnsMode::OPPORTUNISTIC) {
-            return res_goahead;
+            *fallback = true;
+            return -1;
         } else {
             // Sleep and iterate some small number of times checking for the
             // arrival of resolved and validated server IP addresses, instead
             // of returning an immediate error.
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(100ms);
-            return res_modified;
+            for (int i = 0; i < 42; i++) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if (!gPrivateDnsConfiguration.getStatus(netId).validatedServers.empty()) {
+                    privateDnsStatus = gPrivateDnsConfiguration.getStatus(netId);
+                    break;
+                }
+            }
+            if (privateDnsStatus.validatedServers.empty()) {
+                return -1;
+            }
         }
     }
 
     VLOG << __func__ << ": performing query over TLS";
 
     const auto response = sDnsTlsDispatcher.query(privateDnsStatus.validatedServers, mark, query,
-                                                  answer, resplen);
-    if (response == DnsTlsTransport::Response::success) {
-        VLOG << __func__ << ": success";
-        return res_done;
-    }
+                                                  answer, &resplen);
 
-    VLOG << __func__ << ": abort: TLS query failed: " << static_cast<int>(response);
+    VLOG << __func__ << ": TLS query result: " << static_cast<int>(response);
 
     if (privateDnsStatus.mode == PrivateDnsMode::OPPORTUNISTIC) {
         // In opportunistic mode, handle falling back to cleartext in some
         // cases (DNS shouldn't fail if a validated opportunistic mode server
         // becomes unreachable for some reason).
         switch (response) {
+            case DnsTlsTransport::Response::success:
+                return resplen;
             case DnsTlsTransport::Response::network_error:
+                // No need to set the error timeout here since it will fallback to UDP.
             case DnsTlsTransport::Response::internal_error:
                 // Note: this will cause cleartext queries to be emitted, with
                 // all of the EDNS0 goodness enabled. Fingers crossed.  :-/
-                return res_goahead;
+                *fallback = true;
+                [[fallthrough]];
             default:
-                break;
+                return -1;
+        }
+    } else {
+        // Strict mode
+        switch (response) {
+            case DnsTlsTransport::Response::success:
+                return resplen;
+            case DnsTlsTransport::Response::network_error:
+                // This case happens when the query stored in DnsTlsTransport is expired since
+                // either 1) the query has been tried for 3 times but no response or 2) fail to
+                // establish the connection with the server.
+                *error = RCODE_TIMEOUT;
+                [[fallthrough]];
+            default:
+                return -1;
         }
     }
-
-    // There was an internal error.  Fail hard.
-    return res_error;
 }

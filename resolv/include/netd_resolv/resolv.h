@@ -53,6 +53,13 @@ typedef union sockaddr_union {
  */
 #define MARK_UNSET 0u
 
+/*
+ * Error code extending EAI_* codes defined in bionic/libc/include/netdb.h.
+ * This error code, including EAI_*, returned from android_getaddrinfofornetcontext()
+ * and android_gethostbynamefornetcontext() are used for DNS metrics.
+ */
+#define NETD_RESOLV_TIMEOUT 255  // consistent with RCODE_TIMEOUT
+
 struct __res_params;
 struct addrinfo;
 struct hostent;

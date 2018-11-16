@@ -233,16 +233,10 @@ void _res_stats_set_sample(res_sample* sample, time_t now, int rcode, int rtt);
 #define RES_PRF_TRUNC 0x00008000
 /*			0x00010000	*/
 
+extern const char* const _res_opcodes[];
+
 /* Things involving an internal (static) resolver context. */
 struct __res_state* res_get_state(void);
-
-void res_close(void);
-int res_init(void);
-int res_mkquery(int, const char*, int, int, const u_char*, int, const u_char*, u_char*, int);
-int res_query(const char*, int, int, u_char*, int);
-int res_search(const char*, int, int, u_char*, int);
-int res_send(const u_char*, int, u_char*, int);
-int res_sendsigned(const u_char*, int, ns_tsig_key*, u_char*, int);
 
 int res_hnok(const char*);
 int res_ownok(const char*);
@@ -263,17 +257,13 @@ int res_queriesmatch(const u_char*, const u_char*, const u_char*, const u_char*)
 const char* p_section(int, int);
 /* Things involving a resolver context. */
 int res_ninit(res_state);
-void fp_resstat(const res_state, FILE*);
 void res_pquery(const res_state, const u_char*, int, FILE*);
-int res_nquery(res_state, const char*, int, int, u_char*, int);
-int res_nsearch(res_state, const char*, int, int, u_char*, int);
-int res_nquerydomain(res_state, const char*, const char*, int, int, u_char*, int);
+int res_nquery(res_state, const char*, int, int, u_char*, int, int*);
+int res_nsearch(res_state, const char*, int, int, u_char*, int, int*);
+int res_nquerydomain(res_state, const char*, const char*, int, int, u_char*, int, int*);
 int res_nmkquery(res_state, int, const char*, int, int, const u_char*, int, const u_char*, u_char*,
                  int);
-int res_nsend(res_state, const u_char*, int, u_char*, int);
-int res_nsendsigned(res_state, const u_char*, int, ns_tsig_key*, u_char*, int);
-int res_findzonecut(res_state, const char*, ns_class, int, char*, size_t, struct in_addr*, int);
-int res_findzonecut2(res_state, const char*, ns_class, int, char*, size_t, sockaddr_union*, int);
+int res_nsend(res_state, const u_char*, int, u_char*, int, int*);
 void res_nclose(res_state);
 int res_nopt(res_state, int, u_char*, int, int);
 int res_vinit(res_state, int);
@@ -288,5 +278,11 @@ u_int res_randomid(void);
 
 int getaddrinfo_numeric(const char* hostname, const char* servname, addrinfo hints,
                         addrinfo** result);
+
+// Helper function for converting h_errno to the error codes visible to netd
+int herrnoToAiError(int herrno);
+
+// Helper function for converting rcode to the error codes visible to netd
+int rcodeToAiError(int rcode);
 
 #endif  // NETD_RESOLV_PRIVATE_H
