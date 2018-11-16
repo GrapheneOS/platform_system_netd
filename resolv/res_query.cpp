@@ -107,15 +107,17 @@
  *
  * Caller must parse answer and determine whether it answers the question.
  */
-int res_nquery(res_state statp, const char* name, // domain name
-               int cl, int type,                  // class and type of query
-               u_char* answer,                    // buffer to put answer
-               int anslen)                        // size of answer buffer
+int res_nquery(res_state statp, const char* name,  // domain name
+               int cl, int type,                   // class and type of query
+               u_char* answer,                     // buffer to put answer
+               int anslen,                         // size of answer buffer
+               int* ai_error)                      // error will be set based on rcode
 {
     u_char buf[MAXPACKET];
     HEADER* hp = (HEADER*) (void*) answer;
     int n;
     u_int oflags;
+    int rcode = NOERROR;
 
     oflags = statp->_flags;
 
@@ -137,7 +139,8 @@ again:
         RES_SET_H_ERRNO(statp, NO_RECOVERY);
         return n;
     }
-    n = res_nsend(statp, buf, n, answer, anslen);
+    n = res_nsend(statp, buf, n, answer, anslen, &rcode);
+    *ai_error = rcodeToAiError(rcode);
     if (n < 0) {
         /* if the query choked with EDNS0, retry without EDNS0 */
         if ((statp->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0U &&
@@ -190,7 +193,8 @@ again:
 int res_nsearch(res_state statp, const char* name, /* domain name */
                 int cl, int type,                  /* class and type of query */
                 u_char* answer,                    /* buffer to put answer */
-                int anslen)                        /* size of answer */
+                int anslen,                        /* size of answer */
+                int* ai_error)                     /* error will be set based on rcode*/
 {
     const char *cp, *const *domain;
     HEADER* hp = (HEADER*) (void*) answer;
@@ -215,7 +219,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
      */
     saved_herrno = -1;
     if (dots >= statp->ndots || trailing_dot) {
-        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen);
+        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen, ai_error);
         if (ret > 0 || trailing_dot) return ret;
         saved_herrno = statp->res_h_errno;
         tried_as_is++;
@@ -246,7 +250,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
             if (domain[0][0] == '\0' || (domain[0][0] == '.' && domain[0][1] == '\0'))
                 root_on_list++;
 
-            ret = res_nquerydomain(statp, name, *domain, cl, type, answer, anslen);
+            ret = res_nquerydomain(statp, name, *domain, cl, type, answer, anslen, ai_error);
             if (ret > 0) return ret;
 
             /*
@@ -299,7 +303,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
      */
     if ((dots || !searched || (statp->options & RES_NOTLDQUERY) == 0U) &&
         !(tried_as_is || root_on_list)) {
-        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen);
+        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen, ai_error);
         if (ret > 0) return ret;
     }
 
@@ -323,10 +327,11 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
  * Perform a call on res_query on the concatenation of name and domain,
  * removing a trailing dot from name if domain is NULL.
  */
-int res_nquerydomain(res_state statp, const char* name, const char* domain,
-                     int cl, int type,  /* class and type of query */
-                     u_char* answer,    /* buffer to put answer */
-                     int anslen)        /* size of answer */
+int res_nquerydomain(res_state statp, const char* name, const char* domain, int cl,
+                     int type,       /* class and type of query */
+                     u_char* answer, /* buffer to put answer */
+                     int anslen,     /* size of answer */
+                     int* ai_error)  /* error will be set based on rcode*/
 {
     char nbuf[MAXDNAME];
     const char* longname = nbuf;
@@ -362,5 +367,5 @@ int res_nquerydomain(res_state statp, const char* name, const char* domain,
         }
         snprintf(nbuf, sizeof(nbuf), "%s.%s", name, domain);
     }
-    return res_nquery(statp, longname, cl, type, answer, anslen);
+    return res_nquery(statp, longname, cl, type, answer, anslen, ai_error);
 }
