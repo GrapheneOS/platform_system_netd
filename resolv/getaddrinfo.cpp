@@ -187,9 +187,10 @@ static struct addrinfo* _gethtent(FILE**, const char*, const struct addrinfo*);
 static bool files_getaddrinfo(const char* name, const addrinfo* pai, addrinfo** res);
 static int _find_src_addr(const struct sockaddr*, struct sockaddr*, unsigned, uid_t);
 
-static int res_queryN(const char*, struct res_target*, res_state);
-static int res_searchN(const char*, struct res_target*, res_state);
-static int res_querydomainN(const char*, const char*, struct res_target*, res_state);
+static int res_queryN(const char* name, res_target* target, res_state res, int* ai_error);
+static int res_searchN(const char* name, res_target* target, res_state res, int* ai_error);
+static int res_querydomainN(const char* name, const char* domain, res_target* target, res_state res,
+                            int* ai_error);
 
 static const char* const ai_errlist[] = {
         "Success",
@@ -1517,10 +1518,13 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
      * and have a cache hit that would be wasted, so we do the rest there on miss
      */
     res_setnetcontext(res, netcontext);
-    if (res_searchN(name, &q, res) < 0) {
+
+    // Pass ai_error to catch more detailed errors rather than EAI_NODATA.
+    int ai_error = EAI_NODATA;
+    if (res_searchN(name, &q, res, &ai_error) < 0) {
         free(buf);
         free(buf2);
-        return EAI_NODATA;  // TODO: Decode error from h_errno like we do below
+        return ai_error;  // TODO: Decode error from h_errno like we do below
     }
     ai = getanswer(buf, q.n, q.name, q.qtype, pai);
     if (ai) {
@@ -1534,14 +1538,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
     free(buf);
     free(buf2);
     if (sentinel.ai_next == NULL) {
-        switch (h_errno) {
-            case HOST_NOT_FOUND:
-                return EAI_NODATA;
-            case TRY_AGAIN:
-                return EAI_AGAIN;
-            default:
-                return EAI_FAIL;
-        }
+        return herrnoToAiError(h_errno);
     }
 
     _rfc6724_sort(&sentinel, netcontext->app_mark, netcontext->uid);
@@ -1646,8 +1643,7 @@ static bool files_getaddrinfo(const char* name, const addrinfo* pai, addrinfo** 
  *
  * Caller must parse answer and determine whether it answers the question.
  */
-static int res_queryN(const char* name, /* domain name */ struct res_target* target,
-                      res_state res) {
+static int res_queryN(const char* name, res_target* target, res_state res, int* ai_error) {
     u_char buf[MAXPACKET];
     HEADER* hp;
     int n;
@@ -1692,7 +1688,9 @@ static int res_queryN(const char* name, /* domain name */ struct res_target* tar
             h_errno = NO_RECOVERY;
             return n;
         }
-        n = res_nsend(res, buf, n, answer, anslen);
+
+        n = res_nsend(res, buf, n, answer, anslen, &rcode);
+        *ai_error = rcodeToAiError(rcode);
 
         if (n < 0 || hp->rcode != NOERROR || ntohs(hp->ancount) == 0) {
             rcode = hp->rcode; /* record most recent error */
@@ -1746,7 +1744,7 @@ static int res_queryN(const char* name, /* domain name */ struct res_target* tar
  * If enabled, implement search rules until answer or unrecoverable failure
  * is detected.  Error code, if any, is left in h_errno.
  */
-static int res_searchN(const char* name, struct res_target* target, res_state res) {
+static int res_searchN(const char* name, res_target* target, res_state res, int* ai_error) {
     const char *cp, *const *domain;
     HEADER* hp;
     u_int dots;
@@ -1771,7 +1769,7 @@ static int res_searchN(const char* name, struct res_target* target, res_state re
      */
     saved_herrno = -1;
     if (dots >= res->ndots) {
-        ret = res_querydomainN(name, NULL, target, res);
+        ret = res_querydomainN(name, NULL, target, res, ai_error);
         if (ret > 0) return (ret);
         saved_herrno = h_errno;
         tried_as_is++;
@@ -1794,7 +1792,7 @@ static int res_searchN(const char* name, struct res_target* target, res_state re
         _resolv_populate_res_for_net(res);
 
         for (domain = (const char* const*) res->dnsrch; *domain && !done; domain++) {
-            ret = res_querydomainN(name, *domain, target, res);
+            ret = res_querydomainN(name, *domain, target, res, ai_error);
             if (ret > 0) return ret;
 
             /*
@@ -1847,7 +1845,7 @@ static int res_searchN(const char* name, struct res_target* target, res_state re
      * name or whether it ends with a dot.
      */
     if (!tried_as_is) {
-        ret = res_querydomainN(name, NULL, target, res);
+        ret = res_querydomainN(name, NULL, target, res, ai_error);
         if (ret > 0) return ret;
     }
 
@@ -1872,8 +1870,8 @@ static int res_searchN(const char* name, struct res_target* target, res_state re
  * Perform a call on res_query on the concatenation of name and domain,
  * removing a trailing dot from name if domain is NULL.
  */
-static int res_querydomainN(const char* name, const char* domain, struct res_target* target,
-                            res_state res) {
+static int res_querydomainN(const char* name, const char* domain, res_target* target, res_state res,
+                            int* ai_error) {
     char nbuf[MAXDNAME];
     const char* longname = nbuf;
     size_t n, d;
@@ -1909,5 +1907,5 @@ static int res_querydomainN(const char* name, const char* domain, struct res_tar
         }
         snprintf(nbuf, sizeof(nbuf), "%s.%s", name, domain);
     }
-    return res_queryN(longname, target, res);
+    return res_queryN(longname, target, res, ai_error);
 }
