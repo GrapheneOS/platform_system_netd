@@ -212,6 +212,7 @@ void PrivateDnsConfiguration::getStatus(unsigned netId, ExternalPrivateDnsStatus
             status->serverStatus[count].fingerprints.num = numFingerprint;
             */
             count++;
+            if (count >= MAXNS) break;  // Lose the rest
         }
     }
 }
