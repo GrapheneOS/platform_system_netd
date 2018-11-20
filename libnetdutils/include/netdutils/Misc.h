@@ -37,7 +37,7 @@ template <typename FnT>
 class Cleanup {
   public:
     Cleanup() = delete;
-    Cleanup(FnT fn) : mFn(fn) {}
+    explicit Cleanup(FnT fn) : mFn(fn) {}
     ~Cleanup() { if (!mReleased) mFn(); }
 
     void release() { mReleased = true; }
