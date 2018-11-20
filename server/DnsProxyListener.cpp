@@ -132,7 +132,8 @@ bool hasPermissionToBypassPrivateDns(uid_t uid) {
         return true;
     }
 
-    for (auto& permission : {CONNECTIVITY_USE_RESTRICTED_NETWORKS, NETWORK_BYPASS_PRIVATE_DNS}) {
+    for (const char* const permission :
+         {CONNECTIVITY_USE_RESTRICTED_NETWORKS, NETWORK_BYPASS_PRIVATE_DNS}) {
         if (checkCallingPermission(String16(permission))) {
             return true;
         }
