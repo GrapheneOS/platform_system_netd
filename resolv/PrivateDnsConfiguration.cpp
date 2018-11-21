@@ -212,6 +212,7 @@ void PrivateDnsConfiguration::getStatus(unsigned netId, ExternalPrivateDnsStatus
             status->serverStatus[count].fingerprints.num = numFingerprint;
             */
             count++;
+            if (count >= MAXNS) break;  // Lose the rest
         }
     }
 }
@@ -322,9 +323,9 @@ bool PrivateDnsConfiguration::recordPrivateDnsValidation(const DnsTlsServer& ser
 
     // Invoke the callback to send a validation event to NetdEventListenerService.
     if (mCallback != nullptr) {
-        const char* ipLiteral = addrToString(&(server.ss)).c_str();
+        const std::string ipLiteral = addrToString(&(server.ss));
         const char* hostname = server.name.empty() ? "" : server.name.c_str();
-        mCallback(netId, ipLiteral, hostname, success);
+        mCallback(netId, ipLiteral.c_str(), hostname, success);
     }
 
     if (success) {
