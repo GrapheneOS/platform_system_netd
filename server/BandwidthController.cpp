@@ -652,12 +652,13 @@ int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const std::string& ale
 
 int BandwidthController::setGlobalAlert(int64_t bytes) {
     const char *alertName = ALERT_GLOBAL_NAME;
-    int res = 0;
 
     if (!bytes) {
         ALOGE("Invalid bytes value. 1..max_int64.");
         return -ERANGE;
     }
+
+    int res = 0;
     if (mGlobalAlertBytes) {
         res = updateQuota(alertName, bytes);
     } else {
@@ -676,7 +677,6 @@ int BandwidthController::setGlobalAlert(int64_t bytes) {
 
 int BandwidthController::setGlobalAlertInForwardChain() {
     const char *alertName = ALERT_GLOBAL_NAME;
-    int res = 0;
 
     mGlobalAlertTetherCount++;
     ALOGV("setGlobalAlertInForwardChain(): %d tether", mGlobalAlertTetherCount);
@@ -691,19 +691,20 @@ int BandwidthController::setGlobalAlertInForwardChain() {
     }
 
     /* We only add the rule if this was the 1st tether added. */
-    res = runIptablesAlertFwdCmd(IptOpInsert, alertName, mGlobalAlertBytes);
-    return res;
+    return (runIptablesAlertFwdCmd(IptOpInsert, alertName, mGlobalAlertBytes) == 0) ? 0
+                                                                                    : -EREMOTEIO;
 }
 
 int BandwidthController::removeGlobalAlert() {
 
     const char *alertName = ALERT_GLOBAL_NAME;
-    int res = 0;
 
     if (!mGlobalAlertBytes) {
         ALOGE("No prior alert set");
         return -1;
     }
+
+    int res = 0;
     res = runIptablesAlertCmd(IptOpDelete, alertName, mGlobalAlertBytes);
     if (mGlobalAlertTetherCount) {
         res |= runIptablesAlertFwdCmd(IptOpDelete, alertName, mGlobalAlertBytes);
@@ -713,12 +714,11 @@ int BandwidthController::removeGlobalAlert() {
 }
 
 int BandwidthController::removeGlobalAlertInForwardChain() {
-    int res = 0;
     const char *alertName = ALERT_GLOBAL_NAME;
 
     if (!mGlobalAlertTetherCount) {
         ALOGE("No prior alert set");
-        return -1;
+        return -ENOENT;
     }
 
     mGlobalAlertTetherCount--;
@@ -732,8 +732,8 @@ int BandwidthController::removeGlobalAlertInForwardChain() {
     }
 
     /* We only detete the rule if this was the last tether removed. */
-    res = runIptablesAlertFwdCmd(IptOpDelete, alertName, mGlobalAlertBytes);
-    return res;
+    return (runIptablesAlertFwdCmd(IptOpDelete, alertName, mGlobalAlertBytes) == 0) ? 0
+                                                                                    : -EREMOTEIO;
 }
 
 int BandwidthController::setSharedAlert(int64_t bytes) {
