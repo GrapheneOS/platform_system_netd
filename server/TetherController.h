@@ -158,6 +158,7 @@ private:
     bool tetherCountingRuleExists(const std::string& iface1, const std::string& iface2);
 
     int setDefaults();
+    int setTetherGlobalAlertRule();
     int setForwardRules(bool set, const char *intIface, const char *extIface);
     int setTetherCountingRules(bool add, const char *intIface, const char *extIface);
 

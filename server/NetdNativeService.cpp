@@ -1493,10 +1493,6 @@ binder::Status NetdNativeService::tetherAddForward(const std::string& intIface,
     auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).args(intIface, extIface);
 
     int res = gCtls->tetherCtrl.enableNat(intIface.c_str(), extIface.c_str());
-    if (!res) {
-        std::lock_guard lock(gCtls->bandwidthCtrl.lock);
-        res = gCtls->bandwidthCtrl.setGlobalAlertInForwardChain();
-    }
     gLog.log(entry.returns(res).withAutomaticDuration());
     return statusFromErrcode(res);
 }
@@ -1504,11 +1500,9 @@ binder::Status NetdNativeService::tetherAddForward(const std::string& intIface,
 binder::Status NetdNativeService::tetherRemoveForward(const std::string& intIface,
                                                       const std::string& extIface) {
     NETD_LOCKING_RPC(NETWORK_STACK, gCtls->tetherCtrl.lock);
-    std::lock_guard lock(gCtls->bandwidthCtrl.lock);
     auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).args(intIface, extIface);
 
-    int res = gCtls->bandwidthCtrl.removeGlobalAlertInForwardChain();
-    res |= gCtls->tetherCtrl.disableNat(intIface.c_str(), extIface.c_str());
+    int res = gCtls->tetherCtrl.disableNat(intIface.c_str(), extIface.c_str());
     gLog.log(entry.returns(res).withAutomaticDuration());
     return statusFromErrcode(res);
 }
