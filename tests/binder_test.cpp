@@ -61,6 +61,7 @@
 #define RAW_TABLE "raw"
 #define MANGLE_TABLE "mangle"
 #define FILTER_TABLE "filter"
+#define NAT_TABLE "nat"
 
 namespace binder = android::binder;
 namespace netdutils = android::netdutils;
@@ -123,12 +124,15 @@ class BinderTest : public ::testing::Test {
     // Static because setting up the tun interface takes about 40ms.
     static void SetUpTestCase() {
         ASSERT_EQ(0, sTun.init());
+        ASSERT_EQ(0, sTun2.init());
         ASSERT_LE(sTun.name().size(), static_cast<size_t>(IFNAMSIZ));
+        ASSERT_LE(sTun2.name().size(), static_cast<size_t>(IFNAMSIZ));
     }
 
     static void TearDownTestCase() {
         // Closing the socket removes the interface and IP addresses.
         sTun.destroy();
+        sTun2.destroy();
     }
 
     static void fakeRemoteSocketPair(int *clientSocket, int *serverSocket, int *acceptedSocket);
@@ -136,9 +140,11 @@ class BinderTest : public ::testing::Test {
   protected:
     sp<INetd> mNetd;
     static TunInterface sTun;
+    static TunInterface sTun2;
 };
 
 TunInterface BinderTest::sTun;
+TunInterface BinderTest::sTun2;
 
 class TimedOperation : public Stopwatch {
   public:
@@ -1116,6 +1122,7 @@ static std::vector<std::string> listIptablesRuleByTable(const char* binary, cons
     return runCommand(command);
 }
 
+// TODO: It is a duplicate function, need to remove it
 bool iptablesIdleTimerInterfaceRuleExists(const char* binary, const char* chainName,
                                           const std::string& expectedInterface,
                                           const std::string& expectedRule, const char* table) {
@@ -1368,7 +1375,8 @@ constexpr char BANDWIDTH_FORWARD[] = "bw_FORWARD";
 constexpr char BANDWIDTH_NAUGHTY[] = "bw_penalty_box";
 constexpr char BANDWIDTH_NICE[] = "bw_happy_box";
 
-// TODO: move iptablesTargetsExists and listIptablesRuleByTable to the top.
+// TODO: Move iptablesTargetsExists and listIptablesRuleByTable to the top.
+//       Use either a std::vector<std::string> of things to match, or a variadic function.
 bool iptablesTargetsExists(const char* binary, int expectedCount, const char* table,
                            const char* chainName, const std::string& expectedTargetA,
                            const std::string& expectedTargetB) {
@@ -2638,4 +2646,107 @@ TEST_F(BinderTest, InterfaceSetMtu) {
 
     // Remove test physical network
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
+namespace {
+
+constexpr const char TETHER_FORWARD[] = "tetherctrl_FORWARD";
+constexpr const char TETHER_NAT_POSTROUTING[] = "tetherctrl_nat_POSTROUTING";
+constexpr const char TETHER_PREROUTING[] = "tetherctrl_raw_PREROUTING";
+constexpr const char TETHER_COUNTERS_CHAIN[] = "tetherctrl_counters";
+
+int iptablesRuleLineLengthByTable(const char* binary, const char* table, const char* chainName) {
+    return listIptablesRuleByTable(binary, table, chainName).size();
+}
+
+bool iptablesChainMatch(const char* binary, const char* table, const char* chainName,
+                        const std::vector<std::string>& targetVec) {
+    std::vector<std::string> rules = listIptablesRuleByTable(binary, table, chainName);
+    if (targetVec.size() != rules.size() - 2) {
+        return false;
+    }
+
+    /*
+     * Do the fully match here.
+     * Skip first two lines since rules start from third line.
+     * Chain chainName (x references)
+     * pkts bytes target     prot opt in     out     source               destination
+     * ...
+     */
+    int rIndex = 2;
+    for (const auto& target : targetVec) {
+        if (rules[rIndex].find(target) == std::string::npos) {
+            return false;
+        }
+        rIndex++;
+    }
+    return true;
+}
+
+void expectNatEnable(const std::string& intIf, const std::string& extIf) {
+    std::vector<std::string> postroutingV4Match = {"MASQUERADE"};
+    std::vector<std::string> preroutingV4Match = {"CT helper ftp", "CT helper pptp"};
+    std::vector<std::string> forwardV4Match = {
+            "state RELATED", "state INVALID",
+            StringPrintf("tetherctrl_counters  all  --  %s %s", intIf.c_str(), extIf.c_str()),
+            "DROP"};
+
+    // V4
+    EXPECT_TRUE(iptablesChainMatch(IPTABLES_PATH, NAT_TABLE, TETHER_NAT_POSTROUTING,
+                                   postroutingV4Match));
+    EXPECT_TRUE(iptablesChainMatch(IPTABLES_PATH, RAW_TABLE, TETHER_PREROUTING, preroutingV4Match));
+    EXPECT_TRUE(iptablesChainMatch(IPTABLES_PATH, FILTER_TABLE, TETHER_FORWARD, forwardV4Match));
+
+    std::vector<std::string> forwardV6Match = {"tetherctrl_counters"};
+    std::vector<std::string> preroutingV6Match = {"rpfilter invert"};
+
+    // V6
+    EXPECT_TRUE(iptablesChainMatch(IP6TABLES_PATH, FILTER_TABLE, TETHER_FORWARD, forwardV6Match));
+    EXPECT_TRUE(
+            iptablesChainMatch(IP6TABLES_PATH, RAW_TABLE, TETHER_PREROUTING, preroutingV6Match));
+
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesTargetsExists(binary, 2, FILTER_TABLE, TETHER_COUNTERS_CHAIN, intIf,
+                                          extIf));
+    }
+}
+
+void expectNatDisable() {
+    // It is the default DROP rule with tethering disable.
+    // Chain tetherctrl_FORWARD (1 references)
+    // pkts bytes target     prot opt in     out     source               destination
+    //    0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0
+    std::vector<std::string> forwardV4Match = {"DROP"};
+    EXPECT_TRUE(iptablesChainMatch(IPTABLES_PATH, FILTER_TABLE, TETHER_FORWARD, forwardV4Match));
+
+    // We expect that these chains should be empty.
+    EXPECT_EQ(2, iptablesRuleLineLengthByTable(IPTABLES_PATH, NAT_TABLE, TETHER_NAT_POSTROUTING));
+    EXPECT_EQ(2, iptablesRuleLineLengthByTable(IPTABLES_PATH, RAW_TABLE, TETHER_PREROUTING));
+
+    EXPECT_EQ(2, iptablesRuleLineLengthByTable(IP6TABLES_PATH, FILTER_TABLE, TETHER_FORWARD));
+    EXPECT_EQ(2, iptablesRuleLineLengthByTable(IP6TABLES_PATH, RAW_TABLE, TETHER_PREROUTING));
+
+    // Netd won't clear tether quota rule, we don't care rule in tetherctrl_counters.
+}
+
+}  // namespace
+
+TEST_F(BinderTest, TetherForwardAddRemove) {
+    // Add test physical network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID2, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID2, sTun2.name()).isOk());
+
+    binder::Status status = mNetd->tetherAddForward(sTun.name(), sTun2.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectNatEnable(sTun.name(), sTun2.name());
+
+    status = mNetd->tetherRemoveForward(sTun.name(), sTun2.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectNatDisable();
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID2).isOk());
 }
