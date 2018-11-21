@@ -1133,4 +1133,19 @@ interface INetd {
     *         cause of the the failure.
     */
     void interfaceSetMtu(in @utf8InCpp String ifName, int mtu);
+   /**
+    * Add forwarding rule/stats on given interface.
+    *
+    * @param intIface downstream interface
+    * @param extIface upstream interface
+    */
+    void tetherAddForward(in @utf8InCpp String intIface, in @utf8InCpp String extIface);
+
+   /**
+    * Remove forwarding rule/stats on given interface.
+    *
+    * @param intIface downstream interface
+    * @param extIface upstream interface
+    */
+    void tetherRemoveForward(in @utf8InCpp String intIface, in @utf8InCpp String extIface);
 }

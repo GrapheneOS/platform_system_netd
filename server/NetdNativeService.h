@@ -259,6 +259,11 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
                                             const std::string& toIface) override;
     binder::Status ipfwdRemoveInterfaceForward(const std::string& fromIface,
                                                const std::string& toIface) override;
+    // Tether-forward-related commands
+    binder::Status tetherAddForward(const std::string& intIface,
+                                    const std::string& extIface) override;
+    binder::Status tetherRemoveForward(const std::string& intIface,
+                                       const std::string& extIface) override;
 
   private:
     std::vector<uid_t> intsToUids(const std::vector<int32_t>& intUids);

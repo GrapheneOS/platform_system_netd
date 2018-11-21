@@ -63,6 +63,11 @@ int TunInterface::init() {
     // In order to fit the size of interface alert name , resize ifname to 9
     // Alert name format in netd: ("%sAlert", ifname)
     // Limitation in kernel: char name[15] in struct xt_quota_mtinfo2
+
+    // Note that this form of alert doesn't actually appear to be used for interface alerts.
+    // It can only be created by BandwidthController::setInterfaceAlert, but that appears to have no
+    // actual callers in the framework, because mActiveAlerts is always empty.
+    // TODO: remove setInterfaceAlert and use a longer interface name.
     mIfName = StringPrintf("netd%x", arc4random());
     mIfName.resize(9);
 
