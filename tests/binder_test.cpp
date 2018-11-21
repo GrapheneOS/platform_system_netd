@@ -1374,6 +1374,7 @@ constexpr char BANDWIDTH_OUTPUT[] = "bw_OUTPUT";
 constexpr char BANDWIDTH_FORWARD[] = "bw_FORWARD";
 constexpr char BANDWIDTH_NAUGHTY[] = "bw_penalty_box";
 constexpr char BANDWIDTH_NICE[] = "bw_happy_box";
+constexpr char BANDWIDTH_ALERT[] = "bw_global_alert";
 
 // TODO: Move iptablesTargetsExists and listIptablesRuleByTable to the top.
 //       Use either a std::vector<std::string> of things to match, or a variadic function.
@@ -1460,8 +1461,7 @@ void expectBandwidthGlobalAlertRuleExists(long alertBytes) {
     static const char globalAlertName[] = "globalAlert";
 
     for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
-        EXPECT_TRUE(iptablesRuleExists(binary, BANDWIDTH_INPUT, globalAlertRule));
-        EXPECT_TRUE(iptablesRuleExists(binary, BANDWIDTH_OUTPUT, globalAlertRule));
+        EXPECT_TRUE(iptablesRuleExists(binary, BANDWIDTH_ALERT, globalAlertRule));
     }
     expectXtQuotaValueEqual(globalAlertName, alertBytes);
 }
@@ -2652,10 +2652,10 @@ namespace {
 
 constexpr const char TETHER_FORWARD[] = "tetherctrl_FORWARD";
 constexpr const char TETHER_NAT_POSTROUTING[] = "tetherctrl_nat_POSTROUTING";
-constexpr const char TETHER_PREROUTING[] = "tetherctrl_raw_PREROUTING";
+constexpr const char TETHER_RAW_PREROUTING[] = "tetherctrl_raw_PREROUTING";
 constexpr const char TETHER_COUNTERS_CHAIN[] = "tetherctrl_counters";
 
-int iptablesRuleLineLengthByTable(const char* binary, const char* table, const char* chainName) {
+int iptablesCountRules(const char* binary, const char* table, const char* chainName) {
     return listIptablesRuleByTable(binary, table, chainName).size();
 }
 
@@ -2667,7 +2667,8 @@ bool iptablesChainMatch(const char* binary, const char* table, const char* chain
     }
 
     /*
-     * Do the fully match here.
+     * Check that the rules match. Note that this function matches substrings, not entire rules,
+     * because otherwise rules where "pkts" or "bytes" are nonzero would not match.
      * Skip first two lines since rules start from third line.
      * Chain chainName (x references)
      * pkts bytes target     prot opt in     out     source               destination
@@ -2687,23 +2688,24 @@ void expectNatEnable(const std::string& intIf, const std::string& extIf) {
     std::vector<std::string> postroutingV4Match = {"MASQUERADE"};
     std::vector<std::string> preroutingV4Match = {"CT helper ftp", "CT helper pptp"};
     std::vector<std::string> forwardV4Match = {
-            "state RELATED", "state INVALID",
+            "bw_global_alert", "state RELATED", "state INVALID",
             StringPrintf("tetherctrl_counters  all  --  %s %s", intIf.c_str(), extIf.c_str()),
             "DROP"};
 
     // V4
     EXPECT_TRUE(iptablesChainMatch(IPTABLES_PATH, NAT_TABLE, TETHER_NAT_POSTROUTING,
                                    postroutingV4Match));
-    EXPECT_TRUE(iptablesChainMatch(IPTABLES_PATH, RAW_TABLE, TETHER_PREROUTING, preroutingV4Match));
+    EXPECT_TRUE(
+            iptablesChainMatch(IPTABLES_PATH, RAW_TABLE, TETHER_RAW_PREROUTING, preroutingV4Match));
     EXPECT_TRUE(iptablesChainMatch(IPTABLES_PATH, FILTER_TABLE, TETHER_FORWARD, forwardV4Match));
 
-    std::vector<std::string> forwardV6Match = {"tetherctrl_counters"};
+    std::vector<std::string> forwardV6Match = {"bw_global_alert", "tetherctrl_counters"};
     std::vector<std::string> preroutingV6Match = {"rpfilter invert"};
 
     // V6
     EXPECT_TRUE(iptablesChainMatch(IP6TABLES_PATH, FILTER_TABLE, TETHER_FORWARD, forwardV6Match));
-    EXPECT_TRUE(
-            iptablesChainMatch(IP6TABLES_PATH, RAW_TABLE, TETHER_PREROUTING, preroutingV6Match));
+    EXPECT_TRUE(iptablesChainMatch(IP6TABLES_PATH, RAW_TABLE, TETHER_RAW_PREROUTING,
+                                   preroutingV6Match));
 
     for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
         EXPECT_TRUE(iptablesTargetsExists(binary, 2, FILTER_TABLE, TETHER_COUNTERS_CHAIN, intIf,
@@ -2720,11 +2722,11 @@ void expectNatDisable() {
     EXPECT_TRUE(iptablesChainMatch(IPTABLES_PATH, FILTER_TABLE, TETHER_FORWARD, forwardV4Match));
 
     // We expect that these chains should be empty.
-    EXPECT_EQ(2, iptablesRuleLineLengthByTable(IPTABLES_PATH, NAT_TABLE, TETHER_NAT_POSTROUTING));
-    EXPECT_EQ(2, iptablesRuleLineLengthByTable(IPTABLES_PATH, RAW_TABLE, TETHER_PREROUTING));
+    EXPECT_EQ(2, iptablesCountRules(IPTABLES_PATH, NAT_TABLE, TETHER_NAT_POSTROUTING));
+    EXPECT_EQ(2, iptablesCountRules(IPTABLES_PATH, RAW_TABLE, TETHER_RAW_PREROUTING));
 
-    EXPECT_EQ(2, iptablesRuleLineLengthByTable(IP6TABLES_PATH, FILTER_TABLE, TETHER_FORWARD));
-    EXPECT_EQ(2, iptablesRuleLineLengthByTable(IP6TABLES_PATH, RAW_TABLE, TETHER_PREROUTING));
+    EXPECT_EQ(2, iptablesCountRules(IP6TABLES_PATH, FILTER_TABLE, TETHER_FORWARD));
+    EXPECT_EQ(2, iptablesCountRules(IP6TABLES_PATH, RAW_TABLE, TETHER_RAW_PREROUTING));
 
     // Netd won't clear tether quota rule, we don't care rule in tetherctrl_counters.
 }
@@ -2732,12 +2734,6 @@ void expectNatDisable() {
 }  // namespace
 
 TEST_F(BinderTest, TetherForwardAddRemove) {
-    // Add test physical network
-    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
-    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
-    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID2, INetd::PERMISSION_NONE).isOk());
-    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID2, sTun2.name()).isOk());
-
     binder::Status status = mNetd->tetherAddForward(sTun.name(), sTun2.name());
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectNatEnable(sTun.name(), sTun2.name());
@@ -2745,8 +2741,4 @@ TEST_F(BinderTest, TetherForwardAddRemove) {
     status = mNetd->tetherRemoveForward(sTun.name(), sTun2.name());
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectNatDisable();
-
-    // Remove test physical network
-    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
-    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID2).isOk());
 }
