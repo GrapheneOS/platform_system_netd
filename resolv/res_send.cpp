@@ -154,7 +154,7 @@ static int sock_eq(struct sockaddr*, struct sockaddr*);
 static int connect_with_timeout(int sock, const struct sockaddr* nsap, socklen_t salen,
                                 const struct timespec timeout);
 static int retrying_poll(const int sock, short events, const struct timespec* finish);
-static int res_tls_send(res_state, const Slice query, const Slice answer, int* error,
+static int res_tls_send(res_state, const Slice query, const Slice answer, int* rcode,
                         bool* fallback);
 
 /* BIONIC-BEGIN: implement source port randomization */
@@ -1217,7 +1217,7 @@ static int sock_eq(struct sockaddr* a, struct sockaddr* b) {
     }
 }
 
-static int res_tls_send(res_state statp, const Slice query, const Slice answer, int* error,
+static int res_tls_send(res_state statp, const Slice query, const Slice answer, int* rcode,
                         bool* fallback) {
     int resplen = 0;
     const unsigned netId = statp->netid;
@@ -1264,6 +1264,7 @@ static int res_tls_send(res_state statp, const Slice query, const Slice answer, 
         // becomes unreachable for some reason).
         switch (response) {
             case DnsTlsTransport::Response::success:
+                *rcode = reinterpret_cast<HEADER*>(answer.base())->rcode;
                 return resplen;
             case DnsTlsTransport::Response::network_error:
                 // No need to set the error timeout here since it will fallback to UDP.
@@ -1279,12 +1280,13 @@ static int res_tls_send(res_state statp, const Slice query, const Slice answer, 
         // Strict mode
         switch (response) {
             case DnsTlsTransport::Response::success:
+                *rcode = reinterpret_cast<HEADER*>(answer.base())->rcode;
                 return resplen;
             case DnsTlsTransport::Response::network_error:
                 // This case happens when the query stored in DnsTlsTransport is expired since
                 // either 1) the query has been tried for 3 times but no response or 2) fail to
                 // establish the connection with the server.
-                *error = RCODE_TIMEOUT;
+                *rcode = RCODE_TIMEOUT;
                 [[fallthrough]];
             default:
                 return -1;
