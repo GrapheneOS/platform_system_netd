@@ -14,6 +14,7 @@ cc_defaults {
         "-Wsign-compare",
         "-Wthread-safety",
         "-Wunused-parameter",
+        "-Wuninitialized",
     ],
     tidy: true,
     tidy_checks: [
