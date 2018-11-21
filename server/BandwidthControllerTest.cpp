@@ -53,10 +53,12 @@ using android::netdutils::UniqueFile;
 
 const std::string ACCOUNT_RULES_WITHOUT_BPF =
         "*filter\n"
+        "-A bw_INPUT -j bw_global_alert\n"
         "-A bw_INPUT -p esp -j RETURN\n"
         "-A bw_INPUT -m mark --mark 0x100000/0x100000 -j RETURN\n"
         "-A bw_INPUT -m owner --socket-exists\n"
         "-A bw_INPUT -j MARK --or-mark 0x100000\n"
+        "-A bw_OUTPUT -j bw_global_alert\n"
         "-A bw_OUTPUT -o ipsec+ -j RETURN\n"
         "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN\n"
         "-A bw_OUTPUT -m owner --socket-exists\n"
@@ -82,10 +84,12 @@ const std::string ACCOUNT_RULES_WITHOUT_BPF =
 
 const std::string ACCOUNT_RULES_WITH_BPF =
         "*filter\n"
+        "-A bw_INPUT -j bw_global_alert\n"
         "-A bw_INPUT -p esp -j RETURN\n"
         "-A bw_INPUT -m mark --mark 0x100000/0x100000 -j RETURN\n"
         "\n"
         "-A bw_INPUT -j MARK --or-mark 0x100000\n"
+        "-A bw_OUTPUT -j bw_global_alert\n"
         "-A bw_OUTPUT -o ipsec+ -j RETURN\n"
         "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN\n"
         "\n"
@@ -128,28 +132,30 @@ protected:
         mTun.destroy();
     }
 
-    void expectSetupCommands(const std::string& expectedClean, std::string expectedAccounting) {
+    void expectSetupCommands(const std::string& expectedClean,
+                             const std::string& expectedAccounting) {
         std::string expectedList =
             "*filter\n"
             "-S\n"
             "COMMIT\n";
 
         std::string expectedFlush =
-            "*filter\n"
-            ":bw_INPUT -\n"
-            ":bw_OUTPUT -\n"
-            ":bw_FORWARD -\n"
-            ":bw_happy_box -\n"
-            ":bw_penalty_box -\n"
-            ":bw_data_saver -\n"
-            ":bw_costly_shared -\n"
-            "COMMIT\n"
-            "*raw\n"
-            ":bw_raw_PREROUTING -\n"
-            "COMMIT\n"
-            "*mangle\n"
-            ":bw_mangle_POSTROUTING -\n"
-            "COMMIT\n";
+                "*filter\n"
+                ":bw_INPUT -\n"
+                ":bw_OUTPUT -\n"
+                ":bw_FORWARD -\n"
+                ":bw_happy_box -\n"
+                ":bw_penalty_box -\n"
+                ":bw_data_saver -\n"
+                ":bw_costly_shared -\n"
+                ":bw_global_alert -\n"
+                "COMMIT\n"
+                "*raw\n"
+                ":bw_raw_PREROUTING -\n"
+                "COMMIT\n"
+                "*mangle\n"
+                ":bw_mangle_POSTROUTING -\n"
+                "COMMIT\n";
 
         ExpectedIptablesCommands expected = {{ V4, expectedList }};
         if (expectedClean.size()) {
@@ -165,12 +171,8 @@ protected:
 
     using IptOp = BandwidthController::IptOp;
 
-    int runIptablesAlertCmd(IptOp a, const char *b, int64_t c) {
+    int runIptablesAlertCmd(IptOp a, const char* b, int64_t c) {
         return mBw.runIptablesAlertCmd(a, b, c);
-    }
-
-    int runIptablesAlertFwdCmd(IptOp a, const char *b, int64_t c) {
-        return mBw.runIptablesAlertFwdCmd(a, b, c);
     }
 
     int setCostlyAlert(const std::string& a, int64_t b, int64_t* c) {
@@ -467,39 +469,17 @@ TEST_F(BandwidthControllerTest, TestSetInterfaceSharedQuotaTwoInterfaces) {
 
 TEST_F(BandwidthControllerTest, IptablesAlertCmd) {
     std::vector<std::string> expected = {
-        "*filter\n"
-        "-I bw_INPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
-        "-I bw_OUTPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
-        "COMMIT\n"
-    };
+            "*filter\n"
+            "-I bw_global_alert -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+            "COMMIT\n"};
     EXPECT_EQ(0, runIptablesAlertCmd(IptOp::IptOpInsert, "MyWonderfulAlert", 123456));
     expectIptablesRestoreCommands(expected);
 
     expected = {
-        "*filter\n"
-        "-D bw_INPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
-        "-D bw_OUTPUT -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
-        "COMMIT\n"
-    };
+            "*filter\n"
+            "-D bw_global_alert -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
+            "COMMIT\n"};
     EXPECT_EQ(0, runIptablesAlertCmd(IptOp::IptOpDelete, "MyWonderfulAlert", 123456));
-    expectIptablesRestoreCommands(expected);
-}
-
-TEST_F(BandwidthControllerTest, IptablesAlertFwdCmd) {
-    std::vector<std::string> expected = {
-        "*filter\n"
-        "-I bw_FORWARD -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
-        "COMMIT\n"
-    };
-    EXPECT_EQ(0, runIptablesAlertFwdCmd(IptOp::IptOpInsert, "MyWonderfulAlert", 123456));
-    expectIptablesRestoreCommands(expected);
-
-    expected = {
-        "*filter\n"
-        "-D bw_FORWARD -m quota2 ! --quota 123456 --name MyWonderfulAlert\n"
-        "COMMIT\n"
-    };
-    EXPECT_EQ(0, runIptablesAlertFwdCmd(IptOp::IptOpDelete, "MyWonderfulAlert", 123456));
     expectIptablesRestoreCommands(expected);
 }
 
