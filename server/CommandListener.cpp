@@ -531,14 +531,8 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
     // nat disable intiface extiface
     if (!strcmp(argv[1], "enable") && argc >= 4) {
         rc = gCtls->tetherCtrl.enableNat(argv[2], argv[3]);
-        if(!rc) {
-            /* Ignore ifaces for now. */
-            rc = gCtls->bandwidthCtrl.setGlobalAlertInForwardChain();
-        }
     } else if (!strcmp(argv[1], "disable") && argc >= 4) {
-        /* Ignore ifaces for now. */
-        rc = gCtls->bandwidthCtrl.removeGlobalAlertInForwardChain();
-        rc |= gCtls->tetherCtrl.disableNat(argv[2], argv[3]);
+        rc = gCtls->tetherCtrl.disableNat(argv[2], argv[3]);
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown nat cmd", false);
         return 0;
@@ -871,34 +865,12 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         sendGenericOkFail(cli, rc);
         return 0;
     }
-    if (!strcmp(argv[1], "debugsettetherglobalalert") || !strcmp(argv[1], "dstga")) {
-        if (argc != 4) {
-            sendGenericSyntaxError(cli, "debugsettetherglobalalert <interface0> <interface1>");
-            return 0;
-        }
-        /* We ignore the interfaces for now. */
-        int rc = gCtls->bandwidthCtrl.setGlobalAlertInForwardChain();
-        sendGenericOkFail(cli, rc);
-        return 0;
-
-    }
     if (!strcmp(argv[1], "removeglobalalert") || !strcmp(argv[1], "rga")) {
         if (argc != 2) {
             sendGenericSyntaxError(cli, "removeglobalalert");
             return 0;
         }
         int rc = gCtls->bandwidthCtrl.removeGlobalAlert();
-        sendGenericOkFail(cli, rc);
-        return 0;
-
-    }
-    if (!strcmp(argv[1], "debugremovetetherglobalalert") || !strcmp(argv[1], "drtga")) {
-        if (argc != 4) {
-            sendGenericSyntaxError(cli, "debugremovetetherglobalalert <interface0> <interface1>");
-            return 0;
-        }
-        /* We ignore the interfaces for now. */
-        int rc = gCtls->bandwidthCtrl.removeGlobalAlertInForwardChain();
         sendGenericOkFail(cli, rc);
         return 0;
 

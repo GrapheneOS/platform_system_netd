@@ -66,6 +66,7 @@ const char BandwidthController::LOCAL_FORWARD[] = "bw_FORWARD";
 const char BandwidthController::LOCAL_OUTPUT[] = "bw_OUTPUT";
 const char BandwidthController::LOCAL_RAW_PREROUTING[] = "bw_raw_PREROUTING";
 const char BandwidthController::LOCAL_MANGLE_POSTROUTING[] = "bw_mangle_POSTROUTING";
+const char BandwidthController::LOCAL_GLOBAL_ALERT[] = "bw_global_alert";
 
 auto BandwidthController::iptablesRestoreFunction = execIptablesRestoreWithOutput;
 
@@ -157,27 +158,27 @@ const std::string BPF_PENALTY_BOX_MATCH_BLACKLIST_COMMAND = StringPrintf(
         "-I bw_penalty_box -m bpf --object-pinned %s -j REJECT", XT_BPF_BLACKLIST_PROG_PATH);
 
 static const std::vector<std::string> IPT_FLUSH_COMMANDS = {
-    /*
-     * Cleanup rules.
-     * Should normally include bw_costly_<iface>, but we rely on the way they are setup
-     * to allow coexistance.
-     */
-    "*filter",
-    ":bw_INPUT -",
-    ":bw_OUTPUT -",
-    ":bw_FORWARD -",
-    ":bw_happy_box -",
-    ":bw_penalty_box -",
-    ":bw_data_saver -",
-    ":bw_costly_shared -",
-    "COMMIT",
-    "*raw",
-    ":bw_raw_PREROUTING -",
-    "COMMIT",
-    "*mangle",
-    ":bw_mangle_POSTROUTING -",
-    COMMIT_AND_CLOSE
-};
+        /*
+         * Cleanup rules.
+         * Should normally include bw_costly_<iface>, but we rely on the way they are setup
+         * to allow coexistance.
+         */
+        "*filter",
+        ":bw_INPUT -",
+        ":bw_OUTPUT -",
+        ":bw_FORWARD -",
+        ":bw_happy_box -",
+        ":bw_penalty_box -",
+        ":bw_data_saver -",
+        ":bw_costly_shared -",
+        ":bw_global_alert -",
+        "COMMIT",
+        "*raw",
+        ":bw_raw_PREROUTING -",
+        "COMMIT",
+        "*mangle",
+        ":bw_mangle_POSTROUTING -",
+        COMMIT_AND_CLOSE};
 
 static const uint32_t uidBillingMask = Fwmark::getUidBillingMask();
 
@@ -215,6 +216,8 @@ static const uint32_t uidBillingMask = Fwmark::getUidBillingMask();
 const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
     const std::vector<std::string> ipt_basic_accounting_commands = {
             "*filter",
+
+            "-A bw_INPUT -j bw_global_alert",
             // Prevents IPSec double counting (ESP and UDP-encap-ESP respectively)
             "-A bw_INPUT -p esp -j RETURN",
             StringPrintf("-A bw_INPUT -m mark --mark 0x%x/0x%x -j RETURN", uidBillingMask,
@@ -222,6 +225,7 @@ const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             useBpf ? "" : "-A bw_INPUT -m owner --socket-exists",
             StringPrintf("-A bw_INPUT -j MARK --or-mark 0x%x", uidBillingMask),
 
+            "-A bw_OUTPUT -j bw_global_alert",
             // Prevents IPSec double counting (Tunnel mode and Transport mode,
             // respectively)
             "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
@@ -293,7 +297,6 @@ int BandwidthController::enableBandwidthControl() {
     mSharedQuotaIfaces.clear();
     mQuotaIfaces.clear();
     mGlobalAlertBytes = 0;
-    mGlobalAlertTetherCount = 0;
     mSharedQuotaBytes = mSharedAlertBytes = 0;
 
     flushCleanTables(false);
@@ -630,20 +633,13 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const std::string& alertN
 
     // TODO: consider using an alternate template for the delete that does not include the --quota
     // value. This code works because the --quota value is ignored by deletes
-    StringAppendF(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_INPUT", bytes,
-                  alertName.c_str());
-    StringAppendF(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_OUTPUT", bytes,
-                  alertName.c_str());
-    StringAppendF(&alertQuotaCmd, "COMMIT\n");
 
-    return iptablesRestoreFunction(V4V6, alertQuotaCmd, nullptr);
-}
-
-int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const std::string& alertName,
-                                                int64_t bytes) {
-    const char *opFlag = opToString(op);
-    std::string alertQuotaCmd = "*filter\n";
-    StringAppendF(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_FORWARD", bytes,
+    /*
+     * Add alert rule in bw_global_alert chain, 3 chains might reference bw_global_alert.
+     * bw_INPUT, bw_OUTPUT (added by BandwidthController in enableBandwidthControl)
+     * bw_FORWARD (added by TetherController in setTetherGlobalAlertRule if nat enable/disable)
+     */
+    StringAppendF(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, LOCAL_GLOBAL_ALERT, bytes,
                   alertName.c_str());
     StringAppendF(&alertQuotaCmd, "COMMIT\n");
 
@@ -652,20 +648,17 @@ int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const std::string& ale
 
 int BandwidthController::setGlobalAlert(int64_t bytes) {
     const char *alertName = ALERT_GLOBAL_NAME;
-    int res = 0;
 
     if (!bytes) {
         ALOGE("Invalid bytes value. 1..max_int64.");
         return -ERANGE;
     }
+
+    int res = 0;
     if (mGlobalAlertBytes) {
         res = updateQuota(alertName, bytes);
     } else {
         res = runIptablesAlertCmd(IptOpInsert, alertName, bytes);
-        if (mGlobalAlertTetherCount) {
-            ALOGV("setGlobalAlert for %d tether", mGlobalAlertTetherCount);
-            res |= runIptablesAlertFwdCmd(IptOpInsert, alertName, bytes);
-        }
         if (res) {
             res = -EREMOTEIO;
         }
@@ -674,65 +667,18 @@ int BandwidthController::setGlobalAlert(int64_t bytes) {
     return res;
 }
 
-int BandwidthController::setGlobalAlertInForwardChain() {
-    const char *alertName = ALERT_GLOBAL_NAME;
-    int res = 0;
-
-    mGlobalAlertTetherCount++;
-    ALOGV("setGlobalAlertInForwardChain(): %d tether", mGlobalAlertTetherCount);
-
-    /*
-     * If there is no globalAlert active we are done.
-     * If there is an active globalAlert but this is not the 1st
-     * tether, we are also done.
-     */
-    if (!mGlobalAlertBytes || mGlobalAlertTetherCount != 1) {
-        return 0;
-    }
-
-    /* We only add the rule if this was the 1st tether added. */
-    res = runIptablesAlertFwdCmd(IptOpInsert, alertName, mGlobalAlertBytes);
-    return res;
-}
-
 int BandwidthController::removeGlobalAlert() {
 
     const char *alertName = ALERT_GLOBAL_NAME;
-    int res = 0;
 
     if (!mGlobalAlertBytes) {
         ALOGE("No prior alert set");
         return -1;
     }
-    res = runIptablesAlertCmd(IptOpDelete, alertName, mGlobalAlertBytes);
-    if (mGlobalAlertTetherCount) {
-        res |= runIptablesAlertFwdCmd(IptOpDelete, alertName, mGlobalAlertBytes);
-    }
-    mGlobalAlertBytes = 0;
-    return res;
-}
 
-int BandwidthController::removeGlobalAlertInForwardChain() {
     int res = 0;
-    const char *alertName = ALERT_GLOBAL_NAME;
-
-    if (!mGlobalAlertTetherCount) {
-        ALOGE("No prior alert set");
-        return -1;
-    }
-
-    mGlobalAlertTetherCount--;
-    /*
-     * If there is no globalAlert active we are done.
-     * If there is an active globalAlert but there are more
-     * tethers, we are also done.
-     */
-    if (!mGlobalAlertBytes || mGlobalAlertTetherCount >= 1) {
-        return 0;
-    }
-
-    /* We only detete the rule if this was the last tether removed. */
-    res = runIptablesAlertFwdCmd(IptOpDelete, alertName, mGlobalAlertBytes);
+    res = runIptablesAlertCmd(IptOpDelete, alertName, mGlobalAlertBytes);
+    mGlobalAlertBytes = 0;
     return res;
 }
 

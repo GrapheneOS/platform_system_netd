@@ -73,6 +73,7 @@ public:
     static const char LOCAL_OUTPUT[];
     static const char LOCAL_RAW_PREROUTING[];
     static const char LOCAL_MANGLE_POSTROUTING[];
+    static const char LOCAL_GLOBAL_ALERT[];
 
     enum IptJumpOp { IptJumpReject, IptJumpReturn, IptJumpNoAdd };
     enum IptOp { IptOpInsert, IptOpDelete };
@@ -136,15 +137,6 @@ public:
     int64_t mSharedQuotaBytes = 0;
     int64_t mSharedAlertBytes = 0;
     int64_t mGlobalAlertBytes = 0;
-    /*
-     * This tracks the number of tethers setup.
-     * The FORWARD chain is updated in the following cases:
-     *  - The 1st time a globalAlert is setup and there are tethers setup.
-     *  - Anytime a globalAlert is removed and there are tethers setup.
-     *  - The 1st tether is setup and there is a globalAlert active.
-     *  - The last tether is removed and there is a globalAlert active.
-     */
-    int mGlobalAlertTetherCount = 0;
 
     std::map<std::string, QuotaInfo> mQuotaIfaces;
     std::set<std::string> mSharedQuotaIfaces;

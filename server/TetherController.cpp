@@ -507,12 +507,13 @@ int TetherController::setDefaults() {
         "COMMIT\n", LOCAL_FORWARD, LOCAL_FORWARD, LOCAL_NAT_POSTROUTING);
 
     std::string v6Cmd = StringPrintf(
-        "*filter\n"
-        ":%s -\n"
-        "COMMIT\n"
-        "*raw\n"
-        ":%s -\n"
-        "COMMIT\n", LOCAL_FORWARD, LOCAL_RAW_PREROUTING);
+            "*filter\n"
+            ":%s -\n"
+            "COMMIT\n"
+            "*raw\n"
+            ":%s -\n"
+            "COMMIT\n",
+            LOCAL_FORWARD, LOCAL_RAW_PREROUTING);
 
     int res = iptablesRestoreFunction(V4, v4Cmd, nullptr);
     if (res < 0) {
@@ -531,15 +532,13 @@ int TetherController::enableNat(const char* intIface, const char* extIface) {
     ALOGV("enableNat(intIface=<%s>, extIface=<%s>)",intIface, extIface);
 
     if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
-        errno = ENODEV;
-        return -1;
+        return -ENODEV;
     }
 
     /* Bug: b/9565268. "enableNat wlan0 wlan0". For now we fail until java-land is fixed */
     if (!strcmp(intIface, extIface)) {
         ALOGE("Duplicate interface specified: %s %s", intIface, extIface);
-        errno = EINVAL;
-        return -1;
+        return -EINVAL;
     }
 
     if (isForwardingPairEnabled(intIface, extIface)) {
@@ -554,14 +553,14 @@ int TetherController::enableNat(const char* intIface, const char* extIface) {
             "COMMIT\n"
         };
 
-        if (iptablesRestoreFunction(V4, Join(v4Cmds, '\n'), nullptr) ||
-            setupIPv6CountersChain()) {
+        if (iptablesRestoreFunction(V4, Join(v4Cmds, '\n'), nullptr) || setupIPv6CountersChain() ||
+            setTetherGlobalAlertRule()) {
             ALOGE("Error setting postroute rule: iface=%s", extIface);
             if (!isAnyForwardingPairEnabled()) {
                 // unwind what's been done, but don't care about success - what more could we do?
                 setDefaults();
             }
-            return -1;
+            return -EREMOTEIO;
         }
     }
 
@@ -570,11 +569,23 @@ int TetherController::enableNat(const char* intIface, const char* extIface) {
         if (!isAnyForwardingPairEnabled()) {
             setDefaults();
         }
-        errno = ENODEV;
-        return -1;
+        return -ENODEV;
     }
 
     return 0;
+}
+
+int TetherController::setTetherGlobalAlertRule() {
+    // Only add this if we are the first enabled nat
+    if (isAnyForwardingPairEnabled()) {
+        return 0;
+    }
+    const std::string cmds =
+            "*filter\n" +
+            StringPrintf("-I %s -j %s\n", LOCAL_FORWARD, BandwidthController::LOCAL_GLOBAL_ALERT) +
+            "COMMIT\n";
+
+    return iptablesRestoreFunction(V4V6, cmds, nullptr);
 }
 
 int TetherController::setupIPv6CountersChain() {
@@ -587,13 +598,11 @@ int TetherController::setupIPv6CountersChain() {
      * IPv6 tethering doesn't need the state-based conntrack rules, so
      * it unconditionally jumps to the tether counters chain all the time.
      */
-    std::vector<std::string> v6Cmds = {
-        "*filter",
-        StringPrintf("-A %s -g %s", LOCAL_FORWARD, LOCAL_TETHER_COUNTERS_CHAIN),
-        "COMMIT\n"
-    };
+    const std::string v6Cmds =
+            "*filter\n" +
+            StringPrintf("-A %s -g %s\n", LOCAL_FORWARD, LOCAL_TETHER_COUNTERS_CHAIN) + "COMMIT\n";
 
-    return iptablesRestoreFunction(V6, Join(v6Cmds, '\n'), nullptr);
+    return iptablesRestoreFunction(V6, v6Cmds, nullptr);
 }
 
 // Gets a pointer to the ForwardingDownstream for an interface pair in the map, or nullptr
@@ -678,7 +687,7 @@ int TetherController::setForwardRules(bool add, const char *intIface, const char
         "%s %s -i %s -m rpfilter --invert ! -s fe80::/64 -j DROP\n"
         "COMMIT\n", op, LOCAL_RAW_PREROUTING, intIface);
     if (iptablesRestoreFunction(V6, rpfilterCmd, nullptr) == -1 && add) {
-        return -1;
+        return -EREMOTEIO;
     }
 
     std::vector<std::string> v4 = {
@@ -727,7 +736,7 @@ int TetherController::setForwardRules(bool add, const char *intIface, const char
         if (add) {
             setForwardRules(false, intIface, extIface);
         }
-        return -1;
+        return -EREMOTEIO;
     }
 
     if (add) {
@@ -742,7 +751,7 @@ int TetherController::setForwardRules(bool add, const char *intIface, const char
 int TetherController::disableNat(const char* intIface, const char* extIface) {
     if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
         errno = ENODEV;
-        return -1;
+        return -errno;
     }
 
     setForwardRules(false, intIface, extIface);
