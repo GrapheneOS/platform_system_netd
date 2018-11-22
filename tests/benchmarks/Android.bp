@@ -24,7 +24,7 @@ cc_benchmark {
         "system/netd/resolv/include",
         "system/netd/server",
         "system/netd/server/binder",
-        "system/netd/tests/dns_responder",
+        "system/netd/resolv/dns_responder",
     ],
     srcs: [
         ":netd_metrics_aidl",

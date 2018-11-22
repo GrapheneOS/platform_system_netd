@@ -46,7 +46,45 @@ cc_library_shared {
 }
 
 cc_test {
-    name: "libnetd_resolv_test",
+    name: "resolv_integration_test",
+    test_suites: ["device-tests"],
+    defaults: ["netd_defaults"],
+    srcs: [
+        ":netd_metrics_aidl",
+        "dns_responder/dns_responder.cpp",
+        "resolver_test.cpp",
+    ],
+    include_dirs: [
+        "system/netd/resolv/include",
+        "system/netd/server",
+    ],
+    shared_libs: [
+        "libbase",
+        "libbinder",
+        "libcrypto",
+        "liblog",
+        "libnetd_client",
+        "libssl",
+        "libutils",
+        "netd_aidl_interface-cpp",
+    ],
+    static_libs: [
+        "libnetd_test_dnsresponder",
+        "libnetd_test_tun_interface",
+        "liblogwrap",
+        "libnetdaidl",
+        "libnetdutils",
+        "netd_aidl_interface-cpp",
+    ],
+    compile_multilib: "both",
+    sanitize: {
+        address: true,
+        recover: [ "all" ],
+    },
+}
+
+cc_test {
+    name: "resolv_unit_test",
     defaults: ["netd_defaults"],
     // Add DnsTls* files since they are not visible outside libnetd_resolv library.
     srcs: [

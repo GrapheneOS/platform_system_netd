@@ -35,16 +35,10 @@ cc_test {
         ":netd_metrics_aidl",
         "binder_test.cpp",
         "bpf_base_test.cpp",
-        "dns_responder/dns_responder.cpp",
         "netd_test.cpp",
-        "resolver_test.cpp",
         "netlink_listener_test.cpp",
     ],
-    include_dirs: [
-        "system/netd/resolv/include",
-        "system/netd/server",
-        "system/netd/tests/dns_responder",
-    ],
+    include_dirs: ["system/netd/server"],
     shared_libs: [
         "libbase",
         "libbinder",
@@ -60,7 +54,6 @@ cc_test {
     ],
     static_libs: [
         "libcap",
-        "libnetd_test_dnsresponder",
         "libnetd_test_tun_interface",
         "libbpf_android",
         "liblogwrap",
