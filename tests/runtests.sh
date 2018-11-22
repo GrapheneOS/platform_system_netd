@@ -7,7 +7,8 @@ readonly DEFAULT_TESTS="
     netdutils_test
     netd_unit_test
     netd_integration_test
-    libnetd_resolv_test
+    resolv_integration_test
+    resolv_unit_test
 "
 
 readonly EXTENDED_TESTS="
