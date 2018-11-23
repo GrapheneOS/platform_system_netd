@@ -66,13 +66,11 @@ cc_test {
         "libnetd_client",
         "libssl",
         "libutils",
-        "netd_aidl_interface-cpp",
     ],
     static_libs: [
         "libnetd_test_dnsresponder",
         "libnetd_test_tun_interface",
         "liblogwrap",
-        "libnetdaidl",
         "libnetdutils",
         "netd_aidl_interface-cpp",
     ],

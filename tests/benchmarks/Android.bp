@@ -8,12 +8,12 @@ cc_benchmark {
         "libbinder",
         "liblog",
         "libnetd_client",
-        "libnetdaidl",
         "libnetdutils",
     ],
     static_libs: [
         "libnetd_test_dnsresponder",
         "libutils",
+        "netd_aidl_interface-cpp",
     ],
     aidl: {
         include_dirs: ["system/netd/server/binder"],
