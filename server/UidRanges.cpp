@@ -32,7 +32,7 @@ namespace net {
 
 namespace {
 
-bool compUidRangeParcel(UidRangeParcel lhs, UidRangeParcel rhs) {
+bool compUidRangeParcel(const UidRangeParcel& lhs, const UidRangeParcel& rhs) {
     return lhs.start != rhs.start ? (lhs.start < rhs.start) : (lhs.stop < rhs.stop);
 };
 
