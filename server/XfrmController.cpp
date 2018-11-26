@@ -31,6 +31,7 @@
 #include <inttypes.h>
 
 #include <arpa/inet.h>
+#include <net/if.h>
 #include <netinet/in.h>
 
 #include <sys/socket.h>
@@ -53,6 +54,7 @@
 #include <log/log.h>
 #include <log/log_properties.h>
 #include <logwrap/logwrap.h>
+#include "DumpWriter.h"
 #include "Fwmark.h"
 #include "InterfaceController.h"
 #include "NetdConstants.h"
@@ -60,6 +62,9 @@
 #include "Permission.h"
 #include "ResponseCode.h"
 #include "XfrmController.h"
+#include "android-base/stringprintf.h"
+#include "android-base/strings.h"
+#include "android-base/unique_fd.h"
 #include "netdutils/Fd.h"
 #include "netdutils/Slice.h"
 #include "netdutils/Syscalls.h"
@@ -93,6 +98,9 @@ constexpr const char* INFO_KIND_VTI = "vti";
 constexpr const char* INFO_KIND_VTI6 = "vti6";
 constexpr const char* INFO_KIND_XFRMI = "xfrm";
 constexpr int INFO_KIND_MAX_LEN = 8;
+constexpr int LOOPBACK_IFINDEX = 1;
+
+bool mIsXfrmIntfSupported = false;
 
 static inline bool isEngBuild() {
     static const std::string sBuildType = android::base::GetProperty("ro.build.type", "user");
@@ -386,8 +394,15 @@ private:
 //
 XfrmController::XfrmController(void) {}
 
+// Test-only constructor allowing override of XFRM Interface support checks
+XfrmController::XfrmController(bool xfrmIntfSupport) {
+    mIsXfrmIntfSupported = xfrmIntfSupport;
+}
+
 netdutils::Status XfrmController::Init() {
     RETURN_IF_NOT_OK(flushInterfaces());
+    mIsXfrmIntfSupported = isXfrmIntfSupported();
+
     XfrmSocketImpl sock;
     RETURN_IF_NOT_OK(sock.open());
     RETURN_IF_NOT_OK(flushSaDb(sock));
@@ -422,6 +437,18 @@ netdutils::Status XfrmController::flushSaDb(const XfrmSocket& s) {
 netdutils::Status XfrmController::flushPolicyDb(const XfrmSocket& s) {
     std::vector<iovec> iov = {{nullptr, 0}}; // reserved for the eventual addition of a NLMSG_HDR
     return s.sendMessage(XFRM_MSG_FLUSHPOLICY, NETLINK_REQUEST_FLAGS, 0, &iov);
+}
+
+bool XfrmController::isXfrmIntfSupported() {
+    const char* IPSEC_TEST_INTF_NAME = "ipsec_test";
+    const int32_t XFRM_TEST_IF_ID = 0xFFFF;
+
+    bool errored = false;
+    errored |=
+            ipSecAddXfrmInterface(IPSEC_TEST_INTF_NAME, XFRM_TEST_IF_ID, NETLINK_ROUTE_CREATE_FLAGS)
+                    .code();
+    errored |= ipSecRemoveTunnelInterface(IPSEC_TEST_INTF_NAME).code();
+    return !errored;
 }
 
 netdutils::Status XfrmController::ipSecSetEncapSocketOwner(const android::base::unique_fd& socket,
@@ -656,9 +683,13 @@ netdutils::Status XfrmController::fillXfrmCommonInfo(int32_t spi, int32_t markVa
                                                      XfrmCommonInfo* info) {
     info->transformId = transformId;
     info->spi = htonl(spi);
-    info->mark.v = markValue;
-    info->mark.m = markMask;
-    info->xfrm_if_id = xfrmInterfaceId;
+
+    if (mIsXfrmIntfSupported) {
+        info->xfrm_if_id = xfrmInterfaceId;
+    } else {
+        info->mark.v = markValue;
+        info->mark.m = markMask;
+    }
 
     return netdutils::status::ok;
 }
@@ -904,11 +935,13 @@ netdutils::Status XfrmController::updateSecurityAssociation(const XfrmSaInfo& re
         return netdutils::statusFromErrno(EINVAL, "Key length invalid; exceeds MAX_KEY_LENGTH");
     }
 
-    if (record.mode != XfrmMode::TUNNEL && record.xfrm_if_id != 0) {
-        // TODO: Also throw errors if output mark or mark supplied
+    if (record.mode != XfrmMode::TUNNEL &&
+        (record.xfrm_if_id != 0 || record.netId != 0 || record.mark.v != 0 || record.mark.m != 0)) {
         return netdutils::statusFromErrno(EINVAL,
-                                          "xfrm_if_id parameter invalid for non "
-                                          "tunnel-mode transform");
+                                          "xfrm_if_id, mark and netid parameters invalid "
+                                          "for non tunnel-mode transform");
+    } else if (record.mode == XfrmMode::TUNNEL && !mIsXfrmIntfSupported && record.xfrm_if_id != 0) {
+        return netdutils::statusFromErrno(EINVAL, "xfrm_if_id set for VTI Security Association");
     }
 
     int len;
@@ -1255,6 +1288,11 @@ int XfrmController::fillNlAttrUserTemplate(const XfrmSpInfo& record, nlattr_user
 }
 
 int XfrmController::fillNlAttrXfrmMark(const XfrmCommonInfo& record, nlattr_xfrm_mark* mark) {
+    // Do not set if we were not given a mark
+    if (record.mark.v == 0 && record.mark.m == 0) {
+        return 0;
+    }
+
     mark->mark.v = record.mark.v; // set to 0 if it's not used
     mark->mark.m = record.mark.m; // set to 0 if it's not used
     int len = NLA_HDRLEN + sizeof(xfrm_mark);
@@ -1325,12 +1363,15 @@ netdutils::Status XfrmController::ipSecAddTunnelInterface(const std::string& dev
 
     uint16_t flags = isUpdate ? NETLINK_REQUEST_FLAGS : NETLINK_ROUTE_CREATE_FLAGS;
 
-    return ipSecAddVirtualTunnelInterface(deviceName, localAddress, remoteAddress, ikey, okey,
-                                          flags);
+    if (mIsXfrmIntfSupported) {
+        return ipSecAddXfrmInterface(deviceName, interfaceId, flags);
+    } else {
+        return ipSecAddVirtualTunnelInterface(deviceName, localAddress, remoteAddress, ikey, okey,
+                                              flags);
+    }
 }
 
 netdutils::Status XfrmController::ipSecAddXfrmInterface(const std::string& deviceName,
-                                                        int32_t underlyingInterface,
                                                         int32_t interfaceId, uint16_t flags) {
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
 
@@ -1391,7 +1432,10 @@ netdutils::Status XfrmController::ipSecAddXfrmInterface(const std::string& devic
                                                  .nla_len = RTA_LENGTH(sizeof(uint32_t)),
                                                  .nla_type = IFLA_XFRM_LINK,
                                          },
-                                 .xfrmLink = static_cast<uint32_t>(underlyingInterface),
+                                 //   Always use LOOPBACK_IFINDEX, since we use output marks for
+                                 //   route lookup instead. The use case of having a Network with
+                                 //   loopback in it is unsupported in tunnel mode.
+                                 .xfrmLink = static_cast<uint32_t>(LOOPBACK_IFINDEX),
 
                                  .xfrmIfIdNla =
                                          {
@@ -1573,6 +1617,14 @@ netdutils::Status XfrmController::ipSecRemoveTunnelInterface(const std::string& 
     // sendNetlinkRequest returns -errno
     int ret = -1 * sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr);
     return netdutils::statusFromErrno(ret, "Error in deleting IpSec interface " + deviceName);
+}
+
+void XfrmController::dump(DumpWriter& dw) {
+    ScopedIndent indentForXfrmController(dw);
+    dw.println("XfrmController");
+
+    ScopedIndent indentForXfrmISupport(dw);
+    dw.println("XFRM-I support: %d", mIsXfrmIntfSupported);
 }
 
 } // namespace net
