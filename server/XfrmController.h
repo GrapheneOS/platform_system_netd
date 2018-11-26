@@ -348,7 +348,7 @@ private:
     static int fillUserPolicyId(const XfrmSpInfo& record, XfrmDirection direction,
                                 xfrm_userpolicy_id* policy_id);
     static int fillNlAttrXfrmMark(const XfrmCommonInfo& record, nlattr_xfrm_mark* mark);
-    static int fillNlAttrXfrmOutputMark(const __u32 output_mark_value,
+    static int fillNlAttrXfrmOutputMark(const __u32 underlyingNetId,
                                         nlattr_xfrm_output_mark* output_mark);
 
     static netdutils::Status allocateSpi(const XfrmSaInfo& record, uint32_t minSpi, uint32_t maxSpi,
