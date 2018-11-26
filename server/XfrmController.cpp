@@ -89,6 +89,10 @@ constexpr uint32_t RAND_SPI_MIN = 256;
 constexpr uint32_t RAND_SPI_MAX = 0xFFFFFFFE;
 
 constexpr uint32_t INVALID_SPI = 0;
+constexpr const char* INFO_KIND_VTI = "vti";
+constexpr const char* INFO_KIND_VTI6 = "vti6";
+constexpr const char* INFO_KIND_XFRMI = "xfrm";
+constexpr int INFO_KIND_MAX_LEN = 8;
 
 static inline bool isEngBuild() {
     static const std::string sBuildType = android::base::GetProperty("ro.build.type", "user");
@@ -184,9 +188,9 @@ size_t fillNlAttrIpAddress(__u16 nlaType, int family, const std::string& value, 
     return fillNlAttr(nlaType, (family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr), nlAttr);
 }
 
-size_t fillNlAttrU32(__u16 nlaType, int32_t value, nlattr* nlAttr, uint32_t* u32Value) {
-    *u32Value = htonl(value);
-    return fillNlAttr(nlaType, sizeof((*u32Value)), nlAttr);
+size_t fillNlAttrU32(__u16 nlaType, uint32_t value, XfrmController::nlattr_payload_u32* nlAttr) {
+    nlAttr->value = value;
+    return fillNlAttr(nlaType, sizeof(value), &nlAttr->hdr);
 }
 
 // returns the address family, placing the string in the provided buffer
@@ -396,12 +400,10 @@ netdutils::Status XfrmController::flushInterfaces() {
     const String8 ifPrefix8 = String8(INetd::IPSEC_INTERFACE_PREFIX().string());
 
     for (const std::string& iface : ifaces.value()) {
-        int status = 0;
+        netdutils::Status status;
         // Look for the reserved interface prefix, which must be in the name at position 0
-        if (android::base::StartsWith(iface.c_str(), ifPrefix8.c_str()) &&
-            (status = removeVirtualTunnelInterface(iface)) < 0) {
-            ALOGE("Failed to delete ipsec tunnel %s.", iface.c_str());
-            return netdutils::statusFromErrno(status, "Failed to remove ipsec tunnel.");
+        if (android::base::StartsWith(iface.c_str(), ifPrefix8.c_str())) {
+            RETURN_IF_NOT_OK(ipSecRemoveTunnelInterface(iface));
         }
     }
     return netdutils::status::ok;
@@ -1241,6 +1243,19 @@ int XfrmController::fillNlAttrXfrmOutputMark(const __u32 underlyingNetId,
     return len;
 }
 
+int XfrmController::fillNlAttrXfrmIntfId(const uint32_t intfIdValue,
+                                         nlattr_xfrm_interface_id* intf_id) {
+    // Do not set if we were not given an interface id
+    if (intfIdValue == 0) {
+        return 0;
+    }
+
+    intf_id->if_id = intfIdValue;
+    int len = NLA_HDRLEN + sizeof(__u32);
+    fillXfrmNlaHdr(&intf_id->hdr, XFRMA_IF_ID, len);
+    return len;
+}
+
 int XfrmController::fillUserPolicyId(const XfrmSpInfo& record, XfrmDirection direction,
                                      xfrm_userpolicy_id* usersp) {
     // For DELPOLICY, when index is absent, selector is needed to match the policy
@@ -1249,10 +1264,11 @@ int XfrmController::fillUserPolicyId(const XfrmSpInfo& record, XfrmDirection dir
     return sizeof(*usersp);
 }
 
-int XfrmController::addVirtualTunnelInterface(const std::string& deviceName,
-                                              const std::string& localAddress,
-                                              const std::string& remoteAddress, int32_t ikey,
-                                              int32_t okey, bool isUpdate) {
+netdutils::Status XfrmController::ipSecAddTunnelInterface(const std::string& deviceName,
+                                                          const std::string& localAddress,
+                                                          const std::string& remoteAddress,
+                                                          int32_t ikey, int32_t okey,
+                                                          bool isUpdate) {
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("deviceName=%s", deviceName.c_str());
     ALOGD("localAddress=%s", localAddress.c_str());
@@ -1261,30 +1277,124 @@ int XfrmController::addVirtualTunnelInterface(const std::string& deviceName,
     ALOGD("okey=%0.8x", okey);
     ALOGD("isUpdate=%d", isUpdate);
 
-    if (deviceName.empty() || localAddress.empty() || remoteAddress.empty()) {
-        return EINVAL;
+    uint16_t flags = isUpdate ? NETLINK_REQUEST_FLAGS : NETLINK_ROUTE_CREATE_FLAGS;
+
+    return ipSecAddVirtualTunnelInterface(deviceName, localAddress, remoteAddress, ikey, okey,
+                                          flags);
+}
+
+netdutils::Status XfrmController::ipSecAddXfrmInterface(const std::string& deviceName,
+                                                        int32_t underlyingInterface,
+                                                        int32_t interfaceId, uint16_t flags) {
+    ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
+
+    if (deviceName.empty()) {
+        return netdutils::statusFromErrno(EINVAL, "XFRM Interface deviceName empty");
     }
 
-    const char* INFO_KIND_VTI6 = "vti6";
-    const char* INFO_KIND_VTI = "vti";
+    ifinfomsg ifInfoMsg{};
+
+    struct XfrmIntfCreateReq {
+        nlattr ifNameNla;
+        char ifName[IFNAMSIZ];  // Already aligned
+
+        nlattr linkInfoNla;
+        struct LinkInfo {
+            nlattr infoKindNla;
+            char infoKind[INFO_KIND_MAX_LEN];  // Already aligned
+
+            nlattr infoDataNla;
+            struct InfoData {
+                nlattr xfrmLinkNla;
+                uint32_t xfrmLink;
+
+                nlattr xfrmIfIdNla;
+                uint32_t xfrmIfId;
+            } infoData;  // Already aligned
+
+        } linkInfo;  // Already aligned
+    } xfrmIntfCreateReq{
+            .ifNameNla =
+                    {
+                            .nla_len = RTA_LENGTH(IFNAMSIZ),
+                            .nla_type = IFLA_IFNAME,
+                    },
+            // Update .ifName via strlcpy
+
+            .linkInfoNla =
+                    {
+                            .nla_len = RTA_LENGTH(sizeof(XfrmIntfCreateReq::LinkInfo)),
+                            .nla_type = IFLA_LINKINFO,
+                    },
+            .linkInfo = {.infoKindNla =
+                                 {
+                                         .nla_len = RTA_LENGTH(INFO_KIND_MAX_LEN),
+                                         .nla_type = IFLA_INFO_KIND,
+                                 },
+                         // Update .infoKind via strlcpy
+
+                         .infoDataNla =
+                                 {
+                                         .nla_len = RTA_LENGTH(
+                                                 sizeof(XfrmIntfCreateReq::LinkInfo::InfoData)),
+                                         .nla_type = IFLA_INFO_DATA,
+                                 },
+                         .infoData = {
+                                 .xfrmLinkNla =
+                                         {
+                                                 .nla_len = RTA_LENGTH(sizeof(uint32_t)),
+                                                 .nla_type = IFLA_XFRM_LINK,
+                                         },
+                                 .xfrmLink = static_cast<uint32_t>(underlyingInterface),
+
+                                 .xfrmIfIdNla =
+                                         {
+                                                 .nla_len = RTA_LENGTH(sizeof(uint32_t)),
+                                                 .nla_type = IFLA_XFRM_IF_ID,
+                                         },
+                                 .xfrmIfId = static_cast<uint32_t>(interfaceId),
+                         }}};
+
+    strlcpy(xfrmIntfCreateReq.ifName, deviceName.c_str(), IFNAMSIZ);
+    strlcpy(xfrmIntfCreateReq.linkInfo.infoKind, INFO_KIND_XFRMI, INFO_KIND_MAX_LEN);
+
+    iovec iov[] = {
+            {NULL, 0},  // reserved for the eventual addition of a NLMSG_HDR
+            {&ifInfoMsg, sizeof(ifInfoMsg)},
+
+            {&xfrmIntfCreateReq, sizeof(xfrmIntfCreateReq)},
+    };
+
+    // sendNetlinkRequest returns -errno
+    int ret = -sendNetlinkRequest(RTM_NEWLINK, flags, iov, ARRAY_SIZE(iov), nullptr);
+    return netdutils::statusFromErrno(ret, "Add/update xfrm interface");
+}
+
+netdutils::Status XfrmController::ipSecAddVirtualTunnelInterface(const std::string& deviceName,
+                                                                 const std::string& localAddress,
+                                                                 const std::string& remoteAddress,
+                                                                 int32_t ikey, int32_t okey,
+                                                                 uint16_t flags) {
+    ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
+
+    if (deviceName.empty() || localAddress.empty() || remoteAddress.empty()) {
+        return netdutils::statusFromErrno(EINVAL, "Required VTI creation parameter not provided");
+    }
+
     uint8_t PADDING_BUFFER[] = {0, 0, 0, 0};
 
     // Find address family.
     uint8_t remAddr[sizeof(in6_addr)];
 
     StatusOr<uint16_t> statusOrRemoteFam = convertStringAddress(remoteAddress, remAddr);
-    if (!isOk(statusOrRemoteFam)) {
-        return statusOrRemoteFam.status().code();
-    }
+    RETURN_IF_NOT_OK(statusOrRemoteFam);
 
     uint8_t locAddr[sizeof(in6_addr)];
     StatusOr<uint16_t> statusOrLocalFam = convertStringAddress(localAddress, locAddr);
-    if (!isOk(statusOrLocalFam)) {
-        return statusOrLocalFam.status().code();
-    }
+    RETURN_IF_NOT_OK(statusOrLocalFam);
 
     if (statusOrLocalFam.value() != statusOrRemoteFam.value()) {
-        return EINVAL;
+        return netdutils::statusFromErrno(EINVAL, "Local and remote address families do not match");
     }
 
     uint16_t family = statusOrLocalFam.value();
@@ -1323,18 +1433,16 @@ int XfrmController::addVirtualTunnelInterface(const std::string& deviceName,
                             netdutils::makeSlice(binaryRemoteAddress));
 
     // Construct IFLA_VTI_OKEY
-    nlattr iflaVtiIKey;
-    uint32_t iKeyValue;
-    size_t iflaVtiIKeyPad = fillNlAttrU32(IFLA_VTI_IKEY, ikey, &iflaVtiIKey, &iKeyValue);
+    nlattr_payload_u32 iflaVtiIKey;
+    size_t iflaVtiIKeyPad = fillNlAttrU32(IFLA_VTI_IKEY, htonl(ikey), &iflaVtiIKey);
 
     // Construct IFLA_VTI_IKEY
-    nlattr iflaVtiOKey;
-    uint32_t oKeyValue;
-    size_t iflaVtiOKeyPad = fillNlAttrU32(IFLA_VTI_OKEY, okey, &iflaVtiOKey, &oKeyValue);
+    nlattr_payload_u32 iflaVtiOKey;
+    size_t iflaVtiOKeyPad = fillNlAttrU32(IFLA_VTI_OKEY, htonl(okey), &iflaVtiOKey);
 
     int iflaInfoDataPayloadLength = iflaVtiLocal.nla_len + iflaVtiLocalPad + iflaVtiRemote.nla_len +
-                                    iflaVtiRemotePad + iflaVtiIKey.nla_len + iflaVtiIKeyPad +
-                                    iflaVtiOKey.nla_len + iflaVtiOKeyPad;
+                                    iflaVtiRemotePad + iflaVtiIKey.hdr.nla_len + iflaVtiIKeyPad +
+                                    iflaVtiOKey.hdr.nla_len + iflaVtiOKeyPad;
 
     // Construct IFLA_INFO_DATA
     nlattr iflaInfoData;
@@ -1348,64 +1456,51 @@ int XfrmController::addVirtualTunnelInterface(const std::string& deviceName,
                                         &iflaLinkInfo);
 
     iovec iov[] = {
-        {nullptr, 0},
-        {&ifInfoMsg, sizeof(ifInfoMsg)},
+            {nullptr, 0},
+            {&ifInfoMsg, sizeof(ifInfoMsg)},
 
-        {&iflaIfName, sizeof(iflaIfName)},
-        {iflaIfNameStrValue, iflaIfNameLength},
-        {&PADDING_BUFFER, iflaIfNamePad},
+            {&iflaIfName, sizeof(iflaIfName)},
+            {iflaIfNameStrValue, iflaIfNameLength},
+            {&PADDING_BUFFER, iflaIfNamePad},
 
-        {&iflaLinkInfo, sizeof(iflaLinkInfo)},
+            {&iflaLinkInfo, sizeof(iflaLinkInfo)},
 
-        {&iflaIfInfoKind, sizeof(iflaIfInfoKind)},
-        {infoKindValueStrValue, iflaIfInfoKindLength},
-        {&PADDING_BUFFER, iflaIfInfoKindPad},
+            {&iflaIfInfoKind, sizeof(iflaIfInfoKind)},
+            {infoKindValueStrValue, iflaIfInfoKindLength},
+            {&PADDING_BUFFER, iflaIfInfoKindPad},
 
-        {&iflaInfoData, sizeof(iflaInfoData)},
+            {&iflaInfoData, sizeof(iflaInfoData)},
 
-        {&iflaVtiLocal, sizeof(iflaVtiLocal)},
-        {&binaryLocalAddress, (family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr)},
-        {&PADDING_BUFFER, iflaVtiLocalPad},
+            {&iflaVtiLocal, sizeof(iflaVtiLocal)},
+            {&binaryLocalAddress, (family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr)},
+            {&PADDING_BUFFER, iflaVtiLocalPad},
 
-        {&iflaVtiRemote, sizeof(iflaVtiRemote)},
-        {&binaryRemoteAddress, (family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr)},
-        {&PADDING_BUFFER, iflaVtiRemotePad},
+            {&iflaVtiRemote, sizeof(iflaVtiRemote)},
+            {&binaryRemoteAddress, (family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr)},
+            {&PADDING_BUFFER, iflaVtiRemotePad},
 
-        {&iflaVtiIKey, sizeof(iflaVtiIKey)},
-        {&iKeyValue, sizeof(iKeyValue)},
-        {&PADDING_BUFFER, iflaVtiIKeyPad},
+            {&iflaVtiIKey, iflaVtiIKey.hdr.nla_len},
+            {&PADDING_BUFFER, iflaVtiIKeyPad},
 
-        {&iflaVtiOKey, sizeof(iflaVtiOKey)},
-        {&oKeyValue, sizeof(oKeyValue)},
-        {&PADDING_BUFFER, iflaVtiOKeyPad},
+            {&iflaVtiOKey, iflaVtiOKey.hdr.nla_len},
+            {&PADDING_BUFFER, iflaVtiOKeyPad},
 
-        {&PADDING_BUFFER, iflaInfoDataPad},
+            {&PADDING_BUFFER, iflaInfoDataPad},
 
-        {&PADDING_BUFFER, iflaLinkInfoPad},
+            {&PADDING_BUFFER, iflaLinkInfoPad},
     };
 
-    uint16_t action = RTM_NEWLINK;
-    uint16_t flags = NLM_F_REQUEST | NLM_F_ACK;
-
-    if (!isUpdate) {
-        flags |= NLM_F_EXCL | NLM_F_CREATE;
-    }
-
     // sendNetlinkRequest returns -errno
-    int ret = -1 * sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr);
-    if (ret) {
-        ALOGE("Error in %s virtual tunnel interface. Error Code: %d",
-              isUpdate ? "updating" : "adding", ret);
-    }
-    return ret;
+    int ret = -1 * sendNetlinkRequest(RTM_NEWLINK, flags, iov, ARRAY_SIZE(iov), nullptr);
+    return netdutils::statusFromErrno(ret, "Failed to add/update virtual tunnel interface");
 }
 
-int XfrmController::removeVirtualTunnelInterface(const std::string& deviceName) {
+netdutils::Status XfrmController::ipSecRemoveTunnelInterface(const std::string& deviceName) {
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("deviceName=%s", deviceName.c_str());
 
     if (deviceName.empty()) {
-        return EINVAL;
+        return netdutils::statusFromErrno(EINVAL, "Required parameter not provided");
     }
 
     uint8_t PADDING_BUFFER[] = {0, 0, 0, 0};
@@ -1431,11 +1526,7 @@ int XfrmController::removeVirtualTunnelInterface(const std::string& deviceName) 
 
     // sendNetlinkRequest returns -errno
     int ret = -1 * sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr);
-    if (ret) {
-        ALOGE("Error in removing virtual tunnel interface %s. Error Code: %d", iflaIfNameStrValue,
-              ret);
-    }
-    return ret;
+    return netdutils::statusFromErrno(ret, "Error in deleting IpSec interface " + deviceName);
 }
 
 } // namespace net
