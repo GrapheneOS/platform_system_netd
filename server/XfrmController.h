@@ -51,6 +51,7 @@ extern const uint8_t REPLAY_WINDOW_SIZE;
 // Suggest we avoid the smallest and largest ints
 class XfrmMessage;
 class TransportModeSecurityAssociation;
+class DumpWriter;
 
 class XfrmSocket {
 public:
@@ -135,6 +136,9 @@ class XfrmController {
 public:
     XfrmController();
 
+    // Initializer to override XFRM-I support for unit-testing purposes
+    explicit XfrmController(bool xfrmIntfSupport);
+
     static netdutils::Status Init();
 
     static netdutils::Status ipSecSetEncapSocketOwner(const android::base::unique_fd& socket,
@@ -194,6 +198,8 @@ public:
                                                      bool isUpdate);
 
     static netdutils::Status ipSecRemoveTunnelInterface(const std::string& deviceName);
+
+    void dump(DumpWriter& dw);
 
     // Some XFRM netlink attributes comprise a header, a struct, and some data
     // after the struct. We wrap all of those in one struct for easier
@@ -328,6 +334,8 @@ public:
                   "is needed.");
 #endif
 
+    static bool isXfrmIntfSupported();
+
     // helper functions for filling in the XfrmCommonInfo (and XfrmSaInfo) structure
     static netdutils::Status fillXfrmCommonInfo(const std::string& sourceAddress,
                                                 const std::string& destinationAddress, int32_t spi,
@@ -394,8 +402,7 @@ public:
     static netdutils::Status flushPolicyDb(const XfrmSocket& s);
 
     static netdutils::Status ipSecAddXfrmInterface(const std::string& deviceName,
-                                                   int32_t underlyingInterface, int32_t interfaceId,
-                                                   uint16_t flags);
+                                                   int32_t interfaceId, uint16_t flags);
     static netdutils::Status ipSecAddVirtualTunnelInterface(const std::string& deviceName,
                                                             const std::string& localAddress,
                                                             const std::string& remoteAddress,

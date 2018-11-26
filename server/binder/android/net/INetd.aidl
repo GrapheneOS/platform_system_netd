@@ -342,7 +342,8 @@ interface INetd {
     * @param mode either Transport or Tunnel mode
     * @param sourceAddress InetAddress as string for the sending endpoint
     * @param destinationAddress InetAddress as string for the receiving endpoint
-    * @param underlyingNetId the netId of the network to which the SA is applied.
+    * @param underlyingNetId the netId of the network to which the SA is applied. Only accepted for
+    *        tunnel mode SAs.
     * @param spi a 32-bit unique ID allocated to the user
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
