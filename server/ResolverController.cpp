@@ -270,7 +270,8 @@ int ResolverController::setResolverConfiguration(int32_t netId,
     std::string domains_str;
     if (!domains.empty()) {
         domains_str = domains[0];
-        for (size_t i = 1 ; i < domains.size() ; ++i) {
+        count = std::min<size_t>(MAXDNSRCH, domains.size());
+        for (size_t i = 1; i < count; ++i) {
             domains_str += " " + domains[i];
         }
     }
@@ -311,8 +312,9 @@ int ResolverController::setResolverConfiguration(int32_t netId,
 }
 
 int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>* servers,
-        std::vector<std::string>* domains, std::vector<int32_t>* params,
-        std::vector<int32_t>* stats) {
+                                        std::vector<std::string>* domains,
+                                        std::vector<std::string>* tlsServers,
+                                        std::vector<int32_t>* params, std::vector<int32_t>* stats) {
     using android::net::ResolverStats;
     using android::net::INetd;
     __res_params res_params;
@@ -324,6 +326,13 @@ int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>*
 
     // Serialize the information for binder.
     ResolverStats::encodeAll(res_stats, stats);
+
+    ExternalPrivateDnsStatus privateDnsStatus = {PrivateDnsMode::OFF, 0, {}};
+    resolv_get_private_dns_status_for_net(netId, &privateDnsStatus);
+    for (int i = 0; i < privateDnsStatus.numServers; i++) {
+        std::string tlsServer_str = addrToString(&(privateDnsStatus.serverStatus[i].ss));
+        tlsServers->push_back(std::move(tlsServer_str));
+    }
 
     params->resize(INetd::RESOLVER_PARAMS_COUNT);
     (*params)[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY] = res_params.sample_validity;

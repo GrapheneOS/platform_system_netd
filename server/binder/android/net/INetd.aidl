@@ -221,6 +221,7 @@ interface INetd {
      * @param netId the network ID of the network for which information should be retrieved.
      * @param servers the DNS servers that are currently configured for the network.
      * @param domains the search domains currently configured.
+     * @param tlsServers the DNS-over-TLS servers that are currently configured for the network.
      * @param params the resolver parameters configured, i.e. the contents of __res_params in order.
      * @param stats the stats for each server in the order specified by RESOLVER_STATS_XXX
      *         constants, serialized as an int array. The contents of this array are the number of
@@ -237,9 +238,12 @@ interface INetd {
      *         RESOLVER_STATS_COUNT*N + RESOLVER_STATS_TIMEOUTS
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
+     *
+     * TODO: Consider replacing stats and params with parcelables.
      */
     void getResolverInfo(int netId, out @utf8InCpp String[] servers,
-            out @utf8InCpp String[] domains, out int[] params, out int[] stats);
+            out @utf8InCpp String[] domains, out @utf8InCpp String[] tlsServers, out int[] params,
+            out int[] stats);
 
     /**
      * Instruct the tethering DNS server to reevaluated serving interfaces.
