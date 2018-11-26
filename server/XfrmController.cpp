@@ -1304,7 +1304,8 @@ int XfrmController::fillNlAttrXfrmMark(const XfrmCommonInfo& record, nlattr_xfrm
 // Network's netid. This allows outbound IPsec Tunnel mode packets to be correctly directed to a
 // preselected underlying Network. Packet as marked as protected from VPNs and have a network
 // explicitly selected to prevent interference or routing loops. Also set permission flag to
-// PERMISSION_SYSTEM to ensure we can use background/restricted networks.
+// PERMISSION_SYSTEM to ensure we can use background/restricted networks. Permission to use
+// restricted networks is checked in IpSecService.
 int XfrmController::fillNlAttrXfrmOutputMark(const __u32 underlyingNetId,
                                              nlattr_xfrm_output_mark* output_mark) {
     // Do not set if we were not given an output mark
