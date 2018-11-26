@@ -166,34 +166,20 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             int32_t* outSpi);
 
     binder::Status ipSecAddSecurityAssociation(
-            int32_t transformId,
-            int32_t mode,
-            const std::string& sourceAddress,
-            const std::string& destinationAddress,
-            int32_t underlyingNetId,
-            int32_t spi,
-            int32_t markValue,
-            int32_t markMask,
-            const std::string& authAlgo,
-            const std::vector<uint8_t>& authKey,
-            int32_t authTruncBits,
-            const std::string& cryptAlgo,
-            const std::vector<uint8_t>& cryptKey,
-            int32_t cryptTruncBits,
-            const std::string& aeadAlgo,
-            const std::vector<uint8_t>& aeadKey,
-            int32_t aeadIcvBits,
-            int32_t encapType,
-            int32_t encapLocalPort,
-            int32_t encapRemotePort);
+            int32_t transformId, int32_t mode, const std::string& sourceAddress,
+            const std::string& destinationAddress, int32_t underlyingNetId, int32_t spi,
+            int32_t markValue, int32_t markMask, const std::string& authAlgo,
+            const std::vector<uint8_t>& authKey, int32_t authTruncBits,
+            const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey,
+            int32_t cryptTruncBits, const std::string& aeadAlgo,
+            const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits, int32_t encapType,
+            int32_t encapLocalPort, int32_t encapRemotePort, int32_t interfaceId);
 
-    binder::Status ipSecDeleteSecurityAssociation(
-            int32_t transformId,
-            const std::string& sourceAddress,
-            const std::string& destinationAddress,
-            int32_t spi,
-            int32_t markValue,
-            int32_t markMask);
+    binder::Status ipSecDeleteSecurityAssociation(int32_t transformId,
+                                                  const std::string& sourceAddress,
+                                                  const std::string& destinationAddress,
+                                                  int32_t spi, int32_t markValue, int32_t markMask,
+                                                  int32_t interfaceId);
 
     binder::Status ipSecApplyTransportModeTransform(
             const android::base::unique_fd& socket,
@@ -209,34 +195,31 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status ipSecAddSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
                                           int32_t direction, const std::string& tmplSrcAddress,
                                           const std::string& tmplDstAddress, int32_t spi,
-                                          int32_t markValue, int32_t markMask);
+                                          int32_t markValue, int32_t markMask, int32_t interfaceId);
 
     binder::Status ipSecUpdateSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
                                              int32_t direction, const std::string& tmplSrcAddress,
                                              const std::string& tmplDstAddress, int32_t spi,
-                                             int32_t markValue, int32_t markMask);
+                                             int32_t markValue, int32_t markMask,
+                                             int32_t interfaceId);
 
     binder::Status ipSecDeleteSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
-                                             int32_t direction, int32_t markValue,
-                                             int32_t markMask);
+                                             int32_t direction, int32_t markValue, int32_t markMask,
+                                             int32_t interfaceId);
 
     binder::Status trafficCheckBpfStatsEnable(bool* ret) override;
 
-    binder::Status addVirtualTunnelInterface(
-            const std::string& deviceName,
-            const std::string& localAddress,
-            const std::string& remoteAddress,
-            int32_t iKey,
-            int32_t oKey);
+    binder::Status ipSecAddTunnelInterface(const std::string& deviceName,
+                                           const std::string& localAddress,
+                                           const std::string& remoteAddress, int32_t iKey,
+                                           int32_t oKey, int32_t interfaceId);
 
-    binder::Status updateVirtualTunnelInterface(
-            const std::string& deviceName,
-            const std::string& localAddress,
-            const std::string& remoteAddress,
-            int32_t iKey,
-            int32_t oKey);
+    binder::Status ipSecUpdateTunnelInterface(const std::string& deviceName,
+                                              const std::string& localAddress,
+                                              const std::string& remoteAddress, int32_t iKey,
+                                              int32_t oKey, int32_t interfaceId);
 
-    binder::Status removeVirtualTunnelInterface(const std::string& deviceName);
+    binder::Status ipSecRemoveTunnelInterface(const std::string& deviceName);
 
     // Idletimer-related commands
     binder::Status idletimerAddInterface(const std::string& ifName, int32_t timeout,

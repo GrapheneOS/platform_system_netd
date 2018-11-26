@@ -342,7 +342,8 @@ interface INetd {
     * @param mode either Transport or Tunnel mode
     * @param sourceAddress InetAddress as string for the sending endpoint
     * @param destinationAddress InetAddress as string for the receiving endpoint
-    * @param underlyingNetId the netId of the network to which the SA is applied
+    * @param underlyingNetId the netId of the network to which the SA is applied. Only accepted for
+    *        tunnel mode SAs.
     * @param spi a 32-bit unique ID allocated to the user
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
@@ -359,6 +360,8 @@ interface INetd {
     * @param encapType encapsulation type used (if any) for the udp encap socket
     * @param encapLocalPort the port number on the host to be used in encap packets
     * @param encapRemotePort the port number of the remote to be used for encap packets
+    * @param interfaceId the identifier for the IPsec tunnel interface.
+    *        Only accepted for tunnel mode SAs.
     */
     void ipSecAddSecurityAssociation(
             int transformId,
@@ -374,7 +377,8 @@ interface INetd {
             in @utf8InCpp String aeadAlgo, in byte[] aeadKey, in int aeadIcvBits,
             int encapType,
             int encapLocalPort,
-            int encapRemotePort);
+            int encapRemotePort,
+            int interfaceId);
 
    /**
     * Delete a previously created security association identified by the provided parameters
@@ -385,6 +389,7 @@ interface INetd {
     * @param spi a requested 32-bit unique ID allocated to the user
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
+    * @param interfaceId the identifier for the IPsec tunnel interface.
     */
     void ipSecDeleteSecurityAssociation(
             int transformId,
@@ -392,7 +397,8 @@ interface INetd {
             in @utf8InCpp String destinationAddress,
             int spi,
             int markValue,
-            int markMask);
+            int markMask,
+            int interfaceId);
 
    /**
     * Apply a previously created SA to a specified socket, starting IPsec on that socket
@@ -432,6 +438,7 @@ interface INetd {
     * @param spi a 32-bit unique ID allocated to the user
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
+    * @param interfaceId the identifier for the IPsec tunnel interface.
     */
     void ipSecAddSecurityPolicy(
             int transformId,
@@ -441,7 +448,8 @@ interface INetd {
             in @utf8InCpp String tmplDstAddress,
             int spi,
             int markValue,
-            int markMask);
+            int markMask,
+            int interfaceId);
 
    /**
     * Updates an IPsec global policy.
@@ -454,6 +462,7 @@ interface INetd {
     * @param spi a 32-bit unique ID allocated to the user
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
+    * @param interfaceId the identifier for the IPsec tunnel interface.
     */
     void ipSecUpdateSecurityPolicy(
             int transformId,
@@ -463,7 +472,8 @@ interface INetd {
             in @utf8InCpp String tmplDstAddress,
             int spi,
             int markValue,
-            int markMask);
+            int markMask,
+            int interfaceId);
 
    /**
     * Deletes an IPsec global policy.
@@ -476,56 +486,62 @@ interface INetd {
     * @param direction DIRECTION_IN or DIRECTION_OUT
     * @param markValue a 32-bit unique ID chosen by the user
     * @param markMask a 32-bit mask chosen by the user
+    * @param interfaceId the identifier for the IPsec tunnel interface.
     */
     void ipSecDeleteSecurityPolicy(
             int transformId,
             int selAddrFamily,
             int direction,
             int markValue,
-            int markMask);
+            int markMask,
+            int interfaceId);
 
     // This could not be declared as @uft8InCpp; thus, when used in native code it must be
     // converted from a UTF-16 string to an ASCII string.
     const String IPSEC_INTERFACE_PREFIX = "ipsec";
 
    /**
-    * Add a Virtual Tunnel Interface.
+    * Add a IPsec Tunnel Interface.
     *
     * @param devName a unique identifier that represents the name of the device
     * @param localAddress InetAddress as string for the local endpoint
     * @param remoteAddress InetAddress as string for the remote endpoint
     * @param iKey, to match Policies and SAs for input packets.
     * @param oKey, to match Policies and SAs for output packets.
+    * @param interfaceId the identifier for the IPsec tunnel interface.
     */
-    void addVirtualTunnelInterface(
+    void ipSecAddTunnelInterface(
             in @utf8InCpp String deviceName,
             in @utf8InCpp String localAddress,
             in @utf8InCpp String remoteAddress,
             int iKey,
-            int oKey);
+            int oKey,
+            int interfaceId);
 
    /**
-    * Update a Virtual Tunnel Interface.
+    * Update a IPsec Tunnel Interface.
     *
     * @param devName a unique identifier that represents the name of the device
     * @param localAddress InetAddress as string for the local endpoint
     * @param remoteAddress InetAddress as string for the remote endpoint
     * @param iKey, to match Policies and SAs for input packets.
     * @param oKey, to match Policies and SAs for output packets.
+    * @param interfaceId the identifier for the IPsec tunnel interface.
     */
-    void updateVirtualTunnelInterface(
+    void ipSecUpdateTunnelInterface(
             in @utf8InCpp String deviceName,
             in @utf8InCpp String localAddress,
             in @utf8InCpp String remoteAddress,
             int iKey,
-            int oKey);
+            int oKey,
+            int interfaceId);
 
    /**
-    * Removes a Virtual Tunnel Interface.
+    * Removes a IPsec Tunnel Interface.
     *
     * @param devName a unique identifier that represents the name of the device
     */
-    void removeVirtualTunnelInterface(in @utf8InCpp String deviceName);
+    void ipSecRemoveTunnelInterface(in @utf8InCpp String deviceName);
 
    /**
     * Request notification of wakeup packets arriving on an interface. Notifications will be
