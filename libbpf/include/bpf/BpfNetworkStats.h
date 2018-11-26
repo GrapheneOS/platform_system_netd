@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-#ifndef _BPF_NETWORKSTATS_H
-#define _BPF_NETWORKSTATS_H
-
 #include <bpf/BpfMap.h>
 
 namespace android {
@@ -34,26 +31,19 @@ constexpr int SET_FOREGROUND = 1;
 // The limit for stats received by a unknown interface;
 constexpr const int64_t MAX_UNKNOWN_IFACE_BYTES = 100 * 1000;
 
-// This is used by
-// frameworks/base/core/jni/com_android_internal_net_NetworkStatsFactory.cpp
+// This is a JNI ABI and is used by
+// framework/base/core/jni/com_android_internal_net_NetworkStatsFactory.cpp
 // make sure it is consistent with the JNI code before changing this.
 struct stats_line {
     char iface[32];
-    uint32_t uid;
-    uint32_t set;
-    uint32_t tag;
+    int32_t uid;
+    int32_t set;
+    int32_t tag;
     int64_t rxBytes;
     int64_t rxPackets;
     int64_t txBytes;
     int64_t txPackets;
-
-    stats_line& operator=(const stats_line& rhs);
-    stats_line& operator+=(const stats_line& rhs);
 };
-
-bool operator==(const stats_line& lhs, const stats_line& rhs);
-bool operator<(const stats_line& lhs, const stats_line& rhs);
-
 // For test only
 int bpfGetUidStatsInternal(uid_t uid, struct Stats* stats,
                            const BpfMap<uint32_t, StatsValue>& appUidStatsMap);
@@ -117,9 +107,6 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
                                int limitUid);
 
 int parseBpfNetworkStatsDev(std::vector<stats_line>* lines);
-void groupNetworkStats(std::vector<stats_line>* lines);
 int cleanStatsMap();
 }  // namespace bpf
 }  // namespace android
-
-#endif  // _BPF_NETWORKSTATS_H
