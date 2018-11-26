@@ -222,21 +222,17 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     binder::Status trafficCheckBpfStatsEnable(bool* ret) override;
 
-    binder::Status addVirtualTunnelInterface(
-            const std::string& deviceName,
-            const std::string& localAddress,
-            const std::string& remoteAddress,
-            int32_t iKey,
-            int32_t oKey);
+    binder::Status ipSecAddTunnelInterface(const std::string& deviceName,
+                                           const std::string& localAddress,
+                                           const std::string& remoteAddress, int32_t iKey,
+                                           int32_t oKey);
 
-    binder::Status updateVirtualTunnelInterface(
-            const std::string& deviceName,
-            const std::string& localAddress,
-            const std::string& remoteAddress,
-            int32_t iKey,
-            int32_t oKey);
+    binder::Status ipSecUpdateTunnelInterface(const std::string& deviceName,
+                                              const std::string& localAddress,
+                                              const std::string& remoteAddress, int32_t iKey,
+                                              int32_t oKey);
 
-    binder::Status removeVirtualTunnelInterface(const std::string& deviceName);
+    binder::Status ipSecRemoveTunnelInterface(const std::string& deviceName);
 
     // Idletimer-related commands
     binder::Status idletimerAddInterface(const std::string& ifName, int32_t timeout,
