@@ -489,7 +489,7 @@ interface INetd {
     const String IPSEC_INTERFACE_PREFIX = "ipsec";
 
    /**
-    * Add a Virtual Tunnel Interface.
+    * Add a IPsec Tunnel Interface.
     *
     * @param devName a unique identifier that represents the name of the device
     * @param localAddress InetAddress as string for the local endpoint
@@ -497,7 +497,7 @@ interface INetd {
     * @param iKey, to match Policies and SAs for input packets.
     * @param oKey, to match Policies and SAs for output packets.
     */
-    void addVirtualTunnelInterface(
+    void ipSecAddTunnelInterface(
             in @utf8InCpp String deviceName,
             in @utf8InCpp String localAddress,
             in @utf8InCpp String remoteAddress,
@@ -505,7 +505,7 @@ interface INetd {
             int oKey);
 
    /**
-    * Update a Virtual Tunnel Interface.
+    * Update a IPsec Tunnel Interface.
     *
     * @param devName a unique identifier that represents the name of the device
     * @param localAddress InetAddress as string for the local endpoint
@@ -513,7 +513,7 @@ interface INetd {
     * @param iKey, to match Policies and SAs for input packets.
     * @param oKey, to match Policies and SAs for output packets.
     */
-    void updateVirtualTunnelInterface(
+    void ipSecUpdateTunnelInterface(
             in @utf8InCpp String deviceName,
             in @utf8InCpp String localAddress,
             in @utf8InCpp String remoteAddress,
@@ -521,11 +521,11 @@ interface INetd {
             int oKey);
 
    /**
-    * Removes a Virtual Tunnel Interface.
+    * Removes a IPsec Tunnel Interface.
     *
     * @param devName a unique identifier that represents the name of the device
     */
-    void removeVirtualTunnelInterface(in @utf8InCpp String deviceName);
+    void ipSecRemoveTunnelInterface(in @utf8InCpp String deviceName);
 
    /**
     * Request notification of wakeup packets arriving on an interface. Notifications will be

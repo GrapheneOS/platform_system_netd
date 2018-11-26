@@ -278,7 +278,7 @@ TEST_F(BinderTest, FirewallReplaceUidChain) {
     EXPECT_EQ(false, ret);
 }
 
-TEST_F(BinderTest, VirtualTunnelInterface) {
+TEST_F(BinderTest, IpSecTunnelInterface) {
     const struct TestData {
         const std::string family;
         const std::string deviceName;
@@ -287,8 +287,8 @@ TEST_F(BinderTest, VirtualTunnelInterface) {
         int32_t iKey;
         int32_t oKey;
     } kTestData[] = {
-        {"IPV4", "test_vti", "127.0.0.1", "8.8.8.8", 0x1234 + 53, 0x1234 + 53},
-        {"IPV6", "test_vti6", "::1", "2001:4860:4860::8888", 0x1234 + 50, 0x1234 + 50},
+            {"IPV4", "ipsec_test", "127.0.0.1", "8.8.8.8", 0x1234 + 53, 0x1234 + 53},
+            {"IPV6", "ipsec_test6", "::1", "2001:4860:4860::8888", 0x1234 + 50, 0x1234 + 50},
     };
 
     for (unsigned int i = 0; i < std::size(kTestData); i++) {
@@ -296,18 +296,18 @@ TEST_F(BinderTest, VirtualTunnelInterface) {
 
         binder::Status status;
 
-        // Create Virtual Tunnel Interface.
-        status = mNetd->addVirtualTunnelInterface(td.deviceName, td.localAddress, td.remoteAddress,
-                                                  td.iKey, td.oKey);
+        // Create Tunnel Interface.
+        status = mNetd->ipSecAddTunnelInterface(td.deviceName, td.localAddress, td.remoteAddress,
+                                                td.iKey, td.oKey);
         EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
 
-        // Update Virtual Tunnel Interface.
-        status = mNetd->updateVirtualTunnelInterface(td.deviceName, td.localAddress,
-                                                     td.remoteAddress, td.iKey, td.oKey);
+        // Update Tunnel Interface.
+        status = mNetd->ipSecUpdateTunnelInterface(td.deviceName, td.localAddress, td.remoteAddress,
+                                                   td.iKey, td.oKey);
         EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
 
-        // Remove Virtual Tunnel Interface.
-        status = mNetd->removeVirtualTunnelInterface(td.deviceName);
+        // Remove Tunnel Interface.
+        status = mNetd->ipSecRemoveTunnelInterface(td.deviceName);
         EXPECT_TRUE(status.isOk()) << td.family << status.exceptionMessage();
     }
 }
@@ -332,11 +332,9 @@ bool BinderTest::allocateIpSecResources(bool expectOk, int32_t* spi) {
     RETURN_FALSE_IF_NEQ(status.ok(), expectOk);
 
     // Add an ipsec interface
-    status = netdutils::statusFromErrno(
-            XfrmController::addVirtualTunnelInterface(
-                    "ipsec_test", "::", "::1", 0xF00D, 0xD00D, false),
-            "addVirtualTunnelInterface");
-    return (status.ok() == expectOk);
+    return expectOk ==
+           XfrmController::ipSecAddTunnelInterface("ipsec_test", "::", "::1", 0xF00D, 0xD00D, false)
+                   .ok();
 }
 
 TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV4) {
@@ -417,11 +415,7 @@ TEST_F(BinderTest, XfrmControllerInit) {
     ASSERT_TRUE(status.ok());
 
     // Remove Virtual Tunnel Interface.
-    status = netdutils::statusFromErrno(
-            XfrmController::removeVirtualTunnelInterface("ipsec_test"),
-            "removeVirtualTunnelInterface");
-
-    ASSERT_TRUE(status.ok());
+    ASSERT_TRUE(XfrmController::ipSecRemoveTunnelInterface("ipsec_test").ok());
 }
 #endif
 

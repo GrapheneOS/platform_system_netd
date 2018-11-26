@@ -869,59 +869,48 @@ binder::Status NetdNativeService::ipSecDeleteSecurityPolicy(int32_t transformId,
             transformId, selAddrFamily, direction, markValue, markMask));
 }
 
-binder::Status NetdNativeService::addVirtualTunnelInterface(
-        const std::string& deviceName,
-        const std::string& localAddress,
-        const std::string& remoteAddress,
-        int32_t iKey,
-        int32_t oKey) {
+binder::Status NetdNativeService::ipSecAddTunnelInterface(const std::string& deviceName,
+                                                          const std::string& localAddress,
+                                                          const std::string& remoteAddress,
+                                                          int32_t iKey, int32_t oKey) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(NETWORK_STACK);
-    gLog.log("addVirtualTunnelInterface()");
-    int ret = gCtls->xfrmCtrl.addVirtualTunnelInterface(
-                             deviceName,
-                             localAddress,
-                             remoteAddress,
-                             iKey,
-                             oKey,
-                             false);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
 
-    return (ret == 0) ? binder::Status::ok() :
-                        asBinderStatus(netdutils::statusFromErrno(
-                                       ret, "Error in creating virtual tunnel interface."));
+    netdutils::Status result = gCtls->xfrmCtrl.ipSecAddTunnelInterface(
+            deviceName, localAddress, remoteAddress, iKey, oKey, false);
+    RETURN_BINDER_STATUS_IF_NOT_OK(entry, result);
+
+    gLog.log(entry.returns(result).withAutomaticDuration());
+    return binder::Status::ok();
 }
 
-binder::Status NetdNativeService::updateVirtualTunnelInterface(
-        const std::string& deviceName,
-        const std::string& localAddress,
-        const std::string& remoteAddress,
-        int32_t iKey,
-        int32_t oKey) {
+binder::Status NetdNativeService::ipSecUpdateTunnelInterface(const std::string& deviceName,
+                                                             const std::string& localAddress,
+                                                             const std::string& remoteAddress,
+                                                             int32_t iKey, int32_t oKey) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(NETWORK_STACK);
-    gLog.log("updateVirtualTunnelInterface()");
-    int ret = gCtls->xfrmCtrl.addVirtualTunnelInterface(
-                             deviceName,
-                             localAddress,
-                             remoteAddress,
-                             iKey,
-                             oKey,
-                             true);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
 
-    return (ret == 0) ? binder::Status::ok() :
-                        asBinderStatus(netdutils::statusFromErrno(
-                                       ret, "Error in updating virtual tunnel interface."));
+    netdutils::Status result = gCtls->xfrmCtrl.ipSecAddTunnelInterface(
+            deviceName, localAddress, remoteAddress, iKey, oKey, true);
+    RETURN_BINDER_STATUS_IF_NOT_OK(entry, result);
+
+    gLog.log(entry.returns(result).withAutomaticDuration());
+    return binder::Status::ok();
 }
 
-binder::Status NetdNativeService::removeVirtualTunnelInterface(const std::string& deviceName) {
+binder::Status NetdNativeService::ipSecRemoveTunnelInterface(const std::string& deviceName) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_PERMISSION(NETWORK_STACK);
-    gLog.log("removeVirtualTunnelInterface()");
-    int ret = gCtls->xfrmCtrl.removeVirtualTunnelInterface(deviceName);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
 
-    return (ret == 0) ? binder::Status::ok() :
-                        asBinderStatus(netdutils::statusFromErrno(
-                                       ret, "Error in removing virtual tunnel interface."));
+    netdutils::Status result = gCtls->xfrmCtrl.ipSecRemoveTunnelInterface(deviceName);
+    RETURN_BINDER_STATUS_IF_NOT_OK(entry, result);
+
+    gLog.log(entry.returns(result).withAutomaticDuration());
+    return binder::Status::ok();
 }
 
 binder::Status NetdNativeService::setIPv6AddrGenMode(const std::string& ifName,
