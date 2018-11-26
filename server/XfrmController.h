@@ -113,6 +113,7 @@ struct XfrmCommonInfo {
     int transformId; // requestId
     int spi;
     xfrm_mark mark;
+    int xfrm_if_id;
 };
 
 struct XfrmSaInfo : XfrmCommonInfo {
@@ -144,19 +145,21 @@ public:
                                               int32_t* outSpi);
 
     static netdutils::Status ipSecAddSecurityAssociation(
-        int32_t transformId, int32_t mode, const std::string& sourceAddress,
-        const std::string& destinationAddress, int32_t underlyingNetId, int32_t spi,
-        int32_t markValue, int32_t markMask, const std::string& authAlgo,
-        const std::vector<uint8_t>& authKey, int32_t authTruncBits, const std::string& cryptAlgo,
-        const std::vector<uint8_t>& cryptKey, int32_t cryptTruncBits, const std::string& aeadAlgo,
-        const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits, int32_t encapType,
-        int32_t encapLocalPort, int32_t encapRemotePort);
+            int32_t transformId, int32_t mode, const std::string& sourceAddress,
+            const std::string& destinationAddress, int32_t underlyingNetId, int32_t spi,
+            int32_t markValue, int32_t markMask, const std::string& authAlgo,
+            const std::vector<uint8_t>& authKey, int32_t authTruncBits,
+            const std::string& cryptAlgo, const std::vector<uint8_t>& cryptKey,
+            int32_t cryptTruncBits, const std::string& aeadAlgo,
+            const std::vector<uint8_t>& aeadKey, int32_t aeadIcvBits, int32_t encapType,
+            int32_t encapLocalPort, int32_t encapRemotePort, int32_t xfrmInterfaceId);
 
     static netdutils::Status ipSecDeleteSecurityAssociation(int32_t transformId,
                                                             const std::string& sourceAddress,
                                                             const std::string& destinationAddress,
                                                             int32_t spi, int32_t markValue,
-                                                            int32_t markMask);
+                                                            int32_t markMask,
+                                                            int32_t xfrmInterfaceId);
 
     static netdutils::Status
     ipSecApplyTransportModeTransform(const android::base::unique_fd& socket, int32_t transformId,
@@ -170,23 +173,25 @@ public:
                                                     int32_t direction,
                                                     const std::string& tmplSrcAddress,
                                                     const std::string& tmplDstAddress, int32_t spi,
-                                                    int32_t markValue, int32_t markMask);
+                                                    int32_t markValue, int32_t markMask,
+                                                    int32_t xfrmInterfaceId);
 
     static netdutils::Status ipSecUpdateSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
                                                        int32_t direction,
                                                        const std::string& tmplSrcAddress,
                                                        const std::string& tmplDstAddress,
                                                        int32_t spi, int32_t markValue,
-                                                       int32_t markMask);
+                                                       int32_t markMask, int32_t xfrmInterfaceId);
 
     static netdutils::Status ipSecDeleteSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
                                                        int32_t direction, int32_t markValue,
-                                                       int32_t markMask);
+                                                       int32_t markMask, int32_t xfrmInterfaceId);
 
     static netdutils::Status ipSecAddTunnelInterface(const std::string& deviceName,
                                                      const std::string& localAddress,
                                                      const std::string& remoteAddress, int32_t ikey,
-                                                     int32_t okey, bool isUpdate);
+                                                     int32_t okey, int32_t interfaceId,
+                                                     bool isUpdate);
 
     static netdutils::Status ipSecRemoveTunnelInterface(const std::string& deviceName);
 
@@ -327,9 +332,11 @@ public:
     static netdutils::Status fillXfrmCommonInfo(const std::string& sourceAddress,
                                                 const std::string& destinationAddress, int32_t spi,
                                                 int32_t markValue, int32_t markMask,
-                                                int32_t transformId, XfrmCommonInfo* info);
+                                                int32_t transformId, int32_t xfrmInterfaceId,
+                                                XfrmCommonInfo* info);
     static netdutils::Status fillXfrmCommonInfo(int32_t spi, int32_t markValue, int32_t markMask,
-                                                int32_t transformId, XfrmCommonInfo* info);
+                                                int32_t transformId, int32_t xfrmInterfaceId,
+                                                XfrmCommonInfo* info);
 
     // Top level functions for managing a Transport Mode Transform
     static netdutils::Status addTransportModeTransform(const XfrmSaInfo& record);
@@ -374,7 +381,7 @@ public:
                                                    const std::string& tmplSrcAddress,
                                                    const std::string& tmplDstAddress, int32_t spi,
                                                    int32_t markValue, int32_t markMask,
-                                                   int32_t msgType);
+                                                   int32_t xfrmInterfaceId, int32_t msgType);
     static netdutils::Status updateTunnelModeSecurityPolicy(const XfrmSpInfo& record,
                                                             const XfrmSocket& sock,
                                                             XfrmDirection direction,
