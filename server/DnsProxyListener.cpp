@@ -385,10 +385,10 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     }
 
     struct addrinfo* hints = nullptr;
-    int ai_flags = atoi(argv[3]);
-    int ai_family = atoi(argv[4]);
-    int ai_socktype = atoi(argv[5]);
-    int ai_protocol = atoi(argv[6]);
+    int ai_flags = strtol(argv[3], nullptr, 10);
+    int ai_family = strtol(argv[4], nullptr, 10);
+    int ai_socktype = strtol(argv[5], nullptr, 10);
+    int ai_protocol = strtol(argv[6], nullptr, 10);
     unsigned netId = strtoul(argv[7], nullptr, 10);
     const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
     const uid_t uid = cli->getUid();
@@ -451,7 +451,7 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
     unsigned netId = strtoul(argv[1], nullptr, 10);
     const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
     char* name = argv[2];
-    int af = atoi(argv[3]);
+    int af = strtol(argv[3], nullptr, 10);
 
     if (strcmp(name, "^") == 0) {
         name = nullptr;
@@ -594,8 +594,8 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     }
 
     char* addrStr = argv[1];
-    int addrLen = atoi(argv[2]);
-    int addrFamily = atoi(argv[3]);
+    int addrLen = strtol(argv[2], nullptr, 10);
+    int addrFamily = strtol(argv[3], nullptr, 10);
     uid_t uid = cli->getUid();
     unsigned netId = strtoul(argv[4], nullptr, 10);
     const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
