@@ -138,7 +138,7 @@ void MDnsSdListener::Handler::stop(SocketClient *cli, int argc, char **argv, con
         free(msg);
         return;
     }
-    int requestId = atoi(argv[2]);
+    int requestId = strtol(argv[2], nullptr, 10);
     DNSServiceRef *ref = mMonitor->lookupServiceRef(requestId);
     if (ref == nullptr) {
         if (DBG) ALOGE("%s stop used unknown requestId %d", str, requestId);
@@ -422,7 +422,7 @@ int MDnsSdListener::Handler::runCommand(SocketClient *cli,
                     "Invalid number of arguments to mdnssd discover", false);
             return 0;
         }
-        int requestId = atoi(argv[2]);
+        int requestId = strtol(argv[2], nullptr, 10);
         char *serviceType = argv[3];
 
         discover(cli, nullptr, serviceType, nullptr, requestId, 0);
@@ -437,7 +437,7 @@ int MDnsSdListener::Handler::runCommand(SocketClient *cli,
         int requestId = atoi(argv[2]);
         char *serviceName = argv[3];
         char *serviceType = argv[4];
-        int port = atoi(argv[5]);
+        int port = strtol(argv[5], nullptr, 10);
         char *interfaceName = nullptr; // will use all
         char *domain = nullptr;        // will use default
         char *host = nullptr;          // will use default hostname
@@ -489,7 +489,7 @@ int MDnsSdListener::Handler::runCommand(SocketClient *cli,
                     "Invalid number of arguments to mdnssd sethostname", false);
             return 0;
         }
-        int requestId = atoi(argv[2]);
+        int requestId = strtol(argv[2], nullptr, 10);
         char *hostname = argv[3];
         setHostname(cli, requestId, hostname);
     } else if (strcmp(cmd, "stop-sethostname") == 0) {
