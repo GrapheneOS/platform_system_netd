@@ -27,8 +27,8 @@ apex {
 
 apex_key {
     name: "com.android.resolv.key",
-    public_key: "resolv.avbpubkey",
-    private_key: "resolv.pem",
+    public_key: "com.android.resolv.avbpubkey",
+    private_key: "com.android.resolv.pem",
 }
 
 android_app_certificate {
