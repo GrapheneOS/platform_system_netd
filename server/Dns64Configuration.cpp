@@ -69,6 +69,9 @@ void Dns64Configuration::startPrefixDiscovery(unsigned netId) {
 
             android_net_context netcontext{};
             mNetCtrl.getNetworkContext(evalCfg.netId, 0, &netcontext);
+            // Prefix discovery must bypass private DNS because in strict mode
+            // the server generally won't know the NAT64 prefix.
+            netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
             if (doRfc7050PrefixDiscovery(netcontext, &evalCfg)) {
                 this->recordDns64Config(evalCfg);
                 break;
@@ -137,9 +140,7 @@ bool Dns64Configuration::doRfc7050PrefixDiscovery(const android_net_context& net
     // TODO: Refactor so that netd can get all the regular getaddrinfo handling
     // that regular apps get. We bypass the UNIX socket connection back to
     // ourselves, which means we also bypass all the special netcontext flag
-    // handling and the resolver event logging. Note that we because we bypass
-    // this special handling we also implicitly bypass DNS-over-TLS, which we
-    // need to do here anyway.
+    // handling and the resolver event logging.
     struct addrinfo* res = nullptr;
     const int status =
             android_getaddrinfofornetcontext(kIPv4OnlyHost, nullptr, &hints, &netcontext, &res);
