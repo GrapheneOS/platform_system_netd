@@ -19,7 +19,9 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <math.h>
+#include <stdlib.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -39,6 +41,7 @@ typedef int (*Accept4FunctionType)(int, sockaddr*, socklen_t*, int);
 typedef int (*ConnectFunctionType)(int, const sockaddr*, socklen_t);
 typedef int (*SocketFunctionType)(int, int, int);
 typedef unsigned (*NetIdForResolvFunctionType)(unsigned);
+typedef int (*DnsOpenProxyType)();
 
 // These variables are only modified at startup (when libc.so is loaded) and never afterwards, so
 // it's okay that they are read later at runtime without a lock.
@@ -144,12 +147,9 @@ int setNetworkForTarget(unsigned netId, std::atomic_uint* target) {
     // Verify that we are allowed to use |netId|, by creating a socket and trying to have it marked
     // with the netId. Call libcSocket() directly; else the socket creation (via netdClientSocket())
     // might itself cause another check with the fwmark server, which would be wasteful.
-    int socketFd;
-    if (libcSocket) {
-        socketFd = libcSocket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-    } else {
-        socketFd = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-    }
+
+    const auto socketFunc = libcSocket ? libcSocket : socket;
+    int socketFd = socketFunc(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (socketFd < 0) {
         return -errno;
     }
@@ -174,6 +174,36 @@ int checkSocket(int socketFd) {
         return -EAFNOSUPPORT;
     }
     return 0;
+}
+
+int dns_open_proxy() {
+    const char* cache_mode = getenv("ANDROID_DNS_MODE");
+    const bool use_proxy = (cache_mode == NULL || strcmp(cache_mode, "local") != 0);
+    if (!use_proxy) {
+        return -1;
+    }
+
+    const auto socketFunc = libcSocket ? libcSocket : socket;
+    int s = socketFunc(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (s == -1) {
+        return -1;
+    }
+    const int one = 1;
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+
+    static const struct sockaddr_un proxy_addr = {
+            .sun_family = AF_UNIX,
+            .sun_path = "/dev/socket/dnsproxyd",
+    };
+
+    const auto connectFunc = libcConnect ? libcConnect : connect;
+    if (TEMP_FAILURE_RETRY(
+                connectFunc(s, (const struct sockaddr*) &proxy_addr, sizeof(proxy_addr))) != 0) {
+        close(s);
+        return -1;
+    }
+
+    return s;
 }
 
 }  // namespace
@@ -211,6 +241,12 @@ extern "C" void netdClientInitSocket(SocketFunctionType* function) {
 extern "C" void netdClientInitNetIdForResolv(NetIdForResolvFunctionType* function) {
     if (function) {
         *function = getNetworkForResolv;
+    }
+}
+
+extern "C" void netdClientInitDnsOpenProxy(DnsOpenProxyType* function) {
+    if (function) {
+        *function = dns_open_proxy;
     }
 }
 
