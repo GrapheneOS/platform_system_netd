@@ -224,7 +224,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                     return 0;
                 }
                 if (addr.s_addr != 0) {
-                    if (ifc_add_address(argv[2], argv[3], atoi(argv[4]))) {
+                    if (ifc_add_address(argv[2], argv[3], strtol(argv[4], nullptr, 10))) {
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to set address", true);
                         ifc_close();
                         return 0;
@@ -750,7 +750,8 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
             sendGenericSyntaxError(cli, "setquota <interface> <bytes>");
             return 0;
         }
-        int rc = gCtls->bandwidthCtrl.setInterfaceSharedQuota(argv[2], atoll(argv[3]));
+        int rc = gCtls->bandwidthCtrl.setInterfaceSharedQuota(argv[2],
+                                                              strtoll(argv[3], nullptr, 10));
         sendGenericOkFail(cli, rc);
         return 0;
     }
@@ -762,7 +763,8 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         }
 
         for (int q = 3; argc >= 4; q++, argc--) {
-            rc = gCtls->bandwidthCtrl.setInterfaceSharedQuota(argv[q], atoll(argv[2]));
+            rc = gCtls->bandwidthCtrl.setInterfaceSharedQuota(argv[q],
+                                                              strtoll(argv[2], nullptr, 10));
             if (rc) {
                 char *msg;
                 asprintf(&msg, "bandwidth setquotas %s %s failed", argv[2], argv[q]);
@@ -813,7 +815,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
             sendGenericSyntaxError(cli, "setiquota <interface> <bytes>");
             return 0;
         }
-        int rc = gCtls->bandwidthCtrl.setInterfaceQuota(argv[2], atoll(argv[3]));
+        int rc = gCtls->bandwidthCtrl.setInterfaceQuota(argv[2], strtoll(argv[3], nullptr, 10));
         sendGenericOkFail(cli, rc);
         return 0;
 
@@ -861,7 +863,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
             sendGenericSyntaxError(cli, "setglobalalert <bytes>");
             return 0;
         }
-        int rc = gCtls->bandwidthCtrl.setGlobalAlert(atoll(argv[2]));
+        int rc = gCtls->bandwidthCtrl.setGlobalAlert(strtoll(argv[2], nullptr, 10));
         sendGenericOkFail(cli, rc);
         return 0;
     }
@@ -880,7 +882,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
             sendGenericSyntaxError(cli, "setsharedalert <bytes>");
             return 0;
         }
-        int rc = gCtls->bandwidthCtrl.setSharedAlert(atoll(argv[2]));
+        int rc = gCtls->bandwidthCtrl.setSharedAlert(strtoll(argv[2], nullptr, 10));
         sendGenericOkFail(cli, rc);
         return 0;
 
@@ -900,7 +902,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
             sendGenericSyntaxError(cli, "setinterfacealert <interface> <bytes>");
             return 0;
         }
-        int rc = gCtls->bandwidthCtrl.setInterfaceAlert(argv[2], atoll(argv[3]));
+        int rc = gCtls->bandwidthCtrl.setInterfaceAlert(argv[2], strtoll(argv[3], nullptr, 10));
         sendGenericOkFail(cli, rc);
         return 0;
 
@@ -938,9 +940,9 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
             return 0;
         }
-        if(0 != gCtls->idletimerCtrl.addInterfaceIdletimer(
-                                        argv[2], atoi(argv[3]), argv[4])) {
-          cli->sendMsg(ResponseCode::OperationFailed, "Failed to add interface", false);
+        if (0 != gCtls->idletimerCtrl.addInterfaceIdletimer(argv[2], strtol(argv[3], nullptr, 10),
+                                                            argv[4])) {
+            cli->sendMsg(ResponseCode::OperationFailed, "Failed to add interface", false);
         } else {
           cli->sendMsg(ResponseCode::CommandOkay,  "Add success", false);
         }
@@ -953,8 +955,8 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
         }
         // ashish: fixme timeout
         if (0 != gCtls->idletimerCtrl.removeInterfaceIdletimer(
-                                        argv[2], atoi(argv[3]), argv[4])) {
-          cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove interface", false);
+                         argv[2], strtol(argv[3], nullptr, 10), argv[4])) {
+            cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove interface", false);
         } else {
           cli->sendMsg(ResponseCode::CommandOkay, "Remove success", false);
         }
@@ -1067,7 +1069,7 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
                          false);
             return 0;
         }
-        int uid = atoi(argv[3]);
+        int uid = strtol(argv[3], nullptr, 10);
         FirewallRule rule = parseRule(argv[4]);
         int res = gCtls->firewallCtrl.setUidRule(childChain, uid, rule);
         return sendGenericOkFail(cli, res);
@@ -1300,8 +1302,8 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
         unsigned netId = stringToNetId(argv[2]);
         if (argc == 6 && !strcmp(argv[3], "vpn")) {
-            bool hasDns = atoi(argv[4]);
-            bool secure = atoi(argv[5]);
+            bool hasDns = strtol(argv[4], nullptr, 2);
+            bool secure = strtol(argv[5], nullptr, 2);
             if (int ret = gCtls->netCtrl.createVirtualNetwork(netId, hasDns, secure)) {
                 return operationError(client, "createVirtualNetwork() failed", ret);
             }
