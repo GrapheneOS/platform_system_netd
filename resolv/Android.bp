@@ -94,6 +94,7 @@ cc_test {
         "DnsTlsSessionCache.cpp",
         "DnsTlsSocket.cpp",
         "dns_tls_test.cpp",
+        "libnetd_resolv_test.cpp",
     ],
     // TODO: Remove the include path "system/netd/include" after Fwmark used in DnsTlsTransport is
     // moved out.
@@ -101,12 +102,17 @@ cc_test {
         "system/netd/include",
         "system/netd/resolv/include",
         "system/netd/server",
+        "system/netd/resolv/dns_responder",
     ],
     shared_libs: [
         "libbase",
         "libcrypto",
         "liblog",
+        "libnetd_resolv",
         "libnetdutils",
         "libssl",
+    ],
+    static_libs: [
+        "libnetd_test_dnsresponder",
     ],
 }
