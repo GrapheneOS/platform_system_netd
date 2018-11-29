@@ -107,8 +107,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             const std::vector<std::string>& tlsServers,
             const std::vector<std::string>& tlsFingerprints) override;
     binder::Status getResolverInfo(int32_t netId, std::vector<std::string>* servers,
-            std::vector<std::string>* domains, std::vector<int32_t>* params,
-            std::vector<int32_t>* stats) override;
+                                   std::vector<std::string>* tlsServers,
+                                   std::vector<std::string>* domains, std::vector<int32_t>* params,
+                                   std::vector<int32_t>* stats) override;
 
     binder::Status setIPv6AddrGenMode(const std::string& ifName, int32_t mode) override;
 
