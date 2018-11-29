@@ -56,8 +56,8 @@ class ResolverController {
             const std::set<std::vector<uint8_t>>& tlsFingerprints);
 
     int getResolverInfo(int32_t netId, std::vector<std::string>* servers,
-            std::vector<std::string>* domains, std::vector<int32_t>* params,
-            std::vector<int32_t>* stats);
+                        std::vector<std::string>* domains, std::vector<std::string>* tlsServers,
+                        std::vector<int32_t>* params, std::vector<int32_t>* stats);
 
     void dump(DumpWriter& dw, unsigned netId);
 

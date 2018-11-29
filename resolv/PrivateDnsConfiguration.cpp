@@ -201,16 +201,6 @@ void PrivateDnsConfiguration::getStatus(unsigned netId, ExternalPrivateDnsStatus
             status->serverStatus[count].hostname =
                     serverPair.first.name.empty() ? "" : serverPair.first.name.c_str();
             status->serverStatus[count].validation = serverPair.second;
-            /*
-            unsigned numFingerprint = 0;
-            for (const auto& fp : serverPair.first.fingerprints) {
-                std::copy(
-                        fp.begin(), fp.end(),
-                        status->serverStatus[count].fingerprints.fingerprint[numFingerprint].data);
-                numFingerprint++;
-            }
-            status->serverStatus[count].fingerprints.num = numFingerprint;
-            */
             count++;
             if (count >= MAXNS) break;  // Lose the rest
         }
