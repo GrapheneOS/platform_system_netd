@@ -126,11 +126,13 @@ class ResolverTest : public ::testing::Test, public DnsResponderClient {
     }
 
     bool GetResolverInfo(std::vector<std::string>* servers, std::vector<std::string>* domains,
-            __res_params* params, std::vector<ResolverStats>* stats) {
+                         std::vector<std::string>* tlsServers, __res_params* params,
+                         std::vector<ResolverStats>* stats) {
         using android::net::INetd;
         std::vector<int32_t> params32;
         std::vector<int32_t> stats32;
-        auto rv = mNetdSrv->getResolverInfo(TEST_NETID, servers, domains, &params32, &stats32);
+        auto rv = mNetdSrv->getResolverInfo(TEST_NETID, servers, domains, tlsServers, &params32,
+                                            &stats32);
         if (!rv.isOk() || params32.size() != INetd::RESOLVER_PARAMS_COUNT) {
             return false;
         }
@@ -444,11 +446,14 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
 
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
+    std::vector<std::string> res_tls_servers;
     __res_params res_params;
     std::vector<ResolverStats> res_stats;
-    ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_params, &res_stats));
+    ASSERT_TRUE(
+            GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params, &res_stats));
     EXPECT_EQ(servers.size(), res_servers.size());
     EXPECT_EQ(domains.size(), res_domains.size());
+    EXPECT_EQ(0U, res_tls_servers.size());
     ASSERT_EQ(INetd::RESOLVER_PARAMS_COUNT, mDefaultParams_Binder.size());
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY],
             res_params.sample_validity);
@@ -805,11 +810,14 @@ TEST_F(ResolverTest, EmptySetup) {
     ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams_Binder));
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
+    std::vector<std::string> res_tls_servers;
     __res_params res_params;
     std::vector<ResolverStats> res_stats;
-    ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_params, &res_stats));
+    ASSERT_TRUE(
+            GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params, &res_stats));
     EXPECT_EQ(0U, res_servers.size());
     EXPECT_EQ(0U, res_domains.size());
+    EXPECT_EQ(0U, res_tls_servers.size());
     ASSERT_EQ(INetd::RESOLVER_PARAMS_COUNT, mDefaultParams_Binder.size());
     EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY],
             res_params.sample_validity);
@@ -853,28 +861,6 @@ TEST_F(ResolverTest, SearchPathChange) {
     EXPECT_EQ("2001:db8::1:13", ToString(result));
 }
 
-TEST_F(ResolverTest, MaxServerPrune_Binder) {
-    using android::net::INetd;
-
-    std::vector<std::string> domains = { "example.com" };
-    std::vector<std::unique_ptr<test::DNSResponder>> dns;
-    std::vector<std::string> servers;
-    std::vector<Mapping> mappings;
-    ASSERT_NO_FATAL_FAILURE(SetupMappings(1, domains, &mappings));
-    ASSERT_NO_FATAL_FAILURE(SetupDNSServers(MAXNS + 1, mappings, &dns, &servers));
-
-    ASSERT_TRUE(SetResolversForNetwork(servers, domains,  mDefaultParams_Binder));
-
-    std::vector<std::string> res_servers;
-    std::vector<std::string> res_domains;
-    __res_params res_params;
-    std::vector<ResolverStats> res_stats;
-    ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_params, &res_stats));
-    EXPECT_EQ(static_cast<size_t>(MAXNS), res_servers.size());
-
-    ASSERT_NO_FATAL_FAILURE(ShutdownDNSServers(&dns));
-}
-
 static std::string base64Encode(const std::vector<uint8_t>& input) {
     size_t out_len;
     EXPECT_EQ(1, EVP_EncodedLength(&out_len, input.size()));
@@ -882,6 +868,119 @@ static std::string base64Encode(const std::vector<uint8_t>& input) {
     uint8_t output_bytes[out_len];
     EXPECT_EQ(out_len - 1, EVP_EncodeBlock(output_bytes, input.data(), input.size()));
     return std::string(reinterpret_cast<char*>(output_bytes));
+}
+
+// If we move this function to dns_responder_client, it will complicate the dependency need of
+// dns_tls_frontend.h.
+static void setupTlsServers(const std::vector<std::string>& servers,
+                            std::vector<std::unique_ptr<test::DnsTlsFrontend>>* tls,
+                            std::vector<std::string>* fingerprints) {
+    const char* listen_udp = "53";
+    const char* listen_tls = "853";
+
+    for (const auto& server : servers) {
+        auto t = std::make_unique<test::DnsTlsFrontend>(server, listen_tls, server, listen_udp);
+        t = std::make_unique<test::DnsTlsFrontend>(server, listen_tls, server, listen_udp);
+        t->startServer();
+        fingerprints->push_back(base64Encode(t->fingerprint()));
+        tls->push_back(std::move(t));
+    }
+}
+
+static void shutdownTlsServers(std::vector<std::unique_ptr<test::DnsTlsFrontend>>* tls) {
+    for (const auto& t : *tls) {
+        t->stopServer();
+    }
+    tls->clear();
+}
+
+TEST_F(ResolverTest, MaxServerPrune_Binder) {
+    using android::net::INetd;
+
+    std::vector<std::string> domains;
+    std::vector<std::unique_ptr<test::DNSResponder>> dns;
+    std::vector<std::unique_ptr<test::DnsTlsFrontend>> tls;
+    std::vector<std::string> servers;
+    std::vector<std::string> fingerprints;
+    std::vector<Mapping> mappings;
+
+    for (unsigned i = 0; i < MAXDNSRCH + 1; i++) {
+        domains.push_back(StringPrintf("example%u.com", i));
+    }
+    ASSERT_NO_FATAL_FAILURE(SetupMappings(1, domains, &mappings));
+    ASSERT_NO_FATAL_FAILURE(SetupDNSServers(MAXNS + 1, mappings, &dns, &servers));
+    ASSERT_NO_FATAL_FAILURE(setupTlsServers(servers, &tls, &fingerprints));
+
+    ASSERT_TRUE(SetResolversWithTls(servers, domains, mDefaultParams_Binder, "", fingerprints));
+
+    std::vector<std::string> res_servers;
+    std::vector<std::string> res_domains;
+    std::vector<std::string> res_tls_servers;
+    __res_params res_params;
+    std::vector<ResolverStats> res_stats;
+    ASSERT_TRUE(
+            GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params, &res_stats));
+
+    // Check the size of the stats and its contents.
+    EXPECT_EQ(static_cast<size_t>(MAXNS), res_servers.size());
+    EXPECT_EQ(static_cast<size_t>(MAXNS), res_tls_servers.size());
+    EXPECT_EQ(static_cast<size_t>(MAXDNSRCH), res_domains.size());
+    EXPECT_TRUE(std::equal(servers.begin(), servers.begin() + MAXNS, res_servers.begin()));
+    EXPECT_TRUE(std::equal(servers.begin(), servers.begin() + MAXNS, res_tls_servers.begin()));
+    EXPECT_TRUE(std::equal(domains.begin(), domains.begin() + MAXDNSRCH, res_domains.begin()));
+
+    ASSERT_NO_FATAL_FAILURE(ShutdownDNSServers(&dns));
+    ASSERT_NO_FATAL_FAILURE(shutdownTlsServers(&tls));
+}
+
+TEST_F(ResolverTest, ResolverStats) {
+    const char* listen_addr1 = "127.0.0.4";
+    const char* listen_addr2 = "127.0.0.5";
+    const char* listen_addr3 = "127.0.0.6";
+    const char* listen_srv = "53";
+    const char* host_name = "hello.example.com.";
+
+    // Set server 1 timeout.
+    test::DNSResponder dns1(listen_addr1, listen_srv, 250, static_cast<ns_rcode>(-1));
+    dns1.setResponseProbability(0.0);
+    ASSERT_TRUE(dns1.startServer());
+
+    // Set server 2 responding server failure.
+    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns2.setResponseProbability(0.0);
+    ASSERT_TRUE(dns2.startServer());
+
+    // Set server 3 workable.
+    test::DNSResponder dns3(listen_addr3, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns3.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    ASSERT_TRUE(dns3.startServer());
+
+    std::vector<std::string> servers = {listen_addr1, listen_addr2, listen_addr3};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+
+    dns3.clearQueries();
+    addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
+    ScopedAddrinfo result = safe_getaddrinfo("hello", nullptr, &hints);
+    size_t found = GetNumQueries(dns3, host_name);
+    EXPECT_LE(1U, found);
+    std::string result_str = ToString(result);
+    EXPECT_TRUE(result_str == "1.2.3.4") << ", result_str='" << result_str << "'";
+
+    std::vector<std::string> res_servers;
+    std::vector<std::string> res_domains;
+    std::vector<std::string> res_tls_servers;
+    __res_params res_params;
+    std::vector<ResolverStats> res_stats;
+    ASSERT_TRUE(
+            GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params, &res_stats));
+
+    EXPECT_EQ(1, res_stats[0].timeouts);
+    EXPECT_EQ(1, res_stats[1].errors);
+    EXPECT_EQ(1, res_stats[2].successes);
+
+    dns1.stopServer();
+    dns2.stopServer();
+    dns3.stopServer();
 }
 
 // Test what happens if the specified TLS server is nonexistent.
