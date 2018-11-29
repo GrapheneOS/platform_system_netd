@@ -80,6 +80,17 @@ StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener() {
     const int protocol = NETLINK_INET_DIAG;
     ASSIGN_OR_RETURN(auto sock, sys.socket(domain, type, protocol));
 
+    // TODO: if too many sockets are closed too quickly, we can overflow the socket buffer, and
+    // some entries in mCookieTagMap will not be freed. In order to fix this we would need to
+    // periodically dump all sockets and remove the tag entries for sockets that have been closed.
+    // For now, set a large-enough buffer that we can close hundreds of sockets without getting
+    // ENOBUFS and leaking mCookieTagMap entries.
+    int rcvbuf = 512 * 1024;
+    auto ret = sys.setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+    if (!ret.ok()) {
+        ALOGW("Failed to set SkDestroyListener buffer size to %d: %s", rcvbuf, ret.msg().c_str());
+    }
+
     sockaddr_nl addr = {
         .nl_family = AF_NETLINK,
         .nl_groups = 1 << (SKNLGRP_INET_TCP_DESTROY - 1) | 1 << (SKNLGRP_INET_UDP_DESTROY - 1) |

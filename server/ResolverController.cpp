@@ -168,9 +168,7 @@ class PrivateDnsConfiguration {
 
         // Add any new or changed servers to the tracker, and initiate async checks for them.
         for (const auto& server : tlsServers) {
-            // Don't probe a server more than once.  This means that the only way to
-            // re-check a failed server is to remove it and re-add it from the netId.
-            if (tracker.count(server) == 0) {
+            if (needsValidation(tracker, server)) {
                 validatePrivateDnsProvider(server, tracker, netId);
             }
         }
@@ -305,7 +303,15 @@ class PrivateDnsConfiguration {
             return DONT_REEVALUATE;
         }
 
-        bool reevaluationStatus = success ? DONT_REEVALUATE : NEEDS_REEVALUATION;
+        const auto mode = mPrivateDnsModes.find(netId);
+        if (mode == mPrivateDnsModes.end()) {
+            ALOGW("netId %u has no private DNS validation mode", netId);
+            return DONT_REEVALUATE;
+        }
+        const bool modeDoesReevaluation = (mode->second == PrivateDnsMode::STRICT);
+
+        bool reevaluationStatus = (success || !modeDoesReevaluation)
+                ? DONT_REEVALUATE : NEEDS_REEVALUATION;
 
         auto& tracker = netPair->second;
         auto serverPair = tracker.find(server);
@@ -348,15 +354,26 @@ class PrivateDnsConfiguration {
             }
         } else {
             // Validation failure is expected if a user is on a captive portal.
-            // TODO: Trigger a second validation attempt after captive portal login
-            // succeeds.
-            tracker[server] = Validation::fail;
+            // A second validation attempt is triggered in opportunistic mode
+            // by the framework after captive portal login succeeds.
+            tracker[server] = (reevaluationStatus == NEEDS_REEVALUATION)
+                    ? Validation::in_process : Validation::fail;
             if (DBG) {
                 ALOGD("Validation failed for %s!", addrToString(&(server.ss)).c_str());
             }
         }
 
         return reevaluationStatus;
+    }
+
+
+    // Start validation for newly added servers as well as any servers that have
+    // landed in Validation::fail state. Note that servers that have failed
+    // multiple validation attempts but for which there is still a validating
+    // thread running are marked as being Validation::in_process.
+    static bool needsValidation(const PrivateDnsTracker& tracker, const DnsTlsServer& server) {
+        const auto& iter = tracker.find(server);
+        return (iter == tracker.end()) || (iter->second == Validation::fail);
     }
 
     EventReporter mEventReporter;
@@ -368,7 +385,7 @@ class PrivateDnsConfiguration {
     std::map<unsigned, PrivateDnsTracker> mPrivateDnsTransports GUARDED_BY(mPrivateDnsLock);
     android::sp<android::net::metrics::INetdEventListener>
             mNetdEventListener GUARDED_BY(mPrivateDnsLock);
-} privateDnsConfiguration;
+} sPrivateDnsConfiguration;
 
 }  // namespace
 
@@ -382,7 +399,7 @@ int ResolverController::setDnsServers(unsigned netId, const char* searchDomains,
 
 ResolverController::PrivateDnsStatus
 ResolverController::getPrivateDnsStatus(unsigned netId) const {
-    return privateDnsConfiguration.getStatus(netId);
+    return sPrivateDnsConfiguration.getStatus(netId);
 }
 
 int ResolverController::clearDnsServers(unsigned netId) {
@@ -390,7 +407,7 @@ int ResolverController::clearDnsServers(unsigned netId) {
     if (DBG) {
         ALOGD("clearDnsServers netId = %u\n", netId);
     }
-    privateDnsConfiguration.clear(netId);
+    sPrivateDnsConfiguration.clear(netId);
     return 0;
 }
 
@@ -486,7 +503,7 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         return -EINVAL;
     }
 
-    const int err = privateDnsConfiguration.set(netId, tlsServers, tlsName, tlsFingerprints);
+    const int err = sPrivateDnsConfiguration.set(netId, tlsServers, tlsName, tlsFingerprints);
     if (err != 0) {
         return err;
     }
@@ -590,7 +607,7 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
                     static_cast<unsigned>(params.max_samples));
         }
 
-        privateDnsConfiguration.dump(dw, netId);
+        sPrivateDnsConfiguration.dump(dw, netId);
     }
     dw.decIndent();
 }

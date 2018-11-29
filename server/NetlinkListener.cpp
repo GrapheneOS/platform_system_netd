@@ -107,7 +107,7 @@ Status NetlinkListener::run() {
 
     const auto& sys = sSyscalls.get();
     const std::array<Fd, 2> fds{{{mEvent}, {mSock}}};
-    const int events = POLLIN | POLLRDHUP | POLLERR | POLLHUP;
+    const int events = POLLIN;
     const double timeout = 3600;
     while (true) {
         ASSIGN_OR_RETURN(auto revents, sys.ppoll(fds, events, timeout));
@@ -115,11 +115,15 @@ Status NetlinkListener::run() {
         if (revents[0] & POLLIN) {
             break;
         }
-        if (revents[1] & POLLIN) {
+        if (revents[1] & (POLLIN|POLLERR)) {
             auto rx = sys.recvfrom(mSock, makeSlice(rxbuf), 0);
-            if (rx.status().code() == ENOBUFS) {
-                // Ignore ENOBUFS - the socket is still usable
-                // TODO: Users other than NFLOG may need to know about this
+            int err = rx.status().code();
+            if (err) {
+                // Ignore errors. The only error we expect to see here is ENOBUFS, and there's
+                // nothing we can do about that. The recvfrom above will already have cleared the
+                // error indication and ensured we won't get EPOLLERR again.
+                // TODO: Consider using NETLINK_NO_ENOBUFS.
+                ALOGE("Failed to read from netlink socket: %s", strerror(err));
                 continue;
             }
             forEachNetlinkMessage(rx.value(), rxHandler);
