@@ -34,16 +34,22 @@ namespace {
 const char OEM_SCRIPT_PATH[] = "/system/bin/oem-iptables-init.sh";
 
 bool oemCleanupHooks() {
-    std::string cmd =
-        "*filter\n"
-        ":oem_out -\n"
-        ":oem_fwd -\n"
-        "COMMIT\n"
-        "*nat\n"
-        ":oem_nat_pre -\n"
-        "COMMIT\n";
+    static const std::string cmd4 =
+            "*filter\n"
+            ":oem_out -\n"
+            ":oem_fwd -\n"
+            "COMMIT\n"
+            "*nat\n"
+            ":oem_nat_pre -\n"
+            "COMMIT\n";
 
-    return (execIptablesRestore(V4V6, cmd) == 0);
+    static const std::string cmd6 =
+            "*filter\n"
+            ":oem_out -\n"
+            ":oem_fwd -\n"
+            "COMMIT\n";
+
+    return (execIptablesRestore(V4, cmd4) == 0 && execIptablesRestore(V6, cmd6) == 0);
 }
 
 bool oemInitChains() {
