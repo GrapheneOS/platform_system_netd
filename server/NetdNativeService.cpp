@@ -520,13 +520,16 @@ binder::Status NetdNativeService::setResolverConfiguration(int32_t netId,
     return binder::Status::ok();
 }
 
-binder::Status NetdNativeService::getResolverInfo(int32_t netId,
-        std::vector<std::string>* servers, std::vector<std::string>* domains,
-        std::vector<int32_t>* params, std::vector<int32_t>* stats) {
+binder::Status NetdNativeService::getResolverInfo(int32_t netId, std::vector<std::string>* servers,
+                                                  std::vector<std::string>* domains,
+                                                  std::vector<std::string>* tlsServers,
+                                                  std::vector<int32_t>* params,
+                                                  std::vector<int32_t>* stats) {
     // This function intentionally does not lock within Netd, as Bionic is thread-safe.
-    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    ENFORCE_PERMISSION(NETWORK_STACK);
 
-    int err = gCtls->resolverCtrl.getResolverInfo(netId, servers, domains, params, stats);
+    int err =
+            gCtls->resolverCtrl.getResolverInfo(netId, servers, domains, tlsServers, params, stats);
     if (err != 0) {
         return binder::Status::fromServiceSpecificError(-err,
                 String8::format("ResolverController error: %s", strerror(-err)));
