@@ -584,47 +584,6 @@ TEST_F(ResolverTest, GetAddrInfo_localhost) {
     EXPECT_EQ(addr_ip6, ToString(result));
 }
 
-TEST_F(ResolverTest, GetHostByNameBrokenEdns) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_srv = "53";
-    const char* host_name = "edns.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
-    dns.setFailOnEdns(true);  // This is the only change from the basic test.
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
-
-    const hostent* result;
-
-    dns.clearQueries();
-    result = gethostbyname("edns");
-    EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, host_name));
-    ASSERT_FALSE(result == nullptr);
-    ASSERT_EQ(4, result->h_length);
-    ASSERT_FALSE(result->h_addr_list[0] == nullptr);
-    EXPECT_EQ("1.2.3.3", ToString(result));
-    EXPECT_TRUE(result->h_addr_list[1] == nullptr);
-}
-
-TEST_F(ResolverTest, GetAddrInfoBrokenEdns) {
-    const char* listen_addr = "127.0.0.5";
-    const char* listen_srv = "53";
-    const char* host_name = "edns2.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.5");
-    dns.setFailOnEdns(true);  // This is the only change from the basic test.
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
-
-    addrinfo hints = {.ai_family = AF_INET};
-    ScopedAddrinfo result = safe_getaddrinfo("edns2", nullptr, &hints);
-    EXPECT_TRUE(result != nullptr);
-    EXPECT_EQ(1U, GetNumQueries(dns, host_name));
-    EXPECT_EQ("1.2.3.5", ToString(result));
-}
-
 TEST_F(ResolverTest, MultidomainResolution) {
     std::vector<std::string> searchDomains = { "example1.com", "example2.com", "example3.com" };
     const char* listen_addr = "127.0.0.6";
@@ -1831,4 +1790,152 @@ TEST_F(ResolverTest, Async_MalformedQuery) {
     u_char buf[MAXPACKET] = {};
     rc = getAsyncResponse(fd, &rcode, buf, MAXPACKET);
     EXPECT_EQ("1.2.3.4", toString(buf, rc, AF_INET));
+}
+
+// This test checks that the resolver should not generate the request containing OPT RR when using
+// cleartext DNS. If we query the DNS server not supporting EDNS0 and it reponds with FORMERR, we
+// will fallback to no EDNS0 and try again. If the server does no response, we won't retry so that
+// we get no answer.
+TEST_F(ResolverTest, BrokenEdns) {
+    typedef test::DNSResponder::Edns Edns;
+    enum ExpectResult { EXPECT_FAILURE, EXPECT_SUCCESS };
+
+    const char OFF[] = "off";
+    const char OPPORTUNISTIC_UDP[] = "opportunistic_udp";
+    const char OPPORTUNISTIC_TLS[] = "opportunistic_tls";
+    const char STRICT[] = "strict";
+    const char GETHOSTBYNAME[] = "gethostbyname";
+    const char GETADDRINFO[] = "getaddrinfo";
+    const std::vector<uint8_t> NOOP_FINGERPRINT(SHA256_SIZE, 0U);
+    const char ADDR4[] = "192.0.2.1";
+    const char CLEARTEXT_ADDR[] = "127.0.0.53";
+    const char CLEARTEXT_PORT[] = "53";
+    const char TLS_PORT[] = "853";
+    const std::vector<std::string> servers = { CLEARTEXT_ADDR };
+
+    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, 250, ns_rcode::ns_r_servfail);
+    ASSERT_TRUE(dns.startServer());
+
+    test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
+
+    static const struct TestConfig {
+        std::string mode;
+        std::string method;
+        Edns edns;
+        ExpectResult expectResult;
+
+        std::string asHostName() const {
+            const char* ednsString;
+            switch (edns) {
+                case Edns::ON:
+                    ednsString = "ednsOn";
+                    break;
+                case Edns::FORMERR:
+                    ednsString = "ednsFormerr";
+                    break;
+                case Edns::DROP:
+                    ednsString = "ednsDrop";
+                    break;
+                default:
+                    ednsString = "";
+                    break;
+            }
+            return StringPrintf("%s.%s.%s.", mode.c_str(), method.c_str(), ednsString);
+        }
+    } testConfigs[] = {
+            // In OPPORTUNISTIC_TLS, we get no answer if the DNS server supports TLS but not EDNS0.
+            // Could such server exist? if so, we might need to fallback to query cleartext DNS.
+            // Another thing is that {OPPORTUNISTIC_TLS, Edns::DROP} and {STRICT, Edns::DROP} are
+            // commented out since TLS timeout is not configurable.
+            // TODO: Uncomment them after TLS timeout is configurable.
+            {OFF,               GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
+            {OPPORTUNISTIC_TLS, GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
+            {STRICT,            GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
+            {OFF,               GETHOSTBYNAME, Edns::FORMERR, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETHOSTBYNAME, Edns::FORMERR, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_TLS, GETHOSTBYNAME, Edns::FORMERR, EXPECT_FAILURE},
+            {STRICT,            GETHOSTBYNAME, Edns::FORMERR, EXPECT_FAILURE},
+            {OFF,               GETHOSTBYNAME, Edns::DROP,    EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETHOSTBYNAME, Edns::DROP,    EXPECT_SUCCESS},
+            //{OPPORTUNISTIC_TLS, GETHOSTBYNAME, Edns::DROP,    EXPECT_FAILURE},
+            //{STRICT,            GETHOSTBYNAME, Edns::DROP,    EXPECT_FAILURE},
+            {OFF,               GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
+            {OPPORTUNISTIC_TLS, GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
+            {STRICT,            GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
+            {OFF,               GETADDRINFO,   Edns::FORMERR, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETADDRINFO,   Edns::FORMERR, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_TLS, GETADDRINFO,   Edns::FORMERR, EXPECT_FAILURE},
+            {STRICT,            GETADDRINFO,   Edns::FORMERR, EXPECT_FAILURE},
+            {OFF,               GETADDRINFO,   Edns::DROP,    EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETADDRINFO,   Edns::DROP,    EXPECT_SUCCESS},
+            //{OPPORTUNISTIC_TLS, GETADDRINFO,   Edns::DROP,   EXPECT_FAILURE},
+            //{STRICT,            GETADDRINFO,   Edns::DROP,   EXPECT_FAILURE},
+    };
+
+    for (const auto& config : testConfigs) {
+        const std::string testHostName = config.asHostName();
+        SCOPED_TRACE(testHostName);
+
+        const char* host_name = testHostName.c_str();
+        dns.addMapping(host_name, ns_type::ns_t_a, ADDR4);
+        dns.setEdns(config.edns);
+
+        if (config.mode == OFF) {
+            ASSERT_TRUE(
+                    SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+        } else if (config.mode == OPPORTUNISTIC_UDP) {
+            ASSERT_TRUE(SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams_Binder,
+                                            "", {}));
+        } else if (config.mode == OPPORTUNISTIC_TLS) {
+            ASSERT_TRUE(tls.startServer());
+            ASSERT_TRUE(SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams_Binder,
+                                            "", {}));
+            // Wait for validation to complete.
+            EXPECT_TRUE(tls.waitForQueries(1, 5000));
+        } else if (config.mode == STRICT) {
+            ASSERT_TRUE(tls.startServer());
+            ASSERT_TRUE(SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams_Binder,
+                                            "", {base64Encode(tls.fingerprint())}));
+            // Wait for validation to complete.
+            EXPECT_TRUE(tls.waitForQueries(1, 5000));
+        }
+
+        if (config.method == GETHOSTBYNAME) {
+            const hostent* h_result = gethostbyname(host_name);
+            if (config.expectResult == EXPECT_SUCCESS) {
+                EXPECT_LE(1U, GetNumQueries(dns, host_name));
+                ASSERT_TRUE(h_result != nullptr);
+                ASSERT_EQ(4, h_result->h_length);
+                ASSERT_FALSE(h_result->h_addr_list[0] == nullptr);
+                EXPECT_EQ(ADDR4, ToString(h_result));
+                EXPECT_TRUE(h_result->h_addr_list[1] == nullptr);
+            } else {
+                EXPECT_EQ(0U, GetNumQueriesForType(dns, ns_type::ns_t_a, host_name));
+                ASSERT_TRUE(h_result == nullptr);
+                ASSERT_EQ(HOST_NOT_FOUND, h_errno);
+            }
+        } else if (config.method == GETADDRINFO) {
+            ScopedAddrinfo ai_result;
+            addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
+            ai_result = safe_getaddrinfo(host_name, nullptr, &hints);
+            if (config.expectResult == EXPECT_SUCCESS) {
+                EXPECT_TRUE(ai_result != nullptr);
+                EXPECT_EQ(1U, GetNumQueries(dns, host_name));
+                const std::string result_str = ToString(ai_result);
+                EXPECT_EQ(ADDR4, result_str);
+            } else {
+                EXPECT_TRUE(ai_result == nullptr);
+                EXPECT_EQ(0U, GetNumQueries(dns, host_name));
+            }
+        } else {
+            FAIL() << "Unsupported query method: " << config.method;
+        }
+
+        tls.stopServer();
+        dns.clearQueries();
+    }
+
+    dns.stopServer();
 }
