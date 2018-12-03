@@ -5,7 +5,6 @@ cc_library_headers {
 
 cc_defaults {
     name: "netd_defaults",
-    cpp_std: "c++17",
     cflags: [
         "-Wall",
         "-Werror",
