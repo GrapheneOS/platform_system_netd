@@ -140,7 +140,6 @@ const char* dnsclass2str(unsigned dnsclass) {
     static const char* kUnknownStr{ "UNKNOWN" };
     if (it == kClassStrs.end()) return kUnknownStr;
     return it->second;
-    return "unknown";
 }
 
 struct DNSName {
