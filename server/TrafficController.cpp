@@ -200,12 +200,53 @@ Status TrafficController::initMaps() {
     return netdutils::status::ok;
 }
 
+static Status attachProgramToCgroup(const char* programPath, const int cgroupFd,
+                                    bpf_attach_type type) {
+    unique_fd cgroupProg(bpfFdGet(programPath, 0));
+    if (cgroupProg == -1) {
+        int ret = errno;
+        ALOGE("Failed to get program from %s: %s", programPath, strerror(ret));
+        return statusFromErrno(ret, "cgroup program get failed");
+    }
+    if (android::bpf::attachProgram(type, cgroupProg, cgroupFd)) {
+        int ret = errno;
+        ALOGE("Program from %s attach failed: %s", programPath, strerror(ret));
+        return statusFromErrno(ret, "program attach failed");
+    }
+    return netdutils::status::ok;
+}
+
+static Status initPrograms() {
+    unique_fd cg_fd(open(CGROUP_ROOT_PATH, O_DIRECTORY | O_RDONLY | O_CLOEXEC));
+    if (cg_fd == -1) {
+        int ret = errno;
+        ALOGE("Failed to open the cgroup directory: %s", strerror(ret));
+        return statusFromErrno(ret, "Open the cgroup directory failed");
+    }
+    RETURN_IF_NOT_OK(attachProgramToCgroup(BPF_EGRESS_PROG_PATH, cg_fd, BPF_CGROUP_INET_EGRESS));
+    RETURN_IF_NOT_OK(attachProgramToCgroup(BPF_INGRESS_PROG_PATH, cg_fd, BPF_CGROUP_INET_INGRESS));
+    return netdutils::status::ok;
+}
+
 Status TrafficController::start() {
 
     if (!ebpfSupported) {
         return netdutils::status::ok;
     }
 
+    int* status = nullptr;
+
+    std::vector<const char*> prog_args{
+            "/system/bin/bpfloader",
+    };
+
+    prog_args.push_back(nullptr);
+    int ret = android_fork_execvp(prog_args.size(), (char**) prog_args.data(), status, false, true);
+    if (ret) {
+        ret = errno;
+        ALOGE("failed to execute %s: %s", prog_args[0], strerror(errno));
+        return statusFromErrno(ret, "run bpf loader failed");
+    }
     /* When netd restarts from a crash without total system reboot, the program
      * is still attached to the cgroup, detach it so the program can be freed
      * and we can load and attach new program into the target cgroup.
@@ -215,6 +256,8 @@ Status TrafficController::start() {
      */
 
     RETURN_IF_NOT_OK(initMaps());
+
+    RETURN_IF_NOT_OK(initPrograms());
 
     // Fetch the list of currently-existing interfaces. At this point NetlinkHandler is
     // already running, so it will call addInterface() when any new interface appears.
@@ -257,19 +300,6 @@ Status TrafficController::start() {
     };
     expectOk(mSkDestroyListener->subscribe(kSockDiagDoneMsgType, rxDoneHandler));
 
-    int* status = nullptr;
-
-    std::vector<const char*> prog_args{
-        "/system/bin/bpfloader",
-    };
-
-    prog_args.push_back(nullptr);
-    int ret = android_fork_execvp(prog_args.size(), (char**) prog_args.data(), status, false, true);
-    if (ret) {
-        ret = errno;
-        ALOGE("failed to execute %s: %s", prog_args[0], strerror(errno));
-        return statusFromErrno(ret, "run bpf loader failed");
-    }
     return netdutils::status::ok;
 }
 
