@@ -60,7 +60,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     // Network and routing commands.
     binder::Status networkCreatePhysical(int32_t netId, int32_t permission) override;
-    binder::Status networkCreateVpn(int32_t netId, bool hasDns, bool secure) override;
+    binder::Status networkCreateVpn(int32_t netId, bool secure) override;
     binder::Status networkDestroy(int32_t netId) override;
 
     binder::Status networkAddInterface(int32_t netId, const std::string& iface) override;
