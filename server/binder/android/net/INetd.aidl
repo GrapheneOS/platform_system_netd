@@ -315,13 +315,13 @@ interface INetd {
     void setMetricsReportingLevel(int level);
 
    /**
-    * Sets owner of socket FileDescriptor to the new UID, checking to ensure that the caller's
+    * Sets owner of socket ParcelFileDescriptor to the new UID, checking to ensure that the caller's
     * uid is that of the old owner's, and that this is a UDP-encap socket
     *
-    * @param FileDescriptor socket Socket file descriptor
+    * @param ParcelFileDescriptor socket Socket file descriptor
     * @param int newUid UID of the new socket fd owner
     */
-    void ipSecSetEncapSocketOwner(in FileDescriptor socket, int newUid);
+    void ipSecSetEncapSocketOwner(in ParcelFileDescriptor socket, int newUid);
 
    /**
     * Reserve an SPI from the kernel
@@ -415,7 +415,7 @@ interface INetd {
     * @param spi a 32-bit unique ID allocated to the user (socket owner)
     */
     void ipSecApplyTransportModeTransform(
-            in FileDescriptor socket,
+            in ParcelFileDescriptor socket,
             int transformId,
             int direction,
             in @utf8InCpp String sourceAddress,
@@ -429,7 +429,7 @@ interface INetd {
     * @param socket a user-provided socket from which to remove any IPsec configuration
     */
     void ipSecRemoveTransportModeTransform(
-            in FileDescriptor socket);
+            in ParcelFileDescriptor socket);
 
    /**
     * Adds an IPsec global policy.
