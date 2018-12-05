@@ -143,7 +143,7 @@ class BpfNetworkStatsHelperTest : public testing::Test {
                               int counterSet, uint32_t tag, const stats_line& result) {
         EXPECT_EQ(0, strcmp(iface, result.iface));
         EXPECT_EQ(uid, (uint32_t)result.uid);
-        EXPECT_EQ(counterSet, result.set);
+        EXPECT_EQ((uint32_t) counterSet, result.set);
         EXPECT_EQ(tag, (uint32_t)result.tag);
         EXPECT_EQ(target.rxPackets, (uint64_t)result.rxPackets);
         EXPECT_EQ(target.rxBytes, (uint64_t)result.rxBytes);
@@ -431,14 +431,157 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetIfaceStatsDetail) {
     ASSERT_EQ(0,
               parseBpfNetworkStatsDevInternal(&lines, mFakeIfaceStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)4, lines.size());
-    std::sort(lines.begin(), lines.end(), [](const auto& line1, const auto& line2)-> bool {
-        return strcmp(line1.iface, line2.iface) < 0;
-    });
+
     expectStatsLineEqual(value1, IFACE_NAME1, UID_ALL, SET_ALL, TAG_NONE, lines[0]);
     expectStatsLineEqual(value1, IFACE_NAME3, UID_ALL, SET_ALL, TAG_NONE, lines[1]);
     expectStatsLineEqual(value2, IFACE_NAME2, UID_ALL, SET_ALL, TAG_NONE, lines[2]);
     ASSERT_EQ(0, strcmp(TRUNCATED_IFACE_NAME, lines[3].iface));
     expectStatsLineEqual(value2, TRUNCATED_IFACE_NAME, UID_ALL, SET_ALL, TAG_NONE, lines[3]);
+}
+
+TEST_F(BpfNetworkStatsHelperTest, TestGetStatsSortedAndGrouped) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    // Create iface indexes with duplicate iface name.
+    updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
+    updateIfaceMap(IFACE_NAME2, IFACE_INDEX2);
+    updateIfaceMap(IFACE_NAME1, IFACE_INDEX3);  // Duplicate!
+
+    StatsValue value1 = {
+            .rxBytes = TEST_BYTES0,
+            .rxPackets = TEST_PACKET0,
+            .txBytes = TEST_BYTES1,
+            .txPackets = TEST_PACKET1,
+    };
+    StatsValue value2 = {
+            .rxBytes = TEST_BYTES1,
+            .rxPackets = TEST_PACKET1,
+            .txBytes = TEST_BYTES0,
+            .txPackets = TEST_PACKET0,
+    };
+    StatsValue value3 = {
+            .rxBytes = TEST_BYTES0 * 2,
+            .rxPackets = TEST_PACKET0 * 2,
+            .txBytes = TEST_BYTES1 * 2,
+            .txPackets = TEST_PACKET1 * 2,
+    };
+
+    std::vector<stats_line> lines;
+    std::vector<std::string> ifaces;
+
+    // Test empty stats.
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
+                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ((size_t) 0, lines.size());
+    lines.clear();
+
+    // Test 1 line stats.
+    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1,
+                      mFakeTagStatsMap);
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
+                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ((size_t) 1, lines.size());
+    expectStatsLineEqual(value1, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, TEST_TAG, lines[0]);
+    lines.clear();
+
+    // These items should not be grouped.
+    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX2, TEST_COUNTERSET0, value2,
+                      mFakeTagStatsMap);
+    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX3, TEST_COUNTERSET1, value2,
+                      mFakeTagStatsMap);
+    populateFakeStats(TEST_UID1, TEST_TAG + 1, IFACE_INDEX1, TEST_COUNTERSET0, value2,
+                      mFakeTagStatsMap);
+    populateFakeStats(TEST_UID2, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1,
+                      mFakeTagStatsMap);
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
+                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ((size_t) 5, lines.size());
+    lines.clear();
+
+    // These items should be grouped.
+    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX3, TEST_COUNTERSET0, value1,
+                      mFakeTagStatsMap);
+    populateFakeStats(TEST_UID2, TEST_TAG, IFACE_INDEX3, TEST_COUNTERSET0, value1,
+                      mFakeTagStatsMap);
+
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
+                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ((size_t) 5, lines.size());
+
+    // Verify Sorted & Grouped.
+    expectStatsLineEqual(value3, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, TEST_TAG, lines[0]);
+    expectStatsLineEqual(value2, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET1, TEST_TAG, lines[1]);
+    expectStatsLineEqual(value2, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, TEST_TAG + 1, lines[2]);
+    expectStatsLineEqual(value3, IFACE_NAME1, TEST_UID2, TEST_COUNTERSET0, TEST_TAG, lines[3]);
+    expectStatsLineEqual(value2, IFACE_NAME2, TEST_UID1, TEST_COUNTERSET0, TEST_TAG, lines[4]);
+    lines.clear();
+
+    // Perform test on IfaceStats.
+    uint32_t ifaceStatsKey = IFACE_INDEX2;
+    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY)));
+    ifaceStatsKey = IFACE_INDEX1;
+    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY)));
+
+    // This should be grouped.
+    ifaceStatsKey = IFACE_INDEX3;
+    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY)));
+
+    ASSERT_EQ(0,
+              parseBpfNetworkStatsDevInternal(&lines, mFakeIfaceStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ((size_t) 2, lines.size());
+
+    expectStatsLineEqual(value3, IFACE_NAME1, UID_ALL, SET_ALL, TAG_NONE, lines[0]);
+    expectStatsLineEqual(value2, IFACE_NAME2, UID_ALL, SET_ALL, TAG_NONE, lines[1]);
+    lines.clear();
+}
+
+// Test to verify that subtract overflow will not be triggered by the compare function invoked from
+// sorting. See http:/b/119193941.
+TEST_F(BpfNetworkStatsHelperTest, TestGetStatsSortAndOverflow) {
+    updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
+
+    StatsValue value1 = {
+            .rxBytes = TEST_BYTES0,
+            .rxPackets = TEST_PACKET0,
+            .txBytes = TEST_BYTES1,
+            .txPackets = TEST_PACKET1,
+    };
+
+    // Mutate uid, 0 < TEST_UID1 < INT_MAX < INT_MIN < UINT_MAX.
+    populateFakeStats(0, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
+    populateFakeStats(UINT_MAX, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
+    populateFakeStats(INT_MIN, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
+    populateFakeStats(INT_MAX, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
+
+    // Mutate tag, 0 < TEST_TAG < INT_MAX < INT_MIN < UINT_MAX.
+    populateFakeStats(TEST_UID1, INT_MAX, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
+    populateFakeStats(TEST_UID1, INT_MIN, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
+    populateFakeStats(TEST_UID1, UINT_MAX, IFACE_INDEX1, TEST_COUNTERSET0, value1,
+                      mFakeTagStatsMap);
+
+    // TODO: Mutate counterSet and enlarge TEST_MAP_SIZE if overflow on counterSet is possible.
+
+    std::vector<stats_line> lines;
+    std::vector<std::string> ifaces;
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
+                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ((size_t) 8, lines.size());
+
+    // Uid 0 first
+    expectStatsLineEqual(value1, IFACE_NAME1, 0, TEST_COUNTERSET0, TEST_TAG, lines[0]);
+
+    // Test uid, mutate tag.
+    expectStatsLineEqual(value1, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, 0, lines[1]);
+    expectStatsLineEqual(value1, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, INT_MAX, lines[2]);
+    expectStatsLineEqual(value1, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, INT_MIN, lines[3]);
+    expectStatsLineEqual(value1, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, UINT_MAX, lines[4]);
+
+    // Mutate uid.
+    expectStatsLineEqual(value1, IFACE_NAME1, INT_MAX, TEST_COUNTERSET0, TEST_TAG, lines[5]);
+    expectStatsLineEqual(value1, IFACE_NAME1, INT_MIN, TEST_COUNTERSET0, TEST_TAG, lines[6]);
+    expectStatsLineEqual(value1, IFACE_NAME1, UINT_MAX, TEST_COUNTERSET0, TEST_TAG, lines[7]);
+    lines.clear();
 }
 }  // namespace bpf
 }  // namespace android

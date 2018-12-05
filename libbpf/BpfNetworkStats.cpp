@@ -161,6 +161,17 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
               strerror(res.code()));
         return -res.code();
     }
+
+    // Since eBPF use hash map to record stats, network stats collected from
+    // eBPF will be out of order. And the performance of findIndexHinted in
+    // NetworkStats will also be impacted.
+    //
+    // Furthermore, since the StatsKey contains iface index, the network stats
+    // reported to framework would create items with the same iface, uid, tag
+    // and set, which causes NetworkStats maps wrong item to subtract.
+    //
+    // Thus, the stats needs to be properly sorted and grouped before reported.
+    groupNetworkStats(lines);
     return 0;
 }
 
@@ -226,6 +237,8 @@ int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
               strerror(res.code()));
         return -res.code();
     }
+
+    groupNetworkStats(lines);
     return 0;
 }
 
@@ -250,6 +263,67 @@ int parseBpfNetworkStatsDev(std::vector<stats_line>* lines) {
 
 uint64_t combineUidTag(const uid_t uid, const uint32_t tag) {
     return (uint64_t)uid << 32 | tag;
+}
+
+void groupNetworkStats(std::vector<stats_line>* lines) {
+    if (lines->size() <= 1) return;
+    std::sort(lines->begin(), lines->end());
+
+    // Similar to std::unique(), but aggregates the duplicates rather than discarding them.
+    size_t nextOutput = 0;
+    for (size_t i = 1; i < lines->size(); i++) {
+        if (lines->at(nextOutput) == lines->at(i)) {
+            lines->at(nextOutput) += lines->at(i);
+        } else {
+            nextOutput++;
+            if (nextOutput != i) {
+                lines->at(nextOutput) = lines->at(i);
+            }
+        }
+    }
+
+    if (lines->size() != nextOutput + 1) {
+        lines->resize(nextOutput + 1);
+    }
+}
+
+// True if lhs equals to rhs, only compare iface, uid, tag and set.
+bool operator==(const stats_line& lhs, const stats_line& rhs) {
+    return ((lhs.uid == rhs.uid) && (lhs.tag == rhs.tag) && (lhs.set == rhs.set) &&
+            !strncmp(lhs.iface, rhs.iface, sizeof(lhs.iface)));
+}
+
+// True if lhs is smaller then rhs, only compare iface, uid, tag and set.
+bool operator<(const stats_line& lhs, const stats_line& rhs) {
+    int ret = strncmp(lhs.iface, rhs.iface, sizeof(lhs.iface));
+    if (ret != 0) return ret < 0;
+    if (lhs.uid < rhs.uid) return true;
+    if (lhs.uid > rhs.uid) return false;
+    if (lhs.tag < rhs.tag) return true;
+    if (lhs.tag > rhs.tag) return false;
+    if (lhs.set < rhs.set) return true;
+    if (lhs.set > rhs.set) return false;
+    return false;
+}
+
+stats_line& stats_line::operator=(const stats_line& rhs) {
+    strlcpy(iface, rhs.iface, sizeof(iface));
+    uid = rhs.uid;
+    set = rhs.set;
+    tag = rhs.tag;
+    rxPackets = rhs.rxPackets;
+    txPackets = rhs.txPackets;
+    rxBytes = rhs.rxBytes;
+    txBytes = rhs.txBytes;
+    return *this;
+}
+
+stats_line& stats_line::operator+=(const stats_line& rhs) {
+    rxPackets += rhs.rxPackets;
+    txPackets += rhs.txPackets;
+    rxBytes += rhs.rxBytes;
+    txBytes += rhs.txBytes;
+    return *this;
 }
 
 }  // namespace bpf
