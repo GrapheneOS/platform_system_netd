@@ -451,11 +451,11 @@ bool XfrmController::isXfrmIntfSupported() {
     return !errored;
 }
 
-netdutils::Status XfrmController::ipSecSetEncapSocketOwner(const android::base::unique_fd& socket,
-                                                           int newUid, uid_t callerUid) {
+netdutils::Status XfrmController::ipSecSetEncapSocketOwner(int socketFd, int newUid,
+                                                           uid_t callerUid) {
     ALOGD("XfrmController:%s, line=%d", __FUNCTION__, __LINE__);
 
-    const int fd = socket.get();
+    const int fd = socketFd;
     struct stat info;
     if (fstat(fd, &info)) {
         return netdutils::statusFromErrno(errno, "Failed to stat socket file descriptor");
@@ -470,7 +470,7 @@ netdutils::Status XfrmController::ipSecSetEncapSocketOwner(const android::base::
     int optval;
     socklen_t optlen = sizeof(optval);
     netdutils::Status status =
-        getSyscallInstance().getsockopt(Fd(socket), IPPROTO_UDP, UDP_ENCAP, &optval, &optlen);
+            getSyscallInstance().getsockopt(Fd(fd), IPPROTO_UDP, UDP_ENCAP, &optval, &optlen);
     if (status != netdutils::status::ok) {
         return status;
     }
@@ -695,8 +695,8 @@ netdutils::Status XfrmController::fillXfrmCommonInfo(int32_t spi, int32_t markVa
 }
 
 netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
-    const android::base::unique_fd& socket, int32_t transformId, int32_t direction,
-    const std::string& sourceAddress, const std::string& destinationAddress, int32_t spi) {
+        int socketFd, int32_t transformId, int32_t direction, const std::string& sourceAddress,
+        const std::string& destinationAddress, int32_t spi) {
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
     ALOGD("transformId=%d", transformId);
     ALOGD("direction=%d", direction);
@@ -704,7 +704,8 @@ netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
     ALOGD("destinationAddress=%s", destinationAddress.c_str());
     ALOGD("spi=%0.8x", spi);
 
-    StatusOr<sockaddr_storage> ret = getSyscallInstance().getsockname<sockaddr_storage>(Fd(socket));
+    StatusOr<sockaddr_storage> ret =
+            getSyscallInstance().getsockname<sockaddr_storage>(Fd(socketFd));
     if (!isOk(ret)) {
         ALOGE("Failed to get socket info in %s", __FUNCTION__);
         return ret;
@@ -755,7 +756,7 @@ netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
             return netdutils::statusFromErrno(EAFNOSUPPORT, "Invalid address family");
     }
 
-    status = getSyscallInstance().setsockopt(Fd(socket), sockLayer, sockOpt, policy);
+    status = getSyscallInstance().setsockopt(Fd(socketFd), sockLayer, sockOpt, policy);
     if (!isOk(status)) {
         ALOGE("Error setting socket option for XFRM! (%s)", toString(status).c_str());
     }
@@ -763,11 +764,11 @@ netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
     return status;
 }
 
-netdutils::Status
-XfrmController::ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket) {
+netdutils::Status XfrmController::ipSecRemoveTransportModeTransform(int socketFd) {
     ALOGD("XfrmController::%s, line=%d", __FUNCTION__, __LINE__);
 
-    StatusOr<sockaddr_storage> ret = getSyscallInstance().getsockname<sockaddr_storage>(Fd(socket));
+    StatusOr<sockaddr_storage> ret =
+            getSyscallInstance().getsockname<sockaddr_storage>(Fd(socketFd));
     if (!isOk(ret)) {
         ALOGE("Failed to get socket info in %s! (%s)", __FUNCTION__, toString(ret).c_str());
         return ret;
@@ -790,7 +791,7 @@ XfrmController::ipSecRemoveTransportModeTransform(const android::base::unique_fd
     // Kernel will delete the security policy on this socket for both direction
     // if optval is set to NULL and optlen is set to 0.
     netdutils::Status status =
-        getSyscallInstance().setsockopt(Fd(socket), sockLayer, sockOpt, nullptr, 0);
+            getSyscallInstance().setsockopt(Fd(socketFd), sockLayer, sockOpt, nullptr, 0);
     if (!isOk(status)) {
         ALOGE("Error removing socket option for XFRM! (%s)", toString(status).c_str());
     }

@@ -141,8 +141,7 @@ public:
 
     static netdutils::Status Init();
 
-    static netdutils::Status ipSecSetEncapSocketOwner(const android::base::unique_fd& socket,
-                                                      int newUid, uid_t callerUid);
+    static netdutils::Status ipSecSetEncapSocketOwner(int socketFd, int newUid, uid_t callerUid);
 
     static netdutils::Status ipSecAllocateSpi(int32_t transformId, const std::string& localAddress,
                                               const std::string& remoteAddress, int32_t inSpi,
@@ -165,13 +164,13 @@ public:
                                                             int32_t markMask,
                                                             int32_t xfrmInterfaceId);
 
-    static netdutils::Status
-    ipSecApplyTransportModeTransform(const android::base::unique_fd& socket, int32_t transformId,
-                                     int32_t direction, const std::string& localAddress,
-                                     const std::string& remoteAddress, int32_t spi);
+    static netdutils::Status ipSecApplyTransportModeTransform(int socketFd, int32_t transformId,
+                                                              int32_t direction,
+                                                              const std::string& localAddress,
+                                                              const std::string& remoteAddress,
+                                                              int32_t spi);
 
-    static netdutils::Status
-    ipSecRemoveTransportModeTransform(const android::base::unique_fd& socket);
+    static netdutils::Status ipSecRemoveTransportModeTransform(int socketFd);
 
     static netdutils::Status ipSecAddSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
                                                     int32_t direction,
