@@ -157,7 +157,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status getMetricsReportingLevel(int *reportingLevel) override;
     binder::Status setMetricsReportingLevel(const int reportingLevel) override;
 
-    binder::Status ipSecSetEncapSocketOwner(const android::base::unique_fd& socket, int newUid);
+    binder::Status ipSecSetEncapSocketOwner(const os::ParcelFileDescriptor& socket, int newUid);
 
     binder::Status ipSecAllocateSpi(
             int32_t transformId,
@@ -182,16 +182,13 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
                                                   int32_t spi, int32_t markValue, int32_t markMask,
                                                   int32_t interfaceId);
 
-    binder::Status ipSecApplyTransportModeTransform(
-            const android::base::unique_fd& socket,
-            int32_t transformId,
-            int32_t direction,
-            const std::string& sourceAddress,
-            const std::string& destinationAddress,
-            int32_t spi);
+    binder::Status ipSecApplyTransportModeTransform(const os::ParcelFileDescriptor& socket,
+                                                    int32_t transformId, int32_t direction,
+                                                    const std::string& sourceAddress,
+                                                    const std::string& destinationAddress,
+                                                    int32_t spi);
 
-    binder::Status ipSecRemoveTransportModeTransform(
-            const android::base::unique_fd& socket);
+    binder::Status ipSecRemoveTransportModeTransform(const os::ParcelFileDescriptor& socket);
 
     binder::Status ipSecAddSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
                                           int32_t direction, const std::string& tmplSrcAddress,
