@@ -246,6 +246,10 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status tetherRemoveForward(const std::string& intIface,
                                        const std::string& extIface) override;
 
+    // tcp_mem-config command
+    binder::Status setTcpRWmemorySize(const std::string& rmemValues,
+                                      const std::string& wmemValues) override;
+
   private:
     std::vector<uid_t> intsToUids(const std::vector<int32_t>& intUids);
     Permission convertPermission(int32_t permission);

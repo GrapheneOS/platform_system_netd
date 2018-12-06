@@ -1169,4 +1169,14 @@ interface INetd {
     * @param extIface upstream interface
     */
     void tetherRemoveForward(in @utf8InCpp String intIface, in @utf8InCpp String extIface);
+
+   /**
+    * Set the values of tcp_{rmem,wmem}.
+    *
+    * @param rmemValues the target values of tcp_rmem, each value is separated by spaces
+    * @param wmemValues the target values of tcp_wmem, each value is separated by spaces
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void setTcpRWmemorySize(in @utf8InCpp String rmemValues, in @utf8InCpp String wmemValues);
 }
