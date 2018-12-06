@@ -77,6 +77,7 @@ using android::base::ReadFileToString;
 using android::base::StartsWith;
 using android::base::StringPrintf;
 using android::base::Trim;
+using android::base::WriteStringToFile;
 using android::bpf::hasBpfSupport;
 using android::net::INetd;
 using android::net::InterfaceConfigurationParcel;
@@ -2744,4 +2745,45 @@ TEST_F(BinderTest, TetherForwardAddRemove) {
     status = mNetd->tetherRemoveForward(sTun.name(), sTun2.name());
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectNatDisable();
+}
+
+namespace {
+
+using TripleInt = std::array<int, 3>;
+
+TripleInt readProcFileToTripleInt(const std::string& path) {
+    std::string valueString;
+    int min, def, max;
+    EXPECT_TRUE(ReadFileToString(path, &valueString));
+    EXPECT_EQ(3, sscanf(valueString.c_str(), "%d %d %d", &min, &def, &max));
+    return {min, def, max};
+}
+
+void updateAndCheckTcpBuffer(sp<INetd>& netd, TripleInt& rmemValues, TripleInt& wmemValues) {
+    std::string testRmemValues =
+            StringPrintf("%u %u %u", rmemValues[0], rmemValues[1], rmemValues[2]);
+    std::string testWmemValues =
+            StringPrintf("%u %u %u", wmemValues[0], wmemValues[1], wmemValues[2]);
+    EXPECT_TRUE(netd->setTcpRWmemorySize(testRmemValues, testWmemValues).isOk());
+
+    TripleInt newRmemValues = readProcFileToTripleInt(TCP_RMEM_PROC_FILE);
+    TripleInt newWmemValues = readProcFileToTripleInt(TCP_WMEM_PROC_FILE);
+
+    for (int i = 0; i < 3; i++) {
+        SCOPED_TRACE(StringPrintf("tcp_mem value %d should be equal", i));
+        EXPECT_EQ(rmemValues[i], newRmemValues[i]);
+        EXPECT_EQ(wmemValues[i], newWmemValues[i]);
+    }
+}
+
+}  // namespace
+
+TEST_F(BinderTest, TcpBufferSet) {
+    TripleInt rmemValue = readProcFileToTripleInt(TCP_RMEM_PROC_FILE);
+    TripleInt testRmemValue{rmemValue[0] + 42, rmemValue[1] + 42, rmemValue[2] + 42};
+    TripleInt wmemValue = readProcFileToTripleInt(TCP_WMEM_PROC_FILE);
+    TripleInt testWmemValue{wmemValue[0] + 42, wmemValue[1] + 42, wmemValue[2] + 42};
+
+    updateAndCheckTcpBuffer(mNetd, testRmemValue, testWmemValue);
+    updateAndCheckTcpBuffer(mNetd, rmemValue, wmemValue);
 }

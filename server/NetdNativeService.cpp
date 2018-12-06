@@ -21,6 +21,7 @@
 #include <tuple>
 #include <vector>
 
+#include <android-base/file.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <cutils/properties.h>
@@ -48,6 +49,7 @@
 #include "netid_client.h"  // NETID_UNSET
 
 using android::base::StringPrintf;
+using android::base::WriteStringToFile;
 using android::net::TetherStatsParcel;
 using android::net::UidRangeParcel;
 using android::os::ParcelFileDescriptor;
@@ -1477,6 +1479,25 @@ binder::Status NetdNativeService::tetherRemoveForward(const std::string& intIfac
     int res = gCtls->tetherCtrl.disableNat(intIface.c_str(), extIface.c_str());
     gLog.log(entry.returns(res).withAutomaticDuration());
     return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::setTcpRWmemorySize(const std::string& rmemValues,
+                                                     const std::string& wmemValues) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).args(rmemValues, wmemValues);
+    if (!WriteStringToFile(rmemValues, TCP_RMEM_PROC_FILE)) {
+        int ret = -errno;
+        gLog.log(entry.returns(ret).withAutomaticDuration());
+        return statusFromErrcode(ret);
+    }
+
+    if (!WriteStringToFile(wmemValues, TCP_WMEM_PROC_FILE)) {
+        int ret = -errno;
+        gLog.log(entry.returns(ret).withAutomaticDuration());
+        return statusFromErrcode(ret);
+    }
+    gLog.log(entry.withAutomaticDuration());
+    return binder::Status::ok();
 }
 
 }  // namespace net
