@@ -13,6 +13,7 @@ cc_defaults {
         "-Wnullable-to-nonnull-conversion",
         "-Wthread-safety",
         "-Wunused-parameter",
+        "-Wsign-compare",
     ],
     tidy: true,
     tidy_checks: [
