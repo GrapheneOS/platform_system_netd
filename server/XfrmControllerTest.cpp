@@ -300,18 +300,18 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecAllocateSpi) {
     EXPECT_EQ(DROID_SPI, static_cast<int>(userspi.max));
 }
 
-void verifyXfrmiArguments(int mark, int mask, int ifId) {
+void verifyXfrmiArguments(uint32_t mark, uint32_t mask, uint32_t ifId) {
     // Check that correct arguments (and only those) are non-zero, and correct.
-    EXPECT_EQ(0, mark);
-    EXPECT_EQ(0, mask);
+    EXPECT_EQ(0U, mark);
+    EXPECT_EQ(0U, mask);
     EXPECT_EQ(TEST_XFRM_IF_ID, ifId);
 }
 
-void verifyVtiArguments(int mark, int mask, int ifId) {
+void verifyVtiArguments(uint32_t mark, uint32_t mask, uint32_t ifId) {
     // Check that correct arguments (and only those) are non-zero, and correct.
     EXPECT_EQ(TEST_XFRM_MARK, mark);
     EXPECT_EQ(TEST_XFRM_MASK, mask);
-    EXPECT_EQ(0, ifId);
+    EXPECT_EQ(0U, ifId);
 }
 
 void testIpSecAddSecurityAssociation(testCaseParams params, const MockSyscalls& mockSyscalls,
@@ -446,10 +446,10 @@ void testIpSecAddSecurityAssociation(testCaseParams params, const MockSyscalls& 
         EXPECT_TRUE(fwmark.explicitlySelected);
         EXPECT_TRUE(fwmark.protectedFromVpn);
     } else {
-        EXPECT_EQ(0, outputmark.outputMark);
-        EXPECT_EQ(0, mark.mark.v);
-        EXPECT_EQ(0, mark.mark.m);
-        EXPECT_EQ(0, xfrm_if_id.if_id);
+        EXPECT_EQ(0U, outputmark.outputMark);
+        EXPECT_EQ(0U, mark.mark.v);
+        EXPECT_EQ(0U, mark.mark.m);
+        EXPECT_EQ(0U, xfrm_if_id.if_id);
     }
 }
 
