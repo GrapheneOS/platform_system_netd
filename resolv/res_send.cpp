@@ -393,8 +393,9 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     ResolvCacheStatus cache_status = RESOLV_CACHE_UNSUPPORTED;
 
     if (anssiz < HFIXEDSZ) {
+        // TODO: Remove errno once callers stop using it
         errno = EINVAL;
-        return (-1);
+        return -EINVAL;
     }
     DprintQ((statp->options & RES_DEBUG) || (statp->pfcode & RES_PRF_QUERY),
             (stdout, ";; res_send()\n"), buf, buflen);
@@ -417,8 +418,10 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         // Tell the cache the query failed, or any retries and anyone else asking the same
         // question will block for PENDING_REQUEST_TIMEOUT seconds instead of failing fast.
         _resolv_cache_query_failed(statp->netid, buf, buflen);
+
+        // TODO: Remove errno once callers stop using it
         errno = ESRCH;
-        return (-1);
+        return -ESRCH;
     }
 
     /*
@@ -538,7 +541,9 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                     return resplen;
                 }
                 if (!fallback) {
-                    goto fail;
+                    _resolv_cache_query_failed(statp->netid, buf, buflen);
+                    res_nclose(statp);
+                    return -terrno;
                 }
             }
 
@@ -570,7 +575,11 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
 
                 VLOG << "used send_vc " << n;
 
-                if (n < 0) goto fail;
+                if (n < 0) {
+                    _resolv_cache_query_failed(statp->netid, buf, buflen);
+                    res_nclose(statp);
+                    return -terrno;
+                };
                 if (n == 0) goto next_ns;
                 resplen = n;
             } else {
@@ -590,7 +599,11 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
 
                 VLOG << "used send_dg " << n;
 
-                if (n < 0) goto fail;
+                if (n < 0) {
+                    _resolv_cache_query_failed(statp->netid, buf, buflen);
+                    res_nclose(statp);
+                    return -terrno;
+                };
                 if (n == 0) goto next_ns;
                 VLOG << "time=" << time(NULL);
                 if (v_circuit) goto same_ns;
@@ -622,21 +635,21 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     }  // for each retry
     res_nclose(statp);
     if (!v_circuit) {
-        if (!gotsomewhere)
+        if (!gotsomewhere) {
+            // TODO: Remove errno once callers stop using it
             errno = ECONNREFUSED; /* no nameservers found */
-        else
+            terrno = ECONNREFUSED;
+        } else {
+            // TODO: Remove errno once callers stop using it
             errno = ETIMEDOUT; /* no answer obtained */
-    } else
+            terrno = ETIMEDOUT;
+        }
+    } else {
         errno = terrno;
-
+    }
     _resolv_cache_query_failed(statp->netid, buf, buflen);
 
-    return (-1);
-fail:
-
-    _resolv_cache_query_failed(statp->netid, buf, buflen);
-    res_nclose(statp);
-    return (-1);
+    return -terrno;
 }
 
 /* Private */
