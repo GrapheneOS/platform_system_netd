@@ -10,7 +10,6 @@ cc_library_static {
         "libbinder",
         "liblog",
         "libnetd_client",
-        "libnetdaidl",
         "libnetdutils",
         "libssl",
         "netd_aidl_interface-cpp",
