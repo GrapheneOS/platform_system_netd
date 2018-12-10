@@ -1293,3 +1293,12 @@ static int res_tls_send(res_state statp, const Slice query, const Slice answer, 
         }
     }
 }
+
+int resolv_res_nsend(const android_net_context* netContext, const u_char* msg, int msgLen,
+                     u_char* ans, int ansLen, int* rcode) {
+    res_state res = res_get_state();
+    res_setnetcontext(res, netContext);
+    _resolv_populate_res_for_net(res);
+    *rcode = NOERROR;
+    return res_nsend(res, msg, msgLen, ans, ansLen, rcode);
+}
