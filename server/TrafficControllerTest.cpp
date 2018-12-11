@@ -102,8 +102,6 @@ class TrafficControllerTest : public ::testing::Test {
         mFakeUidPermissionMap.reset(
                 createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(uint8_t), TEST_MAP_SIZE, 0));
         ASSERT_TRUE(mFakeUidPermissionMap.isValid());
-        // Make sure trafficController use the eBPF code path.
-        mTc.ebpfSupported = true;
 
         mTc.mCookieTagMap.reset(mFakeCookieTagMap.getMap());
         mTc.mUidCounterSetMap.reset(mFakeUidCounterSetMap.getMap());

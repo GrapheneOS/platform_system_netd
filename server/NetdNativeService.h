@@ -205,8 +205,6 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
                                              int32_t direction, int32_t markValue, int32_t markMask,
                                              int32_t interfaceId);
 
-    binder::Status trafficCheckBpfStatsEnable(bool* ret) override;
-
     binder::Status ipSecAddTunnelInterface(const std::string& deviceName,
                                            const std::string& localAddress,
                                            const std::string& remoteAddress, int32_t iKey,
