@@ -36,6 +36,11 @@ struct DNSHeader;
 struct DNSQuestion;
 struct DNSRecord;
 
+inline const std::string kDefaultListenAddr = "127.0.0.3";
+inline const std::string kDefaultListenService = "53";
+inline const int kDefaultPollTimoutMillis = 250;
+inline const ns_rcode kDefaultErrorCode = ns_rcode::ns_r_servfail;
+
 /*
  * Simple DNS responder, which replies to queries with the registered response
  * for that type. Class is assumed to be IN. If no response is registered, the
@@ -43,8 +48,10 @@ struct DNSRecord;
  */
 class DNSResponder {
   public:
-    DNSResponder(std::string listen_address, std::string listen_service, int poll_timeout_ms,
-                 ns_rcode error_rcode);
+    DNSResponder(std::string listen_address = kDefaultListenAddr,
+                 std::string listen_service = kDefaultListenService,
+                 int poll_timeout_ms = kDefaultPollTimoutMillis,
+                 ns_rcode error_rcode = ns_rcode::ns_r_servfail);
     ~DNSResponder();
 
     enum class Edns : uint8_t {
