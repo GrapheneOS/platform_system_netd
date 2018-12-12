@@ -14,6 +14,7 @@ cc_benchmark {
         "libnetd_test_dnsresponder",
         "libutils",
         "netd_aidl_interface-cpp",
+        "netd_event_listener_interface-cpp",
     ],
     aidl: {
         include_dirs: ["system/netd/server/binder"],
@@ -27,7 +28,6 @@ cc_benchmark {
         "system/netd/resolv/dns_responder",
     ],
     srcs: [
-        ":netd_metrics_aidl",
         "main.cpp",
         "connect_benchmark.cpp",
         "dns_benchmark.cpp",
