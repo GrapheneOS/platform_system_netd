@@ -32,6 +32,7 @@ cc_library_shared {
         "liblog",
         "libnetdutils",
         "libssl",
+        "netd_event_listener_interface-ndk",
     ],
     export_include_dirs: ["include"],
     // TODO: pie in the sky: make this code clang-tidy clean
