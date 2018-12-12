@@ -50,7 +50,6 @@ cc_test {
     test_suites: ["device-tests"],
     defaults: ["netd_defaults"],
     srcs: [
-        ":netd_metrics_aidl",
         "dns_responder/dns_responder.cpp",
         "resolver_test.cpp",
     ],
@@ -73,6 +72,7 @@ cc_test {
         "liblogwrap",
         "libnetdutils",
         "netd_aidl_interface-cpp",
+        "netd_event_listener_interface-cpp",
     ],
     compile_multilib: "both",
     sanitize: {
