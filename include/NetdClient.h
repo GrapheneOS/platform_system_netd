@@ -48,6 +48,16 @@ int untagSocket(int socketFd);
 int setCounterSet(uint32_t counterSet, uid_t uid);
 
 int deleteTagData(uint32_t tag, uid_t uid);
+
+int resNetworkQuery(unsigned netId, const char* dname, int classType, int type);
+
+int resNetworkResult(int query_fd, int* rcode, uint8_t* answer, int anslen);
+
+int resNetworkSend(unsigned netId, const uint8_t* msg, int msglen);
+
+int resNetworkRecv(int send_fd, int* rcode, uint8_t* answer, int anslen);
+
+void resNetworkCancel(int nsend_fd);
 __END_DECLS
 
 #endif  // NETD_INCLUDE_NETD_CLIENT_H
