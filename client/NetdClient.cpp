@@ -19,12 +19,15 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <math.h>
+#include <resolv.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
 #include <atomic>
+#include <string>
+#include <vector>
 
 #include "Fwmark.h"
 #include "FwmarkClient.h"
@@ -32,7 +35,14 @@
 #include "Stopwatch.h"
 #include "netid_client.h"
 
+#include "android-base/unique_fd.h"
+
+using android::base::unique_fd;
+
 namespace {
+
+// Keep this in sync with CMD_BUF_SIZE in FrameworkListener.cpp.
+constexpr size_t MAX_CMD_SIZE = 1024;
 
 std::atomic_uint netIdForProcess(NETID_UNSET);
 std::atomic_uint netIdForResolv(NETID_UNSET);
@@ -206,6 +216,59 @@ int dns_open_proxy() {
     return s;
 }
 
+auto divCeil(size_t dividend, size_t divisor) {
+    return ((dividend + divisor - 1) / divisor);
+}
+
+// FrameworkListener only does only read() call, and fails if the read doesn't contain \0
+// Do single write here
+int sendData(int fd, const void* buf, size_t size) {
+    if (fd < 0) {
+        return -EBADF;
+    }
+
+    ssize_t rc = TEMP_FAILURE_RETRY(write(fd, (char*) buf, size));
+    if (rc > 0) {
+        return rc;
+    } else if (rc == 0) {
+        return -EIO;
+    } else {
+        return -errno;
+    }
+}
+
+int readData(int fd, void* buf, size_t size) {
+    if (fd < 0) {
+        return -EBADF;
+    }
+
+    size_t current = 0;
+    for (;;) {
+        ssize_t rc = TEMP_FAILURE_RETRY(read(fd, (char*) buf + current, size - current));
+        if (rc > 0) {
+            current += rc;
+            if (current == size) {
+                break;
+            }
+        } else if (rc == 0) {
+            return -EIO;
+        } else {
+            return -errno;
+        }
+    }
+    return 0;
+}
+
+bool readBE32(int fd, int32_t* result) {
+    int32_t tmp;
+    int n = TEMP_FAILURE_RETRY(read(fd, &tmp, sizeof(tmp)));
+    if (n < 0) {
+        return false;
+    }
+    *result = ntohl(tmp);
+    return true;
+}
+
 }  // namespace
 
 #define CHECK_SOCKET_IS_MARKABLE(sock)          \
@@ -320,4 +383,81 @@ extern "C" int setCounterSet(uint32_t counterSet, uid_t uid) {
 extern "C" int deleteTagData(uint32_t tag, uid_t uid) {
     FwmarkCommand command = {FwmarkCommand::DELETE_TAGDATA, 0, uid, tag};
     return FwmarkClient().send(&command, -1, nullptr);
+}
+
+extern "C" int resNetworkQuery(unsigned netId, const char* dname, int ns_class, int ns_type) {
+    u_char buf[MAX_CMD_SIZE] = {};
+    int len = res_mkquery(QUERY, dname, ns_class, ns_type, NULL, 0, NULL, buf, sizeof(buf));
+
+    return resNetworkSend(netId, buf, len);
+}
+
+extern "C" int resNetworkSend(unsigned netId, const uint8_t* msg, int msglen) {
+    // Encode
+    // Base 64 encodes every 3 bytes into 4 characters, but then adds padding to the next
+    // multiple of 4 and a \0
+    const size_t encodedLen = divCeil(msglen, 3) * 4 + 1;
+    auto encodedQuery = std::string(encodedLen - 1, 0);
+    int enLen = b64_ntop(msg, msglen, encodedQuery.data(), encodedLen);
+
+    if (enLen < 0) {
+        // Unexpected behavior, encode failed
+        // b64_ntop only fails when size is too long.
+        return -EMSGSIZE;
+    }
+    // Send
+    netId = getNetworkForResolv(netId);
+    const std::string cmd = "resnsend " + encodedQuery + " " + std::to_string(netId) + '\0';
+    if (cmd.size() > MAX_CMD_SIZE) {
+        // Cmd size must less than buffer size of FrameworkListener
+        return -EMSGSIZE;
+    }
+    int fd = dns_open_proxy();
+    if (fd == -1) {
+        return -errno;
+    }
+    ssize_t rc = sendData(fd, cmd.c_str(), cmd.size());
+    if (rc < 0) {
+        close(fd);
+        return rc;
+    }
+    shutdown(fd, SHUT_WR);
+    return fd;
+}
+
+extern "C" int resNetworkResult(int fd, int* rcode, uint8_t* answer, int anslen) {
+    int32_t result = 0;
+    unique_fd ufd(fd);
+    // Read -errno/rcode
+    if (!readBE32(fd, &result)) {
+        // Unexpected behavior, read -errno/rcode fail
+        return -errno;
+    }
+    if (result < 0) {
+        // result < 0, it's -errno
+        return result;
+    }
+    // result >= 0, it's rcode
+    *rcode = result;
+
+    // Read answer
+    int32_t size = 0;
+    if (!readBE32(fd, &size)) {
+        // Unexpected behavior, read ans len fail
+        return -EREMOTEIO;
+    }
+    if (anslen < size) {
+        // Answer buffer is too small
+        return -EMSGSIZE;
+    }
+    int rc = readData(fd, answer, size);
+    if (rc < 0) {
+        // Reading the answer failed.
+        return rc;
+    }
+    return size;
+}
+
+extern "C" void resNetworkCancel(int fd) {
+    close(fd);
 }

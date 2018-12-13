@@ -18,7 +18,10 @@ cc_library {
         "FwmarkClient.cpp",
         "NetdClient.cpp",
     ],
-    header_libs: ["libnetd_client_headers"],
+    header_libs: [
+        "libnetd_client_headers",
+        "libbase_headers",
+    ],
     export_header_lib_headers: ["libnetd_client_headers"],
     include_dirs: [
         "system/netd/resolv",
