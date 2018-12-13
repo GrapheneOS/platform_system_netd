@@ -31,29 +31,28 @@ namespace net {
 class NetworkController;
 
 class DnsProxyListener : public FrameworkListener {
-public:
+  public:
     explicit DnsProxyListener(const NetworkController* netCtrl, EventReporter* eventReporter);
     virtual ~DnsProxyListener() {}
 
     static constexpr const char* SOCKET_NAME = "dnsproxyd";
 
-private:
+  private:
     const NetworkController *mNetCtrl;
     EventReporter *mEventReporter;
-    static void addIpAddrWithinLimit(std::vector<android::String16>& ip_addrs, const sockaddr* addr,
-            socklen_t addrlen);
 
     class GetAddrInfoCmd : public NetdCommand {
-    public:
+      public:
         explicit GetAddrInfoCmd(DnsProxyListener* dnsProxyListener);
         virtual ~GetAddrInfoCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
-    private:
+
+      private:
         DnsProxyListener* mDnsProxyListener;
     };
 
     class GetAddrInfoHandler {
-    public:
+      public:
         // Note: All of host, service, and hints may be NULL
         GetAddrInfoHandler(SocketClient *c,
                            char* host,
@@ -66,7 +65,7 @@ private:
 
         void run();
 
-    private:
+      private:
         SocketClient* mClient;  // ref counted
         char* mHost;    // owned
         char* mService; // owned
@@ -78,16 +77,17 @@ private:
 
     /* ------ gethostbyname ------*/
     class GetHostByNameCmd : public NetdCommand {
-    public:
+      public:
         explicit GetHostByNameCmd(DnsProxyListener* dnsProxyListener);
         virtual ~GetHostByNameCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
-    private:
+
+      private:
         DnsProxyListener* mDnsProxyListener;
     };
 
     class GetHostByNameHandler {
-    public:
+      public:
         GetHostByNameHandler(SocketClient *c,
                             char *name,
                             int af,
@@ -98,7 +98,7 @@ private:
 
         void run();
 
-    private:
+      private:
         SocketClient* mClient; //ref counted
         char* mName; // owned
         int mAf;
@@ -109,16 +109,17 @@ private:
 
     /* ------ gethostbyaddr ------*/
     class GetHostByAddrCmd : public NetdCommand {
-    public:
+      public:
         explicit GetHostByAddrCmd(const DnsProxyListener* dnsProxyListener);
         virtual ~GetHostByAddrCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
-    private:
+
+      private:
         const DnsProxyListener* mDnsProxyListener;
     };
 
     class GetHostByAddrHandler {
-    public:
+      public:
         GetHostByAddrHandler(SocketClient *c,
                             void* address,
                             int addressLen,
@@ -128,12 +129,40 @@ private:
 
         void run();
 
-    private:
+      private:
         SocketClient* mClient;  // ref counted
         void* mAddress;    // address to lookup; owned
         int mAddressLen; // length of address to look up
         int mAddressFamily;  // address family
         android_net_context mNetContext;
+    };
+
+    /* ------ resnsend ------*/
+    class ResNSendCommand : public NetdCommand {
+      public:
+        explicit ResNSendCommand(DnsProxyListener* dnsProxyListener);
+        ~ResNSendCommand() override {}
+        int runCommand(SocketClient* c, int argc, char** argv);
+
+      private:
+        DnsProxyListener* mDnsProxyListener;
+    };
+
+    class ResNSendHandler {
+      public:
+        ResNSendHandler(SocketClient* c, std::string msg, const android_net_context& netcontext,
+                        const int reportingLevel,
+                        const android::sp<android::net::metrics::INetdEventListener>& listener);
+        ~ResNSendHandler();
+
+        void run();
+
+      private:
+        SocketClient* mClient;  // ref counted
+        std::string mMsg;
+        struct android_net_context mNetContext;
+        const int mReportingLevel;
+        android::sp<android::net::metrics::INetdEventListener> mNetdEventListener;
     };
 };
 

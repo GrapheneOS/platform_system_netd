@@ -62,7 +62,6 @@ function runOneTest() {
     echo "# $test"
     echo "###"
 
-    runCmd "$SOONG_BIN" --make-mode "$test" || return $?
     local prefix="$ANDROID_TARGET_OUT_TESTCASES/$test/$TARGET_ARCH/$test"
     for bits in '' 32 64; do
             local testbin="${prefix}${bits}"
@@ -118,9 +117,12 @@ function main() {
 
     local failures=0
     local skipped=0
+
+    # Find out which tests to run.
+    local tests=""
     for testName in $DEFAULT_TESTS; do
         if [[ -z "$test_regex" || "$testName" =~ "$test_regex" ]]; then
-            runOneTest "$testName" || failures=$((failures + 1))
+            tests="$tests $testName"
         else
             logToStdErr "Skipping $testName"
             skipped=$((skipped + 1))
@@ -132,10 +134,23 @@ function main() {
     if [[ -n "$test_regex" ]]; then
         for testName in $EXTENDED_TESTS; do
             if [[ "$testName" =~ "$test_regex" ]]; then
-                runOneTest "$testName" || failures=$((failures + 1))
+                tests="$tests $testName"
             fi
         done
     fi
+
+    if [[ -z "$tests" ]]; then
+        logToStdErr "No tests matched"
+        return 1
+    fi
+
+    # Build all the specified tests.
+    runCmd "$SOONG_BIN" --make-mode "$tests" || return $?
+
+    # Run all the specified tests.
+    for testName in $tests; do
+        runOneTest "$testName" || failures=$((failures + 1))
+    done
 
     echo "Number of tests failing: $failures"
     [[ $skipped -gt 0 ]] && echo "Number of tests skipped: $skipped"

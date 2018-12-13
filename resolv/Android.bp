@@ -32,6 +32,7 @@ cc_library_shared {
         "liblog",
         "libnetdutils",
         "libssl",
+        "netd_event_listener_interface-ndk",
     ],
     export_include_dirs: ["include"],
     // TODO: pie in the sky: make this code clang-tidy clean
@@ -50,7 +51,6 @@ cc_test {
     test_suites: ["device-tests"],
     defaults: ["netd_defaults"],
     srcs: [
-        ":netd_metrics_aidl",
         "dns_responder/dns_responder.cpp",
         "resolver_test.cpp",
     ],
@@ -73,6 +73,7 @@ cc_test {
         "liblogwrap",
         "libnetdutils",
         "netd_aidl_interface-cpp",
+        "netd_event_listener_interface-cpp",
     ],
     compile_multilib: "both",
     sanitize: {

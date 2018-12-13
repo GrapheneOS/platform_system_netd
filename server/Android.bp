@@ -1,9 +1,14 @@
 // AIDL interface between netd and services.core
-filegroup {
-    name: "netd_metrics_aidl",
-    srcs: ["binder/android/net/metrics/INetdEventListener.aidl"],
-    path: "binder",
+aidl_interface {
+    name: "netd_event_listener_interface",
+    local_include_dir: "binder",
+    srcs: [
+        "binder/android/net/metrics/INetdEventListener.aidl"
+    ],
+    api_dir: "binder/api",
 }
+
+
 
 // These are used in netd_integration_test
 // TODO: fold these into a cc_library_static after converting netd/server to Android.bp
@@ -67,7 +72,6 @@ cc_library_static {
         "UidRanges.cpp",
         "WakeupController.cpp",
         "XfrmController.cpp",
-        ":netd_metrics_aidl",
     ],
     shared_libs: [
         "libbpf_android",
@@ -82,6 +86,7 @@ cc_library_static {
         "libqtaguid",
         "libssl",
         "netd_aidl_interface-cpp",
+        "netd_event_listener_interface-cpp",
     ],
     aidl: {
         export_aidl_headers: true,
@@ -121,6 +126,7 @@ cc_binary {
         "libsysutils",
         "libutils",
         "netd_aidl_interface-cpp",
+        "netd_event_listener_interface-cpp",
     ],
     static_libs: [
         "libnetd_server",
@@ -204,5 +210,6 @@ cc_test {
         "libsysutils",
         "libutils",
         "netd_aidl_interface-cpp",
+        "netd_event_listener_interface-cpp",
     ],
 }
