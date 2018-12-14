@@ -563,6 +563,10 @@ void DNSResponder::setResponseProbability(double response_probability) {
     response_probability_ = response_probability;
 }
 
+void DNSResponder::setEdns(Edns edns) {
+    edns_ = edns;
+}
+
 bool DNSResponder::running() const {
     return socket_ != -1;
 }
@@ -763,11 +767,15 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
         return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response,
                                  response_len);
     }
-    if (!header.additionals.empty() && fail_on_edns_) {
+    if (!header.additionals.empty() && edns_ != Edns::ON) {
         ALOGI("DNS request has an additional section (assumed EDNS). "
-              "Simulating an ancient (pre-EDNS) server.");
-        return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response,
-                                 response_len);
+              "Simulating an ancient (pre-EDNS) server, and returning %s",
+              edns_ == Edns::FORMERR ? "RCODE FORMERR." : "no response.");
+        if (edns_ == Edns::FORMERR) {
+            return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response, response_len);
+        }
+        // No response.
+        return false;
     }
     {
         std::lock_guard lock(queries_mutex_);
@@ -782,7 +790,7 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
     if (arc4random_uniform(bound) > bound * response_probability_) {
         if (error_rcode_ < 0) {
             ALOGI("Returning no response");
-            return true;
+            return false;
         } else {
             ALOGI("returning RCODE %d in accordance with probability distribution",
                   static_cast<int>(error_rcode_));
