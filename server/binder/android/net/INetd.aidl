@@ -823,12 +823,12 @@ interface INetd {
     * Get the interface list which is stored in netd
     * The list contains the interfaces managed by tetherInterfaceAdd/tetherInterfaceRemove
     *
-    * @return ifList interface list result
+    * @return An array of strings containing interface list result
     */
-    @utf8InCpp List<String> tetherInterfaceList();
+    @utf8InCpp String[] tetherInterfaceList();
 
    /**
-    * Set dns forwarder server
+    * Set DNS forwarder server
     *
     * @param netId the upstream network to forward DNS queries to
     * @param dnsAddrs DNS server address to set
@@ -840,9 +840,9 @@ interface INetd {
    /**
     * Return the DNS list set by tetherDnsSet
     *
-    * @return dnsList dns list result
+    * @return An array of strings containing the list of DNS servers
     */
-    @utf8InCpp List<String> tetherDnsList();
+    @utf8InCpp String[] tetherDnsList();
 
     const int LOCAL_NET_ID = 99;
 
@@ -1082,11 +1082,11 @@ interface INetd {
    /**
     * Get interface list
     *
-    * @return A list of all the interfaces on the system.
+    * @return An array of strings containing all the interfaces on the system.
     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
     *         unix errno.
     */
-    @utf8InCpp List<String> interfaceGetList();
+    @utf8InCpp String[] interfaceGetList();
 
     const String IF_STATE_UP = "up";
     const String IF_STATE_DOWN = "down";
