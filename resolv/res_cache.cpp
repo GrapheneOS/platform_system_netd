@@ -1292,25 +1292,12 @@ static void _cache_flush_locked(Cache* cache) {
     VLOG << "*** DNS CACHE FLUSHED ***";
 }
 
-static int _res_cache_get_max_entries(void) {
-    int cache_size = CONFIG_MAX_ENTRIES;
-
-    const char* cache_mode = getenv("ANDROID_DNS_MODE");
-    if (cache_mode == NULL || strcmp(cache_mode, "local") != 0) {
-        // Don't use the cache in local mode. This is used by the proxy itself.
-        cache_size = 0;
-    }
-
-    VLOG << "cache size: " << cache_size;
-    return cache_size;
-}
-
 static struct resolv_cache* _resolv_cache_create(void) {
     struct resolv_cache* cache;
 
     cache = (struct resolv_cache*) calloc(sizeof(*cache), 1);
     if (cache) {
-        cache->max_entries = _res_cache_get_max_entries();
+        cache->max_entries = CONFIG_MAX_ENTRIES;
         cache->entries = (Entry*) calloc(sizeof(*cache->entries), cache->max_entries);
         if (cache->entries) {
             cache->mru_list.mru_prev = cache->mru_list.mru_next = &cache->mru_list;
