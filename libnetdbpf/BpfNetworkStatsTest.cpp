@@ -538,6 +538,8 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsSortedAndGrouped) {
 // Test to verify that subtract overflow will not be triggered by the compare function invoked from
 // sorting. See http:/b/119193941.
 TEST_F(BpfNetworkStatsHelperTest, TestGetStatsSortAndOverflow) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     updateIfaceMap(IFACE_NAME1, IFACE_INDEX1);
 
     StatsValue value1 = {
