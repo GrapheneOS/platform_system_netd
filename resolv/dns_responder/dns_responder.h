@@ -45,10 +45,17 @@ class DNSResponder {
     DNSResponder(std::string listen_address, std::string listen_service, int poll_timeout_ms,
                  ns_rcode error_rcode);
     ~DNSResponder();
+
+    enum class Edns : uint8_t {
+        ON,
+        FORMERR,  // DNS server not supporting EDNS will reply FORMERR.
+        DROP      // DNS server not supporting EDNS will not do any response.
+    };
+
     void addMapping(const std::string& name, ns_type type, const std::string& addr);
     void removeMapping(const std::string& name, ns_type type);
     void setResponseProbability(double response_probability);
-    void setFailOnEdns(bool fail) { fail_on_edns_ = fail; }
+    void setEdns(Edns edns);
     bool running() const;
     bool startServer();
     bool stopServer();
@@ -86,11 +93,11 @@ class DNSResponder {
         }
     };
 
-    // DNS request handler.
     void requestHandler();
 
     // Parses and generates a response message for incoming DNS requests.
-    // Returns false on parsing errors.
+    // Returns false to ignore the request, which might be due to either parsing error
+    // or unresponsiveness.
     bool handleDNSRequest(const char* buffer, ssize_t buffer_len,
                           char* response, size_t* response_len) const;
 
@@ -114,9 +121,12 @@ class DNSResponder {
     // instead of returning error_rcode_.
     std::atomic<double> response_probability_ = 1.0;
 
-    // If true, behave like an old DNS server that doesn't support EDNS.
-    // Default false.
-    std::atomic<bool> fail_on_edns_ = false;
+    // Control how the DNS server behaves when it receives the requests containing OPT RR.
+    // If it's set Edns::ON, the server can recognize and reply the response; if it's set
+    // Edns::FORMERR, the server behaves like an old DNS server that doesn't support EDNS0, and
+    // replying FORMERR; if it's Edns::DROP, the server doesn't support EDNS0 either, and ignoring
+    // the requests.
+    std::atomic<Edns> edns_ = Edns::ON;
 
     // Mappings from (name, type) to registered response and the
     // mutex protecting them.
