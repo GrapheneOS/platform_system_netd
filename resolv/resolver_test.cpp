@@ -18,10 +18,16 @@
 #define LOG_TAG "netd_test"
 
 #include <arpa/inet.h>
+#include <arpa/nameser.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <poll.h> /* poll */
+#include <resolv.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -54,7 +60,8 @@
 #include "netdutils/SocketOption.h"
 
 // TODO: make this dynamic and stop depending on implementation details.
-#define TEST_NETID 30
+constexpr int TEST_NETID = 30;
+constexpr int MAXPACKET = (8 * 1024);
 
 // Semi-public Bionic hook used by the NDK (frameworks/base/native/android/net.c)
 // Tested here for convenience.
@@ -575,47 +582,6 @@ TEST_F(ResolverTest, GetAddrInfo_localhost) {
     // Expect no DNS queries; ip6-localhost is resolved via /etc/hosts
     EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
     EXPECT_EQ(addr_ip6, ToString(result));
-}
-
-TEST_F(ResolverTest, GetHostByNameBrokenEdns) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_srv = "53";
-    const char* host_name = "edns.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
-    dns.setFailOnEdns(true);  // This is the only change from the basic test.
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
-
-    const hostent* result;
-
-    dns.clearQueries();
-    result = gethostbyname("edns");
-    EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, host_name));
-    ASSERT_FALSE(result == nullptr);
-    ASSERT_EQ(4, result->h_length);
-    ASSERT_FALSE(result->h_addr_list[0] == nullptr);
-    EXPECT_EQ("1.2.3.3", ToString(result));
-    EXPECT_TRUE(result->h_addr_list[1] == nullptr);
-}
-
-TEST_F(ResolverTest, GetAddrInfoBrokenEdns) {
-    const char* listen_addr = "127.0.0.5";
-    const char* listen_srv = "53";
-    const char* host_name = "edns2.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.5");
-    dns.setFailOnEdns(true);  // This is the only change from the basic test.
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
-
-    addrinfo hints = {.ai_family = AF_INET};
-    ScopedAddrinfo result = safe_getaddrinfo("edns2", nullptr, &hints);
-    EXPECT_TRUE(result != nullptr);
-    EXPECT_EQ(1U, GetNumQueries(dns, host_name));
-    EXPECT_EQ("1.2.3.5", ToString(result));
 }
 
 TEST_F(ResolverTest, MultidomainResolution) {
@@ -1556,4 +1522,420 @@ TEST_F(ResolverTest, StrictMode_NoTlsServers) {
     addrinfo* ai_result = nullptr;
     EXPECT_NE(0, getaddrinfo(host_name, nullptr, nullptr, &ai_result));
     EXPECT_EQ(0U, GetNumQueries(dns, host_name));
+}
+
+namespace {
+
+int getAsyncResponse(int fd, int* rcode, u_char* buf, int bufLen) {
+    struct pollfd wait_fd[1];
+    wait_fd[0].fd = fd;
+    wait_fd[0].events = POLLIN;
+    short revents;
+    int ret;
+
+    ret = poll(wait_fd, 1, -1);
+    revents = wait_fd[0].revents;
+    if (revents & POLLIN) {
+        int n = resNetworkResult(fd, rcode, buf, bufLen);
+        return n;
+    }
+    return -1;
+}
+
+std::string toString(u_char* buf, int bufLen, int ipType) {
+    ns_msg handle;
+    int ancount, n = 0;
+    ns_rr rr;
+
+    if (ns_initparse((const uint8_t*) buf, bufLen, &handle) >= 0) {
+        ancount = ns_msg_count(handle, ns_s_an);
+        if (ns_parserr(&handle, ns_s_an, n, &rr) == 0) {
+            const u_char* rdata = ns_rr_rdata(rr);
+            char buffer[INET6_ADDRSTRLEN];
+            if (inet_ntop(ipType, (const char*) rdata, buffer, sizeof(buffer))) {
+                return buffer;
+            }
+        }
+    }
+    return "";
+}
+
+int dns_open_proxy() {
+    int s = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (s == -1) {
+        return -1;
+    }
+    const int one = 1;
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+
+    static const struct sockaddr_un proxy_addr = {
+            .sun_family = AF_UNIX,
+            .sun_path = "/dev/socket/dnsproxyd",
+    };
+
+    if (TEMP_FAILURE_RETRY(connect(s, (const struct sockaddr*) &proxy_addr, sizeof(proxy_addr))) !=
+        0) {
+        close(s);
+        return -1;
+    }
+
+    return s;
+}
+
+}  // namespace
+
+TEST_F(ResolverTest, Async_NormalQueryV4V6) {
+    const char listen_addr[] = "127.0.0.4";
+    const char listen_srv[] = "53";
+    const char host_name[] = "howdy.example.com.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);   // Type A       1
+    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);  // Type AAAA    28
+    EXPECT_TRUE(fd1 != -1);
+    EXPECT_TRUE(fd2 != -1);
+
+    u_char buf[MAXPACKET] = {};
+    int rcode;
+    int res = getAsyncResponse(fd2, &rcode, buf, MAXPACKET);
+    EXPECT_GT(res, 0);
+    EXPECT_EQ("::1.2.3.4", toString(buf, res, AF_INET6));
+
+    res = getAsyncResponse(fd1, &rcode, buf, MAXPACKET);
+    EXPECT_GT(res, 0);
+    EXPECT_EQ("1.2.3.4", toString(buf, res, AF_INET));
+
+    EXPECT_EQ(2U, GetNumQueries(dns, host_name));
+
+    // Re-query verify cache works
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);   // Type A       1
+    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);  // Type AAAA    28
+
+    EXPECT_TRUE(fd1 != -1);
+    EXPECT_TRUE(fd2 != -1);
+
+    res = getAsyncResponse(fd2, &rcode, buf, MAXPACKET);
+    EXPECT_GT(res, 0);
+    EXPECT_EQ("::1.2.3.4", toString(buf, res, AF_INET6));
+
+    res = getAsyncResponse(fd1, &rcode, buf, MAXPACKET);
+    EXPECT_GT(res, 0);
+    EXPECT_EQ("1.2.3.4", toString(buf, res, AF_INET));
+
+    EXPECT_EQ(2U, GetNumQueries(dns, host_name));
+}
+
+TEST_F(ResolverTest, Async_BadQuery) {
+    const char listen_addr[] = "127.0.0.4";
+    const char listen_srv[] = "53";
+    const char host_name[] = "howdy.example.com.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    static struct {
+        int fd;
+        const char* dname;
+        const int queryType;
+        const int expectRcode;
+    } kTestData[] = {
+            {-1, "", T_AAAA, 0},
+            {-1, "as65ass46", T_AAAA, 0},
+            {-1, "454564564564", T_AAAA, 0},
+            {-1, "h645235", T_A, 0},
+            {-1, "www.google.com", T_A, 0},
+    };
+
+    for (auto& td : kTestData) {
+        SCOPED_TRACE(td.dname);
+        td.fd = resNetworkQuery(TEST_NETID, td.dname, 1, td.queryType);
+        EXPECT_TRUE(td.fd != -1);
+    }
+
+    // dns_responder return empty resp(packet only contains query part) with no error currently
+    for (const auto& td : kTestData) {
+        u_char buf[MAXPACKET] = {};
+        int rcode;
+        SCOPED_TRACE(td.dname);
+        int res = getAsyncResponse(td.fd, &rcode, buf, MAXPACKET);
+        EXPECT_GT(res, 0);
+        EXPECT_EQ(rcode, td.expectRcode);
+    }
+}
+
+TEST_F(ResolverTest, Async_EmptyAnswer) {
+    const char listen_addr[] = "127.0.0.4";
+    const char listen_srv[] = "53";
+    const char host_name[] = "howdy.example.com.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, static_cast<ns_rcode>(-1));
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // A 1  AAAA 28
+    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);
+    EXPECT_TRUE(fd1 != -1);
+
+    // make sure setResponseProbability effective
+    dns.stopServer();
+    dns.setResponseProbability(0.0);
+    ASSERT_TRUE(dns.startServer());
+
+    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
+    EXPECT_TRUE(fd2 != -1);
+
+    int fd3 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
+    EXPECT_TRUE(fd3 != -1);
+
+    u_char buf[MAXPACKET] = {};
+    int rcode;
+
+    // expect no response, ETIMEDOUT = 110
+    int res = getAsyncResponse(fd2, &rcode, buf, MAXPACKET);
+    EXPECT_EQ(res, -110);
+
+    // expect no response, ETIMEDOUT = 110
+    memset(buf, 0, MAXPACKET);
+    res = getAsyncResponse(fd3, &rcode, buf, MAXPACKET);
+    EXPECT_EQ(res, -110);
+
+    // make sure setResponseProbability effective
+    dns.stopServer();
+    dns.setResponseProbability(1.0);
+    ASSERT_TRUE(dns.startServer());
+
+    int fd4 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
+    EXPECT_TRUE(fd4 != -1);
+
+    memset(buf, 0, MAXPACKET);
+    res = getAsyncResponse(fd4, &rcode, buf, MAXPACKET);
+    EXPECT_GT(res, 0);
+    EXPECT_EQ("1.2.3.4", toString(buf, res, AF_INET));
+
+    memset(buf, 0, MAXPACKET);
+    res = getAsyncResponse(fd1, &rcode, buf, MAXPACKET);
+    EXPECT_GT(res, 0);
+    EXPECT_EQ("::1.2.3.4", toString(buf, res, AF_INET6));
+}
+
+TEST_F(ResolverTest, Async_MalformedQuery) {
+    const char listen_addr[] = "127.0.0.4";
+    const char listen_srv[] = "53";
+    const char host_name[] = "howdy.example.com.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    int fd = dns_open_proxy();
+    EXPECT_TRUE(fd > 0);
+
+    const std::string badMsg = "16-52512#";
+    static struct {
+        const std::string cmd;
+        const int expectErr;
+    } kTestData[] = {
+            // Less arguement
+            {"resnsend " + badMsg + '\0', -EINVAL},
+            // Bad netId
+            {"resnsend " + badMsg + " badnetId" + '\0', -EINVAL},
+            // Bad raw data
+            {"resnsend " + badMsg + " " + std::to_string(TEST_NETID) + '\0', -EILSEQ},
+    };
+
+    for (unsigned int i = 0; i < std::size(kTestData); i++) {
+        auto& td = kTestData[i];
+        SCOPED_TRACE(td.cmd);
+        ssize_t rc = TEMP_FAILURE_RETRY(write(fd, td.cmd.c_str(), td.cmd.size()));
+        EXPECT_EQ(rc, static_cast<ssize_t>(td.cmd.size()));
+
+        int32_t tmp;
+        rc = TEMP_FAILURE_RETRY(read(fd, &tmp, sizeof(tmp)));
+        EXPECT_TRUE(rc > 0);
+        EXPECT_EQ(static_cast<int>(ntohl(tmp)), td.expectErr);
+    }
+    // Normal query with answer buffer
+    // This is raw data of query "howdy.example.com" type 1 class 1
+    std::string query = "81sBAAABAAAAAAAABWhvd2R5B2V4YW1wbGUDY29tAAABAAE=";
+    std::string cmd = "resnsend " + query + " " + std::to_string(TEST_NETID) + '\0';
+    ssize_t rc = TEMP_FAILURE_RETRY(write(fd, cmd.c_str(), cmd.size()));
+    EXPECT_EQ(rc, static_cast<ssize_t>(cmd.size()));
+
+    u_char smallBuf[1] = {};
+    int rcode;
+    rc = getAsyncResponse(fd, &rcode, smallBuf, 1);
+    EXPECT_EQ(rc, -EMSGSIZE);
+
+    // Do the normal test with large buffer again
+    fd = dns_open_proxy();
+    EXPECT_TRUE(fd > 0);
+    rc = TEMP_FAILURE_RETRY(write(fd, cmd.c_str(), cmd.size()));
+    EXPECT_EQ(rc, static_cast<ssize_t>(cmd.size()));
+    u_char buf[MAXPACKET] = {};
+    rc = getAsyncResponse(fd, &rcode, buf, MAXPACKET);
+    EXPECT_EQ("1.2.3.4", toString(buf, rc, AF_INET));
+}
+
+// This test checks that the resolver should not generate the request containing OPT RR when using
+// cleartext DNS. If we query the DNS server not supporting EDNS0 and it reponds with FORMERR, we
+// will fallback to no EDNS0 and try again. If the server does no response, we won't retry so that
+// we get no answer.
+TEST_F(ResolverTest, BrokenEdns) {
+    typedef test::DNSResponder::Edns Edns;
+    enum ExpectResult { EXPECT_FAILURE, EXPECT_SUCCESS };
+
+    const char OFF[] = "off";
+    const char OPPORTUNISTIC_UDP[] = "opportunistic_udp";
+    const char OPPORTUNISTIC_TLS[] = "opportunistic_tls";
+    const char STRICT[] = "strict";
+    const char GETHOSTBYNAME[] = "gethostbyname";
+    const char GETADDRINFO[] = "getaddrinfo";
+    const std::vector<uint8_t> NOOP_FINGERPRINT(SHA256_SIZE, 0U);
+    const char ADDR4[] = "192.0.2.1";
+    const char CLEARTEXT_ADDR[] = "127.0.0.53";
+    const char CLEARTEXT_PORT[] = "53";
+    const char TLS_PORT[] = "853";
+    const std::vector<std::string> servers = { CLEARTEXT_ADDR };
+
+    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, 250, ns_rcode::ns_r_servfail);
+    ASSERT_TRUE(dns.startServer());
+
+    test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
+
+    static const struct TestConfig {
+        std::string mode;
+        std::string method;
+        Edns edns;
+        ExpectResult expectResult;
+
+        std::string asHostName() const {
+            const char* ednsString;
+            switch (edns) {
+                case Edns::ON:
+                    ednsString = "ednsOn";
+                    break;
+                case Edns::FORMERR:
+                    ednsString = "ednsFormerr";
+                    break;
+                case Edns::DROP:
+                    ednsString = "ednsDrop";
+                    break;
+                default:
+                    ednsString = "";
+                    break;
+            }
+            return StringPrintf("%s.%s.%s.", mode.c_str(), method.c_str(), ednsString);
+        }
+    } testConfigs[] = {
+            // In OPPORTUNISTIC_TLS, we get no answer if the DNS server supports TLS but not EDNS0.
+            // Could such server exist? if so, we might need to fallback to query cleartext DNS.
+            // Another thing is that {OPPORTUNISTIC_TLS, Edns::DROP} and {STRICT, Edns::DROP} are
+            // commented out since TLS timeout is not configurable.
+            // TODO: Uncomment them after TLS timeout is configurable.
+            {OFF,               GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
+            {OPPORTUNISTIC_TLS, GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
+            {STRICT,            GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
+            {OFF,               GETHOSTBYNAME, Edns::FORMERR, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETHOSTBYNAME, Edns::FORMERR, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_TLS, GETHOSTBYNAME, Edns::FORMERR, EXPECT_FAILURE},
+            {STRICT,            GETHOSTBYNAME, Edns::FORMERR, EXPECT_FAILURE},
+            {OFF,               GETHOSTBYNAME, Edns::DROP,    EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETHOSTBYNAME, Edns::DROP,    EXPECT_SUCCESS},
+            //{OPPORTUNISTIC_TLS, GETHOSTBYNAME, Edns::DROP,    EXPECT_FAILURE},
+            //{STRICT,            GETHOSTBYNAME, Edns::DROP,    EXPECT_FAILURE},
+            {OFF,               GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
+            {OPPORTUNISTIC_TLS, GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
+            {STRICT,            GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
+            {OFF,               GETADDRINFO,   Edns::FORMERR, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETADDRINFO,   Edns::FORMERR, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_TLS, GETADDRINFO,   Edns::FORMERR, EXPECT_FAILURE},
+            {STRICT,            GETADDRINFO,   Edns::FORMERR, EXPECT_FAILURE},
+            {OFF,               GETADDRINFO,   Edns::DROP,    EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETADDRINFO,   Edns::DROP,    EXPECT_SUCCESS},
+            //{OPPORTUNISTIC_TLS, GETADDRINFO,   Edns::DROP,   EXPECT_FAILURE},
+            //{STRICT,            GETADDRINFO,   Edns::DROP,   EXPECT_FAILURE},
+    };
+
+    for (const auto& config : testConfigs) {
+        const std::string testHostName = config.asHostName();
+        SCOPED_TRACE(testHostName);
+
+        const char* host_name = testHostName.c_str();
+        dns.addMapping(host_name, ns_type::ns_t_a, ADDR4);
+        dns.setEdns(config.edns);
+
+        if (config.mode == OFF) {
+            ASSERT_TRUE(
+                    SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+        } else if (config.mode == OPPORTUNISTIC_UDP) {
+            ASSERT_TRUE(SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams_Binder,
+                                            "", {}));
+        } else if (config.mode == OPPORTUNISTIC_TLS) {
+            ASSERT_TRUE(tls.startServer());
+            ASSERT_TRUE(SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams_Binder,
+                                            "", {}));
+            // Wait for validation to complete.
+            EXPECT_TRUE(tls.waitForQueries(1, 5000));
+        } else if (config.mode == STRICT) {
+            ASSERT_TRUE(tls.startServer());
+            ASSERT_TRUE(SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams_Binder,
+                                            "", {base64Encode(tls.fingerprint())}));
+            // Wait for validation to complete.
+            EXPECT_TRUE(tls.waitForQueries(1, 5000));
+        }
+
+        if (config.method == GETHOSTBYNAME) {
+            const hostent* h_result = gethostbyname(host_name);
+            if (config.expectResult == EXPECT_SUCCESS) {
+                EXPECT_LE(1U, GetNumQueries(dns, host_name));
+                ASSERT_TRUE(h_result != nullptr);
+                ASSERT_EQ(4, h_result->h_length);
+                ASSERT_FALSE(h_result->h_addr_list[0] == nullptr);
+                EXPECT_EQ(ADDR4, ToString(h_result));
+                EXPECT_TRUE(h_result->h_addr_list[1] == nullptr);
+            } else {
+                EXPECT_EQ(0U, GetNumQueriesForType(dns, ns_type::ns_t_a, host_name));
+                ASSERT_TRUE(h_result == nullptr);
+                ASSERT_EQ(HOST_NOT_FOUND, h_errno);
+            }
+        } else if (config.method == GETADDRINFO) {
+            ScopedAddrinfo ai_result;
+            addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
+            ai_result = safe_getaddrinfo(host_name, nullptr, &hints);
+            if (config.expectResult == EXPECT_SUCCESS) {
+                EXPECT_TRUE(ai_result != nullptr);
+                EXPECT_EQ(1U, GetNumQueries(dns, host_name));
+                const std::string result_str = ToString(ai_result);
+                EXPECT_EQ(ADDR4, result_str);
+            } else {
+                EXPECT_TRUE(ai_result == nullptr);
+                EXPECT_EQ(0U, GetNumQueries(dns, host_name));
+            }
+        } else {
+            FAIL() << "Unsupported query method: " << config.method;
+        }
+
+        tls.stopServer();
+        dns.clearQueries();
+    }
+
+    dns.stopServer();
 }

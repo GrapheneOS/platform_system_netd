@@ -1251,6 +1251,15 @@ static int res_tls_send(res_state statp, const Slice query, const Slice answer, 
             // Sleep and iterate some small number of times checking for the
             // arrival of resolved and validated server IP addresses, instead
             // of returning an immediate error.
+            // This is needed because as soon as a network becomes the default network, apps will
+            // send DNS queries on that network. If no servers have yet validated, and we do not
+            // block those queries, they would immediately fail, causing application-visible errors.
+            // Note that this can happen even before the network validates, since an unvalidated
+            // network can become the default network if no validated networks are available.
+            //
+            // TODO: see if there is a better way to address this problem, such as buffering the
+            // queries in a queue or only blocking queries for the first few seconds after a default
+            // network change.
             for (int i = 0; i < 42; i++) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 if (!gPrivateDnsConfiguration.getStatus(netId).validatedServers.empty()) {
