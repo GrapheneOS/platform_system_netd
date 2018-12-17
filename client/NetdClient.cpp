@@ -386,18 +386,19 @@ extern "C" int deleteTagData(uint32_t tag, uid_t uid) {
 }
 
 extern "C" int resNetworkQuery(unsigned netId, const char* dname, int ns_class, int ns_type) {
-    u_char buf[MAX_CMD_SIZE] = {};
-    int len = res_mkquery(QUERY, dname, ns_class, ns_type, NULL, 0, NULL, buf, sizeof(buf));
+    std::vector<uint8_t> buf(MAX_CMD_SIZE, 0);
+    int len = res_mkquery(ns_o_query, dname, ns_class, ns_type, nullptr, 0, nullptr, buf.data(),
+                          MAX_CMD_SIZE);
 
-    return resNetworkSend(netId, buf, len);
+    return resNetworkSend(netId, buf.data(), len);
 }
 
-extern "C" int resNetworkSend(unsigned netId, const uint8_t* msg, int msglen) {
+extern "C" int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen) {
     // Encode
     // Base 64 encodes every 3 bytes into 4 characters, but then adds padding to the next
     // multiple of 4 and a \0
     const size_t encodedLen = divCeil(msglen, 3) * 4 + 1;
-    auto encodedQuery = std::string(encodedLen - 1, 0);
+    std::string encodedQuery(encodedLen - 1, 0);
     int enLen = b64_ntop(msg, msglen, encodedQuery.data(), encodedLen);
 
     if (enLen < 0) {
@@ -425,7 +426,7 @@ extern "C" int resNetworkSend(unsigned netId, const uint8_t* msg, int msglen) {
     return fd;
 }
 
-extern "C" int resNetworkResult(int fd, int* rcode, uint8_t* answer, int anslen) {
+extern "C" int resNetworkResult(int fd, int* rcode, uint8_t* answer, size_t anslen) {
     int32_t result = 0;
     unique_fd ufd(fd);
     // Read -errno/rcode
@@ -446,7 +447,7 @@ extern "C" int resNetworkResult(int fd, int* rcode, uint8_t* answer, int anslen)
         // Unexpected behavior, read ans len fail
         return -EREMOTEIO;
     }
-    if (anslen < size) {
+    if (anslen < static_cast<size_t>(size)) {
         // Answer buffer is too small
         return -EMSGSIZE;
     }
