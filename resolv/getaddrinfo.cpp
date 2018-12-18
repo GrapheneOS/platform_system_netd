@@ -30,50 +30,6 @@
  * SUCH DAMAGE.
  */
 
-/*
- * Issues to be discussed:
- * - Thread safe-ness must be checked.
- * - Return values.  There are nonstandard return values defined and used
- *   in the source code.  This is because RFC2553 is silent about which error
- *   code must be returned for which situation.
- * - IPv4 classful (shortened) form.  RFC2553 is silent about it.  XNET 5.2
- *   says to use inet_aton() to convert IPv4 numeric to binary (alows
- *   classful form as a result).
- *   current code - disallow classful form for IPv4 (due to use of inet_pton).
- * Note:
- * - We use getipnodebyname() just for thread-safeness.  There's no intent
- *   to let it do PF_UNSPEC (actually we never pass PF_UNSPEC to
- *   getipnodebyname().
- * - The code filters out AFs that are not supported by the kernel,
- *   when globbing NULL hostname (to loopback, or wildcard).  Is it the right
- *   thing to do?  What is the relationship with post-RFC2553 AI_ADDRCONFIG
- *   in ai_flags?
- * - (post-2553) semantics of AI_ADDRCONFIG itself is too vague.
- *   (1) what should we do against numeric hostname (2) what should we do
- *   against NULL hostname (3) what is AI_ADDRCONFIG itself.  AF not ready?
- *   non-loopback address configured?  global address configured?
- * - To avoid search order issue, we have a big amount of code duplicate
- *   from gethnamaddr.c and some other places.  The issues that there's no
- *   lower layer function to lookup "IPv4 or IPv6" record.  Calling
- *   gethostbyname2 from getaddrinfo will end up in wrong search order, as
- *   follows:
- *	- The code makes use of following calls when asked to resolver with
- *	  ai_family  = PF_UNSPEC:
- *		getipnodebyname(host, AF_INET6);
- *		getipnodebyname(host, AF_INET);
- *	  This will result in the following queries if the node is configure to
- *	  prefer /etc/hosts than DNS:
- *		lookup /etc/hosts for IPv6 address
- *		lookup DNS for IPv6 address
- *		lookup /etc/hosts for IPv4 address
- *		lookup DNS for IPv4 address
- *	  which may not meet people's requirement.
- *	  The right thing to happen is to have underlying layer which does
- *	  PF_UNSPEC lookup (lookup both) and return chain of addrinfos.
- *	  This would result in a bit of code duplicate with _dns_ghbyname() and
- *	  friends.
- */
-
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <assert.h>
@@ -102,12 +58,12 @@
 
 #define ANY 0
 
-static const char in_addrany[] = {0, 0, 0, 0};
-static const char in_loopback[] = {127, 0, 0, 1};
-static const char in6_addrany[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-static const char in6_loopback[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+const char in_addrany[] = {0, 0, 0, 0};
+const char in_loopback[] = {127, 0, 0, 1};
+const char in6_addrany[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+const char in6_loopback[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
 
-static const struct afd {
+const struct afd {
     int a_af;
     int a_addrlen;
     int a_socklen;
@@ -133,7 +89,7 @@ struct explore {
 #define WILD_PROTOCOL(ex) ((ex)->e_wild & 0x04)
 };
 
-static const struct explore explore_options[] = {
+const struct explore explore_options[] = {
         {PF_INET6, SOCK_DGRAM, IPPROTO_UDP, 0x07},
         {PF_INET6, SOCK_STREAM, IPPROTO_TCP, 0x07},
         {PF_INET6, SOCK_RAW, ANY, 0x05},
@@ -192,7 +148,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
 static int res_querydomainN(const char* name, const char* domain, res_target* target, res_state res,
                             int* ai_error);
 
-static const char* const ai_errlist[] = {
+const char* const ai_errlist[] = {
         "Success",
         "Address family for hostname not supported",    /* EAI_ADDRFAMILY */
         "Temporary failure in name resolution",         /* EAI_AGAIN      */
@@ -290,15 +246,6 @@ static int _have_ipv4(unsigned mark, uid_t uid) {
     };
     sockaddr_union addr = {.sin = sin_test};
     return _find_src_addr(&addr.sa, NULL, mark, uid) == 1;
-}
-
-bool readBE32(FILE* fp, int32_t* result) {
-    int32_t tmp;
-    if (fread(&tmp, sizeof(tmp), 1, fp) != 1) {
-        return false;
-    }
-    *result = ntohl(tmp);
-    return true;
 }
 
 // Internal version of getaddrinfo(), but limited to AI_NUMERICHOST.
