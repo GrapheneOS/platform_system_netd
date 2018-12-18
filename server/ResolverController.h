@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "Dns64Configuration.h"
+#include "netdutils/InternetAddresses.h"
 
 struct __res_params;
 
@@ -32,7 +33,9 @@ struct ResolverStats;
 
 class ResolverController {
   public:
-    ResolverController(const NetworkController& netCtrl) : mDns64Configuration(netCtrl) {}
+    ResolverController(const NetworkController& netCtrl)
+        : mDns64Configuration(netCtrl, std::bind(&ResolverController::sendNat64PrefixEvent, this,
+                                                 std::placeholders::_1)) {}
 
     ~ResolverController() {}
 
@@ -48,6 +51,8 @@ class ResolverController {
             std::vector<std::string>* domains, __res_params* params,
             std::vector<android::net::ResolverStats>* stats);
 
+    int getPrefix64(unsigned netId, netdutils::IPPrefix* prefix);
+
     // Binder specific functions, which convert between the binder int/string arrays and the
     // actual data structures, and call setDnsServer() / getDnsInfo() for the actual processing.
     int setResolverConfiguration(int32_t netId, const std::vector<std::string>& servers,
@@ -59,12 +64,13 @@ class ResolverController {
                         std::vector<std::string>* domains, std::vector<std::string>* tlsServers,
                         std::vector<int32_t>* params, std::vector<int32_t>* stats);
 
+    void sendNat64PrefixEvent(const net::Dns64Configuration::Nat64PrefixInfo& args);
+
     void dump(DumpWriter& dw, unsigned netId);
 
   private:
     Dns64Configuration mDns64Configuration;
 };
-
 }  // namespace net
 }  // namespace android
 

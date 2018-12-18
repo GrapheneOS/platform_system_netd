@@ -182,6 +182,32 @@ class ResolverTest : public ::testing::Test, public DnsResponderClient {
 
     static std::string ToString(const ScopedAddrinfo& ai) { return ToString(ai.get()); }
 
+    static std::vector<std::string> ToStrings(const addrinfo* ai) {
+        std::vector<std::string> hosts;
+        if (!ai) {
+            hosts.push_back("<null>");
+            return hosts;
+        }
+        for (const auto* aip = ai; aip != nullptr; aip = aip->ai_next) {
+            char host[NI_MAXHOST];
+            int rv = getnameinfo(aip->ai_addr, aip->ai_addrlen, host, sizeof(host), nullptr, 0,
+                                 NI_NUMERICHOST);
+            if (rv != 0) {
+                hosts.clear();
+                hosts.push_back(gai_strerror(rv));
+                return hosts;
+            } else {
+                hosts.push_back(host);
+            }
+        }
+        if (hosts.empty()) hosts.push_back("<invalid>");
+        return hosts;
+    }
+
+    static std::vector<std::string> ToStrings(const ScopedAddrinfo& ai) {
+        return ToStrings(ai.get());
+    }
+
     size_t GetNumQueries(const test::DNSResponder& dns, const char* name) const {
         auto queries = dns.queries();
         size_t found = 0;
@@ -203,6 +229,20 @@ class ResolverTest : public ::testing::Test, public DnsResponderClient {
             }
         }
         return found;
+    }
+
+    bool WaitForPrefix64Detected(int netId, int timeoutMs) {
+        constexpr int intervalMs = 2;
+        const int limit = timeoutMs / intervalMs;
+        for (int count = 0; count <= limit; ++count) {
+            std::string prefix;
+            auto rv = mNetdSrv->getPrefix64(netId, &prefix);
+            if (rv.isOk()) {
+                return true;
+            }
+            usleep(intervalMs * 1000);
+        }
+        return false;
     }
 
     void RunGetAddrInfoStressTest_Binder(unsigned num_hosts, unsigned num_threads,
@@ -1938,4 +1978,805 @@ TEST_F(ResolverTest, BrokenEdns) {
     }
 
     dns.stopServer();
+}
+
+TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_addr2[] = "127.0.0.5";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char host_name[] = "v4only.example.com.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+
+    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns2.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    ASSERT_TRUE(dns2.startServer());
+
+    std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // hints are necessary in order to let netd know which type of addresses the caller is
+    // interested in.
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    ScopedAddrinfo result = safe_getaddrinfo("v4only", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_LE(1U, GetNumQueries(dns, host_name));
+
+    std::string result_str = ToString(result);
+    EXPECT_EQ(result_str, "64:ff9b::102:304");
+
+    // Let's test the case when there's an IPv4 resolver.
+    servers = {listen_addr, listen_addr2};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+    dns2.clearQueries();
+
+    // Netd doesn't detect prefix because there has an IPv4 resolver but all IPv6 resolvers.
+    EXPECT_FALSE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    result = safe_getaddrinfo("v4only", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_LE(1U, GetNumQueries(dns, host_name));
+
+    result_str = ToString(result);
+    EXPECT_EQ(result_str, "1.2.3.4");
+}
+
+// blocked by aosp/816674 which causes wrong error code EAI_FAIL (4) but EAI_NODATA (7).
+// TODO: fix aosp/816674 and add testcases GetAddrInfo_Dns64QuerySpecified back.
+/*
+TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecified) {
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char host_name[] = "v4only.example.com.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // Ensure to synthesize AAAA if AF_INET6 is specified, and not to synthesize AAAA
+    // in AF_INET case.
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET6;
+    ScopedAddrinfo result = safe_getaddrinfo("v4only", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
+    std::string result_str = ToString(result);
+    EXPECT_EQ(result_str, "64:ff9b::102:304");
+
+    hints.ai_family = AF_INET;
+    result = safe_getaddrinfo("v4only", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_LE(2U, GetNumQueries(dns, host_name));
+    result_str = ToString(result);
+    EXPECT_EQ(result_str, "1.2.3.4");
+}
+*/
+
+TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedV6) {
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char host_name[] = "v4v6.example.com.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    ScopedAddrinfo result = safe_getaddrinfo("v4v6", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_LE(2U, GetNumQueries(dns, host_name));
+
+    // In AF_UNSPEC case, do not synthesize AAAA if there's at least one AAAA answer.
+    std::vector<std::string> result_strs = ToStrings(result);
+    for (const auto& str : result_strs) {
+        EXPECT_TRUE(str == "1.2.3.4" || str == "2001:db8::102:304")
+                << ", result_str='" << str << "'";
+    }
+}
+
+TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedNoV6) {
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char host_name[] = "v4v6.example.com.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    ScopedAddrinfo result = safe_getaddrinfo("v4v6", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_LE(2U, GetNumQueries(dns, host_name));
+
+    // In AF_UNSPEC case, synthesize AAAA if there's no AAAA answer.
+    std::string result_str = ToString(result);
+    EXPECT_EQ(result_str, "64:ff9b::102:304");
+}
+
+TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecialUseIPv4Addresses) {
+    constexpr char THIS_NETWORK[] = "this_network";
+    constexpr char LOOPBACK[] = "loopback";
+    constexpr char LINK_LOCAL[] = "link_local";
+    constexpr char MULTICAST[] = "multicast";
+    constexpr char LIMITED_BROADCAST[] = "limited_broadcast";
+
+    constexpr char ADDR_THIS_NETWORK[] = "0.0.0.1";
+    constexpr char ADDR_LOOPBACK[] = "127.0.0.1";
+    constexpr char ADDR_LINK_LOCAL[] = "169.254.0.1";
+    constexpr char ADDR_MULTICAST[] = "224.0.0.1";
+    constexpr char ADDR_LIMITED_BROADCAST[] = "255.255.255.255";
+
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::");
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    static const struct TestConfig {
+        std::string name;
+        std::string addr;
+
+        std::string asHostName() const { return StringPrintf("%s.example.com.", name.c_str()); }
+    } testConfigs[]{
+        {THIS_NETWORK,      ADDR_THIS_NETWORK},
+        {LOOPBACK,          ADDR_LOOPBACK},
+        {LINK_LOCAL,        ADDR_LINK_LOCAL},
+        {MULTICAST,         ADDR_MULTICAST},
+        {LIMITED_BROADCAST, ADDR_LIMITED_BROADCAST}
+    };
+
+    for (const auto& config : testConfigs) {
+        const std::string testHostName = config.asHostName();
+        SCOPED_TRACE(testHostName);
+
+        const char* host_name = testHostName.c_str();
+        dns.addMapping(host_name, ns_type::ns_t_a, config.addr.c_str());
+
+        addrinfo hints;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET6;
+        ScopedAddrinfo result = safe_getaddrinfo(config.name.c_str(), nullptr, &hints);
+        // In AF_INET6 case, don't return IPv4 answers
+        EXPECT_TRUE(result == nullptr);
+        EXPECT_LE(2U, GetNumQueries(dns, host_name));
+        dns.clearQueries();
+
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_UNSPEC;
+        result = safe_getaddrinfo(config.name.c_str(), nullptr, &hints);
+        EXPECT_TRUE(result != nullptr);
+        // Expect IPv6 query only. IPv4 answer has been cached in previous query.
+        EXPECT_LE(1U, GetNumQueries(dns, host_name));
+        // In AF_UNSPEC case, don't synthesize special use IPv4 address.
+        std::string result_str = ToString(result);
+        EXPECT_EQ(result_str, config.addr.c_str());
+        dns.clearQueries();
+    }
+}
+
+TEST_F(ResolverTest, GetAddrInfo_Dns64QueryWithNullArgumentHints) {
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char host_name[] = "v4only.example.com.";
+    constexpr char host_name2[] = "v4v6.example.com.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.4");
+    dns.addMapping(host_name2, ns_type::ns_t_aaaa, "2001:db8::1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // Assign argument hints of getaddrinfo() as null is equivalent to set ai_family AF_UNSPEC.
+    // In AF_UNSPEC case, synthesize AAAA if there has A answer only.
+    ScopedAddrinfo result = safe_getaddrinfo("v4only", nullptr, nullptr);
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_LE(2U, GetNumQueries(dns, host_name));
+    std::string result_str = ToString(result);
+    EXPECT_EQ(result_str, "64:ff9b::102:304");
+    dns.clearQueries();
+
+    // In AF_UNSPEC case, do not synthesize AAAA if there's at least one AAAA answer.
+    result = safe_getaddrinfo("v4v6", nullptr, nullptr);
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_LE(2U, GetNumQueries(dns, host_name2));
+    std::vector<std::string> result_strs = ToStrings(result);
+    for (const auto& str : result_strs) {
+        EXPECT_TRUE(str == "1.2.3.4" || str == "2001:db8::102:304")
+                << ", result_str='" << str << "'";
+    }
+}
+
+TEST_F(ResolverTest, GetAddrInfo_Dns64QueryNullArgumentNode) {
+    constexpr char ADDR_ANYADDR_V4[] = "0.0.0.0";
+    constexpr char ADDR_ANYADDR_V6[] = "::";
+    constexpr char ADDR_LOCALHOST_V4[] = "127.0.0.1";
+    constexpr char ADDR_LOCALHOST_V6[] = "::1";
+
+    constexpr char PORT_NAME_HTTP[] = "http";
+    constexpr char PORT_NUMBER_HTTP[] = "80";
+
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::");
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // If node is null, return address is listed by libc/getaddrinfo.c as follows.
+    // - passive socket -> anyaddr (0.0.0.0 or ::)
+    // - non-passive socket -> localhost (127.0.0.1 or ::1)
+    static const struct TestConfig {
+        int flag;
+        std::string addr_v4;
+        std::string addr_v6;
+
+        std::string asParameters() const {
+            return StringPrintf("flag=%d, addr_v4=%s, addr_v6=%s", flag, addr_v4.c_str(),
+                                addr_v6.c_str());
+        }
+    } testConfigs[]{
+        {0 /* non-passive */, ADDR_LOCALHOST_V4, ADDR_LOCALHOST_V6},
+        {AI_PASSIVE,          ADDR_ANYADDR_V4,   ADDR_ANYADDR_V6}
+    };
+
+    for (const auto& config : testConfigs) {
+        SCOPED_TRACE(config.asParameters());
+
+        addrinfo hints;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_UNSPEC;  // any address family
+        hints.ai_socktype = 0;        // any type
+        hints.ai_protocol = 0;        // any protocol
+        hints.ai_flags = config.flag;
+
+        // Assign hostname as null and service as port name.
+        ScopedAddrinfo result = safe_getaddrinfo(nullptr, PORT_NAME_HTTP, &hints);
+        ASSERT_TRUE(result != nullptr);
+
+        // Can't be synthesized because it should not get into Netd.
+        std::vector<std::string> result_strs = ToStrings(result);
+        for (const auto& str : result_strs) {
+            EXPECT_TRUE(str == config.addr_v4 || str == config.addr_v6)
+                    << ", result_str='" << str << "'";
+        }
+
+        // Assign hostname as null and service as numeric port number.
+        hints.ai_flags = config.flag | AI_NUMERICSERV;
+        result = safe_getaddrinfo(nullptr, PORT_NUMBER_HTTP, &hints);
+        ASSERT_TRUE(result != nullptr);
+
+        // Can't be synthesized because it should not get into Netd.
+        result_strs = ToStrings(result);
+        for (const auto& str : result_strs) {
+            EXPECT_TRUE(str == config.addr_v4 || str == config.addr_v6)
+                    << ", result_str='" << str << "'";
+        }
+    }
+}
+
+TEST_F(ResolverTest, GetHostByAddr_ReverseDnsQueryWithHavingNat64Prefix) {
+    struct hostent* result = nullptr;
+    struct in_addr v4addr;
+    struct in6_addr v6addr;
+
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char ptr_name[] = "v4v6.example.com.";
+    // PTR record for IPv4 address 1.2.3.4
+    constexpr char ptr_addr_v4[] = "4.3.2.1.in-addr.arpa.";
+    // PTR record for IPv6 address 2001:db8::102:304
+    constexpr char ptr_addr_v6[] =
+            "4.0.3.0.2.0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(ptr_addr_v4, ns_type::ns_t_ptr, ptr_name);
+    dns.addMapping(ptr_addr_v6, ns_type::ns_t_ptr, ptr_name);
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // Reverse IPv4 DNS query. Prefix should have no effect on it.
+    inet_pton(AF_INET, "1.2.3.4", &v4addr);
+    result = gethostbyaddr(&v4addr, sizeof(v4addr), AF_INET);
+    ASSERT_TRUE(result != nullptr);
+    std::string result_str = result->h_name ? result->h_name : "null";
+    EXPECT_EQ(result_str, "v4v6.example.com");
+
+    // Reverse IPv6 DNS query. Prefix should have no effect on it.
+    inet_pton(AF_INET6, "2001:db8::102:304", &v6addr);
+    result = gethostbyaddr(&v6addr, sizeof(v6addr), AF_INET6);
+    ASSERT_TRUE(result != nullptr);
+    result_str = result->h_name ? result->h_name : "null";
+    EXPECT_EQ(result_str, "v4v6.example.com");
+}
+
+TEST_F(ResolverTest, GetHostByAddr_ReverseDns64Query) {
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char ptr_name[] = "v4only.example.com.";
+    // PTR record for IPv4 address 1.2.3.4
+    constexpr char ptr_addr_v4[] = "4.3.2.1.in-addr.arpa.";
+    // PTR record for IPv6 address 64:ff9b::1.2.3.4
+    constexpr char ptr_addr_v6_nomapping[] =
+            "4.0.3.0.2.0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.b.9.f.f.4.6.0.0.ip6.arpa.";
+    constexpr char ptr_name_v6_synthesis[] = "v6synthesis.example.com.";
+    // PTR record for IPv6 address 64:ff9b::5.6.7.8
+    constexpr char ptr_addr_v6_synthesis[] =
+            "8.0.7.0.6.0.5.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.b.9.f.f.4.6.0.0.ip6.arpa.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(ptr_addr_v4, ns_type::ns_t_ptr, ptr_name);
+    dns.addMapping(ptr_addr_v6_synthesis, ns_type::ns_t_ptr, ptr_name_v6_synthesis);
+    // "ptr_addr_v6_nomapping" is not mapped in DNS server
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // Synthesized PTR record doesn't exist on DNS server
+    // Reverse IPv6 DNS64 query while DNS server doesn't have an answer for synthesized address.
+    // After querying synthesized address failed, expect that prefix is removed from IPv6
+    // synthesized address and do reverse IPv4 query instead.
+    struct in6_addr v6addr;
+    inet_pton(AF_INET6, "64:ff9b::1.2.3.4", &v6addr);
+    struct hostent* result = gethostbyaddr(&v6addr, sizeof(v6addr), AF_INET6);
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_LE(1U, GetNumQueries(dns, ptr_addr_v6_nomapping));  // PTR record not exist
+    EXPECT_LE(1U, GetNumQueries(dns, ptr_addr_v4));            // PTR record exist
+    std::string result_str = result->h_name ? result->h_name : "null";
+    EXPECT_EQ(result_str, "v4only.example.com");
+    // Check that return address has been mapped from IPv4 to IPv6 address because Netd
+    // removes NAT64 prefix and does IPv4 DNS reverse lookup in this case. Then, Netd
+    // fakes the return IPv4 address as original queried IPv6 address.
+    result_str = ToString(result);
+    EXPECT_EQ(result_str, "64:ff9b::102:304");
+    dns.clearQueries();
+
+    // Synthesized PTR record exists on DNS server
+    // Reverse IPv6 DNS64 query while DNS server has an answer for synthesized address.
+    // Expect to Netd pass through synthesized address for DNS queries.
+    inet_pton(AF_INET6, "64:ff9b::5.6.7.8", &v6addr);
+    result = gethostbyaddr(&v6addr, sizeof(v6addr), AF_INET6);
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_LE(1U, GetNumQueries(dns, ptr_addr_v6_synthesis));
+    result_str = result->h_name ? result->h_name : "null";
+    EXPECT_EQ(result_str, "v6synthesis.example.com");
+}
+
+TEST_F(ResolverTest, GetHostByAddr_ReverseDns64QueryFromHostFile) {
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char host_name[] = "localhost";
+    // The address is synthesized by prefix64:localhost.
+    constexpr char host_addr[] = "64:ff9b::7f00:1";
+
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    ASSERT_TRUE(dns.startServer());
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // Using synthesized "localhost" address to be a trick for resolving host name
+    // from host file /etc/hosts and "localhost" is the only name in /etc/hosts. Note that this is
+    // not realistic: the code never synthesizes AAAA records for addresses in 127.0.0.0/8.
+    struct in6_addr v6addr;
+    inet_pton(AF_INET6, host_addr, &v6addr);
+    struct hostent* result = gethostbyaddr(&v6addr, sizeof(v6addr), AF_INET6);
+    ASSERT_TRUE(result != nullptr);
+    // Expect no DNS queries; localhost is resolved via /etc/hosts.
+    EXPECT_EQ(0U, GetNumQueries(dns, host_name));
+
+    ASSERT_EQ(sizeof(in6_addr), (unsigned) result->h_length);
+    ASSERT_EQ(AF_INET6, result->h_addrtype);
+    std::string result_str = ToString(result);
+    EXPECT_EQ(result_str, host_addr);
+    result_str = result->h_name ? result->h_name : "null";
+    EXPECT_EQ(result_str, host_name);
+}
+
+TEST_F(ResolverTest, GetNameInfo_ReverseDnsQueryWithHavingNat64Prefix) {
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char ptr_name[] = "v4v6.example.com.";
+    // PTR record for IPv4 address 1.2.3.4
+    constexpr char ptr_addr_v4[] = "4.3.2.1.in-addr.arpa.";
+    // PTR record for IPv6 address 2001:db8::102:304
+    constexpr char ptr_addr_v6[] =
+            "4.0.3.0.2.0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(ptr_addr_v4, ns_type::ns_t_ptr, ptr_name);
+    dns.addMapping(ptr_addr_v6, ns_type::ns_t_ptr, ptr_name);
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    static const struct TestConfig {
+        int flag;
+        int family;
+        std::string addr;
+        std::string host;
+
+        std::string asParameters() const {
+            return StringPrintf("flag=%d, family=%d, addr=%s, host=%s", flag, family, addr.c_str(),
+                                host.c_str());
+        }
+    } testConfigs[]{
+        {NI_NAMEREQD,    AF_INET,  "1.2.3.4",           "v4v6.example.com"},
+        {NI_NUMERICHOST, AF_INET,  "1.2.3.4",           "1.2.3.4"},
+        {0,              AF_INET,  "1.2.3.4",           "v4v6.example.com"},
+        {0,              AF_INET,  "5.6.7.8",           "5.6.7.8"},           // unmapped
+        {NI_NAMEREQD,    AF_INET6, "2001:db8::102:304", "v4v6.example.com"},
+        {NI_NUMERICHOST, AF_INET6, "2001:db8::102:304", "2001:db8::102:304"},
+        {0,              AF_INET6, "2001:db8::102:304", "v4v6.example.com"},
+        {0,              AF_INET6, "2001:db8::506:708", "2001:db8::506:708"}, // unmapped
+    };
+
+    // Reverse IPv4/IPv6 DNS query. Prefix should have no effect on it.
+    for (const auto& config : testConfigs) {
+        SCOPED_TRACE(config.asParameters());
+
+        int rv;
+        char host[NI_MAXHOST];
+        struct sockaddr_in sin;
+        struct sockaddr_in6 sin6;
+        if (config.family == AF_INET) {
+            memset(&sin, 0, sizeof(sin));
+            sin.sin_family = AF_INET;
+            inet_pton(AF_INET, config.addr.c_str(), &sin.sin_addr);
+            rv = getnameinfo((const struct sockaddr*) &sin, sizeof(sin), host, sizeof(host),
+                             nullptr, 0, config.flag);
+            if (config.flag == NI_NAMEREQD) EXPECT_LE(1U, GetNumQueries(dns, ptr_addr_v4));
+        } else if (config.family == AF_INET6) {
+            memset(&sin6, 0, sizeof(sin6));
+            sin6.sin6_family = AF_INET6;
+            inet_pton(AF_INET6, config.addr.c_str(), &sin6.sin6_addr);
+            rv = getnameinfo((const struct sockaddr*) &sin6, sizeof(sin6), host, sizeof(host),
+                             nullptr, 0, config.flag);
+            if (config.flag == NI_NAMEREQD) EXPECT_LE(1U, GetNumQueries(dns, ptr_addr_v6));
+        }
+        ASSERT_EQ(0, rv);
+        std::string result_str = host;
+        EXPECT_EQ(result_str, config.host);
+        dns.clearQueries();
+    }
+}
+
+TEST_F(ResolverTest, GetNameInfo_ReverseDns64Query) {
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char ptr_name[] = "v4only.example.com.";
+    // PTR record for IPv4 address 1.2.3.4
+    constexpr char ptr_addr_v4[] = "4.3.2.1.in-addr.arpa.";
+    // PTR record for IPv6 address 64:ff9b::1.2.3.4
+    constexpr char ptr_addr_v6_nomapping[] =
+            "4.0.3.0.2.0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.b.9.f.f.4.6.0.0.ip6.arpa.";
+    constexpr char ptr_name_v6_synthesis[] = "v6synthesis.example.com.";
+    // PTR record for IPv6 address 64:ff9b::5.6.7.8
+    constexpr char ptr_addr_v6_synthesis[] =
+            "8.0.7.0.6.0.5.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.b.9.f.f.4.6.0.0.ip6.arpa.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(ptr_addr_v4, ns_type::ns_t_ptr, ptr_name);
+    dns.addMapping(ptr_addr_v6_synthesis, ns_type::ns_t_ptr, ptr_name_v6_synthesis);
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    static const struct TestConfig {
+        bool hasSynthesizedPtrRecord;
+        int flag;
+        std::string addr;
+        std::string host;
+
+        std::string asParameters() const {
+            return StringPrintf("hasSynthesizedPtrRecord=%d, flag=%d, addr=%s, host=%s",
+                                hasSynthesizedPtrRecord, flag, addr.c_str(), host.c_str());
+        }
+    } testConfigs[]{
+        {false, NI_NAMEREQD,    "64:ff9b::102:304", "v4only.example.com"},
+        {false, NI_NUMERICHOST, "64:ff9b::102:304", "64:ff9b::102:304"},
+        {false, 0,              "64:ff9b::102:304", "v4only.example.com"},
+        {true,  NI_NAMEREQD,    "64:ff9b::506:708", "v6synthesis.example.com"},
+        {true,  NI_NUMERICHOST, "64:ff9b::506:708", "64:ff9b::506:708"},
+        {true,  0,              "64:ff9b::506:708", "v6synthesis.example.com"}
+    };
+
+    // hasSynthesizedPtrRecord = false
+    //   Synthesized PTR record doesn't exist on DNS server
+    //   Reverse IPv6 DNS64 query while DNS server doesn't have an answer for synthesized address.
+    //   After querying synthesized address failed, expect that prefix is removed from IPv6
+    //   synthesized address and do reverse IPv4 query instead.
+    //
+    // hasSynthesizedPtrRecord = true
+    //   Synthesized PTR record exists on DNS server
+    //   Reverse IPv6 DNS64 query while DNS server has an answer for synthesized address.
+    //   Expect to just pass through synthesized address for DNS queries.
+    for (const auto& config : testConfigs) {
+        SCOPED_TRACE(config.asParameters());
+
+        char host[NI_MAXHOST];
+        struct sockaddr_in6 sin6;
+        memset(&sin6, 0, sizeof(sin6));
+        sin6.sin6_family = AF_INET6;
+        inet_pton(AF_INET6, config.addr.c_str(), &sin6.sin6_addr);
+        int rv = getnameinfo((const struct sockaddr*) &sin6, sizeof(sin6), host, sizeof(host),
+                             nullptr, 0, config.flag);
+        ASSERT_EQ(0, rv);
+        if (config.flag == NI_NAMEREQD) {
+            if (config.hasSynthesizedPtrRecord) {
+                EXPECT_LE(1U, GetNumQueries(dns, ptr_addr_v6_synthesis));
+            } else {
+                EXPECT_LE(1U, GetNumQueries(dns, ptr_addr_v6_nomapping));  // PTR record not exist.
+                EXPECT_LE(1U, GetNumQueries(dns, ptr_addr_v4));            // PTR record exist.
+            }
+        }
+        std::string result_str = host;
+        EXPECT_EQ(result_str, config.host);
+        dns.clearQueries();
+    }
+}
+
+TEST_F(ResolverTest, GetNameInfo_ReverseDns64QueryFromHostFile) {
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char host_name[] = "localhost";
+    // The address is synthesized by prefix64:localhost.
+    constexpr char host_addr[] = "64:ff9b::7f00:1";
+
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    ASSERT_TRUE(dns.startServer());
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // Using synthesized "localhost" address to be a trick for resolving host name
+    // from host file /etc/hosts and "localhost" is the only name in /etc/hosts. Note that this is
+    // not realistic: the code never synthesizes AAAA records for addresses in 127.0.0.0/8.
+    char host[NI_MAXHOST];
+    struct sockaddr_in6 sin6;
+    memset(&sin6, 0, sizeof(sin6));
+    sin6.sin6_family = AF_INET6;
+    inet_pton(AF_INET6, host_addr, &sin6.sin6_addr);
+    int rv = getnameinfo((const struct sockaddr*) &sin6, sizeof(sin6), host, sizeof(host), nullptr,
+                         0, NI_NAMEREQD);
+    ASSERT_EQ(0, rv);
+    // Expect no DNS queries; localhost is resolved via /etc/hosts.
+    EXPECT_EQ(0U, GetNumQueries(dns, host_name));
+
+    std::string result_str = host;
+    EXPECT_EQ(result_str, host_name);
+}
+
+// blocked by aosp/816674 which causes wrong error code EAI_FAIL (4) but EAI_NODATA (7).
+// TODO:
+// 1. fix aosp/816674 and add testcases GetHostByName2_Dns64Synthesize back.
+// 2. Manual test gethostbyname2 synthesis for IPv4 address which comes from host file.
+/*
+TEST_F(ResolverTest, GetHostByName2_Dns64Synthesize) {
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char host_name[] = "ipv4only.example.com.";
+
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // Query an IPv4-only hostname. Expect that gets a synthesized address.
+    struct hostent* result = gethostbyname2("ipv4only", AF_INET6);
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_LE(1U, GetNumQueries(dns, host_name));
+    std::string result_str = ToString(result);
+    EXPECT_EQ(result_str, "64:ff9b::102:304");
+}
+*/
+
+TEST_F(ResolverTest, GetHostByName2_DnsQueryWithHavingNat64Prefix) {
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    constexpr char host_name[] = "v4v6.example.com.";
+
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // IPv4 DNS query. Prefix should have no effect on it.
+    struct hostent* result = gethostbyname2("v4v6", AF_INET);
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_LE(1U, GetNumQueries(dns, host_name));
+    std::string result_str = ToString(result);
+    EXPECT_EQ(result_str, "1.2.3.4");
+    dns.clearQueries();
+
+    // IPv6 DNS query. Prefix should have no effect on it.
+    result = gethostbyname2("v4v6", AF_INET6);
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_LE(1U, GetNumQueries(dns, host_name));
+    result_str = ToString(result);
+    EXPECT_EQ(result_str, "2001:db8::102:304");
+}
+
+TEST_F(ResolverTest, GetHostByName2_Dns64QuerySpecialUseIPv4Addresses) {
+    constexpr char THIS_NETWORK[] = "this_network";
+    constexpr char LOOPBACK[] = "loopback";
+    constexpr char LINK_LOCAL[] = "link_local";
+    constexpr char MULTICAST[] = "multicast";
+    constexpr char LIMITED_BROADCAST[] = "limited_broadcast";
+
+    constexpr char ADDR_THIS_NETWORK[] = "0.0.0.1";
+    constexpr char ADDR_LOOPBACK[] = "127.0.0.1";
+    constexpr char ADDR_LINK_LOCAL[] = "169.254.0.1";
+    constexpr char ADDR_MULTICAST[] = "224.0.0.1";
+    constexpr char ADDR_LIMITED_BROADCAST[] = "255.255.255.255";
+
+    constexpr char listen_addr[] = "::1";
+    constexpr char listen_srv[] = "53";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::");
+    ASSERT_TRUE(dns.startServer());
+
+    const std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Wait for detecting prefix to complete.
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    static const struct TestConfig {
+        std::string name;
+        std::string addr;
+
+        std::string asHostName() const {
+            return StringPrintf("%s.example.com.",
+                                name.c_str());
+        }
+    } testConfigs[]{
+        {THIS_NETWORK,      ADDR_THIS_NETWORK},
+        {LOOPBACK,          ADDR_LOOPBACK},
+        {LINK_LOCAL,        ADDR_LINK_LOCAL},
+        {MULTICAST,         ADDR_MULTICAST},
+        {LIMITED_BROADCAST, ADDR_LIMITED_BROADCAST}
+    };
+
+    for (const auto& config : testConfigs) {
+        const std::string testHostName = config.asHostName();
+        SCOPED_TRACE(testHostName);
+
+        const char* host_name = testHostName.c_str();
+        dns.addMapping(host_name, ns_type::ns_t_a, config.addr.c_str());
+
+        struct hostent* result = gethostbyname2(config.name.c_str(), AF_INET6);
+        EXPECT_LE(1U, GetNumQueries(dns, host_name));
+
+        // In AF_INET6 case, don't synthesize special use IPv4 address.
+        // Expect to have no answer
+        EXPECT_EQ(nullptr, result);
+
+        dns.clearQueries();
+    }
 }

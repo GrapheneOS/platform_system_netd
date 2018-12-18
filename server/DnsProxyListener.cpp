@@ -230,6 +230,172 @@ bool parseQuery(const u_char* msg, int msgLen, int* rr_type, std::string* rr_nam
     return true;
 }
 
+bool onlyIPv4Answers(const struct addrinfo* res) {
+    // Null addrinfo pointer isn't checked because the caller doesn't pass null pointer.
+
+    for (const struct addrinfo* ai = res; ai; ai = ai->ai_next)
+        if (ai->ai_family != AF_INET) return false;
+
+    return true;
+}
+
+bool isSpecialUseIPv4Address(const struct in_addr& ia) {
+    const uint32_t addr = ntohl(ia.s_addr);
+
+    // Only check necessary IP ranges in RFC 5735 section 4
+    return ((addr & 0xff000000) == 0x00000000) ||  // "This" Network
+           ((addr & 0xff000000) == 0x7f000000) ||  // Loopback
+           ((addr & 0xffff0000) == 0xa9fe0000) ||  // Link Local
+           ((addr & 0xf0000000) == 0xe0000000) ||  // Multicast
+           (addr == INADDR_BROADCAST);             // Limited Broadcast
+}
+
+bool isSpecialUseIPv4Address(const struct sockaddr* sa) {
+    if (sa->sa_family != AF_INET) return false;
+
+    return isSpecialUseIPv4Address(((struct sockaddr_in*) sa)->sin_addr);
+}
+
+bool onlyNonSpecialUseIPv4Addresses(struct hostent* hp) {
+    // Null hostent pointer isn't checked because the caller doesn't pass null pointer.
+
+    if (hp->h_addrtype != AF_INET) return false;
+
+    for (int i = 0; hp->h_addr_list[i] != nullptr; i++)
+        if (isSpecialUseIPv4Address(*(struct in_addr*) hp->h_addr_list[i])) return false;
+
+    return true;
+}
+
+bool onlyNonSpecialUseIPv4Addresses(const struct addrinfo* res) {
+    // Null addrinfo pointer isn't checked because the caller doesn't pass null pointer.
+
+    for (const struct addrinfo* ai = res; ai; ai = ai->ai_next) {
+        if (ai->ai_family != AF_INET) return false;
+        if (isSpecialUseIPv4Address(ai->ai_addr)) return false;
+    }
+
+    return true;
+}
+
+void logDnsQueryResult(const struct hostent* hp) {
+    if (hp == nullptr) return;
+
+    ALOGD("DNS records:");
+    for (int i = 0; hp->h_addr_list[i] != nullptr; i++) {
+        char ip_addr[INET6_ADDRSTRLEN];
+        if (inet_ntop(hp->h_addrtype, hp->h_addr_list[i], ip_addr, sizeof(ip_addr)) != nullptr) {
+            ALOGD("[%d] %s, %d, %d, %s (%p)", i, hp->h_name ? hp->h_name : "null", hp->h_addrtype,
+                  hp->h_length, ip_addr, hp->h_addr_list[i]);
+        } else {
+            ALOGD("[%d] numeric hostname translation fail (%d)", i, errno);
+        }
+    }
+}
+
+void logDnsQueryResult(const struct addrinfo* res) {
+    if (res == nullptr) return;
+
+    int i;
+    const struct addrinfo* ai;
+    ALOGD("DNS records:");
+    for (ai = res, i = 0; ai; ai = ai->ai_next, i++) {
+        if ((ai->ai_family != AF_INET) && (ai->ai_family != AF_INET6)) continue;
+        char ip_addr[INET6_ADDRSTRLEN];
+        int ret = getnameinfo(ai->ai_addr, ai->ai_addrlen, ip_addr, sizeof(ip_addr), nullptr, 0,
+                              NI_NUMERICHOST);
+        if (!ret) {
+            ALOGD("[%d] 0x%x,%d,%d,%d,%d,%s,%s,%p", i, ai->ai_flags, ai->ai_family, ai->ai_socktype,
+                  ai->ai_protocol, ai->ai_addrlen, ai->ai_canonname ? ai->ai_canonname : "null",
+                  ip_addr, ai);
+        } else {
+            ALOGD("[%d] numeric hostname translation fail (%d)", i, ret);
+        }
+    }
+}
+
+bool isValidNat64Prefix(const netdutils::IPPrefix prefix) {
+    if (prefix.family() != AF_INET6) {
+        ALOGE("Only IPv6 NAT64 prefixes are supported (%u)", prefix.family());
+        return false;
+    }
+    if (prefix.length() != 96) {
+        ALOGE("Only /96 NAT64 prefixes are supported (%d)", prefix.length());
+        return false;
+    }
+    return true;
+}
+
+bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, struct hostent* hp) {
+    if (hp == nullptr) return false;
+    if (!onlyNonSpecialUseIPv4Addresses(hp)) return false;
+    if (!isValidNat64Prefix(prefix)) return false;
+
+    struct sockaddr_storage ss = netdutils::IPSockAddr(prefix.ip());
+    struct sockaddr_in6* v6prefix = (struct sockaddr_in6*) &ss;
+    for (int i = 0; hp->h_addr_list[i] != nullptr; i++) {
+        struct in_addr iaOriginal = *(struct in_addr*) hp->h_addr_list[i];
+        struct in6_addr* ia6 = (struct in6_addr*) hp->h_addr_list[i];
+        memset(ia6, 0, sizeof(struct in6_addr));
+
+        // Synthesize /96 NAT64 prefix in place. The space has reserved by getanswer() and
+        // _hf_gethtbyname2() in system/netd/resolv/gethnamaddr.cpp and
+        // system/netd/resolv/sethostent.cpp.
+        *ia6 = v6prefix->sin6_addr;
+        ia6->s6_addr32[3] = iaOriginal.s_addr;
+
+        if (DBG) {
+            char buf[INET6_ADDRSTRLEN];  // big enough for either IPv4 or IPv6
+            inet_ntop(AF_INET, &iaOriginal.s_addr, buf, sizeof(buf));
+            ALOGD("DNS A record: %s", buf);
+            inet_ntop(AF_INET6, &v6prefix->sin6_addr, buf, sizeof(buf));
+            ALOGD("NAT64 prefix: %s", buf);
+            inet_ntop(AF_INET6, ia6, buf, sizeof(buf));
+            ALOGD("DNS64 Synthesized AAAA record: %s", buf);
+        }
+    }
+    hp->h_addrtype = AF_INET6;
+    hp->h_length = sizeof(in6_addr);
+
+    if (DBG) logDnsQueryResult(hp);
+    return true;
+}
+
+bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, struct addrinfo* result) {
+    if (result == nullptr) return false;
+    if (!onlyNonSpecialUseIPv4Addresses(result)) return false;
+    if (!isValidNat64Prefix(prefix)) return false;
+
+    struct sockaddr_storage ss = netdutils::IPSockAddr(prefix.ip());
+    struct sockaddr_in6* v6prefix = (struct sockaddr_in6*) &ss;
+    for (struct addrinfo* ai = result; ai; ai = ai->ai_next) {
+        struct sockaddr_in sinOriginal = *(struct sockaddr_in*) ai->ai_addr;
+        struct sockaddr_in6* sin6 = (struct sockaddr_in6*) ai->ai_addr;
+        memset(sin6, 0, sizeof(sockaddr_in6));
+
+        // Synthesize /96 NAT64 prefix in place. The space has reserved by get_ai() in
+        // system/netd/resolv/getaddrinfo.cpp.
+        sin6->sin6_addr = v6prefix->sin6_addr;
+        sin6->sin6_addr.s6_addr32[3] = sinOriginal.sin_addr.s_addr;
+        sin6->sin6_family = AF_INET6;
+        sin6->sin6_port = sinOriginal.sin_port;
+        ai->ai_addrlen = sizeof(struct sockaddr_in6);
+        ai->ai_family = AF_INET6;
+
+        if (DBG) {
+            char buf[INET6_ADDRSTRLEN];  // big enough for either IPv4 or IPv6
+            inet_ntop(AF_INET, &sinOriginal.sin_addr.s_addr, buf, sizeof(buf));
+            ALOGD("DNS A record: %s", buf);
+            inet_ntop(AF_INET6, &v6prefix->sin6_addr, buf, sizeof(buf));
+            ALOGD("NAT64 prefix: %s", buf);
+            inet_ntop(AF_INET6, &sin6->sin6_addr, buf, sizeof(buf));
+            ALOGD("DNS64 Synthesized AAAA record: %s", buf);
+        }
+    }
+    if (DBG) logDnsQueryResult(result);
+    return true;
+}
+
 }  // namespace
 
 DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl, EventReporter* eventReporter) :
@@ -334,6 +500,54 @@ static bool sendaddrinfo(SocketClient* c, struct addrinfo* ai) {
     return true;
 }
 
+void DnsProxyListener::GetAddrInfoHandler::doDns64Synthesis(int32_t* rv, struct addrinfo** res) {
+    if (mHost == nullptr) return;
+
+    const bool ipv6WantedButNoData = (mHints && mHints->ai_family == AF_INET6 && *rv == EAI_NODATA);
+    const bool unspecWantedButNoIPv6 =
+            ((!mHints || mHints->ai_family == AF_UNSPEC) && *rv == 0 && onlyIPv4Answers(*res));
+
+    if (!ipv6WantedButNoData && !unspecWantedButNoIPv6) {
+        return;
+    }
+
+    netdutils::IPPrefix prefix{};
+    if (net::gCtls->resolverCtrl.getPrefix64(mNetContext.dns_netid, &prefix)) {
+        return;
+    }
+
+    if (ipv6WantedButNoData) {
+        // If caller wants IPv6 answers but no data, try to query IPv4 answers for synthesis
+        const uid_t uid = mClient->getUid();
+        if (queryLimiter.start(uid)) {
+            mHints->ai_family = AF_INET;
+            // Don't need to do freeaddrinfo(res) before starting new DNS lookup because previous
+            // DNS lookup is failed with error EAI_NODATA.
+            *rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, res);
+            queryLimiter.finish(uid);
+            if (*rv) {
+                *rv = EAI_NODATA;  // return original error code
+                return;
+            }
+        } else {
+            ALOGE("getaddrinfo: from UID %d, max concurrent queries reached", uid);
+            return;
+        }
+    }
+
+    if (!synthesizeNat64PrefixWithARecord(prefix, *res)) {
+        if (ipv6WantedButNoData) {
+            // If caller wants IPv6 answers but no data and failed to synthesize IPv6 answers,
+            // don't return the IPv4 answers.
+            *rv = EAI_NODATA;  // return original error code
+            if (*res) {
+                freeaddrinfo(*res);
+                *res = nullptr;
+            }
+        }
+    }
+}
+
 void DnsProxyListener::GetAddrInfoHandler::run() {
     if (DBG) {
         ALOGD("GetAddrInfoHandler, now for %s / %s / {%u,%u,%u,%u,%u,%u}", mHost, mService,
@@ -357,6 +571,8 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
         ALOGE("getaddrinfo: from UID %d, max concurrent queries reached", uid);
     }
     const int latencyMs = lround(s.timeTaken());
+
+    doDns64Synthesis(&rv, &result);
 
     if (rv) {
         // getaddrinfo failed
@@ -712,6 +928,41 @@ DnsProxyListener::GetHostByNameHandler::~GetHostByNameHandler() {
     free(mName);
 }
 
+void DnsProxyListener::GetHostByNameHandler::doDns64Synthesis(int32_t* rv, struct hostent** hpp) {
+    netdutils::IPPrefix prefix{};
+    // Don't have to consider family AF_UNSPEC case because gethostbyname{, 2} only supports
+    // family AF_INET or AF_INET6.
+    const bool ipv6WantedButNoData = (mAf == AF_INET6 && *rv == EAI_NODATA);
+
+    if (!ipv6WantedButNoData) {
+        return;
+    }
+
+    if (net::gCtls->resolverCtrl.getPrefix64(mNetContext.dns_netid, &prefix)) {
+        return;
+    }
+
+    // If caller wants IPv6 answers but no data, try to query IPv4 answers for synthesis
+    const uid_t uid = mClient->getUid();
+    if (queryLimiter.start(uid)) {
+        *rv = android_gethostbynamefornetcontext(mName, AF_INET, &mNetContext, hpp);
+        queryLimiter.finish(uid);
+        if (*rv) {
+            *rv = EAI_NODATA;  // return original error code
+            return;
+        }
+    } else {
+        ALOGE("gethostbyname: from UID %d, max concurrent queries reached", uid);
+        return;
+    }
+
+    if (!synthesizeNat64PrefixWithARecord(prefix, *hpp)) {
+        // If caller wants IPv6 answers but no data and failed to synthesize IPv4 answers,
+        // don't return the IPv4 answers.
+        *hpp = nullptr;
+    }
+}
+
 void DnsProxyListener::GetHostByNameHandler::run() {
     if (DBG) {
         ALOGD("DnsProxyListener::GetHostByNameHandler::run");
@@ -730,6 +981,8 @@ void DnsProxyListener::GetHostByNameHandler::run() {
         ALOGE("gethostbyname: from UID %d, max concurrent queries reached", uid);
     }
     const int latencyMs = lround(s.timeTaken());
+
+    doDns64Synthesis(&rv, &hp);
 
     if (DBG) {
         ALOGD("GetHostByNameHandler::run gethostbyname errno: %s hp->h_name = %s, name_len = %zu",
@@ -865,6 +1118,50 @@ DnsProxyListener::GetHostByAddrHandler::~GetHostByAddrHandler() {
     free(mAddress);
 }
 
+void DnsProxyListener::GetHostByAddrHandler::doDns64ReverseLookup(struct hostent** hpp) {
+    if (*hpp != nullptr || mAddressFamily != AF_INET6 || !mAddress) {
+        return;
+    }
+
+    netdutils::IPPrefix prefix{};
+    if (net::gCtls->resolverCtrl.getPrefix64(mNetContext.dns_netid, &prefix)) {
+        return;
+    }
+
+    if (!isValidNat64Prefix(prefix)) {
+        return;
+    }
+
+    struct sockaddr_storage ss = netdutils::IPSockAddr(prefix.ip());
+    struct sockaddr_in6* v6prefix = (struct sockaddr_in6*) &ss;
+    struct in6_addr v6addr = *(in6_addr*) mAddress;
+    // Check if address has NAT64 prefix. Only /96 IPv6 NAT64 prefixes are supported
+    if ((v6addr.s6_addr32[0] != v6prefix->sin6_addr.s6_addr32[0]) ||
+        (v6addr.s6_addr32[1] != v6prefix->sin6_addr.s6_addr32[1]) ||
+        (v6addr.s6_addr32[2] != v6prefix->sin6_addr.s6_addr32[2])) {
+        return;
+    }
+
+    const uid_t uid = mClient->getUid();
+    if (queryLimiter.start(uid)) {
+        // Remove NAT64 prefix and do reverse DNS query
+        struct in_addr v4addr = {.s_addr = v6addr.s6_addr32[3]};
+        *hpp = android_gethostbyaddrfornetcontext(&v4addr, sizeof(v4addr), AF_INET, &mNetContext);
+        queryLimiter.finish(uid);
+        if (*hpp) {
+            // Replace IPv4 address with original queried IPv6 address in place. The space has
+            // reserved by _dns_gethtbyaddr() and netbsd_gethostent_r() in
+            // system/netd/resolv/gethnamaddr.cpp.
+            // Note that android_gethostbyaddrfornetcontext returns only one entry in result.
+            memcpy((*hpp)->h_addr_list[0], &v6addr, sizeof(v6addr));
+            (*hpp)->h_addrtype = AF_INET6;
+            (*hpp)->h_length = sizeof(struct in6_addr);
+        }
+    } else {
+        ALOGE("gethostbyaddr: from UID %d, max concurrent queries reached", uid);
+    }
+}
+
 void DnsProxyListener::GetHostByAddrHandler::run() {
     if (DBG) {
         ALOGD("DnsProxyListener::GetHostByAddrHandler::run");
@@ -880,6 +1177,8 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     } else {
         ALOGE("gethostbyaddr: from UID %d, max concurrent queries reached", uid);
     }
+
+    doDns64ReverseLookup(&hp);
 
     if (DBG) {
         ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %zu",
