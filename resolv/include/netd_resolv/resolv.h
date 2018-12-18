@@ -138,9 +138,6 @@ LIBNETD_RESOLV_PUBLIC void resolv_get_private_dns_status_for_net(unsigned netid,
 LIBNETD_RESOLV_PUBLIC void resolv_register_private_dns_callback(
         private_dns_validated_callback callback);
 
-// Flush the cache associated with a certain network
-LIBNETD_RESOLV_PUBLIC void resolv_flush_cache_for_net(unsigned netid);
-
 // Delete the cache associated with a certain network
 LIBNETD_RESOLV_PUBLIC void resolv_delete_cache_for_net(unsigned netid);
 

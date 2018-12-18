@@ -30,6 +30,7 @@
 
 #include <android-base/strings.h>
 #include <netd_resolv/resolv.h>
+#include <netd_resolv/resolv_stub.h>
 #include "android/net/INetd.h"
 
 #include "cutils/misc.h"
@@ -220,7 +221,8 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         // servers (through the default network). Otherwise, the query is guaranteed to fail.
         // http://b/29498052
         Network *network = getNetworkLocked(*netId);
-        if (network && network->getType() == Network::VIRTUAL && !resolv_has_nameservers(*netId)) {
+        if (network && network->getType() == Network::VIRTUAL &&
+            !RESOLV_STUB.resolv_has_nameservers(*netId)) {
             *netId = mDefaultNetId;
         }
     } else {
@@ -229,7 +231,7 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         // them). Otherwise, use the default network's DNS servers. We cannot set the explicit bit
         // because we need to be able to fall through a split tunnel to the default network.
         VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
-        if (virtualNetwork && resolv_has_nameservers(virtualNetwork->getNetId())) {
+        if (virtualNetwork && RESOLV_STUB.resolv_has_nameservers(virtualNetwork->getNetId())) {
             *netId = virtualNetwork->getNetId();
         } else {
             // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
@@ -471,7 +473,7 @@ int NetworkController::destroyNetwork(unsigned netId) {
     }
     mNetworks.erase(netId);
     delete network;
-    resolv_delete_cache_for_net(netId);
+    RESOLV_STUB.resolv_delete_cache_for_net(netId);
 
     for (auto iter = mIfindexToLastNetId.begin(); iter != mIfindexToLastNetId.end();) {
         if (iter->second == netId) {
