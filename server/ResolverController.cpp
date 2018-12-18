@@ -343,6 +343,27 @@ int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>*
     return 0;
 }
 
+// TODO: use StatusOr<T> to wrap the result.
+int ResolverController::getPrefix64(unsigned netId, netdutils::IPPrefix* prefix) {
+    netdutils::IPPrefix p = mDns64Configuration.getPrefix64(netId);
+    if (p.family() != AF_INET6 || p.length() == 0) {
+        ALOGE("No valid NAT64 prefix (%d,%s)\n", netId, p.toString().c_str());
+        return -ENOENT;
+    }
+    *prefix = p;
+    return 0;
+}
+
+void ResolverController::sendNat64PrefixEvent(const Dns64Configuration::Nat64PrefixInfo& args) {
+    const auto netdEventListener = net::gCtls->eventReporter.getNetdEventListener();
+    if (netdEventListener == nullptr) {
+        gLog.error("getNetdEventListener() returned nullptr. dropping NAT64 prefix event");
+        return;
+    }
+    netdEventListener->onNat64PrefixEvent(args.netId, args.added, args.prefixString,
+                                          args.prefixLength);
+}
+
 void ResolverController::dump(DumpWriter& dw, unsigned netId) {
     // No lock needed since Bionic's resolver locks all accessed data structures internally.
     using android::net::ResolverStats;

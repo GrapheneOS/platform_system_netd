@@ -250,6 +250,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status setTcpRWmemorySize(const std::string& rmemValues,
                                       const std::string& wmemValues) override;
 
+    // DNS64-related commands (internal use only)
+    binder::Status getPrefix64(int netId, std::string* _aidl_return);
+
   private:
     std::vector<uid_t> intsToUids(const std::vector<int32_t>& intUids);
     Permission convertPermission(int32_t permission);

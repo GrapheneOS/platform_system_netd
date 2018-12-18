@@ -51,13 +51,26 @@ class NetworkController;
  */
 class Dns64Configuration {
   public:
+    // Simple data struct for passing back packet NAT64 prefix event information to the
+    // Dns64PrefixCallback callback.
+    struct Nat64PrefixInfo {
+        unsigned netId;
+        bool added;
+        std::string prefixString;
+        uint8_t prefixLength;
+    };
+
+    // Callback that is triggered for every NAT64 prefix event.
+    using Nat64PrefixCallback = std::function<void(const Nat64PrefixInfo&)>;
+
     // Parameters from RFC 7050 section 8.
     static const char kIPv4OnlyHost[];  // "ipv4only.arpa."
     static const char kIPv4Literal1[];  // 192.0.0.170
     static const char kIPv4Literal2[];  // 192.0.0.171
 
     Dns64Configuration() = delete;
-    Dns64Configuration(const NetworkController& netCtrl) : mNetCtrl(netCtrl) {}
+    Dns64Configuration(const NetworkController& netCtrl, Nat64PrefixCallback callback)
+        : mNetCtrl(netCtrl), mPrefixCallback(std::move(callback)) {}
     Dns64Configuration(const Dns64Configuration&) = delete;
     Dns64Configuration(Dns64Configuration&&) = delete;
     Dns64Configuration& operator=(const Dns64Configuration&) = delete;
@@ -79,13 +92,19 @@ class Dns64Configuration {
         netdutils::IPPrefix prefix64{};
     };
 
+    enum { PREFIX_REMOVED, PREFIX_ADDED };
+
     static bool doRfc7050PrefixDiscovery(const android_net_context& netcontext, Dns64Config* cfg);
 
     unsigned getNextId() REQUIRES(mMutex) { return mNextId++; }
+    netdutils::IPPrefix getPrefix64Locked(unsigned netId) const REQUIRES(mMutex);
     bool isDiscoveryInProgress(const Dns64Config& cfg) const REQUIRES(mMutex);
+    bool reportNat64PrefixStatus(unsigned netId, bool added, const netdutils::IPPrefix& pfx)
+            REQUIRES(mMutex);
 
     bool shouldContinueDiscovery(const Dns64Config& cfg);
     void recordDns64Config(const Dns64Config& cfg);
+    void removeDns64Config(unsigned netId) REQUIRES(mMutex);
 
     const NetworkController& mNetCtrl;
 
@@ -93,6 +112,7 @@ class Dns64Configuration {
     std::condition_variable mCv;
     unsigned int mNextId GUARDED_BY(mMutex);
     std::unordered_map<unsigned, Dns64Config> mDns64Configs GUARDED_BY(mMutex);
+    const Nat64PrefixCallback mPrefixCallback;
 };
 
 }  // namespace net

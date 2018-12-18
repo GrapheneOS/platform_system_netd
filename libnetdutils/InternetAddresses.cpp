@@ -120,6 +120,11 @@ IPPrefix::IPPrefix(const IPAddress& ip, int length) : IPPrefix(ip) {
     }
 }
 
+bool IPPrefix::isUninitialized() const noexcept {
+    static const internal_::compact_ipdata empty{};
+    return mData == empty;
+}
+
 std::string IPPrefix::toString() const noexcept {
     return StringPrintf("%s/%d", ip().toString().c_str(), mData.cidrlen);
 }
