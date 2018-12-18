@@ -220,8 +220,7 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         // servers (through the default network). Otherwise, the query is guaranteed to fail.
         // http://b/29498052
         Network *network = getNetworkLocked(*netId);
-        if (network && network->getType() == Network::VIRTUAL &&
-                !static_cast<VirtualNetwork *>(network)->getHasDns()) {
+        if (network && network->getType() == Network::VIRTUAL && !resolv_has_nameservers(*netId)) {
             *netId = mDefaultNetId;
         }
     } else {
@@ -230,7 +229,7 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         // them). Otherwise, use the default network's DNS servers. We cannot set the explicit bit
         // because we need to be able to fall through a split tunnel to the default network.
         VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
-        if (virtualNetwork && virtualNetwork->getHasDns()) {
+        if (virtualNetwork && resolv_has_nameservers(virtualNetwork->getNetId())) {
             *netId = virtualNetwork->getNetId();
         } else {
             // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
