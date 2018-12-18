@@ -110,6 +110,8 @@ LIBNETD_RESOLV_PUBLIC int android_getaddrinfofornetcontext(const char*, const ch
                                                            const addrinfo*,
                                                            const android_net_context*, addrinfo**);
 
+LIBNETD_RESOLV_PUBLIC bool resolv_has_nameservers(unsigned netid);
+
 // Query dns with raw msg
 // TODO: Add a way to control query parameter, like flags, or maybe res_options or even res_state.
 LIBNETD_RESOLV_PUBLIC int resolv_res_nsend(const android_net_context* netContext, const u_char* msg,

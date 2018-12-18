@@ -1154,8 +1154,6 @@ struct resolv_cache_info {
     int dnsrch_offset[MAXDNSRCH + 1];  // offsets into defdname
 };
 
-#define HTABLE_VALID(x) ((x) != NULL && (x) != HTABLE_DELETED)
-
 static pthread_once_t _res_cache_once = PTHREAD_ONCE_INIT;
 static void res_cache_init(void);
 
@@ -1267,7 +1265,7 @@ void _resolv_cache_query_failed(unsigned netid, const void* query, int querylen)
     pthread_mutex_unlock(&res_cache_list_lock);
 }
 
-static struct resolv_cache_info* _find_cache_info_locked(unsigned netid);
+static resolv_cache_info* find_cache_info_locked(unsigned netid);
 
 static void _cache_flush_locked(Cache* cache) {
     int nn;
@@ -1619,21 +1617,21 @@ Exit:
 // Head of the list of caches.  Protected by _res_cache_list_lock.
 static struct resolv_cache_info res_cache_list;
 
-/* insert resolv_cache_info into the list of resolv_cache_infos */
+// insert resolv_cache_info into the list of resolv_cache_infos
 static void insert_cache_info_locked(resolv_cache_info* cache_info);
-/* creates a resolv_cache_info */
+// creates a resolv_cache_info
 static resolv_cache_info* create_cache_info();
-/* gets a resolv_cache_info associated with a network, or NULL if not found */
-static struct resolv_cache_info* _find_cache_info_locked(unsigned netid);
-/* empty the named cache */
+// gets a resolv_cache_info associated with a network, or NULL if not found
+static resolv_cache_info* find_cache_info_locked(unsigned netid);
+// empty the named cache
 static void flush_cache_for_net_locked(unsigned netid);
-/* empty the nameservers set for the named cache */
+// empty the nameservers set for the named cache
 static void free_nameservers_locked(resolv_cache_info* cache_info);
 // return 1 if the provided list of name servers differs from the list of name servers
 // currently attached to the provided cache_info
 static int resolv_is_nameservers_equal_locked(resolv_cache_info* cache_info, const char** servers,
                                               int numservers);
-/* clears the stats samples contained withing the given cache_info */
+// clears the stats samples contained withing the given cache_info
 static void res_cache_clear_stats_locked(resolv_cache_info* cache_info);
 
 static void res_cache_init(void) {
@@ -1641,7 +1639,18 @@ static void res_cache_init(void) {
     pthread_mutex_init(&res_cache_list_lock, NULL);
 }
 
-/* look up the named cache, and creates one if needed */
+// public API for netd to query if name server is set on specific netid
+bool resolv_has_nameservers(unsigned netid) {
+    pthread_once(&_res_cache_once, res_cache_init);
+    pthread_mutex_lock(&res_cache_list_lock);
+    resolv_cache_info* info = find_cache_info_locked(netid);
+    const bool ret = (info != nullptr) && (info->nscount > 0);
+    pthread_mutex_unlock(&res_cache_list_lock);
+
+    return ret;
+}
+
+// look up the named cache, and creates one if needed
 static resolv_cache* get_res_cache_for_net_locked(unsigned netid) {
     resolv_cache* cache = find_named_cache_locked(netid);
     if (!cache) {
@@ -1676,7 +1685,7 @@ static void flush_cache_for_net_locked(unsigned netid) {
     }
 
     // Also clear the NS statistics.
-    resolv_cache_info* cache_info = _find_cache_info_locked(netid);
+    resolv_cache_info* cache_info = find_cache_info_locked(netid);
     res_cache_clear_stats_locked(cache_info);
 }
 
@@ -1716,12 +1725,12 @@ static void insert_cache_info_locked(struct resolv_cache_info* cache_info) {
 }
 
 static resolv_cache* find_named_cache_locked(unsigned netid) {
-    struct resolv_cache_info* info = _find_cache_info_locked(netid);
+    resolv_cache_info* info = find_cache_info_locked(netid);
     if (info != NULL) return info->cache;
     return NULL;
 }
 
-static struct resolv_cache_info* _find_cache_info_locked(unsigned netid) {
+static resolv_cache_info* find_cache_info_locked(unsigned netid) {
     struct resolv_cache_info* cache_info = res_cache_list.next;
 
     while (cache_info) {
@@ -1778,7 +1787,7 @@ int resolv_set_nameservers_for_net(unsigned netid, const char** servers, unsigne
     // creates the cache if not created
     get_res_cache_for_net_locked(netid);
 
-    struct resolv_cache_info* cache_info = _find_cache_info_locked(netid);
+    resolv_cache_info* cache_info = find_cache_info_locked(netid);
 
     if (cache_info != NULL) {
         uint8_t old_max_samples = cache_info->params.max_samples;
@@ -1903,7 +1912,7 @@ void _resolv_populate_res_for_net(res_state statp) {
     pthread_once(&_res_cache_once, res_cache_init);
     pthread_mutex_lock(&res_cache_list_lock);
 
-    struct resolv_cache_info* info = _find_cache_info_locked(statp->netid);
+    resolv_cache_info* info = find_cache_info_locked(statp->netid);
     if (info != NULL) {
         int nserv;
         struct addrinfo* ai;
@@ -1976,7 +1985,7 @@ int android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
     int revision_id = -1;
     pthread_mutex_lock(&res_cache_list_lock);
 
-    struct resolv_cache_info* info = _find_cache_info_locked(netid);
+    resolv_cache_info* info = find_cache_info_locked(netid);
     if (info) {
         if (info->nscount > MAXNS) {
             pthread_mutex_unlock(&res_cache_list_lock);
@@ -2040,7 +2049,7 @@ int resolv_cache_get_resolver_stats(unsigned netid, __res_params* params, res_st
     int revision_id = -1;
     pthread_mutex_lock(&res_cache_list_lock);
 
-    struct resolv_cache_info* info = _find_cache_info_locked(netid);
+    resolv_cache_info* info = find_cache_info_locked(netid);
     if (info) {
         memcpy(stats, info->nsstats, sizeof(info->nsstats));
         *params = info->params;
@@ -2057,7 +2066,7 @@ void _resolv_cache_add_resolver_stats_sample(unsigned netid, int revision_id, in
 
     pthread_mutex_lock(&res_cache_list_lock);
 
-    struct resolv_cache_info* info = _find_cache_info_locked(netid);
+    resolv_cache_info* info = find_cache_info_locked(netid);
 
     if (info && info->revision_id == revision_id) {
         _res_cache_add_stats_sample_locked(&info->nsstats[ns], sample, max_samples);
