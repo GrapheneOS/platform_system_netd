@@ -349,9 +349,11 @@ binder::Status NetdNativeService::networkCreatePhysical(int32_t netId, int32_t p
     return statusFromErrcode(ret);
 }
 
-binder::Status NetdNativeService::networkCreateVpn(int32_t netId, bool hasDns, bool secure) {
+binder::Status NetdNativeService::networkCreateVpn(int32_t netId, bool secure) {
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
-    int ret = gCtls->netCtrl.createVirtualNetwork(netId, hasDns, secure);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).args(netId, secure);
+    int ret = gCtls->netCtrl.createVirtualNetwork(netId, secure);
+    gLog.log(entry.returns(ret).withAutomaticDuration());
     return statusFromErrcode(ret);
 }
 
