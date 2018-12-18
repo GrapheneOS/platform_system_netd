@@ -78,13 +78,12 @@ interface INetd {
      * Creates a VPN network.
      *
      * @param netId the network to create.
-     * @param hasDns whether the VPN has DNS servers.
      * @param secure whether unprivileged apps are allowed to bypass the VPN.
      *
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
      */
-    void networkCreateVpn(int netId, boolean hasDns, boolean secure);
+    void networkCreateVpn(int netId, boolean secure);
 
     /**
      * Destroys a network. Any interfaces added to the network are removed, and the network ceases

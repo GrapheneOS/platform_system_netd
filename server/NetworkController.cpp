@@ -413,7 +413,7 @@ int NetworkController::createPhysicalOemNetwork(Permission permission, unsigned 
     return ret;
 }
 
-int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns, bool secure) {
+int NetworkController::createVirtualNetwork(unsigned netId, bool secure) {
     ScopedWLock lock(mRWLock);
 
     if (!(MIN_NET_ID <= netId && netId <= MAX_NET_ID)) {
@@ -429,7 +429,7 @@ int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns, bool se
     if (int ret = modifyFallthroughLocked(netId, true)) {
         return ret;
     }
-    mNetworks[netId] = new VirtualNetwork(netId, hasDns, secure);
+    mNetworks[netId] = new VirtualNetwork(netId, secure);
     return 0;
 }
 
