@@ -1725,14 +1725,20 @@ TEST_F(ResolverTest, Async_EmptyAnswer) {
     ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
     dns.clearQueries();
 
-    // A 1  AAAA 28
-    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);
-    EXPECT_TRUE(fd1 != -1);
+    // TODO: Disable retry to make this test explicit.
+    auto& cv = dns.getCv();
+    auto& cvMutex = dns.getCvMutex();
+    int fd1;
+    // Wait on the condition variable to ensure that the DNS server has handled our first query.
+    {
+        std::unique_lock lk(cvMutex);
+        // A 1  AAAA 28
+        fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);
+        EXPECT_TRUE(fd1 != -1);
+        EXPECT_EQ(std::cv_status::no_timeout, cv.wait_for(lk, std::chrono::seconds(1)));
+    }
 
-    // make sure setResponseProbability effective
-    dns.stopServer();
     dns.setResponseProbability(0.0);
-    ASSERT_TRUE(dns.startServer());
 
     int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
     EXPECT_TRUE(fd2 != -1);
@@ -1740,22 +1746,19 @@ TEST_F(ResolverTest, Async_EmptyAnswer) {
     int fd3 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
     EXPECT_TRUE(fd3 != -1);
 
-    u_char buf[MAXPACKET] = {};
+    uint8_t buf[MAXPACKET] = {};
     int rcode;
 
-    // expect no response, ETIMEDOUT = 110
-    int res = getAsyncResponse(fd2, &rcode, buf, MAXPACKET);
-    EXPECT_EQ(res, -110);
+    // expect no response
+    int res = getAsyncResponse(fd3, &rcode, buf, MAXPACKET);
+    EXPECT_EQ(-ETIMEDOUT, res);
 
-    // expect no response, ETIMEDOUT = 110
+    // expect no response
     memset(buf, 0, MAXPACKET);
-    res = getAsyncResponse(fd3, &rcode, buf, MAXPACKET);
-    EXPECT_EQ(res, -110);
+    res = getAsyncResponse(fd2, &rcode, buf, MAXPACKET);
+    EXPECT_EQ(-ETIMEDOUT, res);
 
-    // make sure setResponseProbability effective
-    dns.stopServer();
     dns.setResponseProbability(1.0);
-    ASSERT_TRUE(dns.startServer());
 
     int fd4 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
     EXPECT_TRUE(fd4 != -1);
