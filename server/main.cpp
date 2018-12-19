@@ -48,6 +48,8 @@
 #include "Process.h"
 #include "Stopwatch.h"
 
+#include "netd_resolv/resolv_stub.h"
+
 using android::status_t;
 using android::sp;
 using android::IPCThreadState;
@@ -84,6 +86,9 @@ int main() {
                               MDnsSdListener::SOCKET_NAME }) {
         setCloseOnExec(sock);
     }
+
+    // Before we start any threads, populate the resolver stub pointers.
+    resolv_stub_init();
 
     NetlinkManager *nm = NetlinkManager::Instance();
     if (nm == nullptr) {
