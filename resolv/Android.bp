@@ -1,4 +1,9 @@
-cc_library_shared {
+cc_library_headers {
+    name: "libnetd_resolv_headers",
+    export_include_dirs: ["include"],
+}
+
+cc_library {
     name: "libnetd_resolv",
     version_script: "libnetd_resolv.map.txt",
     defaults: ["netd_defaults"],
@@ -108,11 +113,11 @@ cc_test {
         "libbase",
         "libcrypto",
         "liblog",
-        "libnetd_resolv",
         "libnetdutils",
         "libssl",
     ],
     static_libs: [
+        "libnetd_resolv",
         "libnetd_test_dnsresponder",
     ],
 }
