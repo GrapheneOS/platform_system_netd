@@ -20,7 +20,7 @@ cc_library {
     ],
     header_libs: [
         "libnetd_client_headers",
-        "libbase_headers",
+        "libbase_headers", // for unique_fd.h
     ],
     export_header_lib_headers: ["libnetd_client_headers"],
     include_dirs: [

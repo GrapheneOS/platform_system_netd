@@ -185,7 +185,7 @@ int extractIpAddressAnswers(const uint8_t* answer, size_t anslen, int ipType,
         if (ns_parserr(&handle, ns_s_an, i, &rr) < 0) {
             continue;
         }
-        const u_char* rdata = ns_rr_rdata(rr);
+        const uint8_t* rdata = ns_rr_rdata(rr);
         if (ipType == ns_t_a) {
             sockaddr_in sin = {.sin_family = AF_INET};
             memcpy(&sin.sin_addr, rdata, sizeof(sin.sin_addr));
@@ -209,7 +209,7 @@ bool simpleStrtoul(const char* input, IntegralType* output, int base = 10) {
     errno = 0;
     auto result = strtoul(input, &endPtr, base);
     // Check the length in order to ensure there is no "-" sign
-    if (!*input || *endPtr || (endPtr - input) != static_cast<long>(strlen(input)) ||
+    if (!*input || *endPtr || (endPtr - input) != static_cast<ptrdiff_t>(strlen(input)) ||
         (errno == ERANGE && (result == ULONG_MAX))) {
         return false;
     }
@@ -217,7 +217,7 @@ bool simpleStrtoul(const char* input, IntegralType* output, int base = 10) {
     return true;
 }
 
-bool parseQuery(const u_char* msg, int msgLen, int* rr_type, std::string* rr_name) {
+bool parseQuery(const uint8_t* msg, size_t msgLen, int* rr_type, std::string* rr_name) {
     ns_msg handle;
     ns_rr rr;
     if (ns_initparse((const uint8_t*) msg, msgLen, &handle) < 0 ||
@@ -782,10 +782,10 @@ void DnsProxyListener::ResNSendHandler::run() {
     maybeFixupNetContext(&mNetContext);
 
     // Decode
-    u_char msg[MAXPACKET] = {};
+    std::vector<uint8_t> msg(MAXPACKET, 0);
 
     // Max length of mMsg is less than 1024 since the CMD_BUF_SIZE in FrameworkListener is 1024
-    int msgLen = b64_pton(mMsg.c_str(), (u_char*) msg, MAXPACKET);
+    int msgLen = b64_pton(mMsg.c_str(), msg.data(), MAXPACKET);
     if (msgLen == -1) {
         // Decode fail
         sendBE32(mClient, -EILSEQ);
@@ -798,7 +798,7 @@ void DnsProxyListener::ResNSendHandler::run() {
 
     // TODO: Handle the case which is msg contains more than one query
     // Parse and store query type/name
-    if (!parseQuery(msg, msgLen, &rr_type, &rr_name)) {
+    if (!parseQuery(msg.data(), msgLen, &rr_type, &rr_name)) {
         // If the query couldn't be parsed, block the request.
         ALOGW("resnsend: from UID %d, invalid query", uid);
         sendBE32(mClient, -EINVAL);
@@ -806,10 +806,11 @@ void DnsProxyListener::ResNSendHandler::run() {
     }
 
     // Send DNS query
-    u_char ansBuf[MAXPACKET] = {};
-    int arcode = 1, nsendAns = -1;
+    std::vector<uint8_t> ansBuf(MAXPACKET, 0);
+    int arcode, nsendAns = -1;
     if (queryLimiter.start(uid)) {
-        nsendAns = resolv_res_nsend(&mNetContext, msg, msgLen, ansBuf, sizeof(ansBuf), &arcode);
+        nsendAns = resolv_res_nsend(&mNetContext, msg.data(), msgLen, ansBuf.data(), MAXPACKET,
+                                    &arcode);
         queryLimiter.finish(uid);
     } else {
         ALOGW("resnsend: from UID %d, max concurrent queries reached", uid);
@@ -831,7 +832,7 @@ void DnsProxyListener::ResNSendHandler::run() {
     }
 
     // Send answer
-    if (!sendLenAndData(mClient, nsendAns, ansBuf)) {
+    if (!sendLenAndData(mClient, nsendAns, ansBuf.data())) {
         ALOGW("resnsend: failed to send answer to uid %d: %s", uid, strerror(errno));
         return;
     }
@@ -854,7 +855,7 @@ void DnsProxyListener::ResNSendHandler::run() {
                     // Full event info reporting is on. Send full info.
                     std::vector<String16> ip_addrs;
                     int total_ip_addr_count =
-                            extractIpAddressAnswers(ansBuf, nsendAns, rr_type, &ip_addrs);
+                            extractIpAddressAnswers(ansBuf.data(), nsendAns, rr_type, &ip_addrs);
                     mNetdEventListener->onDnsEvent(
                             mNetContext.dns_netid, INetdEventListener::EVENT_GETHOSTBYNAME,
                             nsendAns > 0 ? 0 : nsendAns, latencyMs, String16(rr_name.c_str()),
