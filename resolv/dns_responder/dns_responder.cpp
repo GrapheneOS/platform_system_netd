@@ -712,6 +712,7 @@ void DNSResponder::requestHandler() {
             continue;
         }
         ALOGI("read %zd bytes", len);
+        std::lock_guard lock(cv_mutex_);
         char response[4096];
         size_t response_len = sizeof(response);
         if (handleDNSRequest(buffer, len, response, &response_len) &&
@@ -734,6 +735,7 @@ void DNSResponder::requestHandler() {
         } else {
             ALOGI("not responding");
         }
+        cv.notify_one();
     }
 }
 
