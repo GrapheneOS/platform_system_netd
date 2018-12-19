@@ -546,8 +546,8 @@ TEST_F(BinderTest, NetworkInterfaces) {
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
     EXPECT_EQ(EEXIST, mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE)
                               .serviceSpecificErrorCode());
-    EXPECT_EQ(EEXIST, mNetd->networkCreateVpn(TEST_NETID1, false, true).serviceSpecificErrorCode());
-    EXPECT_TRUE(mNetd->networkCreateVpn(TEST_NETID2, false, true).isOk());
+    EXPECT_EQ(EEXIST, mNetd->networkCreateVpn(TEST_NETID1, true).serviceSpecificErrorCode());
+    EXPECT_TRUE(mNetd->networkCreateVpn(TEST_NETID2, true).isOk());
 
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
     EXPECT_EQ(EBUSY,
@@ -562,8 +562,8 @@ TEST_F(BinderTest, NetworkInterfaces) {
 TEST_F(BinderTest, NetworkUidRules) {
     const uint32_t RULE_PRIORITY_SECURE_VPN = 12000;
 
-    EXPECT_TRUE(mNetd->networkCreateVpn(TEST_NETID1, false, true).isOk());
-    EXPECT_EQ(EEXIST, mNetd->networkCreateVpn(TEST_NETID1, false, true).serviceSpecificErrorCode());
+    EXPECT_TRUE(mNetd->networkCreateVpn(TEST_NETID1, true).isOk());
+    EXPECT_EQ(EEXIST, mNetd->networkCreateVpn(TEST_NETID1, true).serviceSpecificErrorCode());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
 
     std::vector<UidRangeParcel> uidRanges = {makeUidRangeParcel(BASE_UID + 8005, BASE_UID + 8012),

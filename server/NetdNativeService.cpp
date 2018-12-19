@@ -349,9 +349,11 @@ binder::Status NetdNativeService::networkCreatePhysical(int32_t netId, int32_t p
     return statusFromErrcode(ret);
 }
 
-binder::Status NetdNativeService::networkCreateVpn(int32_t netId, bool hasDns, bool secure) {
+binder::Status NetdNativeService::networkCreateVpn(int32_t netId, bool secure) {
     ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
-    int ret = gCtls->netCtrl.createVirtualNetwork(netId, hasDns, secure);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).args(netId, secure);
+    int ret = gCtls->netCtrl.createVirtualNetwork(netId, secure);
+    gLog.log(entry.returns(ret).withAutomaticDuration());
     return statusFromErrcode(ret);
 }
 
@@ -1497,6 +1499,19 @@ binder::Status NetdNativeService::setTcpRWmemorySize(const std::string& rmemValu
         return statusFromErrcode(ret);
     }
     gLog.log(entry.withAutomaticDuration());
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::getPrefix64(int netId, std::string* _aidl_return) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+
+    netdutils::IPPrefix prefix{};
+    int err = gCtls->resolverCtrl.getPrefix64(netId, &prefix);
+    if (err != 0) {
+        return binder::Status::fromServiceSpecificError(
+                -err, String8::format("ResolverController error: %s", strerror(-err)));
+    }
+    *_aidl_return = prefix.toString();
     return binder::Status::ok();
 }
 

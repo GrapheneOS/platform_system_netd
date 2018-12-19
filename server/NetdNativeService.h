@@ -60,7 +60,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     // Network and routing commands.
     binder::Status networkCreatePhysical(int32_t netId, int32_t permission) override;
-    binder::Status networkCreateVpn(int32_t netId, bool hasDns, bool secure) override;
+    binder::Status networkCreateVpn(int32_t netId, bool secure) override;
     binder::Status networkDestroy(int32_t netId) override;
 
     binder::Status networkAddInterface(int32_t netId, const std::string& iface) override;
@@ -249,6 +249,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     // tcp_mem-config command
     binder::Status setTcpRWmemorySize(const std::string& rmemValues,
                                       const std::string& wmemValues) override;
+
+    // DNS64-related commands (internal use only)
+    binder::Status getPrefix64(int netId, std::string* _aidl_return);
 
   private:
     std::vector<uid_t> intsToUids(const std::vector<int32_t>& intUids);
