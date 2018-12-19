@@ -21,6 +21,7 @@
 #include <arpa/nameser.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -68,6 +69,8 @@ class DNSResponder {
     std::vector<std::pair<std::string, ns_type>> queries() const;
     std::string dumpQueries() const;
     void clearQueries();
+    std::condition_variable& getCv() { return cv; }
+    std::mutex& getCvMutex() { return cv_mutex_; }
 
   private:
     // Key used for accessing mappings.
@@ -146,6 +149,8 @@ class DNSResponder {
     // Thread for handling incoming threads.
     std::thread handler_thread_ GUARDED_BY(update_mutex_);
     std::mutex update_mutex_;
+    std::condition_variable cv;
+    std::mutex cv_mutex_;
 };
 
 }  // namespace test
