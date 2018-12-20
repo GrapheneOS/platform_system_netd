@@ -136,16 +136,6 @@ int ResolverController::clearDnsServers(unsigned netId) {
     return 0;
 }
 
-int ResolverController::flushDnsCache(unsigned netId) {
-    if (DBG) {
-        ALOGD("flushDnsCache netId = %u\n", netId);
-    }
-
-    RESOLV_STUB.resolv_delete_cache_for_net(netId);
-
-    return 0;
-}
-
 int ResolverController::getDnsInfo(unsigned netId, std::vector<std::string>* servers,
         std::vector<std::string>* domains, __res_params* params,
         std::vector<android::net::ResolverStats>* stats) {
