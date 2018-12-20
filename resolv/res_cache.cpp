@@ -1267,7 +1267,7 @@ void _resolv_cache_query_failed(unsigned netid, const void* query, int querylen)
 
 static resolv_cache_info* find_cache_info_locked(unsigned netid);
 
-static void _cache_flush_locked(Cache* cache) {
+static void cache_flush_locked(Cache* cache) {
     int nn;
 
     for (nn = 0; nn < cache->max_entries; nn++) {
@@ -1623,8 +1623,6 @@ static void insert_cache_info_locked(resolv_cache_info* cache_info);
 static resolv_cache_info* create_cache_info();
 // gets a resolv_cache_info associated with a network, or NULL if not found
 static resolv_cache_info* find_cache_info_locked(unsigned netid);
-// empty the named cache
-static void flush_cache_for_net_locked(unsigned netid);
 // empty the nameservers set for the named cache
 static void free_nameservers_locked(resolv_cache_info* cache_info);
 // return 1 if the provided list of name servers differs from the list of name servers
@@ -1669,26 +1667,6 @@ static resolv_cache* get_res_cache_for_net_locked(unsigned netid) {
     return cache;
 }
 
-void _resolv_flush_cache_for_net(unsigned netid) {
-    pthread_once(&_res_cache_once, res_cache_init);
-    pthread_mutex_lock(&res_cache_list_lock);
-
-    flush_cache_for_net_locked(netid);
-
-    pthread_mutex_unlock(&res_cache_list_lock);
-}
-
-static void flush_cache_for_net_locked(unsigned netid) {
-    resolv_cache* cache = find_named_cache_locked(netid);
-    if (cache) {
-        _cache_flush_locked(cache);
-    }
-
-    // Also clear the NS statistics.
-    resolv_cache_info* cache_info = find_cache_info_locked(netid);
-    res_cache_clear_stats_locked(cache_info);
-}
-
 void resolv_delete_cache_for_net(unsigned netid) {
     pthread_once(&_res_cache_once, res_cache_init);
     pthread_mutex_lock(&res_cache_list_lock);
@@ -1700,7 +1678,7 @@ void resolv_delete_cache_for_net(unsigned netid) {
 
         if (cache_info->netid == netid) {
             prev_cache_info->next = cache_info->next;
-            _cache_flush_locked(cache_info->cache);
+            cache_flush_locked(cache_info->cache);
             free(cache_info->cache->entries);
             free(cache_info->cache);
             free_nameservers_locked(cache_info);
