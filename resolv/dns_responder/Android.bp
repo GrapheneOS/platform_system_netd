@@ -29,4 +29,5 @@ cc_library_static {
         "dns_responder_client.cpp",
         "dns_tls_frontend.cpp",
     ],
+    export_include_dirs: ["."],
 }
