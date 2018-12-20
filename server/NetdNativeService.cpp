@@ -350,7 +350,7 @@ binder::Status NetdNativeService::networkCreatePhysical(int32_t netId, int32_t p
 }
 
 binder::Status NetdNativeService::networkCreateVpn(int32_t netId, bool secure) {
-    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+    ENFORCE_PERMISSION(NETWORK_STACK);
     auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).args(netId, secure);
     int ret = gCtls->netCtrl.createVirtualNetwork(netId, secure);
     gLog.log(entry.returns(ret).withAutomaticDuration());
