@@ -90,34 +90,19 @@ cc_test {
 cc_test {
     name: "resolv_unit_test",
     defaults: ["netd_defaults"],
-    // Add DnsTls* files since they are not visible outside libnetd_resolv library.
     srcs: [
-        "DnsTlsDispatcher.cpp",
-        "DnsTlsQueryMap.cpp",
-        "DnsTlsTransport.cpp",
-        "DnsTlsServer.cpp",
-        "DnsTlsSessionCache.cpp",
-        "DnsTlsSocket.cpp",
         "dns_tls_test.cpp",
         "libnetd_resolv_test.cpp",
-    ],
-    // TODO: Remove the include path "system/netd/include" after Fwmark used in DnsTlsTransport is
-    // moved out.
-    include_dirs: [
-        "system/netd/include",
-        "system/netd/resolv/include",
-        "system/netd/server",
-        "system/netd/resolv/dns_responder",
     ],
     shared_libs: [
         "libbase",
         "libcrypto",
         "liblog",
-        "libnetdutils",
         "libssl",
     ],
     static_libs: [
         "libnetd_resolv",
         "libnetd_test_dnsresponder",
+        "libnetdutils",
     ],
 }
