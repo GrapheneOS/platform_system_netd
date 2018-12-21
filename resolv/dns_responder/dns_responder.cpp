@@ -838,8 +838,8 @@ bool DNSResponder::addAnswerRecords(const DNSQuestion& question,
             question.qname.name.c_str(), dnstype2str(question.qtype));
         return true;
     }
-    ALOGI("mapping found for %s %s: %s", question.qname.name.c_str(),
-        dnstype2str(question.qtype), it->second.c_str());
+    DBGLOG("mapping found for %s %s: %s", question.qname.name.c_str(), dnstype2str(question.qtype),
+           it->second.c_str());
     DNSRecord record;
     record.name = question.qname;
     record.rtype = question.qtype;
