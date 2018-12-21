@@ -61,6 +61,7 @@ int resolv_stub_init() {
         std::string path = std::string(dir) + "/" + LIBNAME;
         netdResolvHandle = dlopen(path.c_str(), RTLD_NOW);
         if (netdResolvHandle != nullptr) {
+            ALOGI("Loaded resolver library from %s", path.c_str());
             break;
         }
         ALOGW("dlopen(%s) failed: %s", path.c_str(), strerror(errno));

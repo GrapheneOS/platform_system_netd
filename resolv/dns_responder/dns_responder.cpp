@@ -49,6 +49,12 @@ std::string errno2str() {
 
 #define APLOGI(fmt, ...) ALOGI(fmt ": [%d] %s", __VA_ARGS__, errno, errno2str().c_str())
 
+#if 0
+#define DBGLOG(fmt, ...) ALOGI(fmt, __VA_ARGS__)
+#else
+#define DBGLOG(fmt, ...)
+#endif
+
 std::string str2hex(const char* buffer, size_t len) {
     std::string str(len*2, '\0');
     for (size_t i = 0 ; i < len ; ++i) {
@@ -711,7 +717,7 @@ void DNSResponder::requestHandler() {
             ALOGI("recvfrom() failed");
             continue;
         }
-        ALOGI("read %zd bytes", len);
+        DBGLOG("read %zd bytes", len);
         std::lock_guard lock(cv_mutex_);
         char response[4096];
         size_t response_len = sizeof(response);
@@ -722,7 +728,7 @@ void DNSResponder::requestHandler() {
             std::string host_str =
                 addr2str(reinterpret_cast<const sockaddr*>(&sa), sa_len);
             if (len > 0) {
-                ALOGI("sent %zu bytes to %s", len, host_str.c_str());
+                DBGLOG("sent %zu bytes to %s", len, host_str.c_str());
             } else {
                 APLOGI("sendto() failed for %s", host_str.c_str());
             }
@@ -742,7 +748,7 @@ void DNSResponder::requestHandler() {
 bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
                                     char* response, size_t* response_len)
                                     const {
-    ALOGI("request: '%s'", str2hex(buffer, len).c_str());
+    DBGLOG("request: '%s'", str2hex(buffer, len).c_str());
     const char* buffer_end = buffer + len;
     DNSHeader header;
     const char* cur = header.read(buffer, buffer_end);
