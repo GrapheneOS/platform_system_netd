@@ -322,6 +322,21 @@ TEST_F(BinderTest, IpSecTunnelInterface) {
     }
 }
 
+TEST_F(BinderTest, IpSecSetEncapSocketOwner) {
+    android::base::unique_fd uniqueFd(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+    android::os::ParcelFileDescriptor sockFd(std::move(uniqueFd));
+
+    int sockOptVal = UDP_ENCAP_ESPINUDP;
+    setsockopt(sockFd.get(), IPPROTO_UDP, UDP_ENCAP, &sockOptVal, sizeof(sockOptVal));
+
+    binder::Status res = mNetd->ipSecSetEncapSocketOwner(sockFd, 1001);
+    EXPECT_TRUE(res.isOk());
+
+    struct stat info;
+    EXPECT_EQ(0, fstat(sockFd.get(), &info));
+    EXPECT_EQ(1001, (int) info.st_uid);
+}
+
 // IPsec tests are not run in 32 bit mode; both 32-bit kernels and
 // mismatched ABIs (64-bit kernel with 32-bit userspace) are unsupported.
 #if INTPTR_MAX != INT32_MAX
