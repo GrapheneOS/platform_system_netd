@@ -156,8 +156,9 @@ int ResolverController::clearDnsServers(unsigned netId) {
 }
 
 int ResolverController::getDnsInfo(unsigned netId, std::vector<std::string>* servers,
-        std::vector<std::string>* domains, __res_params* params,
-        std::vector<android::net::ResolverStats>* stats) {
+                                   std::vector<std::string>* domains, __res_params* params,
+                                   std::vector<android::net::ResolverStats>* stats,
+                                   std::vector<int32_t>* wait_for_pending_req_timeout_count) {
     using android::net::ResolverStats;
     using android::net::INetd;
     static_assert(ResolverStats::STATS_SUCCESSES == INetd::RESOLVER_STATS_SUCCESSES &&
@@ -178,8 +179,10 @@ int ResolverController::getDnsInfo(unsigned netId, std::vector<std::string>* ser
     domains->clear();
     *params = __res_params{};
     stats->clear();
+    int res_wait_for_pending_req_timeout_count;
     int revision_id = RESOLV_STUB.android_net_res_stats_get_info_for_net(
-            netId, &nscount, res_servers, &dcount, res_domains, params, res_stats);
+            netId, &nscount, res_servers, &dcount, res_domains, params, res_stats,
+            &res_wait_for_pending_req_timeout_count);
 
     // If the netId is unknown (which can happen for valid net IDs for which no DNS servers have
     // yet been configured), there is no revision ID. In this case there is no data to return.
@@ -223,6 +226,8 @@ int ResolverController::getDnsInfo(unsigned netId, std::vector<std::string>* ser
     for (int i = 0 ; i < dcount ; ++i) {
         domains->push_back(res_domains[i]);
     }
+
+    (*wait_for_pending_req_timeout_count)[0] = res_wait_for_pending_req_timeout_count;
     return 0;
 }
 
@@ -325,12 +330,14 @@ int ResolverController::setResolverConfiguration(int32_t netId,
 int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>* servers,
                                         std::vector<std::string>* domains,
                                         std::vector<std::string>* tlsServers,
-                                        std::vector<int32_t>* params, std::vector<int32_t>* stats) {
+                                        std::vector<int32_t>* params, std::vector<int32_t>* stats,
+                                        std::vector<int32_t>* wait_for_pending_req_timeout_count) {
     using android::net::ResolverStats;
     using android::net::INetd;
     __res_params res_params;
     std::vector<ResolverStats> res_stats;
-    int ret = getDnsInfo(netId, servers, domains, &res_params, &res_stats);
+    int ret = getDnsInfo(netId, servers, domains, &res_params, &res_stats,
+                         wait_for_pending_req_timeout_count);
     if (ret != 0) {
         return ret;
     }
@@ -391,8 +398,10 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
     std::vector<std::string> domains;
     __res_params params = {};
     std::vector<ResolverStats> stats;
+    std::vector<int32_t> wait_for_pending_req_timeout_count(1, 0);
     time_t now = time(nullptr);
-    int rv = getDnsInfo(netId, &servers, &domains, &params, &stats);
+    int rv = getDnsInfo(netId, &servers, &domains, &params, &stats,
+                        &wait_for_pending_req_timeout_count);
     dw.incIndent();
     if (rv != 0) {
         dw.println("getDnsInfo() failed for netid %u", netId);
@@ -455,6 +464,7 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
             }
             dw.decIndent();
         }
+        dw.println("Concurrent DNS query timeout: %d", wait_for_pending_req_timeout_count[0]);
     }
     dw.decIndent();
 }
