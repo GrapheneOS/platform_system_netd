@@ -75,7 +75,6 @@ cc_library_static {
     ],
     shared_libs: [
         "libbpf_android",
-        "libnetd_resolv",
         "libbase",
         "libbinder",
         "liblogwrap",
@@ -87,6 +86,9 @@ cc_library_static {
         "libssl",
         "netd_aidl_interface-cpp",
         "netd_event_listener_interface-cpp",
+    ],
+    header_libs: [
+        "libnetd_resolv_headers",
     ],
     aidl: {
         export_aidl_headers: true,
@@ -116,7 +118,6 @@ cc_binary {
         "liblog",
         "liblogwrap",
         "libmdnssd",
-        "libnetd_resolv",
         "libnetdbpf",
         "libnetdutils",
         "libnetutils",
@@ -130,6 +131,9 @@ cc_binary {
     ],
     static_libs: [
         "libnetd_server",
+    ],
+    header_libs: [
+        "libnetd_resolv_headers",
     ],
     srcs: [
         "ClatdController.cpp",
@@ -150,6 +154,7 @@ cc_binary {
         "PhysicalNetwork.cpp",
         "PppController.cpp",
         "Process.cpp",
+        "ResolvStub.cpp",
         "ResolverController.cpp",
         "VirtualNetwork.cpp",
         "main.cpp",

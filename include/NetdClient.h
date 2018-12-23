@@ -51,11 +51,9 @@ int deleteTagData(uint32_t tag, uid_t uid);
 
 int resNetworkQuery(unsigned netId, const char* dname, int classType, int type);
 
-int resNetworkResult(int query_fd, int* rcode, uint8_t* answer, int anslen);
+int resNetworkResult(int query_fd, int* rcode, uint8_t* answer, size_t anslen);
 
-int resNetworkSend(unsigned netId, const uint8_t* msg, int msglen);
-
-int resNetworkRecv(int send_fd, int* rcode, uint8_t* answer, int anslen);
+int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen);
 
 void resNetworkCancel(int nsend_fd);
 __END_DECLS

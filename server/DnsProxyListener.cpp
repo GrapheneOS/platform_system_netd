@@ -59,6 +59,8 @@
 #include "android/net/metrics/INetdEventListener.h"
 #include "thread_util.h"
 
+#include <netd_resolv/resolv_stub.h>
+
 using android::String16;
 using android::base::StringPrintf;
 using android::net::metrics::INetdEventListener;
@@ -121,7 +123,7 @@ constexpr bool requestingUseLocalNameservers(unsigned flags) {
 
 inline bool queryingViaTls(unsigned dns_netid) {
     ExternalPrivateDnsStatus privateDnsStatus = {PrivateDnsMode::OFF, 0, {}};
-    resolv_get_private_dns_status_for_net(dns_netid, &privateDnsStatus);
+    RESOLV_STUB.resolv_get_private_dns_status_for_net(dns_netid, &privateDnsStatus);
     switch (static_cast<PrivateDnsMode>(privateDnsStatus.mode)) {
         case PrivateDnsMode::OPPORTUNISTIC:
             for (unsigned i = 0; i < privateDnsStatus.numServers; i++) {
@@ -185,7 +187,7 @@ int extractIpAddressAnswers(const uint8_t* answer, size_t anslen, int ipType,
         if (ns_parserr(&handle, ns_s_an, i, &rr) < 0) {
             continue;
         }
-        const u_char* rdata = ns_rr_rdata(rr);
+        const uint8_t* rdata = ns_rr_rdata(rr);
         if (ipType == ns_t_a) {
             sockaddr_in sin = {.sin_family = AF_INET};
             memcpy(&sin.sin_addr, rdata, sizeof(sin.sin_addr));
@@ -209,7 +211,7 @@ bool simpleStrtoul(const char* input, IntegralType* output, int base = 10) {
     errno = 0;
     auto result = strtoul(input, &endPtr, base);
     // Check the length in order to ensure there is no "-" sign
-    if (!*input || *endPtr || (endPtr - input) != static_cast<long>(strlen(input)) ||
+    if (!*input || *endPtr || (endPtr - input) != static_cast<ptrdiff_t>(strlen(input)) ||
         (errno == ERANGE && (result == ULONG_MAX))) {
         return false;
     }
@@ -217,7 +219,7 @@ bool simpleStrtoul(const char* input, IntegralType* output, int base = 10) {
     return true;
 }
 
-bool parseQuery(const u_char* msg, int msgLen, int* rr_type, std::string* rr_name) {
+bool parseQuery(const uint8_t* msg, size_t msgLen, int* rr_type, std::string* rr_name) {
     ns_msg handle;
     ns_rr rr;
     if (ns_initparse((const uint8_t*) msg, msgLen, &handle) < 0 ||
@@ -523,7 +525,8 @@ void DnsProxyListener::GetAddrInfoHandler::doDns64Synthesis(int32_t* rv, struct 
             mHints->ai_family = AF_INET;
             // Don't need to do freeaddrinfo(res) before starting new DNS lookup because previous
             // DNS lookup is failed with error EAI_NODATA.
-            *rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, res);
+            *rv = RESOLV_STUB.android_getaddrinfofornetcontext(mHost, mService, mHints,
+                                                               &mNetContext, res);
             queryLimiter.finish(uid);
             if (*rv) {
                 *rv = EAI_NODATA;  // return original error code
@@ -562,7 +565,8 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     const uid_t uid = mClient->getUid();
     int32_t rv = 0;
     if (queryLimiter.start(uid)) {
-        rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, &result);
+        rv = RESOLV_STUB.android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext,
+                                                          &result);
         queryLimiter.finish(uid);
     } else {
         // Note that this error code is currently not passed down to the client.
@@ -782,10 +786,10 @@ void DnsProxyListener::ResNSendHandler::run() {
     maybeFixupNetContext(&mNetContext);
 
     // Decode
-    u_char msg[MAXPACKET] = {};
+    std::vector<uint8_t> msg(MAXPACKET, 0);
 
     // Max length of mMsg is less than 1024 since the CMD_BUF_SIZE in FrameworkListener is 1024
-    int msgLen = b64_pton(mMsg.c_str(), (u_char*) msg, MAXPACKET);
+    int msgLen = b64_pton(mMsg.c_str(), msg.data(), MAXPACKET);
     if (msgLen == -1) {
         // Decode fail
         sendBE32(mClient, -EILSEQ);
@@ -798,7 +802,7 @@ void DnsProxyListener::ResNSendHandler::run() {
 
     // TODO: Handle the case which is msg contains more than one query
     // Parse and store query type/name
-    if (!parseQuery(msg, msgLen, &rr_type, &rr_name)) {
+    if (!parseQuery(msg.data(), msgLen, &rr_type, &rr_name)) {
         // If the query couldn't be parsed, block the request.
         ALOGW("resnsend: from UID %d, invalid query", uid);
         sendBE32(mClient, -EINVAL);
@@ -806,10 +810,11 @@ void DnsProxyListener::ResNSendHandler::run() {
     }
 
     // Send DNS query
-    u_char ansBuf[MAXPACKET] = {};
-    int arcode = 1, nsendAns = -1;
+    std::vector<uint8_t> ansBuf(MAXPACKET, 0);
+    int arcode, nsendAns = -1;
     if (queryLimiter.start(uid)) {
-        nsendAns = resolv_res_nsend(&mNetContext, msg, msgLen, ansBuf, sizeof(ansBuf), &arcode);
+        nsendAns = RESOLV_STUB.resolv_res_nsend(&mNetContext, msg.data(), msgLen, ansBuf.data(),
+                                                MAXPACKET, &arcode);
         queryLimiter.finish(uid);
     } else {
         ALOGW("resnsend: from UID %d, max concurrent queries reached", uid);
@@ -831,7 +836,7 @@ void DnsProxyListener::ResNSendHandler::run() {
     }
 
     // Send answer
-    if (!sendLenAndData(mClient, nsendAns, ansBuf)) {
+    if (!sendLenAndData(mClient, nsendAns, ansBuf.data())) {
         ALOGW("resnsend: failed to send answer to uid %d: %s", uid, strerror(errno));
         return;
     }
@@ -854,7 +859,7 @@ void DnsProxyListener::ResNSendHandler::run() {
                     // Full event info reporting is on. Send full info.
                     std::vector<String16> ip_addrs;
                     int total_ip_addr_count =
-                            extractIpAddressAnswers(ansBuf, nsendAns, rr_type, &ip_addrs);
+                            extractIpAddressAnswers(ansBuf.data(), nsendAns, rr_type, &ip_addrs);
                     mNetdEventListener->onDnsEvent(
                             mNetContext.dns_netid, INetdEventListener::EVENT_GETHOSTBYNAME,
                             nsendAns > 0 ? 0 : nsendAns, latencyMs, String16(rr_name.c_str()),
@@ -945,7 +950,7 @@ void DnsProxyListener::GetHostByNameHandler::doDns64Synthesis(int32_t* rv, struc
     // If caller wants IPv6 answers but no data, try to query IPv4 answers for synthesis
     const uid_t uid = mClient->getUid();
     if (queryLimiter.start(uid)) {
-        *rv = android_gethostbynamefornetcontext(mName, AF_INET, &mNetContext, hpp);
+        *rv = RESOLV_STUB.android_gethostbynamefornetcontext(mName, AF_INET, &mNetContext, hpp);
         queryLimiter.finish(uid);
         if (*rv) {
             *rv = EAI_NODATA;  // return original error code
@@ -974,7 +979,7 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     struct hostent* hp = nullptr;
     int32_t rv = 0;
     if (queryLimiter.start(uid)) {
-        rv = android_gethostbynamefornetcontext(mName, mAf, &mNetContext, &hp);
+        rv = RESOLV_STUB.android_gethostbynamefornetcontext(mName, mAf, &mNetContext, &hp);
         queryLimiter.finish(uid);
     } else {
         rv = EAI_MEMORY;
@@ -1146,7 +1151,8 @@ void DnsProxyListener::GetHostByAddrHandler::doDns64ReverseLookup(struct hostent
     if (queryLimiter.start(uid)) {
         // Remove NAT64 prefix and do reverse DNS query
         struct in_addr v4addr = {.s_addr = v6addr.s6_addr32[3]};
-        *hpp = android_gethostbyaddrfornetcontext(&v4addr, sizeof(v4addr), AF_INET, &mNetContext);
+        *hpp = RESOLV_STUB.android_gethostbyaddrfornetcontext(&v4addr, sizeof(v4addr), AF_INET,
+                                                              &mNetContext);
         queryLimiter.finish(uid);
         if (*hpp) {
             // Replace IPv4 address with original queried IPv6 address in place. The space has
@@ -1171,8 +1177,8 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     const uid_t uid = mClient->getUid();
     struct hostent* hp = nullptr;
     if (queryLimiter.start(uid)) {
-        hp = android_gethostbyaddrfornetcontext(
-                mAddress, mAddressLen, mAddressFamily, &mNetContext);
+        hp = RESOLV_STUB.android_gethostbyaddrfornetcontext(mAddress, mAddressLen, mAddressFamily,
+                                                            &mNetContext);
         queryLimiter.finish(uid);
     } else {
         ALOGE("gethostbyaddr: from UID %d, max concurrent queries reached", uid);

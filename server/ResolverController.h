@@ -45,8 +45,6 @@ class ResolverController {
 
     int clearDnsServers(unsigned netid);
 
-    int flushDnsCache(unsigned netid);
-
     int getDnsInfo(unsigned netId, std::vector<std::string>* servers,
             std::vector<std::string>* domains, __res_params* params,
             std::vector<android::net::ResolverStats>* stats);
