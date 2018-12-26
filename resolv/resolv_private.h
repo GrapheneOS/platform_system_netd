@@ -71,27 +71,6 @@
 #define MAXHOSTNAMELEN 256
 
 /*
- * This used to be defined in res_query.c, now it's in herror.c.
- * [XXX no it's not.  It's in irs/irs_data.c]
- * It was
- * never extern'd by any *.h file before it was placed here.  For thread
- * aware programs, the last h_errno value set is stored in res->h_errno.
- *
- * XXX:	There doesn't seem to be a good reason for exposing RES_SET_H_ERRNO
- *	(and __h_errno_set) to the public via <resolv.h>.
- * XXX:	__h_errno_set is really part of IRS, not part of the resolver.
- *	If somebody wants to build and use a resolver that doesn't use IRS,
- *	what do they do?  Perhaps something like
- *		#ifdef WANT_IRS
- *		# define RES_SET_H_ERRNO(r,x) __h_errno_set(r,x)
- *		#else
- *		# define RES_SET_H_ERRNO(r,x) (h_errno = (r)->res_h_errno = (x))
- *		#endif
- */
-
-#define RES_SET_H_ERRNO(r, x) (h_errno = (r)->res_h_errno = (x))
-
-/*
  * Global defines and variables for resolver stub.
  */
 #define MAXDFLSRCH 3       /* # default domain levels to try */
@@ -126,7 +105,6 @@ struct __res_state {
         struct in_addr addr;
         uint32_t mask;
     } sort_list[MAXRESOLVSORT];
-    int res_h_errno;      /* last one set for this context */
     unsigned _mark;       /* If non-0 SET_MARK to _mark on all request sockets */
     int _vcsock;          /* PRIVATE: for res_send VC i/o */
     u_int _flags;         /* PRIVATE: see below */

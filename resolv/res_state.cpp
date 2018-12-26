@@ -43,7 +43,6 @@
 #include "resolv_private.h"
 
 typedef struct {
-    int _h_errno;
     // TODO: Have one __res_state per network so we don't have to repopulate frequently.
     struct __res_state _nres[1];
     struct res_static _rstatic[1];
@@ -53,7 +52,6 @@ static _res_thread* res_thread_alloc(void) {
     _res_thread* rt = (_res_thread*) calloc(1, sizeof(*rt));
 
     if (rt) {
-        rt->_h_errno = 0;
         memset(rt->_rstatic, 0, sizeof rt->_rstatic);
     }
     return rt;
@@ -118,13 +116,6 @@ static _res_thread* res_thread_get(void) {
 }
 
 struct __res_state _nres;
-
-int* __get_h_errno(void) {
-    _res_thread* rt = res_thread_get();
-    static int panic = NETDB_INTERNAL;
-
-    return rt ? &rt->_h_errno : &panic;
-}
 
 res_state res_get_state(void) {
     _res_thread* rt = res_thread_get();
