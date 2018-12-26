@@ -103,7 +103,7 @@
  * Perform preliminary check of answer, returning success only
  * if no error is indicated and the answer count is nonzero.
  * Return the size of the response on success, -1 on error.
- * Error number is left in H_ERRNO.
+ * Error number is left in *herrno.
  *
  * Caller must parse answer and determine whether it answers the question.
  */
@@ -111,7 +111,8 @@ int res_nquery(res_state statp, const char* name,  // domain name
                int cl, int type,                   // class and type of query
                u_char* answer,                     // buffer to put answer
                int anslen,                         // size of answer buffer
-               int* ai_error)                      // error will be set based on rcode
+               int* ai_error,                      // error will be set based on rcode
+               int* herrno)                        // legacy h_errno
 {
     u_char buf[MAXPACKET];
     HEADER* hp = (HEADER*) (void*) answer;
@@ -136,7 +137,7 @@ again:
 #ifdef DEBUG
         if (statp->options & RES_DEBUG) printf(";; res_query: mkquery failed\n");
 #endif
-        RES_SET_H_ERRNO(statp, NO_RECOVERY);
+        *herrno = NO_RECOVERY;
         return n;
     }
     n = res_nsend(statp, buf, n, answer, anslen, &rcode);
@@ -152,7 +153,7 @@ again:
 #ifdef DEBUG
         if (statp->options & RES_DEBUG) printf(";; res_query: send error\n");
 #endif
-        RES_SET_H_ERRNO(statp, TRY_AGAIN);
+        *herrno = TRY_AGAIN;
         return n;
     }
 
@@ -164,19 +165,19 @@ again:
 #endif
         switch (hp->rcode) {
             case NXDOMAIN:
-                RES_SET_H_ERRNO(statp, HOST_NOT_FOUND);
+                *herrno = HOST_NOT_FOUND;
                 break;
             case SERVFAIL:
-                RES_SET_H_ERRNO(statp, TRY_AGAIN);
+                *herrno = TRY_AGAIN;
                 break;
             case NOERROR:
-                RES_SET_H_ERRNO(statp, NO_DATA);
+                *herrno = NO_DATA;
                 break;
             case FORMERR:
             case NOTIMP:
             case REFUSED:
             default:
-                RES_SET_H_ERRNO(statp, NO_RECOVERY);
+                *herrno = NO_RECOVERY;
                 break;
         }
         return -1;
@@ -188,13 +189,14 @@ again:
  * Formulate a normal query, send, and retrieve answer in supplied buffer.
  * Return the size of the response on success, -1 on error.
  * If enabled, implement search rules until answer or unrecoverable failure
- * is detected.  Error code, if any, is left in H_ERRNO.
+ * is detected.  Error code, if any, is left in *herrno.
  */
 int res_nsearch(res_state statp, const char* name, /* domain name */
                 int cl, int type,                  /* class and type of query */
                 u_char* answer,                    /* buffer to put answer */
                 int anslen,                        /* size of answer */
-                int* ai_error)                     /* error will be set based on rcode*/
+                int* ai_error,                     /* error will be set based on rcode */
+                int* herrno)                       /* legacy h_errno */
 {
     const char *cp, *const *domain;
     HEADER* hp = (HEADER*) (void*) answer;
@@ -205,7 +207,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
     int searched = 0;
 
     errno = 0;
-    RES_SET_H_ERRNO(statp, HOST_NOT_FOUND); /* True if we never query. */
+    *herrno = HOST_NOT_FOUND; /* True if we never query. */
 
     dots = 0;
     for (cp = name; *cp != '\0'; cp++) dots += (*cp == '.');
@@ -219,9 +221,9 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
      */
     saved_herrno = -1;
     if (dots >= statp->ndots || trailing_dot) {
-        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen, ai_error);
+        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen, ai_error, herrno);
         if (ret > 0 || trailing_dot) return ret;
-        saved_herrno = statp->res_h_errno;
+        saved_herrno = *herrno;
         tried_as_is++;
     }
 
@@ -250,7 +252,8 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
             if (domain[0][0] == '\0' || (domain[0][0] == '.' && domain[0][1] == '\0'))
                 root_on_list++;
 
-            ret = res_nquerydomain(statp, name, *domain, cl, type, answer, anslen, ai_error);
+            ret = res_nquerydomain(statp, name, *domain, cl, type, answer, anslen, ai_error,
+                                   herrno);
             if (ret > 0) return ret;
 
             /*
@@ -267,11 +270,11 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
              * fully-qualified.
              */
             if (errno == ECONNREFUSED) {
-                RES_SET_H_ERRNO(statp, TRY_AGAIN);
+                *herrno = TRY_AGAIN;
                 return -1;
             }
 
-            switch (statp->res_h_errno) {
+            switch (*herrno) {
                 case NO_DATA:
                     got_nodata++;
                     break;
@@ -303,7 +306,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
      */
     if ((dots || !searched || (statp->options & RES_NOTLDQUERY) == 0U) &&
         !(tried_as_is || root_on_list)) {
-        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen, ai_error);
+        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen, ai_error, herrno);
         if (ret > 0) return ret;
     }
 
@@ -315,11 +318,11 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
      * the last DNSRCH we did.
      */
     if (saved_herrno != -1)
-        RES_SET_H_ERRNO(statp, saved_herrno);
+        *herrno = saved_herrno;
     else if (got_nodata)
-        RES_SET_H_ERRNO(statp, NO_DATA);
+        *herrno = NO_DATA;
     else if (got_servfail)
-        RES_SET_H_ERRNO(statp, TRY_AGAIN);
+        *herrno = TRY_AGAIN;
     return -1;
 }
 
@@ -331,7 +334,8 @@ int res_nquerydomain(res_state statp, const char* name, const char* domain, int 
                      int type,       /* class and type of query */
                      u_char* answer, /* buffer to put answer */
                      int anslen,     /* size of answer */
-                     int* ai_error)  /* error will be set based on rcode*/
+                     int* ai_error,  /* error will be set based on rcode */
+                     int* herrno)    /* legacy h_errno */
 {
     char nbuf[MAXDNAME];
     const char* longname = nbuf;
@@ -349,7 +353,7 @@ int res_nquerydomain(res_state statp, const char* name, const char* domain, int 
          */
         n = strlen(name);
         if (n >= MAXDNAME) {
-            RES_SET_H_ERRNO(statp, NO_RECOVERY);
+            *herrno = NO_RECOVERY;
             return -1;
         }
         n--;
@@ -362,10 +366,10 @@ int res_nquerydomain(res_state statp, const char* name, const char* domain, int 
         n = strlen(name);
         d = strlen(domain);
         if (n + d + 1 >= MAXDNAME) {
-            RES_SET_H_ERRNO(statp, NO_RECOVERY);
+            *herrno = NO_RECOVERY;
             return -1;
         }
         snprintf(nbuf, sizeof(nbuf), "%s.%s", name, domain);
     }
-    return res_nquery(statp, longname, cl, type, answer, anslen, ai_error);
+    return res_nquery(statp, longname, cl, type, answer, anslen, ai_error, herrno);
 }

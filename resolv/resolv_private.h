@@ -258,9 +258,11 @@ const char* p_section(int, int);
 /* Things involving a resolver context. */
 int res_ninit(res_state);
 void res_pquery(const res_state, const u_char*, int, FILE*);
-int res_nquery(res_state, const char*, int, int, u_char*, int, int*);
-int res_nsearch(res_state, const char*, int, int, u_char*, int, int*);
-int res_nquerydomain(res_state, const char*, const char*, int, int, u_char*, int, int*);
+// TODO: Consider that refactor res_nquery, res_nsearch and res_nquerydomain to return one error
+// code but two error codes.
+int res_nquery(res_state, const char*, int, int, u_char*, int, int*, int*);
+int res_nsearch(res_state, const char*, int, int, u_char*, int, int*, int*);
+int res_nquerydomain(res_state, const char*, const char*, int, int, u_char*, int, int*, int*);
 int res_nmkquery(res_state, int, const char*, int, int, const u_char*, int, const u_char*, u_char*,
                  int);
 int res_nsend(res_state, const u_char*, int, u_char*, int, int*);
