@@ -1635,7 +1635,7 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
             return n;
         }
 
-        n = res_nsend(res, buf, n, answer, anslen, &rcode);
+        n = res_nsend(res, buf, n, answer, anslen, &rcode, 0);
         if (n < 0 || hp->rcode != NOERROR || ntohs(hp->ancount) == 0) {
             // Record rcode from DNS response header only if no timeout.
             // Keep rcode timeout for reporting later if any.

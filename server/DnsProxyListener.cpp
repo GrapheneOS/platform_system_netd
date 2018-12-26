@@ -780,15 +780,22 @@ int DnsProxyListener::ResNSendCommand::runCommand(SocketClient* cli, int argc, c
     if (DBG) logArguments(argc, argv);
 
     const uid_t uid = cli->getUid();
-    if (argc != 3) {
+    if (argc != 4) {
         ALOGW("resnsend: from UID %d, invalid number of arguments to resnsend: %d", uid, argc);
         sendBE32(cli, -EINVAL);
         return -1;
     }
 
     unsigned netId;
-    if (!simpleStrtoul(argv[2], &netId)) {
+    if (!simpleStrtoul(argv[1], &netId)) {
         ALOGW("resnsend: from UID %d, invalid netId", uid);
+        sendBE32(cli, -EINVAL);
+        return -1;
+    }
+
+    uint32_t flags;
+    if (!simpleStrtoul(argv[2], &flags)) {
+        ALOGW("resnsend: from UID %d, invalid flags", uid);
         sendBE32(cli, -EINVAL);
         return -1;
     }
@@ -801,15 +808,19 @@ int DnsProxyListener::ResNSendCommand::runCommand(SocketClient* cli, int argc, c
     const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
 
     DnsProxyListener::ResNSendHandler* handler =
-            new DnsProxyListener::ResNSendHandler(cli, argv[1], netcontext, metricsLevel);
+            new DnsProxyListener::ResNSendHandler(cli, argv[3], flags, netcontext, metricsLevel);
     tryThreadOrError(cli, handler);
     return 0;
 }
 
-DnsProxyListener::ResNSendHandler::ResNSendHandler(SocketClient* c, std::string msg,
+DnsProxyListener::ResNSendHandler::ResNSendHandler(SocketClient* c, std::string msg, uint32_t flags,
                                                    const android_net_context& netcontext,
                                                    const int reportingLevel)
-    : mClient(c), mMsg(std::move(msg)), mNetContext(netcontext), mReportingLevel(reportingLevel) {}
+    : mClient(c),
+      mMsg(std::move(msg)),
+      mFlags(flags),
+      mNetContext(netcontext),
+      mReportingLevel(reportingLevel) {}
 
 DnsProxyListener::ResNSendHandler::~ResNSendHandler() {
     mClient->decRef();
@@ -817,7 +828,7 @@ DnsProxyListener::ResNSendHandler::~ResNSendHandler() {
 
 void DnsProxyListener::ResNSendHandler::run() {
     if (DBG) {
-        ALOGD("ResNSendHandler, now for %s / {%u,%u,%u,%u,%u,%u}", mMsg.c_str(),
+        ALOGD("ResNSendHandler, now for %s %u/ {%u,%u,%u,%u,%u,%u}", mMsg.c_str(), mFlags,
               mNetContext.app_netid, mNetContext.app_mark, mNetContext.dns_netid,
               mNetContext.dns_mark, mNetContext.uid, mNetContext.flags);
     }
@@ -854,7 +865,8 @@ void DnsProxyListener::ResNSendHandler::run() {
     int arcode, nsendAns = -1;
     if (queryLimiter.start(uid)) {
         nsendAns = RESOLV_STUB.resolv_res_nsend(&mNetContext, msg.data(), msgLen, ansBuf.data(),
-                                                MAXPACKET, &arcode);
+                                                MAXPACKET, &arcode,
+                                                static_cast<ResNsendFlags>(mFlags));
         queryLimiter.finish(uid);
     } else {
         ALOGW("resnsend: from UID %d, max concurrent queries reached", uid);

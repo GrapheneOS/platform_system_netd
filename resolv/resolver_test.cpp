@@ -37,6 +37,7 @@
 #include <thread>
 
 #include <android-base/stringprintf.h>
+#include <android/multinetwork.h>  // ResNsendFlags
 #include <cutils/sockets.h>
 #include <gtest/gtest.h>
 #include <openssl/base64.h>
@@ -1577,6 +1578,10 @@ int getAsyncResponse(int fd, int* rcode, u_char* buf, int bufLen) {
     revents = wait_fd[0].revents;
     if (revents & POLLIN) {
         int n = resNetworkResult(fd, rcode, buf, bufLen);
+        // Verify that resNetworkResult() closed the fd
+        char dummy;
+        EXPECT_EQ(-1, read(fd, &dummy, sizeof dummy));
+        EXPECT_EQ(EBADF, errno);
         return n;
     }
     return -1;
@@ -1622,6 +1627,23 @@ int dns_open_proxy() {
     return s;
 }
 
+void expectAnswersValid(int fd, int ipType, const std::string& expectedAnswer) {
+    int rcode = -1;
+    uint8_t buf[MAXPACKET] = {};
+
+    int res = getAsyncResponse(fd, &rcode, buf, MAXPACKET);
+    EXPECT_GT(res, 0);
+    EXPECT_EQ(expectedAnswer, toString(buf, res, ipType));
+}
+
+void expectAnswersNotValid(int fd, int expectedErrno) {
+    int rcode = -1;
+    uint8_t buf[MAXPACKET] = {};
+
+    int res = getAsyncResponse(fd, &rcode, buf, MAXPACKET);
+    EXPECT_EQ(expectedErrno, res);
+}
+
 }  // namespace
 
 TEST_F(ResolverTest, Async_NormalQueryV4V6) {
@@ -1636,8 +1658,8 @@ TEST_F(ResolverTest, Async_NormalQueryV4V6) {
     ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
     dns.clearQueries();
 
-    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);   // Type A       1
-    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28, 0);  // Type AAAA    28
+    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a, 0);
+    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_aaaa, 0);
     EXPECT_TRUE(fd1 != -1);
     EXPECT_TRUE(fd2 != -1);
 
@@ -1654,8 +1676,8 @@ TEST_F(ResolverTest, Async_NormalQueryV4V6) {
     EXPECT_EQ(2U, GetNumQueries(dns, host_name));
 
     // Re-query verify cache works
-    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);   // Type A       1
-    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28, 0);  // Type AAAA    28
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a, 0);
+    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_aaaa, 0);
 
     EXPECT_TRUE(fd1 != -1);
     EXPECT_TRUE(fd2 != -1);
@@ -1689,16 +1711,16 @@ TEST_F(ResolverTest, Async_BadQuery) {
         const int queryType;
         const int expectRcode;
     } kTestData[] = {
-            {-1, "", T_AAAA, 0},
-            {-1, "as65ass46", T_AAAA, 0},
-            {-1, "454564564564", T_AAAA, 0},
-            {-1, "h645235", T_A, 0},
-            {-1, "www.google.com", T_A, 0},
+            {-1, "", ns_t_aaaa, 0},
+            {-1, "as65ass46", ns_t_aaaa, 0},
+            {-1, "454564564564", ns_t_aaaa, 0},
+            {-1, "h645235", ns_t_a, 0},
+            {-1, "www.google.com", ns_t_a, 0},
     };
 
     for (auto& td : kTestData) {
         SCOPED_TRACE(td.dname);
-        td.fd = resNetworkQuery(TEST_NETID, td.dname, 1, td.queryType, 0);
+        td.fd = resNetworkQuery(TEST_NETID, td.dname, ns_c_in, td.queryType, 0);
         EXPECT_TRUE(td.fd != -1);
     }
 
@@ -1732,18 +1754,17 @@ TEST_F(ResolverTest, Async_EmptyAnswer) {
     // Wait on the condition variable to ensure that the DNS server has handled our first query.
     {
         std::unique_lock lk(cvMutex);
-        // A 1  AAAA 28
-        fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28, 0);
+        fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_aaaa, 0);
         EXPECT_TRUE(fd1 != -1);
         EXPECT_EQ(std::cv_status::no_timeout, cv.wait_for(lk, std::chrono::seconds(1)));
     }
 
     dns.setResponseProbability(0.0);
 
-    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);
+    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a, 0);
     EXPECT_TRUE(fd2 != -1);
 
-    int fd3 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);
+    int fd3 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a, 0);
     EXPECT_TRUE(fd3 != -1);
 
     uint8_t buf[MAXPACKET] = {};
@@ -1760,7 +1781,7 @@ TEST_F(ResolverTest, Async_EmptyAnswer) {
 
     dns.setResponseProbability(1.0);
 
-    int fd4 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);
+    int fd4 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a, 0);
     EXPECT_TRUE(fd4 != -1);
 
     memset(buf, 0, MAXPACKET);
@@ -1794,12 +1815,12 @@ TEST_F(ResolverTest, Async_MalformedQuery) {
         const std::string cmd;
         const int expectErr;
     } kTestData[] = {
-            // Less arguement
+            // Too few arguments
             {"resnsend " + badMsg + '\0', -EINVAL},
             // Bad netId
-            {"resnsend " + badMsg + " badnetId" + '\0', -EINVAL},
+            {"resnsend badnetId 0 " + badMsg + '\0', -EINVAL},
             // Bad raw data
-            {"resnsend " + badMsg + " " + std::to_string(TEST_NETID) + '\0', -EILSEQ},
+            {"resnsend " + std::to_string(TEST_NETID) + " 0 " + badMsg + '\0', -EILSEQ},
     };
 
     for (unsigned int i = 0; i < std::size(kTestData); i++) {
@@ -1816,14 +1837,14 @@ TEST_F(ResolverTest, Async_MalformedQuery) {
     // Normal query with answer buffer
     // This is raw data of query "howdy.example.com" type 1 class 1
     std::string query = "81sBAAABAAAAAAAABWhvd2R5B2V4YW1wbGUDY29tAAABAAE=";
-    std::string cmd = "resnsend " + query + " " + std::to_string(TEST_NETID) + '\0';
+    std::string cmd = "resnsend " + std::to_string(TEST_NETID) + " 0 " + query + '\0';
     ssize_t rc = TEMP_FAILURE_RETRY(write(fd, cmd.c_str(), cmd.size()));
     EXPECT_EQ(rc, static_cast<ssize_t>(cmd.size()));
 
     u_char smallBuf[1] = {};
     int rcode;
     rc = getAsyncResponse(fd, &rcode, smallBuf, 1);
-    EXPECT_EQ(rc, -EMSGSIZE);
+    EXPECT_EQ(-EMSGSIZE, rc);
 
     // Do the normal test with large buffer again
     fd = dns_open_proxy();
@@ -1833,6 +1854,116 @@ TEST_F(ResolverTest, Async_MalformedQuery) {
     u_char buf[MAXPACKET] = {};
     rc = getAsyncResponse(fd, &rcode, buf, MAXPACKET);
     EXPECT_EQ("1.2.3.4", toString(buf, rc, AF_INET));
+}
+
+TEST_F(ResolverTest, Async_CacheFlags) {
+    const char listen_addr[] = "127.0.0.4";
+    const char listen_srv[] = "53";
+    const char host_name[] = "howdy.example.com.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // ANDROID_RESOLV_NO_CACHE_STORE
+    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a,
+                              ANDROID_RESOLV_NO_CACHE_STORE);
+    EXPECT_TRUE(fd1 != -1);
+    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a,
+                              ANDROID_RESOLV_NO_CACHE_STORE);
+    EXPECT_TRUE(fd2 != -1);
+    int fd3 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a,
+                              ANDROID_RESOLV_NO_CACHE_STORE);
+    EXPECT_TRUE(fd3 != -1);
+
+    expectAnswersValid(fd3, AF_INET, "1.2.3.4");
+    expectAnswersValid(fd2, AF_INET, "1.2.3.4");
+    expectAnswersValid(fd1, AF_INET, "1.2.3.4");
+
+    // No cache exists, expect 3 queries
+    EXPECT_EQ(3U, GetNumQueries(dns, host_name));
+
+    // Re-query and cache
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a, 0);
+
+    EXPECT_TRUE(fd1 != -1);
+
+    expectAnswersValid(fd1, AF_INET, "1.2.3.4");
+
+    // Now we have cache, expect 4 queries
+    EXPECT_EQ(4U, GetNumQueries(dns, host_name));
+
+    // ANDROID_RESOLV_NO_CACHE_LOOKUP
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a,
+                          ANDROID_RESOLV_NO_CACHE_LOOKUP);
+    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a,
+                          ANDROID_RESOLV_NO_CACHE_LOOKUP);
+
+    EXPECT_TRUE(fd1 != -1);
+    EXPECT_TRUE(fd2 != -1);
+
+    expectAnswersValid(fd2, AF_INET, "1.2.3.4");
+    expectAnswersValid(fd1, AF_INET, "1.2.3.4");
+
+    // Skip cache, expect 6 queries
+    EXPECT_EQ(6U, GetNumQueries(dns, host_name));
+
+    // Re-query verify cache works
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a,
+                          ANDROID_RESOLV_NO_CACHE_STORE);
+    EXPECT_TRUE(fd1 != -1);
+    expectAnswersValid(fd1, AF_INET, "1.2.3.4");
+
+    // Cache hits,  expect still 6 queries
+    EXPECT_EQ(6U, GetNumQueries(dns, host_name));
+}
+
+TEST_F(ResolverTest, Async_NoRetryFlag) {
+    const char listen_addr[] = "127.0.0.4";
+    const char listen_srv[] = "53";
+    const char host_name[] = "howdy.example.com.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, static_cast<ns_rcode>(-1));
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
+    dns.clearQueries();
+
+    dns.setResponseProbability(0.0);
+
+    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a,
+                              ANDROID_RESOLV_NO_RETRY);
+    EXPECT_TRUE(fd1 != -1);
+
+    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_aaaa,
+                              ANDROID_RESOLV_NO_RETRY);
+    EXPECT_TRUE(fd2 != -1);
+
+    // expect no response
+    expectAnswersNotValid(fd1, -ETIMEDOUT);
+    expectAnswersNotValid(fd2, -ETIMEDOUT);
+
+    // No retry case, expect 2 queries
+    EXPECT_EQ(2U, GetNumQueries(dns, host_name));
+
+    dns.clearQueries();
+
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a, 0);
+    EXPECT_TRUE(fd1 != -1);
+
+    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_aaaa, 0);
+    EXPECT_TRUE(fd2 != -1);
+
+    // expect no response
+    expectAnswersNotValid(fd1, -ETIMEDOUT);
+    expectAnswersNotValid(fd2, -ETIMEDOUT);
+
+    // Retry case, expect 4 queries
+    EXPECT_EQ(4U, GetNumQueries(dns, host_name));
 }
 
 // This test checks that the resolver should not generate the request containing OPT RR when using
