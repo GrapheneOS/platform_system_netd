@@ -135,8 +135,8 @@ static void map_v4v6_hostent(struct hostent*, char**, char*);
 static void pad_v4v6_hostent(struct hostent* hp, char** bpp, char* ep);
 static void addrsort(char**, int, res_state);
 
-static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
-                             const android_net_context* netcontext, getnamaddr* info);
+static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
+                            const android_net_context* netcontext, getnamaddr* info);
 static int _dns_gethtbyname(const char* name, int af, getnamaddr* info);
 
 static int gethostbyname_internal(const char* name, int af, res_state res, hostent* hp, char* hbuf,
@@ -144,11 +144,12 @@ static int gethostbyname_internal(const char* name, int af, res_state res, hoste
                                   const android_net_context* netcontext);
 static int gethostbyname_internal_real(const char* name, int af, res_state res, hostent* hp,
                                        char* buf, size_t buflen, int* he);
-static struct hostent* android_gethostbyaddrfornetcontext_proxy_internal(
-        const void*, socklen_t, int, struct hostent*, char*, size_t, int*,
-        const struct android_net_context*);
-static struct hostent* android_gethostbyaddrfornetcontext_proxy(
-        const void* addr, socklen_t len, int af, const struct android_net_context* netcontext);
+static int android_gethostbyaddrfornetcontext_proxy_internal(const void*, socklen_t, int,
+                                                             struct hostent*, char*, size_t, int*,
+                                                             const struct android_net_context*);
+static int android_gethostbyaddrfornetcontext_proxy(const void* addr, socklen_t len, int af,
+                                                    const struct android_net_context* netcontext,
+                                                    hostent** hp);
 
 #ifdef DEBUG
 static void debugprintf(const char* msg, res_state res, ...) {
@@ -573,9 +574,10 @@ static int gethostbyname_internal(const char* name, int af, res_state res, hoste
     return gethostbyname_internal_real(name, af, res, hp, hbuf, hbuflen, errorp);
 }
 
-static struct hostent* android_gethostbyaddrfornetcontext_real(
-        const void* addr, socklen_t len, int af, struct hostent* hp, char* buf, size_t buflen,
-        int* he, const struct android_net_context* netcontext) {
+static int android_gethostbyaddrfornetcontext_real(const void* addr, socklen_t len, int af,
+                                                   struct hostent* hp, char* buf, size_t buflen,
+                                                   int* he,
+                                                   const struct android_net_context* netcontext) {
     const u_char* uaddr = (const u_char*) addr;
     socklen_t size;
     struct getnamaddr info;
@@ -586,7 +588,7 @@ static struct hostent* android_gethostbyaddrfornetcontext_real(
         (IN6_IS_ADDR_LINKLOCAL((const struct in6_addr*) addr) ||
          IN6_IS_ADDR_SITELOCAL((const struct in6_addr*) addr))) {
         *he = HOST_NOT_FOUND;
-        return NULL;
+        return EAI_NODATA;
     }
     if (af == AF_INET6 && len == NS_IN6ADDRSZ &&
         (IN6_IS_ADDR_V4MAPPED((const struct in6_addr*) addr) ||
@@ -607,12 +609,13 @@ static struct hostent* android_gethostbyaddrfornetcontext_real(
         default:
             errno = EAFNOSUPPORT;
             *he = NETDB_INTERNAL;
-            return NULL;
+            return EAI_FAMILY;
     }
     if (size != len) {
         errno = EINVAL;
         *he = NETDB_INTERNAL;
-        return NULL;
+        // TODO: Consider to remap error code without relying on errno.
+        return EAI_SYSTEM;
     }
     info.hp = hp;
     info.buf = buf;
@@ -620,15 +623,16 @@ static struct hostent* android_gethostbyaddrfornetcontext_real(
     info.he = he;
     *he = NETDB_INTERNAL;
     if (!_hf_gethtbyaddr(uaddr, len, af, &info)) {
-        if (!_dns_gethtbyaddr(uaddr, len, af, netcontext, &info)) {
-            return NULL;
+        int error = _dns_gethtbyaddr(uaddr, len, af, netcontext, &info);
+        if (error != 0) {
+            return error;
         }
     }
     *he = NETDB_SUCCESS;
-    return hp;
+    return 0;
 }
 
-static struct hostent* android_gethostbyaddrfornetcontext_proxy_internal(
+static int android_gethostbyaddrfornetcontext_proxy_internal(
         const void* addr, socklen_t len, int af, struct hostent* hp, char* hbuf, size_t hbuflen,
         int* he, const struct android_net_context* netcontext) {
     return android_gethostbyaddrfornetcontext_real(addr, len, af, hp, hbuf, hbuflen, he,
@@ -895,8 +899,8 @@ static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
     return 0;
 }
 
-static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
-                             const android_net_context* netcontext, getnamaddr* info) {
+static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
+                            const android_net_context* netcontext, getnamaddr* info) {
     char qbuf[MAXDNAME + 1], *qp, *ep;
     int n;
     struct hostent* hp;
@@ -922,27 +926,29 @@ static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
                     qp += advance;
                 else {
                     *info->he = NETDB_INTERNAL;
-                    return false;
+                    // TODO: Consider to remap error code without relying on errno.
+                    return EAI_SYSTEM;
                 }
             }
             if (strlcat(qbuf, "ip6.arpa", sizeof(qbuf)) >= sizeof(qbuf)) {
                 *info->he = NETDB_INTERNAL;
-                return false;
+                // TODO: Consider to remap error code without relying on errno.
+                return EAI_SYSTEM;
             }
             break;
         default:
-            return false;
+            return EAI_FAMILY;
     }
 
     querybuf* buf = (querybuf*) malloc(sizeof(querybuf));
     if (buf == NULL) {
         *info->he = NETDB_INTERNAL;
-        return false;
+        return EAI_MEMORY;
     }
     res = res_get_state();
     if (res == NULL) {
         free(buf);
-        return false;
+        return EAI_MEMORY;
     }
     res_setnetcontext(res, netcontext);
     int ai_error = 0;
@@ -950,12 +956,19 @@ static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
     if (n < 0) {
         free(buf);
         debugprintf("res_nquery failed (%d)\n", res, n);
-        return false;
+
+        // TODO: Consider to return more meaningful error codes.
+        // Currently, doesn't consider ai_error as _dns_gethtbyname() does because current ai_error
+        // comes from rcode only and rcode NOERROR doesn't really mean no error for the whole DNS
+        // query progress. DNS server may respond a DNS packet without any answer for queried
+        // address. In this case, return error code from h_errno NO_DATA rather than rcode NOERROR
+        // (ai_error).
+        return herrnoToAiError(h_errno);
     }
     hp = getanswer(buf, n, qbuf, T_PTR, res, info->hp, info->buf, info->buflen, info->he);
     free(buf);
     if (hp == NULL) {
-        return false;
+        return herrnoToAiError(h_errno);
     }
 
     char* bf = (char*) (hp->h_addr_list + 2);
@@ -979,12 +992,12 @@ static bool _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
     }
 
     *info->he = NETDB_SUCCESS;
-    return true;
+    return 0;
 
 nospc:
     errno = ENOSPC;
     *info->he = NETDB_INTERNAL;
-    return false;
+    return EAI_MEMORY;
 }
 
 /*
@@ -1005,16 +1018,19 @@ int android_gethostbynamefornetcontext(const char* name, int af,
     return error;
 }
 
-struct hostent* android_gethostbyaddrfornetcontext(const void* addr, socklen_t len, int af,
-                                                   const struct android_net_context* netcontext) {
-    return android_gethostbyaddrfornetcontext_proxy(addr, len, af, netcontext);
+int android_gethostbyaddrfornetcontext(const void* addr, socklen_t len, int af,
+                                       const struct android_net_context* netcontext, hostent** hp) {
+    return android_gethostbyaddrfornetcontext_proxy(addr, len, af, netcontext, hp);
 }
 
-static struct hostent* android_gethostbyaddrfornetcontext_proxy(
-        const void* addr, socklen_t len, int af, const struct android_net_context* netcontext) {
+static int android_gethostbyaddrfornetcontext_proxy(const void* addr, socklen_t len, int af,
+                                                    const struct android_net_context* netcontext,
+                                                    hostent** hp) {
     struct res_static* rs = res_get_static();  // For thread-safety.
-    return android_gethostbyaddrfornetcontext_proxy_internal(
+    int error = android_gethostbyaddrfornetcontext_proxy_internal(
             addr, len, af, &rs->host, rs->hostbuf, sizeof(rs->hostbuf), &h_errno, netcontext);
+    if (error == 0) *hp = &rs->host;
+    return error;
 }
 
 int herrnoToAiError(int herror) {
