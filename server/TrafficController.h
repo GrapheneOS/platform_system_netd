@@ -116,6 +116,8 @@ class TrafficController {
 
     static netdutils::StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener();
 
+    void setPermissionForUids(int permission, const std::vector<uid_t>& uids);
+
   private:
     /*
      * mCookieTagMap: Store the corresponding tag and uid for a specific socket.
@@ -189,6 +191,11 @@ class TrafficController {
      */
     BpfMap<uint32_t, uint8_t> mUidOwnerMap GUARDED_BY(mOwnerMatchMutex);
 
+    /*
+     * mUidOwnerMap: Store uids that are used for INTERNET permission check.
+     */
+    BpfMap<uint32_t, uint8_t> mUidPermissionMap;
+
     std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
 
     netdutils::Status removeMatch(BpfMap<uint32_t, uint8_t>& map, uint32_t uid,
@@ -205,6 +212,10 @@ class TrafficController {
                                            base::unique_fd& cg_fd);
 
     netdutils::Status initMaps();
+
+    // Keep track of uids that have permission UPDATE_DEVICE_STATS so we don't
+    // need to call back to system server for permission check.
+    std::set<uid_t> mPrivilegedUser;
 
     UidOwnerMatchType jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling);
     // For testing

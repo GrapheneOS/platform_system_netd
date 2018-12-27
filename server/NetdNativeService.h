@@ -96,6 +96,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status networkGetDefault(int32_t* netId) override;
     binder::Status networkCanProtect(int32_t uid, bool* ret) override;
 
+    binder::Status trafficSetNetPermForUids(int32_t permission,
+                                            const std::vector<int32_t>& uids) override;
+
     // SOCK_DIAG commands.
     binder::Status socketDestroy(const std::vector<UidRangeParcel>& uids,
                                  const std::vector<int32_t>& skipUids) override;

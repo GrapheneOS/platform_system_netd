@@ -1364,6 +1364,15 @@ binder::Status NetdNativeService::networkCanProtect(int32_t uid, bool* ret) {
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::trafficSetNetPermForUids(int32_t permission,
+                                                           const std::vector<int32_t>& uids) {
+    ENFORCE_PERMISSION(NETWORK_STACK);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(permission).arg(uids);
+    gCtls->trafficCtrl.setPermissionForUids(permission, intsToUids(uids));
+    gLog.log(entry.withAutomaticDuration());
+    return binder::Status::ok();
+}
+
 namespace {
 std::string ruleToString(int32_t rule) {
     switch (rule) {
