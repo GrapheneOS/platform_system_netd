@@ -865,25 +865,18 @@ static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
         return EAI_MEMORY;
     }
 
-    int ai_error = EAI_NODATA;
     int herrno = NETDB_INTERNAL;
-    n = res_nsearch(res, name, C_IN, type, buf->buf, (int) sizeof(buf->buf), &ai_error, &herrno);
+    n = res_nsearch(res, name, C_IN, type, buf->buf, (int) sizeof(buf->buf), &herrno);
     if (n < 0) {
         free(buf);
         debugprintf("res_nsearch failed (%d)\n", res, n);
-
-        // If server responds empty answer with rcode NOERROR, adjust the error so netd will
-        // get the nulltpr hp.
-        // TODO: Adjust the error closed to res_nsend instead of here after h_errno is removed.
-        if (ai_error == 0) {
-            return herrnoToAiError(herrno);
-        }
-        return ai_error;
+        // Pass herrno to catch more detailed errors rather than EAI_NODATA.
+        return herrnoToAiErrno(herrno);
     }
     hp = getanswer(buf, n, name, type, res, info->hp, info->buf, info->buflen, &herrno);
     free(buf);
     if (hp == NULL) {
-        return herrnoToAiError(herrno);
+        return herrnoToAiErrno(herrno);
     }
     return 0;
 }
@@ -940,25 +933,17 @@ static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
         return EAI_MEMORY;
     }
     res_setnetcontext(res, netcontext);
-    int ai_error = 0;
     int herrno = NETDB_INTERNAL;
-    n = res_nquery(res, qbuf, C_IN, T_PTR, buf->buf, (int) sizeof(buf->buf), &ai_error, &herrno);
+    n = res_nquery(res, qbuf, C_IN, T_PTR, buf->buf, (int) sizeof(buf->buf), &herrno);
     if (n < 0) {
         free(buf);
         debugprintf("res_nquery failed (%d)\n", res, n);
-
-        // TODO: Consider to return more meaningful error codes.
-        // Currently, doesn't consider ai_error as _dns_gethtbyname() does because current ai_error
-        // comes from rcode only and rcode NOERROR doesn't really mean no error for the whole DNS
-        // query progress. DNS server may respond a DNS packet without any answer for queried
-        // address. In this case, return error code from h_errno NO_DATA rather than rcode NOERROR
-        // (ai_error).
-        return herrnoToAiError(herrno);
+        return herrnoToAiErrno(herrno);
     }
     hp = getanswer(buf, n, qbuf, T_PTR, res, info->hp, info->buf, info->buflen, &herrno);
     free(buf);
     if (hp == NULL) {
-        return herrnoToAiError(herrno);
+        return herrnoToAiErrno(herrno);
     }
 
     char* bf = (char*) (hp->h_addr_list + 2);
@@ -1023,26 +1008,23 @@ static int android_gethostbyaddrfornetcontext_proxy(const void* addr, socklen_t 
     return error;
 }
 
-int herrnoToAiError(int herror) {
-    switch (herror) {
-        case HOST_NOT_FOUND:
+int herrnoToAiErrno(int herrno) {
+    switch (herrno) {
+        // extended h_errno
+        case NETD_RESOLV_H_ERRNO_EXT_TIMEOUT:
+            return NETD_RESOLV_TIMEOUT;
+        // legacy h_errno
+        case NETDB_SUCCESS:
+            return 0;
+        case HOST_NOT_FOUND:  // TODO: Perhaps convert HOST_NOT_FOUND to EAI_NONAME instead
+        case NO_DATA:         // NO_ADDRESS
             return EAI_NODATA;
         case TRY_AGAIN:
             return EAI_AGAIN;
+        case NETDB_INTERNAL:
+            return EAI_SYSTEM;  // see errno for detail
+        case NO_RECOVERY:
         default:
             return EAI_FAIL;
-    }
-}
-
-int rcodeToAiError(int rcode) {
-    // Catch the two cases (success, timeout). For other cases, just set it EAI_NODATA
-    // as EAI_NODATA is returned in dns_getaddrinfo() when res_searchN() returns -1.
-    switch (rcode) {
-        case NOERROR:
-            return 0;
-        case RCODE_TIMEOUT:
-            return NETD_RESOLV_TIMEOUT;
-        default:
-            return EAI_NODATA;
     }
 }

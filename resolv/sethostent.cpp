@@ -130,6 +130,7 @@ int _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
     if (num == 0) {
         *info->he = HOST_NOT_FOUND;
         free(buf);
+        // TODO: Perhaps convert HOST_NOT_FOUND to EAI_NONAME instead
         return EAI_NODATA;
     }
 
@@ -188,6 +189,7 @@ int _hf_gethtbyaddr(const unsigned char* uaddr, int len, int af, getnamaddr* inf
     if (hp == NULL) {
         if (errno == ENOSPC) return EAI_MEMORY;  // glibc compatibility.
         *info->he = HOST_NOT_FOUND;
+        // TODO: Perhaps convert HOST_NOT_FOUND to EAI_NONAME instead
         return EAI_NODATA;
     }
     return 0;

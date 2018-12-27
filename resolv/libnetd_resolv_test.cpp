@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 
 #include <android-base/stringprintf.h>
+#include <arpa/inet.h>
 #include <netdb.h>
 
 #include "dns_responder.h"
@@ -43,6 +44,15 @@ class TestBase : public ::testing::Test {
     void TearDown() {
         resolv_delete_cache_for_net(TEST_NETID);
         resolv_set_nameservers_for_net(TEST_NETID, nullptr, 0, "", nullptr);
+    }
+
+    static std::string ToString(const hostent* he) {
+        if (he == nullptr) return "<null>";
+        char buffer[INET6_ADDRSTRLEN];
+        if (!inet_ntop(he->h_addrtype, he->h_addr_list[0], buffer, sizeof(buffer))) {
+            return "<invalid>";
+        }
+        return buffer;
     }
 
     static std::string ToString(const addrinfo* ai) {
@@ -76,27 +86,27 @@ class TestBase : public ::testing::Test {
             .max_samples = 8,
             .base_timeout_msec = 100,
     };
-};
-
-class GetAddrInfoForNetContextTest : public TestBase {};
-
-TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
-    struct addrinfo* result = nullptr;
-    const android_net_context netcontext = {
-            .app_netid = NETID_UNSET,
+    const android_net_context mNetcontext = {
+            .app_netid = TEST_NETID,
             .app_mark = MARK_UNSET,
-            .dns_netid = NETID_UNSET,
+            .dns_netid = TEST_NETID,
             .dns_mark = MARK_UNSET,
             .uid = NET_CONTEXT_INVALID_UID,
     };
+};
 
+class GetAddrInfoForNetContextTest : public TestBase {};
+class GetHostByNameForNetContextTest : public TestBase {};
+
+TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
     // Both null "netcontext" and null "res" of android_getaddrinfofornetcontext() are not tested
     // here because they are checked by assert() without returning any error number.
 
     // Invalid hostname and servname.
     // Both hostname and servname are null pointers. Expect error number EAI_NONAME.
+    struct addrinfo* result = nullptr;
     int rv = android_getaddrinfofornetcontext(nullptr /*hostname*/, nullptr /*servname*/,
-                                              nullptr /*hints*/, &netcontext, &result);
+                                              nullptr /*hints*/, &mNetcontext, &result);
     EXPECT_EQ(EAI_NONAME, rv);
     if (result) {
         freeaddrinfo(result);
@@ -151,7 +161,7 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
         };
 
         rv = android_getaddrinfofornetcontext("localhost", nullptr /*servname*/, &hints,
-                                              &netcontext, &result);
+                                              &mNetcontext, &result);
         EXPECT_EQ(config.expected_errorno, rv);
 
         if (result) {
@@ -162,14 +172,6 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
 }
 
 TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_Family) {
-    const android_net_context netcontext = {
-            .app_netid = NETID_UNSET,
-            .app_mark = MARK_UNSET,
-            .dns_netid = NETID_UNSET,
-            .dns_mark = MARK_UNSET,
-            .uid = NET_CONTEXT_INVALID_UID,
-    };
-
     for (int family = 0; family < AF_MAX; ++family) {
         if (family == AF_UNSPEC || family == AF_INET || family == AF_INET6) {
             continue;  // skip supported family
@@ -182,7 +184,7 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_Family) {
         };
 
         int rv = android_getaddrinfofornetcontext("localhost", nullptr /*servname*/, &hints,
-                                                  &netcontext, &result);
+                                                  &mNetcontext, &result);
         EXPECT_EQ(EAI_FAMILY, rv);
 
         if (result) freeaddrinfo(result);
@@ -190,14 +192,6 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_Family) {
 }
 
 TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_MeaningfulSocktypeAndProtocolCombination) {
-    const android_net_context netcontext = {
-            .app_netid = NETID_UNSET,
-            .app_mark = MARK_UNSET,
-            .dns_netid = NETID_UNSET,
-            .dns_mark = MARK_UNSET,
-            .uid = NET_CONTEXT_INVALID_UID,
-    };
-
     static const int families[] = {PF_INET, PF_INET6, PF_UNSPEC};
     // Skip to test socket type SOCK_RAW in meaningful combination (explore_options[]) of
     // system\netd\resolv\getaddrinfo.cpp. In explore_options[], the socket type SOCK_RAW always
@@ -237,7 +231,7 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_MeaningfulSocktypeAndProt
                 };
 
                 int rv = android_getaddrinfofornetcontext("localhost", nullptr /*servname*/, &hints,
-                                                          &netcontext, &result);
+                                                          &mNetcontext, &result);
                 EXPECT_EQ(EAI_BADHINTS, rv);
 
                 if (result) freeaddrinfo(result);
@@ -247,13 +241,6 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_MeaningfulSocktypeAndProt
 }
 
 TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_PortNameAndNumber) {
-    const android_net_context netcontext = {
-            .app_netid = NETID_UNSET,
-            .app_mark = MARK_UNSET,
-            .dns_netid = NETID_UNSET,
-            .dns_mark = MARK_UNSET,
-            .uid = NET_CONTEXT_INVALID_UID,
-    };
     constexpr char http_portno[] = "80";
     constexpr char invalid_portno[] = "65536";  // out of valid port range from 0 to 65535
     constexpr char http_portname[] = "http";
@@ -326,22 +313,18 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_PortNameAndNumber) {
         };
 
         struct addrinfo* result = nullptr;
-        int rv = android_getaddrinfofornetcontext("localhost", config.servname, &hints, &netcontext,
-                                                  &result);
+        int rv = android_getaddrinfofornetcontext("localhost", config.servname, &hints,
+                                                  &mNetcontext, &result);
         EXPECT_EQ(config.expected_errorno, rv);
 
         if (result) freeaddrinfo(result);
     }
 }
 
-// Blocked by aosp/816674 which causes wrong error code EAI_FAIL (4) but EAI_NODATA (7).
-// TODO: fix aosp/816674 and add testcases AlphabeticalHostname_NoData back.
-/*
 TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname_NoData) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
     constexpr char v4_host_name[] = "v4only.example.com.";
-    constexpr char nonexistent_host_name[] = "nonexistent.example.com.";
     test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
     dns.addMapping(v4_host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
@@ -351,37 +334,16 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname_NoData) {
                                                 mDefaultSearchDomains, &mDefaultParams_Binder));
     dns.clearQueries();
 
-    struct addrinfo* result = nullptr;
-    const android_net_context netcontext = {
-            .app_netid = TEST_NETID,
-            .app_mark = MARK_UNSET,
-            .dns_netid = TEST_NETID,
-            .dns_mark = MARK_UNSET,
-            .uid = NET_CONTEXT_INVALID_UID,
-    };
-
-    // Query nonexistent hostname.
-    int rv =
-            android_getaddrinfofornetcontext("nonexistent", nullptr, nullptr, &netcontext, &result);
-    EXPECT_LE(1U, GetNumQueries(dns, nonexistent_host_name));
-    EXPECT_TRUE(result == nullptr);
-    EXPECT_EQ(EAI_NODATA, rv);
-
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
-
     // Want AAAA answer but DNS server has A answer only.
+    struct addrinfo* result = nullptr;
     const addrinfo hints = {.ai_family = AF_INET6};
-    rv = android_getaddrinfofornetcontext("v4only", nullptr, &hints, &netcontext, &result);
+    int rv = android_getaddrinfofornetcontext("v4only", nullptr, &hints, &mNetcontext, &result);
     EXPECT_LE(1U, GetNumQueries(dns, v4_host_name));
     EXPECT_TRUE(result == nullptr);
     EXPECT_EQ(EAI_NODATA, rv);
 
     if (result) freeaddrinfo(result);
 }
-*/
 
 TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname) {
     constexpr char listen_addr[] = "127.0.0.3";
@@ -399,14 +361,6 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname) {
                                                 sizeof(servers) / sizeof(servers[0]),
                                                 mDefaultSearchDomains, &mDefaultParams_Binder));
 
-    const android_net_context netcontext = {
-            .app_netid = TEST_NETID,
-            .app_mark = MARK_UNSET,
-            .dns_netid = TEST_NETID,
-            .dns_mark = MARK_UNSET,
-            .uid = NET_CONTEXT_INVALID_UID,
-    };
-
     static const struct TestConfig {
         int ai_family;
         const std::string expected_addr;
@@ -421,7 +375,8 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname) {
 
         struct addrinfo* result = nullptr;
         const struct addrinfo hints = {.ai_family = config.ai_family};
-        int rv = android_getaddrinfofornetcontext("sawadee", nullptr, &hints, &netcontext, &result);
+        int rv =
+                android_getaddrinfofornetcontext("sawadee", nullptr, &hints, &mNetcontext, &result);
         EXPECT_EQ(0, rv);
         EXPECT_TRUE(result != nullptr);
         EXPECT_EQ(1U, GetNumQueries(dns, host_name));
@@ -436,28 +391,27 @@ TEST_F(GetAddrInfoForNetContextTest, ServerResponseError) {
     constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "hello.example.com.";
 
-    const android_net_context netcontext = {
-            .app_netid = TEST_NETID,
-            .app_mark = MARK_UNSET,
-            .dns_netid = TEST_NETID,
-            .dns_mark = MARK_UNSET,
-            .uid = NET_CONTEXT_INVALID_UID,
+    static const struct TestConfig {
+        ns_rcode rcode;
+        int expected_errorno;  // expected result
+
+        // Only test failure RCODE [1..5] in RFC 1035 section 4.1.1 and skip successful RCODE 0
+        // which means no error.
+    } testConfigs[]{
+            // clang-format off
+            {ns_rcode::ns_r_formerr, EAI_FAIL},
+            {ns_rcode::ns_r_servfail, EAI_AGAIN},
+            {ns_rcode::ns_r_nxdomain, EAI_NODATA},
+            {ns_rcode::ns_r_notimpl, EAI_FAIL},
+            {ns_rcode::ns_r_refused, EAI_FAIL},
+            // clang-format on
     };
 
-    // Only test failure RCODE [1..5] in RFC 1035 section 4.1.1 and skip successful RCODE 0 which
-    // means no error.
-    // clang-format off
-    static const ns_rcode rcodes[] = {ns_rcode::ns_r_formerr,
-                                      ns_rcode::ns_r_servfail,
-                                      ns_rcode::ns_r_nxdomain,
-                                      ns_rcode::ns_r_notimpl,
-                                      ns_rcode::ns_r_refused};
-    // clang-format on
+    for (const auto& config : testConfigs) {
+        SCOPED_TRACE(StringPrintf("rcode: %d", config.rcode));
 
-    for (const auto& rcode : rcodes) {
-        SCOPED_TRACE(StringPrintf("rcode: %d", rcode));
-
-        test::DNSResponder dns(listen_addr, listen_srv, 250, rcode /*response specific rcode*/);
+        test::DNSResponder dns(listen_addr, listen_srv, 250,
+                               config.rcode /*response specific rcode*/);
         dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
         dns.setResponseProbability(0.0);  // always ignore requests and response preset rcode
         ASSERT_TRUE(dns.startServer());
@@ -468,8 +422,9 @@ TEST_F(GetAddrInfoForNetContextTest, ServerResponseError) {
 
         struct addrinfo* result = nullptr;
         const struct addrinfo hints = {.ai_family = AF_UNSPEC};
-        int rv = android_getaddrinfofornetcontext(host_name, nullptr, &hints, &netcontext, &result);
-        EXPECT_EQ(EAI_NODATA, rv);
+        int rv =
+                android_getaddrinfofornetcontext(host_name, nullptr, &hints, &mNetcontext, &result);
+        EXPECT_EQ(config.expected_errorno, rv);
 
         if (result) freeaddrinfo(result);
     }
@@ -490,26 +445,140 @@ TEST_F(GetAddrInfoForNetContextTest, ServerTimeout) {
                                                 mDefaultSearchDomains, &mDefaultParams_Binder));
 
     struct addrinfo* result = nullptr;
-    const android_net_context netcontext = {
-            .app_netid = TEST_NETID,
-            .app_mark = MARK_UNSET,
-            .dns_netid = TEST_NETID,
-            .dns_mark = MARK_UNSET,
-            .uid = NET_CONTEXT_INVALID_UID,
-    };
-
     const struct addrinfo hints = {.ai_family = AF_UNSPEC};
-    int rv = android_getaddrinfofornetcontext("hello", nullptr, &hints, &netcontext, &result);
+    int rv = android_getaddrinfofornetcontext("hello", nullptr, &hints, &mNetcontext, &result);
     EXPECT_EQ(NETD_RESOLV_TIMEOUT, rv);
 
     if (result) freeaddrinfo(result);
 }
 
-// Local host file function (files_getaddrinfo) is not tested because it only returns a boolean
-// (success or failure) without any error number.
+TEST_F(GetHostByNameForNetContextTest, AlphabeticalHostname) {
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_srv[] = "53";
+    constexpr char host_name[] = "jiababuei.example.com.";
+    constexpr char v4addr[] = "1.2.3.4";
+    constexpr char v6addr[] = "::1.2.3.4";
 
-// TODO: Add test NULL hostname, or numeric hostname for android_getaddrinfofornetcontext
-// TODO: Add test for android_gethostbyaddrfornetcontext and android_gethostbynamefornetcontext.
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(host_name, ns_type::ns_t_a, v4addr);
+    dns.addMapping(host_name, ns_type::ns_t_aaaa, v6addr);
+    ASSERT_TRUE(dns.startServer());
+    const char* servers[] = {listen_addr};
+    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers,
+                                                sizeof(servers) / sizeof(servers[0]),
+                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+
+    static const struct TestConfig {
+        int ai_family;
+        const std::string expected_addr;
+    } testConfigs[]{
+            {AF_INET, v4addr},
+            {AF_INET6, v6addr},
+    };
+
+    for (const auto& config : testConfigs) {
+        SCOPED_TRACE(StringPrintf("family: %d", config.ai_family));
+        dns.clearQueries();
+
+        struct hostent* hp = nullptr;
+        int rv = android_gethostbynamefornetcontext("jiababuei", config.ai_family, &mNetcontext,
+                                                    &hp);
+        EXPECT_EQ(0, rv);
+        EXPECT_TRUE(hp != nullptr);
+        EXPECT_EQ(1U, GetNumQueries(dns, host_name));
+        EXPECT_EQ(config.expected_addr, ToString(hp));
+    }
+}
+
+TEST_F(GetHostByNameForNetContextTest, NoData) {
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_srv[] = "53";
+    constexpr char v4_host_name[] = "v4only.example.com.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns.addMapping(v4_host_name, ns_type::ns_t_a, "1.2.3.3");
+    ASSERT_TRUE(dns.startServer());
+    const char* servers[] = {listen_addr};
+    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers,
+                                                sizeof(servers) / sizeof(servers[0]),
+                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    dns.clearQueries();
+
+    // Want AAAA answer but DNS server has A answer only.
+    struct hostent* hp = nullptr;
+    int rv = android_gethostbynamefornetcontext("v4only", AF_INET6, &mNetcontext, &hp);
+    EXPECT_LE(1U, GetNumQueries(dns, v4_host_name));
+    EXPECT_TRUE(hp == nullptr);
+    EXPECT_EQ(EAI_NODATA, rv);
+}
+
+TEST_F(GetHostByNameForNetContextTest, ServerResponseError) {
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_srv[] = "53";
+    constexpr char host_name[] = "hello.example.com.";
+
+    static const struct TestConfig {
+        ns_rcode rcode;
+        int expected_errorno;  // expected result
+
+        // Only test failure RCODE [1..5] in RFC 1035 section 4.1.1 and skip successful RCODE 0
+        // which means no error. Note that the return error codes aren't mapped by rcode in the
+        // test case SERVFAIL, NOTIMP and REFUSED. See the comment of res_nsend()
+        // in system\netd\resolv\res_query.cpp for more detail.
+    } testConfigs[]{
+            // clang-format off
+            {ns_rcode::ns_r_formerr, EAI_FAIL},
+            {ns_rcode::ns_r_servfail, EAI_AGAIN},  // Not mapped by rcode.
+            {ns_rcode::ns_r_nxdomain, EAI_NODATA},
+            {ns_rcode::ns_r_notimpl, EAI_AGAIN},  // Not mapped by rcode.
+            {ns_rcode::ns_r_refused, EAI_AGAIN},  // Not mapped by rcode.
+            // clang-format on
+    };
+
+    for (const auto& config : testConfigs) {
+        SCOPED_TRACE(StringPrintf("rcode: %d", config.rcode));
+
+        test::DNSResponder dns(listen_addr, listen_srv, 250,
+                               config.rcode /*response specific rcode*/);
+        dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+        dns.setResponseProbability(0.0);  // always ignore requests and response preset rcode
+        ASSERT_TRUE(dns.startServer());
+        const char* servers[] = {listen_addr};
+        ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers,
+                                                    sizeof(servers) / sizeof(servers[0]),
+                                                    mDefaultSearchDomains, &mDefaultParams_Binder));
+
+        struct hostent* hp = nullptr;
+        int rv = android_gethostbynamefornetcontext(host_name, AF_INET, &mNetcontext, &hp);
+        EXPECT_TRUE(hp == nullptr);
+        EXPECT_EQ(config.expected_errorno, rv);
+    }
+}
+
+// TODO: Add private DNS server timeout test.
+TEST_F(GetHostByNameForNetContextTest, ServerTimeout) {
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_srv[] = "53";
+    constexpr char host_name[] = "hello.example.com.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250, static_cast<ns_rcode>(-1) /*no response*/);
+    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns.setResponseProbability(0.0);  // always ignore requests and don't response
+    ASSERT_TRUE(dns.startServer());
+    const char* servers[] = {listen_addr};
+    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers,
+                                                sizeof(servers) / sizeof(servers[0]),
+                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+
+    struct hostent* hp = nullptr;
+    int rv = android_gethostbynamefornetcontext(host_name, AF_INET, &mNetcontext, &hp);
+    EXPECT_EQ(NETD_RESOLV_TIMEOUT, rv);
+}
+
+// Note that local host file function, files_getaddrinfo(), of android_getaddrinfofornetcontext()
+// is not tested because it only returns a boolean (success or failure) without any error number.
+
+// TODO: Add test NULL hostname, or numeric hostname for android_getaddrinfofornetcontext.
+// TODO: Add test invalid parameters for android_gethostbynamefornetcontext.
+// TODO: Add test for android_gethostbyaddrfornetcontext.
 
 }  // end of namespace net
 }  // end of namespace android
