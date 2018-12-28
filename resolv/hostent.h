@@ -38,7 +38,6 @@ struct getnamaddr {
     struct hostent* hp;
     char* buf;
     size_t buflen;
-    int* he;
 };
 
 // /etc/hosts lookup

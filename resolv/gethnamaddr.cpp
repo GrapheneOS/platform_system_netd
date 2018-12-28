@@ -473,8 +473,6 @@ static int gethostbyname_internal_real(const char* name, int af, res_state res, 
                                        char* buf, size_t buflen) {
     getnamaddr info;
     size_t size;
-    // TODO: Remove it once the data member "he" of struct getnamaddr is removed.
-    int he = NETDB_INTERNAL;
 
     _DIAGASSERT(name != NULL);
 
@@ -530,7 +528,6 @@ static int gethostbyname_internal_real(const char* name, int af, res_state res, 
     info.hp = hp;
     info.buf = buf;
     info.buflen = buflen;
-    info.he = &he;  // TODO: Remove the data member "he" of struct getnamaddr.
     if (_hf_gethtbyname2(name, af, &info)) {
         int error = _dns_gethtbyname(name, af, &info);
         if (error != 0) {
@@ -573,8 +570,6 @@ static int android_gethostbyaddrfornetcontext_real(const void* addr, socklen_t l
     const u_char* uaddr = (const u_char*) addr;
     socklen_t size;
     struct getnamaddr info;
-    // TODO: Remove it once the data member "he" of struct getnamaddr is removed.
-    int he = NETDB_INTERNAL;
 
     _DIAGASSERT(addr != NULL);
 
@@ -611,7 +606,6 @@ static int android_gethostbyaddrfornetcontext_real(const void* addr, socklen_t l
     info.hp = hp;
     info.buf = buf;
     info.buflen = buflen;
-    info.he = &he;  // TODO: Remove the data member "he" of struct getnamaddr.
     if (_hf_gethtbyaddr(uaddr, len, af, &info)) {
         int error = _dns_gethtbyaddr(uaddr, len, af, netcontext, &info);
         if (error != 0) {
@@ -856,7 +850,6 @@ static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
     }
     querybuf* buf = (querybuf*) malloc(sizeof(querybuf));
     if (buf == NULL) {
-        *info->he = NETDB_INTERNAL;
         return EAI_MEMORY;
     }
     res = res_get_state();
@@ -907,13 +900,11 @@ static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
                 if (advance > 0 && qp + advance < ep)
                     qp += advance;
                 else {
-                    *info->he = NETDB_INTERNAL;
                     // TODO: Consider to remap error code without relying on errno.
                     return EAI_SYSTEM;
                 }
             }
             if (strlcat(qbuf, "ip6.arpa", sizeof(qbuf)) >= sizeof(qbuf)) {
-                *info->he = NETDB_INTERNAL;
                 // TODO: Consider to remap error code without relying on errno.
                 return EAI_SYSTEM;
             }
@@ -924,7 +915,6 @@ static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
 
     querybuf* buf = (querybuf*) malloc(sizeof(querybuf));
     if (buf == NULL) {
-        *info->he = NETDB_INTERNAL;
         return EAI_MEMORY;
     }
     res = res_get_state();
@@ -966,12 +956,10 @@ static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
         memcpy(bf + NS_INADDRSZ, NAT64_PAD, sizeof(NAT64_PAD));
     }
 
-    *info->he = NETDB_SUCCESS;
     return 0;
 
 nospc:
     errno = ENOSPC;
-    *info->he = NETDB_INTERNAL;
     return EAI_MEMORY;
 }
 
