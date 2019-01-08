@@ -234,19 +234,6 @@ Status TrafficController::start() {
         return netdutils::status::ok;
     }
 
-    int* status = nullptr;
-
-    std::vector<const char*> prog_args{
-            "/system/bin/bpfloader",
-    };
-
-    prog_args.push_back(nullptr);
-    int ret = android_fork_execvp(prog_args.size(), (char**) prog_args.data(), status, false, true);
-    if (ret) {
-        ret = errno;
-        ALOGE("failed to execute %s: %s", prog_args[0], strerror(errno));
-        return statusFromErrno(ret, "run bpf loader failed");
-    }
     /* When netd restarts from a crash without total system reboot, the program
      * is still attached to the cgroup, detach it so the program can be freed
      * and we can load and attach new program into the target cgroup.
