@@ -140,7 +140,7 @@ class ResolverTest : public ::testing::Test, public DnsResponderClient {
         std::vector<int32_t> stats32;
         auto rv = mNetdSrv->getResolverInfo(TEST_NETID, servers, domains, tlsServers, &params32,
                                             &stats32);
-        if (!rv.isOk() || params32.size() != INetd::RESOLVER_PARAMS_COUNT) {
+        if (!rv.isOk() || params32.size() != static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT)) {
             return false;
         }
         *params = __res_params {
@@ -456,10 +456,10 @@ TEST_F(ResolverTest, BinderSerialization) {
         INetd::RESOLVER_PARAMS_MAX_SAMPLES,
         INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC,
     };
-    int size = static_cast<int>(params_offsets.size());
+    const int size = static_cast<int>(params_offsets.size());
     EXPECT_EQ(size, INetd::RESOLVER_PARAMS_COUNT);
     std::sort(params_offsets.begin(), params_offsets.end());
-    for (int i = 0 ; i < size ; ++i) {
+    for (int i = 0; i < size; ++i) {
         EXPECT_EQ(params_offsets[i], i);
     }
 }
@@ -479,8 +479,8 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
     ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams_Binder));
 
     const hostent* result = gethostbyname(mapping.host.c_str());
-    size_t total_queries = std::accumulate(dns.begin(), dns.end(), 0,
-            [this, &mapping](size_t total, auto& d) {
+    const size_t total_queries =
+            std::accumulate(dns.begin(), dns.end(), 0, [this, &mapping](size_t total, auto& d) {
                 return total + GetNumQueriesForType(*d, ns_type::ns_t_a, mapping.entry.c_str());
             });
 
@@ -696,7 +696,7 @@ TEST_F(ResolverTest, GetAddrInfoV6_failing) {
     // for the next sample_lifetime seconds.
     // TODO: This approach is implementation-dependent, change once metrics reporting is available.
     addrinfo hints = {.ai_family = AF_INET6};
-    for (int i = 0 ; i < sample_count ; ++i) {
+    for (int i = 0; i < sample_count; ++i) {
         std::string domain = StringPrintf("nonexistent%d", i);
         ScopedAddrinfo result = safe_getaddrinfo(domain.c_str(), nullptr, &hints);
     }

@@ -126,7 +126,7 @@ inline bool queryingViaTls(unsigned dns_netid) {
     RESOLV_STUB.resolv_get_private_dns_status_for_net(dns_netid, &privateDnsStatus);
     switch (static_cast<PrivateDnsMode>(privateDnsStatus.mode)) {
         case PrivateDnsMode::OPPORTUNISTIC:
-            for (unsigned i = 0; i < privateDnsStatus.numServers; i++) {
+            for (int i = 0; i < privateDnsStatus.numServers; i++) {
                 if (privateDnsStatus.serverStatus[i].validation == Validation::success) {
                     return true;
                 }
