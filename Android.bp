@@ -11,9 +11,9 @@ cc_defaults {
         // Override -Wno-error=implicit-fallthrough from soong
         "-Werror=implicit-fallthrough",
         "-Wnullable-to-nonnull-conversion",
+        "-Wsign-compare",
         "-Wthread-safety",
         "-Wunused-parameter",
-        "-Wsign-compare",
     ],
     tidy: true,
     tidy_checks: [
