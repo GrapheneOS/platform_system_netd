@@ -24,6 +24,8 @@ package android.net.metrics;
 oneway interface INetdEventListener {
     const int EVENT_GETADDRINFO = 1;
     const int EVENT_GETHOSTBYNAME = 2;
+    const int EVENT_GETHOSTBYADDR = 3;
+    const int EVENT_RES_NSEND = 4;
 
     const int REPORTING_LEVEL_NONE = 0;
     const int REPORTING_LEVEL_METRICS = 1;
@@ -46,8 +48,9 @@ oneway interface INetdEventListener {
      *        of ipAddresses if there were too many addresses to log.
      * @param uid the UID of the application that performed the query.
      */
-    void onDnsEvent(int netId, int eventType, int returnCode, int latencyMs, String hostname,
-            in String[] ipAddresses, int ipAddressesCount, int uid);
+    void onDnsEvent(int netId, int eventType, int returnCode, int latencyMs,
+            @utf8InCpp String hostname, in @utf8InCpp String[] ipAddresses,
+            int ipAddressesCount, int uid);
 
     /**
      * Represents a private DNS validation success or failure.
