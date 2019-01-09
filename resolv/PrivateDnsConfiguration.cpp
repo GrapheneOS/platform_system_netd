@@ -26,15 +26,15 @@
 #include "netdutils/BackoffSequence.h"
 
 int resolv_set_private_dns_for_net(unsigned netid, uint32_t mark, const char** servers,
-                                   const unsigned numServers, const char* tlsName,
-                                   const uint8_t** fingerprints, const unsigned numFingerprint) {
+                                   const int numServers, const char* tlsName,
+                                   const uint8_t** fingerprints, const int numFingerprint) {
     std::vector<std::string> tlsServers;
-    for (unsigned i = 0; i < numServers; i++) {
+    for (int i = 0; i < numServers; i++) {
         tlsServers.push_back(std::string(servers[i]));
     }
 
     std::set<std::vector<uint8_t>> tlsFingerprints;
-    for (unsigned i = 0; i < numFingerprint; i++) {
+    for (int i = 0; i < numFingerprint; i++) {
         // Each fingerprint stored are 32(SHA256_SIZE) bytes long.
         tlsFingerprints.emplace(std::vector<uint8_t>(fingerprints[i], fingerprints[i] + 32));
     }
@@ -194,7 +194,7 @@ void PrivateDnsConfiguration::getStatus(unsigned netId, ExternalPrivateDnsStatus
 
     const auto netPair = mPrivateDnsTransports.find(netId);
     if (netPair != mPrivateDnsTransports.end()) {
-        status->numServers = netPair->second.size();
+        status->numServers = static_cast<int>(netPair->second.size());
         int count = 0;
         for (const auto& serverPair : netPair->second) {
             status->serverStatus[count].ss = serverPair.first.ss;

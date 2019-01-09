@@ -25,7 +25,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
+#include <iterator>
 
 namespace {
 
@@ -94,7 +94,7 @@ int FwmarkClient::send(FwmarkCommand* data, int fd, FwmarkConnectInfo* connectIn
     msghdr message;
     memset(&message, 0, sizeof(message));
     message.msg_iov = iov;
-    message.msg_iovlen = ARRAY_SIZE(iov);
+    message.msg_iovlen = std::size(iov);
 
     union {
         cmsghdr cmh;

@@ -321,7 +321,7 @@ int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>*
 
     ExternalPrivateDnsStatus privateDnsStatus = {PrivateDnsMode::OFF, 0, {}};
     RESOLV_STUB.resolv_get_private_dns_status_for_net(netId, &privateDnsStatus);
-    for (unsigned i = 0; i < privateDnsStatus.numServers; i++) {
+    for (int i = 0; i < privateDnsStatus.numServers; i++) {
         std::string tlsServer_str = addrToString(&(privateDnsStatus.serverStatus[i].ss));
         tlsServers->push_back(std::move(tlsServer_str));
     }
@@ -418,7 +418,7 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
         } else {
             dw.println("Private DNS configuration (%u entries)", privateDnsStatus.numServers);
             dw.incIndent();
-            for (unsigned i = 0; i < privateDnsStatus.numServers; i++) {
+            for (int i = 0; i < privateDnsStatus.numServers; i++) {
                 dw.println("%s name{%s} status{%s}",
                            addrToString(&(privateDnsStatus.serverStatus[i].ss)).c_str(),
                            privateDnsStatus.serverStatus[i].hostname,

@@ -383,24 +383,22 @@ TEST(IPPrefixTest, TruncationOther) {
             {"2001:db8:cafe:d00d::", 46, "2001:db8:cafc::"},
     };
 
-    int totalTests = 0;
-    for (unsigned int i = 0; i < arraysize(testExpectations); i++, totalTests++) {
+    for (const auto& expectation : testExpectations) {
         IPAddress ip;
-        EXPECT_TRUE(IPAddress::forString(testExpectations[i].ip, &ip))
-                << "Failed to parse IP address " << testExpectations[i].ip;
+        EXPECT_TRUE(IPAddress::forString(expectation.ip, &ip))
+                << "Failed to parse IP address " << expectation.ip;
 
         IPAddress ipTruncated;
-        EXPECT_TRUE(IPAddress::forString(testExpectations[i].ipTruncated, &ipTruncated))
-                << "Failed to parse IP address " << testExpectations[i].ipTruncated;
+        EXPECT_TRUE(IPAddress::forString(expectation.ipTruncated, &ipTruncated))
+                << "Failed to parse IP address " << expectation.ipTruncated;
 
-        IPPrefix prefix(ip, testExpectations[i].cidrLen);
+        IPPrefix prefix(ip, expectation.cidrLen);
 
-        EXPECT_EQ(testExpectations[i].cidrLen, prefix.length())
-                << "Unexpected cidrLen " << testExpectations[i].cidrLen;
+        EXPECT_EQ(expectation.cidrLen, prefix.length())
+                << "Unexpected cidrLen " << expectation.cidrLen;
         EXPECT_EQ(ipTruncated, prefix.ip())
                 << "Unexpected IP truncation: " << prefix.ip() << ", expected: " << ipTruncated;
     }
-    EXPECT_EQ(static_cast<int>(arraysize(testExpectations)), totalTests);
 }
 
 TEST(IPPrefixTest, GamutOfOperators) {
