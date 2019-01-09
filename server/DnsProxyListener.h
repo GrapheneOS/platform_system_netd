@@ -22,8 +22,7 @@
 
 #include "EventReporter.h"
 #include "NetdCommand.h"
-#include "android/net/metrics/INetdEventListener.h"
-#include "netd_resolv/resolv.h"  // struct android_net_context
+#include "netd_resolv/resolv.h"  // android_net_context
 
 namespace android {
 namespace net {
@@ -51,30 +50,25 @@ class DnsProxyListener : public FrameworkListener {
         DnsProxyListener* mDnsProxyListener;
     };
 
+    /* ------ getaddrinfo ------*/
     class GetAddrInfoHandler {
       public:
         // Note: All of host, service, and hints may be NULL
-        GetAddrInfoHandler(SocketClient *c,
-                           char* host,
-                           char* service,
-                           struct addrinfo* hints,
-                           const struct android_net_context& netcontext,
-                           const int reportingLevel,
-                           const android::sp<android::net::metrics::INetdEventListener>& listener);
+        GetAddrInfoHandler(SocketClient* c, char* host, char* service, addrinfo* hints,
+                           const android_net_context& netcontext, int reportingLevel);
         ~GetAddrInfoHandler();
 
         void run();
 
       private:
-        void doDns64Synthesis(int32_t* rv, struct addrinfo** res);
+        void doDns64Synthesis(int32_t* rv, addrinfo** res);
 
         SocketClient* mClient;  // ref counted
         char* mHost;            // owned. TODO: convert to std::string.
         char* mService;         // owned. TODO: convert to std::string.
-        struct addrinfo* mHints;  // owned
-        struct android_net_context mNetContext;
+        addrinfo* mHints;       // owned
+        android_net_context mNetContext;
         const int mReportingLevel;
-        android::sp<android::net::metrics::INetdEventListener> mNetdEventListener;
     };
 
     /* ------ gethostbyname ------*/
@@ -90,25 +84,20 @@ class DnsProxyListener : public FrameworkListener {
 
     class GetHostByNameHandler {
       public:
-        GetHostByNameHandler(SocketClient *c,
-                            char *name,
-                            int af,
-                            const android_net_context& netcontext,
-                            int reportingLevel,
-                            const android::sp<android::net::metrics::INetdEventListener>& listener);
+        GetHostByNameHandler(SocketClient* c, char* name, int af,
+                             const android_net_context& netcontext, int reportingLevel);
         ~GetHostByNameHandler();
 
         void run();
 
       private:
-        void doDns64Synthesis(int32_t* rv, struct hostent** hpp);
+        void doDns64Synthesis(int32_t* rv, hostent** hpp);
 
         SocketClient* mClient; //ref counted
         char* mName;           // owned. TODO: convert to std::string.
         int mAf;
         android_net_context mNetContext;
         const int mReportingLevel;
-        android::sp<android::net::metrics::INetdEventListener> mNetdEventListener;
     };
 
     /* ------ gethostbyaddr ------*/
@@ -134,7 +123,7 @@ class DnsProxyListener : public FrameworkListener {
         void run();
 
       private:
-        void doDns64ReverseLookup(struct hostent** hpp);
+        void doDns64ReverseLookup(hostent** hpp);
 
         SocketClient* mClient;  // ref counted
         void* mAddress;    // address to lookup; owned
@@ -157,8 +146,7 @@ class DnsProxyListener : public FrameworkListener {
     class ResNSendHandler {
       public:
         ResNSendHandler(SocketClient* c, std::string msg, const android_net_context& netcontext,
-                        const int reportingLevel,
-                        const android::sp<android::net::metrics::INetdEventListener>& listener);
+                        int reportingLevel);
         ~ResNSendHandler();
 
         void run();
@@ -166,9 +154,8 @@ class DnsProxyListener : public FrameworkListener {
       private:
         SocketClient* mClient;  // ref counted
         std::string mMsg;
-        struct android_net_context mNetContext;
+        android_net_context mNetContext;
         const int mReportingLevel;
-        android::sp<android::net::metrics::INetdEventListener> mNetdEventListener;
     };
 };
 
