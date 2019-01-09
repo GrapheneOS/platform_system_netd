@@ -1636,8 +1636,8 @@ TEST_F(ResolverTest, Async_NormalQueryV4V6) {
     ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
     dns.clearQueries();
 
-    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);   // Type A       1
-    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);  // Type AAAA    28
+    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);   // Type A       1
+    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28, 0);  // Type AAAA    28
     EXPECT_TRUE(fd1 != -1);
     EXPECT_TRUE(fd2 != -1);
 
@@ -1654,8 +1654,8 @@ TEST_F(ResolverTest, Async_NormalQueryV4V6) {
     EXPECT_EQ(2U, GetNumQueries(dns, host_name));
 
     // Re-query verify cache works
-    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);   // Type A       1
-    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);  // Type AAAA    28
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);   // Type A       1
+    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28, 0);  // Type AAAA    28
 
     EXPECT_TRUE(fd1 != -1);
     EXPECT_TRUE(fd2 != -1);
@@ -1698,7 +1698,7 @@ TEST_F(ResolverTest, Async_BadQuery) {
 
     for (auto& td : kTestData) {
         SCOPED_TRACE(td.dname);
-        td.fd = resNetworkQuery(TEST_NETID, td.dname, 1, td.queryType);
+        td.fd = resNetworkQuery(TEST_NETID, td.dname, 1, td.queryType, 0);
         EXPECT_TRUE(td.fd != -1);
     }
 
@@ -1733,17 +1733,17 @@ TEST_F(ResolverTest, Async_EmptyAnswer) {
     {
         std::unique_lock lk(cvMutex);
         // A 1  AAAA 28
-        fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);
+        fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28, 0);
         EXPECT_TRUE(fd1 != -1);
         EXPECT_EQ(std::cv_status::no_timeout, cv.wait_for(lk, std::chrono::seconds(1)));
     }
 
     dns.setResponseProbability(0.0);
 
-    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
+    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);
     EXPECT_TRUE(fd2 != -1);
 
-    int fd3 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
+    int fd3 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);
     EXPECT_TRUE(fd3 != -1);
 
     uint8_t buf[MAXPACKET] = {};
@@ -1760,7 +1760,7 @@ TEST_F(ResolverTest, Async_EmptyAnswer) {
 
     dns.setResponseProbability(1.0);
 
-    int fd4 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
+    int fd4 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);
     EXPECT_TRUE(fd4 != -1);
 
     memset(buf, 0, MAXPACKET);

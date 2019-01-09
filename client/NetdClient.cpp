@@ -385,15 +385,16 @@ extern "C" int deleteTagData(uint32_t tag, uid_t uid) {
     return FwmarkClient().send(&command, -1, nullptr);
 }
 
-extern "C" int resNetworkQuery(unsigned netId, const char* dname, int ns_class, int ns_type) {
+extern "C" int resNetworkQuery(unsigned netId, const char* dname, int ns_class, int ns_type,
+                               uint32_t flags) {
     std::vector<uint8_t> buf(MAX_CMD_SIZE, 0);
     int len = res_mkquery(ns_o_query, dname, ns_class, ns_type, nullptr, 0, nullptr, buf.data(),
                           MAX_CMD_SIZE);
 
-    return resNetworkSend(netId, buf.data(), len);
+    return resNetworkSend(netId, buf.data(), len, flags);
 }
 
-extern "C" int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen) {
+extern "C" int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen, uint32_t) {
     // Encode
     // Base 64 encodes every 3 bytes into 4 characters, but then adds padding to the next
     // multiple of 4 and a \0

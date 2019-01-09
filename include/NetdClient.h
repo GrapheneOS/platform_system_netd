@@ -49,11 +49,11 @@ int setCounterSet(uint32_t counterSet, uid_t uid);
 
 int deleteTagData(uint32_t tag, uid_t uid);
 
-int resNetworkQuery(unsigned netId, const char* dname, int classType, int type);
+int resNetworkQuery(unsigned netId, const char* dname, int classType, int type, uint32_t flags);
 
 int resNetworkResult(int query_fd, int* rcode, uint8_t* answer, size_t anslen);
 
-int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen);
+int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen, uint32_t flags);
 
 void resNetworkCancel(int nsend_fd);
 __END_DECLS
