@@ -194,7 +194,6 @@ void PrivateDnsConfiguration::getStatus(unsigned netId, ExternalPrivateDnsStatus
 
     const auto netPair = mPrivateDnsTransports.find(netId);
     if (netPair != mPrivateDnsTransports.end()) {
-        status->numServers = static_cast<int>(netPair->second.size());
         int count = 0;
         for (const auto& serverPair : netPair->second) {
             status->serverStatus[count].ss = serverPair.first.ss;
@@ -204,6 +203,7 @@ void PrivateDnsConfiguration::getStatus(unsigned netId, ExternalPrivateDnsStatus
             count++;
             if (count >= MAXNS) break;  // Lose the rest
         }
+        status->numServers = count;
     }
 }
 
