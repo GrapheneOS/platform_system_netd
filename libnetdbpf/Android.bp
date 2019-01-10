@@ -34,6 +34,7 @@ cc_library {
 
 cc_test {
     name: "libnetdbpf_test",
+    test_suites: ["device-tests"],
     srcs: [
         "BpfNetworkStatsTest.cpp",
     ],
