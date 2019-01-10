@@ -140,7 +140,7 @@ class ResolverTest : public ::testing::Test, public DnsResponderClient {
         std::vector<int32_t> stats32;
         auto rv = mNetdSrv->getResolverInfo(TEST_NETID, servers, domains, tlsServers, &params32,
                                             &stats32);
-        if (!rv.isOk() || params32.size() != INetd::RESOLVER_PARAMS_COUNT) {
+        if (!rv.isOk() || params32.size() != static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT)) {
             return false;
         }
         *params = __res_params {
@@ -456,10 +456,10 @@ TEST_F(ResolverTest, BinderSerialization) {
         INetd::RESOLVER_PARAMS_MAX_SAMPLES,
         INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC,
     };
-    int size = static_cast<int>(params_offsets.size());
+    const int size = static_cast<int>(params_offsets.size());
     EXPECT_EQ(size, INetd::RESOLVER_PARAMS_COUNT);
     std::sort(params_offsets.begin(), params_offsets.end());
-    for (int i = 0 ; i < size ; ++i) {
+    for (int i = 0; i < size; ++i) {
         EXPECT_EQ(params_offsets[i], i);
     }
 }
@@ -479,8 +479,8 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
     ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams_Binder));
 
     const hostent* result = gethostbyname(mapping.host.c_str());
-    size_t total_queries = std::accumulate(dns.begin(), dns.end(), 0,
-            [this, &mapping](size_t total, auto& d) {
+    const size_t total_queries =
+            std::accumulate(dns.begin(), dns.end(), 0, [this, &mapping](size_t total, auto& d) {
                 return total + GetNumQueriesForType(*d, ns_type::ns_t_a, mapping.entry.c_str());
             });
 
@@ -696,7 +696,7 @@ TEST_F(ResolverTest, GetAddrInfoV6_failing) {
     // for the next sample_lifetime seconds.
     // TODO: This approach is implementation-dependent, change once metrics reporting is available.
     addrinfo hints = {.ai_family = AF_INET6};
-    for (int i = 0 ; i < sample_count ; ++i) {
+    for (int i = 0; i < sample_count; ++i) {
         std::string domain = StringPrintf("nonexistent%d", i);
         ScopedAddrinfo result = safe_getaddrinfo(domain.c_str(), nullptr, &hints);
     }
@@ -1636,8 +1636,8 @@ TEST_F(ResolverTest, Async_NormalQueryV4V6) {
     ASSERT_TRUE(SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams_Binder));
     dns.clearQueries();
 
-    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);   // Type A       1
-    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);  // Type AAAA    28
+    int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);   // Type A       1
+    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28, 0);  // Type AAAA    28
     EXPECT_TRUE(fd1 != -1);
     EXPECT_TRUE(fd2 != -1);
 
@@ -1654,8 +1654,8 @@ TEST_F(ResolverTest, Async_NormalQueryV4V6) {
     EXPECT_EQ(2U, GetNumQueries(dns, host_name));
 
     // Re-query verify cache works
-    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);   // Type A       1
-    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);  // Type AAAA    28
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);   // Type A       1
+    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28, 0);  // Type AAAA    28
 
     EXPECT_TRUE(fd1 != -1);
     EXPECT_TRUE(fd2 != -1);
@@ -1698,7 +1698,7 @@ TEST_F(ResolverTest, Async_BadQuery) {
 
     for (auto& td : kTestData) {
         SCOPED_TRACE(td.dname);
-        td.fd = resNetworkQuery(TEST_NETID, td.dname, 1, td.queryType);
+        td.fd = resNetworkQuery(TEST_NETID, td.dname, 1, td.queryType, 0);
         EXPECT_TRUE(td.fd != -1);
     }
 
@@ -1733,17 +1733,17 @@ TEST_F(ResolverTest, Async_EmptyAnswer) {
     {
         std::unique_lock lk(cvMutex);
         // A 1  AAAA 28
-        fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28);
+        fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 28, 0);
         EXPECT_TRUE(fd1 != -1);
         EXPECT_EQ(std::cv_status::no_timeout, cv.wait_for(lk, std::chrono::seconds(1)));
     }
 
     dns.setResponseProbability(0.0);
 
-    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
+    int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);
     EXPECT_TRUE(fd2 != -1);
 
-    int fd3 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
+    int fd3 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);
     EXPECT_TRUE(fd3 != -1);
 
     uint8_t buf[MAXPACKET] = {};
@@ -1760,7 +1760,7 @@ TEST_F(ResolverTest, Async_EmptyAnswer) {
 
     dns.setResponseProbability(1.0);
 
-    int fd4 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1);
+    int fd4 = resNetworkQuery(TEST_NETID, "howdy.example.com", 1, 1, 0);
     EXPECT_TRUE(fd4 != -1);
 
     memset(buf, 0, MAXPACKET);

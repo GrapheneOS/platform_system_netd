@@ -55,38 +55,23 @@ const int UID_OWNER_MAP_SIZE = 2000;
 
 #define BPF_PATH "/sys/fs/bpf"
 
-#define BPF_EGRESS_PROG_PATH BPF_PATH "/egress_prog"
-#define BPF_INGRESS_PROG_PATH BPF_PATH "/ingress_prog"
-#define XT_BPF_INGRESS_PROG_PATH BPF_PATH "/xt_bpf_ingress_prog"
-#define XT_BPF_EGRESS_PROG_PATH BPF_PATH "/xt_bpf_egress_prog"
-#define XT_BPF_WHITELIST_PROG_PATH BPF_PATH "/xt_bpf_whitelist_prog"
-#define XT_BPF_BLACKLIST_PROG_PATH BPF_PATH "/xt_bpf_blacklist_prog"
+#define BPF_EGRESS_PROG_PATH BPF_PATH "/prog_netd_cgroupskb_egress_stats"
+#define BPF_INGRESS_PROG_PATH BPF_PATH "/prog_netd_cgroupskb_ingress_stats"
+#define XT_BPF_INGRESS_PROG_PATH BPF_PATH "/prog_netd_skfilter_ingress_xtbpf"
+#define XT_BPF_EGRESS_PROG_PATH BPF_PATH "/prog_netd_skfilter_egress_xtbpf"
+#define XT_BPF_WHITELIST_PROG_PATH BPF_PATH "/prog_netd_skfilter_whitelist_xtbpf"
+#define XT_BPF_BLACKLIST_PROG_PATH BPF_PATH "/prog_netd_skfilter_blacklist_xtbpf"
 
-#define COOKIE_TAG_MAP_PATH BPF_PATH "/traffic_cookie_tag_map"
-#define UID_COUNTERSET_MAP_PATH BPF_PATH "/traffic_uid_counterset_map"
-#define APP_UID_STATS_MAP_PATH BPF_PATH "/traffic_app_uid_stats_map"
-#define UID_STATS_MAP_PATH BPF_PATH "/traffic_uid_stats_map"
-#define TAG_STATS_MAP_PATH BPF_PATH "/traffic_tag_stats_map"
-#define IFACE_INDEX_NAME_MAP_PATH BPF_PATH "/traffic_iface_index_name_map"
-#define IFACE_STATS_MAP_PATH BPF_PATH "/traffic_iface_stats_map"
-#define CONFIGURATION_MAP_PATH BPF_PATH "/traffic_configuration_map"
-#define UID_OWNER_MAP_PATH BPF_PATH "/traffic_uid_owner_map"
-
-#define BPF_CGROUP_INGRESS_PROG_NAME "cgroup_ingress_prog"
-#define BPF_CGROUP_EGRESS_PROG_NAME "cgroup_egress_prog"
-#define XT_BPF_INGRESS_PROG_NAME "xt_ingress_prog"
-#define XT_BPF_EGRESS_PROG_NAME "xt_egress_prog"
-#define XT_BPF_WHITELIST_PROG_NAME "xt_whitelist_prog"
-#define XT_BPF_BLACKLIST_PROG_NAME "xt_blacklist_prog"
-
-#define COOKIE_TAG_MAP 0xbfceaaffffffffff
-#define UID_COUNTERSET_MAP 0xbfdceeafffffffff
-#define APP_UID_STATS_MAP 0xbfa1daafffffffff
-#define UID_STATS_MAP 0xbfdaafffffffffff
-#define TAG_STATS_MAP 0xbfaaafffffffffff
-#define IFACE_STATS_MAP 0xbf1faceaafffffff
-#define CONFIGURATION_MAP 0Xbfc0fa0affffffff
-#define UID_OWNER_MAP 0xbfbad1d1daffffff
+#define COOKIE_TAG_MAP_PATH BPF_PATH "/map_netd_cookie_tag_map"
+#define UID_COUNTERSET_MAP_PATH BPF_PATH "/map_netd_uid_counterset_map"
+#define APP_UID_STATS_MAP_PATH BPF_PATH "/map_netd_app_uid_stats_map"
+#define UID_STATS_MAP_PATH BPF_PATH "/map_netd_uid_stats_map"
+#define TAG_STATS_MAP_PATH BPF_PATH "/map_netd_tag_stats_map"
+#define IFACE_INDEX_NAME_MAP_PATH BPF_PATH "/map_netd_iface_index_name_map"
+#define IFACE_STATS_MAP_PATH BPF_PATH "/map_netd_iface_stats_map"
+#define CONFIGURATION_MAP_PATH BPF_PATH "/map_netd_configuration_map"
+#define UID_OWNER_MAP_PATH BPF_PATH "/map_netd_uid_owner_map"
+#define UID_PERMISSION_MAP_PATH BPF_PATH "/map_netd_uid_permission_map"
 
 enum UidOwnerMatchType {
     NO_MATCH,

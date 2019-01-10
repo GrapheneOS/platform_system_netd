@@ -940,7 +940,6 @@ TEST_F(BinderTest, SetProcSysNet) {
 
     for (size_t i = 0; i < std::size(kTestData); i++) {
         const auto& td = kTestData[i];
-
         const binder::Status status =
                 mNetd->setProcSysNet(td.ipversion, td.which, td.ifname, td.parameter, td.value);
 

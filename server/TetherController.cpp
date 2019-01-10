@@ -325,11 +325,10 @@ bool TetherController::isTetheringStarted() {
 // dnsmasq can't parse commands larger than this due to the fixed-size buffer
 // in check_android_listeners(). The receiving buffer is 1024 bytes long, but
 // dnsmasq reads up to 1023 bytes.
-#define MAX_CMD_SIZE 1023
+const size_t MAX_CMD_SIZE = 1023;
 
+// TODO: convert callers to the overload taking a vector<string>
 int TetherController::setDnsForwarders(unsigned netId, char **servers, int numServers) {
-    int i;
-
     Fwmark fwmark;
     fwmark.netId = netId;
     fwmark.explicitlySelected = true;
@@ -339,7 +338,7 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
     std::string daemonCmd = StringPrintf("update_dns%s0x%x", SEPARATOR, fwmark.intValue);
 
     mDnsForwarders.clear();
-    for (i = 0; i < numServers; i++) {
+    for (int i = 0; i < numServers; i++) {
         ALOGD("setDnsForwarders(0x%x %d = '%s')", fwmark.intValue, i, servers[i]);
 
         addrinfo *res, hints = { .ai_flags = AI_NUMERICHOST };
