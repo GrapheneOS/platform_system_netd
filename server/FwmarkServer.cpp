@@ -37,7 +37,6 @@ using android::net::metrics::INetdEventListener;
 namespace android {
 namespace net {
 
-constexpr const char *UPDATE_DEVICE_STATS = "android.permission.UPDATE_DEVICE_STATS";
 constexpr const char *SYSTEM_SERVER_CONTEXT = "u:r:system_server:s0";
 
 bool isSystemServer(SocketClient* client) {
@@ -56,14 +55,6 @@ bool isSystemServer(SocketClient* client) {
     freecon(context);
 
     return ret;
-}
-
-bool hasUpdateDeviceStatsPermission(SocketClient* client) {
-    // If the caller is the system server, allow without any further checks.
-    // Otherwise, if the system server's binder thread pool is full, and all the threads are
-    // blocked on a thread that's waiting for us to complete, we deadlock. http://b/69389492
-    return isSystemServer(client) ||
-           checkPermission(String16(UPDATE_DEVICE_STATS), client->getPid(), client->getUid());
 }
 
 FwmarkServer::FwmarkServer(NetworkController* networkController, EventReporter* eventReporter,
@@ -133,17 +124,11 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
     }
 
     if (command.cmdId == FwmarkCommand::SET_COUNTERSET) {
-        if (!hasUpdateDeviceStatsPermission(client)) {
-            return -EPERM;
-        }
-        return mTrafficCtrl->setCounterSet(command.trafficCtrlInfo, command.uid);
+        return mTrafficCtrl->setCounterSet(command.trafficCtrlInfo, command.uid, client->getUid());
     }
 
     if (command.cmdId == FwmarkCommand::DELETE_TAGDATA) {
-        if (!hasUpdateDeviceStatsPermission(client)) {
-            return -EPERM;
-        }
-        return mTrafficCtrl->deleteTagData(command.trafficCtrlInfo, command.uid);
+        return mTrafficCtrl->deleteTagData(command.trafficCtrlInfo, command.uid, client->getUid());
     }
 
     cmsghdr* const cmsgh = CMSG_FIRSTHDR(&message);
@@ -307,10 +292,8 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
             if (static_cast<int>(command.uid) == -1) {
                 command.uid = client->getUid();
             }
-            if (command.uid != client->getUid() && !hasUpdateDeviceStatsPermission(client)) {
-                return -EPERM;
-            }
-            return mTrafficCtrl->tagSocket(*socketFd, command.trafficCtrlInfo, command.uid);
+            return mTrafficCtrl->tagSocket(*socketFd, command.trafficCtrlInfo, command.uid,
+                                           client->getUid());
         }
 
         case FwmarkCommand::UNTAG_SOCKET: {
