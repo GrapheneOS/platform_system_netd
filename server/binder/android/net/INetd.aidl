@@ -615,10 +615,12 @@ interface INetd {
     * Start clatd
     *
     * @param ifName interface name to start clatd
+    * @param nat64Prefix the NAT64 prefix, e.g., "2001:db8:64::/96".
+    * @return a string, the IPv6 address that will be used for 464xlat.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
     *         cause of the the failure.
     */
-    void clatdStart(in @utf8InCpp String ifName);
+    @utf8InCpp String clatdStart(in @utf8InCpp String ifName, in @utf8InCpp String nat64Prefix);
 
    /**
     * Stop clatd
