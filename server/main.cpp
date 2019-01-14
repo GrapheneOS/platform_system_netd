@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <chrono>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -31,6 +32,7 @@
 
 #include "log/log.h"
 
+#include <android-base/properties.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
 #include <binder/ProcessState.h>
@@ -89,6 +91,12 @@ int main() {
 
     // Before we start any threads, populate the resolver stub pointers.
     resolv_stub_init();
+
+    // Make sure BPF programs are loaded before doing anything
+    while (!android::base::WaitForProperty("bpf.progs_loaded", "1",
+           std::chrono::seconds(5))) {
+        ALOGD("netd waited 5s for bpf.progs_loaded, still waiting...");
+    }
 
     NetlinkManager *nm = NetlinkManager::Instance();
     if (nm == nullptr) {
