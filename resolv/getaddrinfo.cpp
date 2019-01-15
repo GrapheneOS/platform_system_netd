@@ -134,7 +134,8 @@ static int get_port(const struct addrinfo*, const char*, int);
 static const struct afd* find_afd(int);
 static int ip6_str2scopeid(const char*, struct sockaddr_in6*, u_int32_t*);
 
-static struct addrinfo* getanswer(const querybuf*, int, const char*, int, const struct addrinfo*);
+static struct addrinfo* getanswer(const querybuf*, int, const char*, int, const struct addrinfo*,
+                                  int* herrno);
 static int dns_getaddrinfo(const char* name, const addrinfo* pai,
                            const android_net_context* netcontext, addrinfo** rv);
 static void _sethtent(FILE**);
@@ -143,10 +144,14 @@ static struct addrinfo* _gethtent(FILE**, const char*, const struct addrinfo*);
 static bool files_getaddrinfo(const char* name, const addrinfo* pai, addrinfo** res);
 static int _find_src_addr(const struct sockaddr*, struct sockaddr*, unsigned, uid_t);
 
-static int res_queryN(const char* name, res_target* target, res_state res, int* ai_error);
-static int res_searchN(const char* name, res_target* target, res_state res, int* ai_error);
+// TODO: Consider that refactor res_queryN, res_searchN and res_querydomainN to return one error
+// code but two error codes.
+static int res_queryN(const char* name, res_target* target, res_state res, int* ai_error,
+                      int* herrno);
+static int res_searchN(const char* name, res_target* target, res_state res, int* ai_error,
+                       int* herrno);
 static int res_querydomainN(const char* name, const char* domain, res_target* target, res_state res,
-                            int* ai_error);
+                            int* ai_error, int* herrno);
 
 const char* const ai_errlist[] = {
         "Success",
@@ -820,13 +825,13 @@ static const char AskedForGot[] = "gethostby*.getanswer: asked for \"%s\", got \
 #define BOUNDS_CHECK(ptr, count)     \
     do {                             \
         if (eom - (ptr) < (count)) { \
-            h_errno = NO_RECOVERY;   \
+            *herrno = NO_RECOVERY;   \
             return NULL;             \
         }                            \
     } while (0)
 
 static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char* qname, int qtype,
-                                  const struct addrinfo* pai) {
+                                  const struct addrinfo* pai, int* herrno) {
     struct addrinfo sentinel = {};
     struct addrinfo *cur;
     struct addrinfo ai;
@@ -871,12 +876,12 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
     cp = answer->buf;
     BOUNDED_INCR(HFIXEDSZ);
     if (qdcount != 1) {
-        h_errno = NO_RECOVERY;
+        *herrno = NO_RECOVERY;
         return (NULL);
     }
     n = dn_expand(answer->buf, eom, cp, bp, ep - bp);
     if ((n < 0) || !(*name_ok)(bp)) {
-        h_errno = NO_RECOVERY;
+        *herrno = NO_RECOVERY;
         return (NULL);
     }
     BOUNDED_INCR(n + QFIXEDSZ);
@@ -887,7 +892,7 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
          */
         n = strlen(bp) + 1; /* for the \0 */
         if (n >= MAXHOSTNAMELEN) {
-            h_errno = NO_RECOVERY;
+            *herrno = NO_RECOVERY;
             return (NULL);
         }
         canonname = bp;
@@ -1003,11 +1008,11 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
             (void) get_canonname(pai, sentinel.ai_next, qname);
         else
             (void) get_canonname(pai, sentinel.ai_next, canonname);
-        h_errno = NETDB_SUCCESS;
+        *herrno = NETDB_SUCCESS;
         return sentinel.ai_next;
     }
 
-    h_errno = NO_RECOVERY;
+    *herrno = NO_RECOVERY;
     return NULL;
 }
 
@@ -1391,13 +1396,11 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
 
     querybuf* buf = (querybuf*) malloc(sizeof(*buf));
     if (buf == NULL) {
-        h_errno = NETDB_INTERNAL;
         return EAI_MEMORY;
     }
     querybuf* buf2 = (querybuf*) malloc(sizeof(*buf2));
     if (buf2 == NULL) {
         free(buf);
-        h_errno = NETDB_INTERNAL;
         return EAI_MEMORY;
     }
 
@@ -1468,24 +1471,25 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
 
     // Pass ai_error to catch more detailed errors rather than EAI_NODATA.
     int ai_error = EAI_NODATA;
-    if (res_searchN(name, &q, res, &ai_error) < 0) {
+    int herrno = NETDB_INTERNAL;
+    if (res_searchN(name, &q, res, &ai_error, &herrno) < 0) {
         free(buf);
         free(buf2);
         return ai_error;  // TODO: Decode error from h_errno like we do below
     }
-    ai = getanswer(buf, q.n, q.name, q.qtype, pai);
+    ai = getanswer(buf, q.n, q.name, q.qtype, pai, &herrno);
     if (ai) {
         cur->ai_next = ai;
         while (cur && cur->ai_next) cur = cur->ai_next;
     }
     if (q.next) {
-        ai = getanswer(buf2, q2.n, q2.name, q2.qtype, pai);
+        ai = getanswer(buf2, q2.n, q2.name, q2.qtype, pai, &herrno);
         if (ai) cur->ai_next = ai;
     }
     free(buf);
     free(buf2);
     if (sentinel.ai_next == NULL) {
-        return herrnoToAiError(h_errno);
+        return herrnoToAiError(herrno);
     }
 
     _rfc6724_sort(&sentinel, netcontext->app_mark, netcontext->uid);
@@ -1586,11 +1590,12 @@ static bool files_getaddrinfo(const char* name, const addrinfo* pai, addrinfo** 
  * Perform preliminary check of answer, returning success only
  * if no error is indicated and the answer count is nonzero.
  * Return the size of the response on success, -1 on error.
- * Error number is left in h_errno.
+ * Error number is left in *herrno.
  *
  * Caller must parse answer and determine whether it answers the question.
  */
-static int res_queryN(const char* name, res_target* target, res_state res, int* ai_error) {
+static int res_queryN(const char* name, res_target* target, res_state res, int* ai_error,
+                      int* herrno) {
     u_char buf[MAXPACKET];
     HEADER* hp;
     int n;
@@ -1632,7 +1637,7 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
 #ifdef DEBUG
             if (res->options & RES_DEBUG) printf(";; res_nquery: mkquery failed\n");
 #endif
-            h_errno = NO_RECOVERY;
+            *herrno = NO_RECOVERY;
             return n;
         }
 
@@ -1665,19 +1670,19 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
     if (ancount == 0) {
         switch (rcode) {
             case NXDOMAIN:
-                h_errno = HOST_NOT_FOUND;
+                *herrno = HOST_NOT_FOUND;
                 break;
             case SERVFAIL:
-                h_errno = TRY_AGAIN;
+                *herrno = TRY_AGAIN;
                 break;
             case NOERROR:
-                h_errno = NO_DATA;
+                *herrno = NO_DATA;
                 break;
             case FORMERR:
             case NOTIMP:
             case REFUSED:
             default:
-                h_errno = NO_RECOVERY;
+                *herrno = NO_RECOVERY;
                 break;
         }
         return -1;
@@ -1689,9 +1694,10 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
  * Formulate a normal query, send, and retrieve answer in supplied buffer.
  * Return the size of the response on success, -1 on error.
  * If enabled, implement search rules until answer or unrecoverable failure
- * is detected.  Error code, if any, is left in h_errno.
+ * is detected.  Error code, if any, is left in *herrno.
  */
-static int res_searchN(const char* name, res_target* target, res_state res, int* ai_error) {
+static int res_searchN(const char* name, res_target* target, res_state res, int* ai_error,
+                       int* herrno) {
     const char *cp, *const *domain;
     HEADER* hp;
     u_int dots;
@@ -1704,7 +1710,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
     hp = (HEADER*) (void*) target->answer; /*XXX*/
 
     errno = 0;
-    h_errno = HOST_NOT_FOUND; /* default, if we never query */
+    *herrno = HOST_NOT_FOUND; /* default, if we never query */
     dots = 0;
     for (cp = name; *cp; cp++) dots += (*cp == '.');
     trailing_dot = 0;
@@ -1716,9 +1722,9 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
      */
     saved_herrno = -1;
     if (dots >= res->ndots) {
-        ret = res_querydomainN(name, NULL, target, res, ai_error);
+        ret = res_querydomainN(name, NULL, target, res, ai_error, herrno);
         if (ret > 0) return (ret);
-        saved_herrno = h_errno;
+        saved_herrno = *herrno;
         tried_as_is++;
     }
 
@@ -1739,7 +1745,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
         _resolv_populate_res_for_net(res);
 
         for (domain = (const char* const*) res->dnsrch; *domain && !done; domain++) {
-            ret = res_querydomainN(name, *domain, target, res, ai_error);
+            ret = res_querydomainN(name, *domain, target, res, ai_error, herrno);
             if (ret > 0) return ret;
 
             /*
@@ -1756,11 +1762,11 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
              * fully-qualified.
              */
             if (errno == ECONNREFUSED) {
-                h_errno = TRY_AGAIN;
+                *herrno = TRY_AGAIN;
                 return -1;
             }
 
-            switch (h_errno) {
+            switch (*herrno) {
                 case NO_DATA:
                     got_nodata++;
                     [[fallthrough]];
@@ -1792,7 +1798,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
      * name or whether it ends with a dot.
      */
     if (!tried_as_is) {
-        ret = res_querydomainN(name, NULL, target, res, ai_error);
+        ret = res_querydomainN(name, NULL, target, res, ai_error, herrno);
         if (ret > 0) return ret;
     }
 
@@ -1805,11 +1811,11 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
      * the last DNSRCH we did.
      */
     if (saved_herrno != -1)
-        h_errno = saved_herrno;
+        *herrno = saved_herrno;
     else if (got_nodata)
-        h_errno = NO_DATA;
+        *herrno = NO_DATA;
     else if (got_servfail)
-        h_errno = TRY_AGAIN;
+        *herrno = TRY_AGAIN;
     return -1;
 }
 
@@ -1818,7 +1824,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
  * removing a trailing dot from name if domain is NULL.
  */
 static int res_querydomainN(const char* name, const char* domain, res_target* target, res_state res,
-                            int* ai_error) {
+                            int* ai_error, int* herrno) {
     char nbuf[MAXDNAME];
     const char* longname = nbuf;
     size_t n, d;
@@ -1837,7 +1843,7 @@ static int res_querydomainN(const char* name, const char* domain, res_target* ta
          */
         n = strlen(name);
         if (n + 1 > sizeof(nbuf)) {
-            h_errno = NO_RECOVERY;
+            *herrno = NO_RECOVERY;
             return -1;
         }
         if (n > 0 && name[--n] == '.') {
@@ -1849,10 +1855,10 @@ static int res_querydomainN(const char* name, const char* domain, res_target* ta
         n = strlen(name);
         d = strlen(domain);
         if (n + 1 + d + 1 > sizeof(nbuf)) {
-            h_errno = NO_RECOVERY;
+            *herrno = NO_RECOVERY;
             return -1;
         }
         snprintf(nbuf, sizeof(nbuf), "%s.%s", name, domain);
     }
-    return res_queryN(longname, target, res, ai_error);
+    return res_queryN(longname, target, res, ai_error, herrno);
 }
