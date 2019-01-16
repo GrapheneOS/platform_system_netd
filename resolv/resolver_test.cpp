@@ -2035,9 +2035,6 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
     EXPECT_EQ(result_str, "1.2.3.4");
 }
 
-// blocked by aosp/816674 which causes wrong error code EAI_FAIL (4) but EAI_NODATA (7).
-// TODO: fix aosp/816674 and add testcases GetAddrInfo_Dns64QuerySpecified back.
-/*
 TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecified) {
     constexpr char listen_addr[] = "::1";
     constexpr char listen_srv[] = "53";
@@ -2073,7 +2070,6 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecified) {
     result_str = ToString(result);
     EXPECT_EQ(result_str, "1.2.3.4");
 }
-*/
 
 TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedV6) {
     constexpr char listen_addr[] = "::1";
@@ -2657,11 +2653,6 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64QueryFromHostFile) {
     EXPECT_EQ(result_str, host_name);
 }
 
-// blocked by aosp/816674 which causes wrong error code EAI_FAIL (4) but EAI_NODATA (7).
-// TODO:
-// 1. fix aosp/816674 and add testcases GetHostByName2_Dns64Synthesize back.
-// 2. Manual test gethostbyname2 synthesis for IPv4 address which comes from host file.
-/*
 TEST_F(ResolverTest, GetHostByName2_Dns64Synthesize) {
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char host_name[] = "ipv4only.example.com.";
@@ -2686,7 +2677,6 @@ TEST_F(ResolverTest, GetHostByName2_Dns64Synthesize) {
     std::string result_str = ToString(result);
     EXPECT_EQ(result_str, "64:ff9b::102:304");
 }
-*/
 
 TEST_F(ResolverTest, GetHostByName2_DnsQueryWithHavingNat64Prefix) {
     constexpr char dns64_name[] = "ipv4only.arpa.";
