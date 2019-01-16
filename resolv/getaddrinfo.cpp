@@ -144,14 +144,10 @@ static struct addrinfo* _gethtent(FILE**, const char*, const struct addrinfo*);
 static bool files_getaddrinfo(const char* name, const addrinfo* pai, addrinfo** res);
 static int _find_src_addr(const struct sockaddr*, struct sockaddr*, unsigned, uid_t);
 
-// TODO: Consider that refactor res_queryN, res_searchN and res_querydomainN to return one error
-// code but two error codes.
-static int res_queryN(const char* name, res_target* target, res_state res, int* ai_error,
-                      int* herrno);
-static int res_searchN(const char* name, res_target* target, res_state res, int* ai_error,
-                       int* herrno);
+static int res_queryN(const char* name, res_target* target, res_state res, int* herrno);
+static int res_searchN(const char* name, res_target* target, res_state res, int* herrno);
 static int res_querydomainN(const char* name, const char* domain, res_target* target, res_state res,
-                            int* ai_error, int* herrno);
+                            int* herrno);
 
 const char* const ai_errlist[] = {
         "Success",
@@ -1469,13 +1465,12 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
      */
     res_setnetcontext(res, netcontext);
 
-    // Pass ai_error to catch more detailed errors rather than EAI_NODATA.
-    int ai_error = EAI_NODATA;
     int herrno = NETDB_INTERNAL;
-    if (res_searchN(name, &q, res, &ai_error, &herrno) < 0) {
+    if (res_searchN(name, &q, res, &herrno) < 0) {
         free(buf);
         free(buf2);
-        return ai_error;  // TODO: Decode error from h_errno like we do below
+        // Pass herrno to catch more detailed errors rather than EAI_NODATA.
+        return herrnoToAiErrno(herrno);
     }
     ai = getanswer(buf, q.n, q.name, q.qtype, pai, &herrno);
     if (ai) {
@@ -1489,7 +1484,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
     free(buf);
     free(buf2);
     if (sentinel.ai_next == NULL) {
-        return herrnoToAiError(herrno);
+        return herrnoToAiErrno(herrno);
     }
 
     _rfc6724_sort(&sentinel, netcontext->app_mark, netcontext->uid);
@@ -1594,8 +1589,7 @@ static bool files_getaddrinfo(const char* name, const addrinfo* pai, addrinfo** 
  *
  * Caller must parse answer and determine whether it answers the question.
  */
-static int res_queryN(const char* name, res_target* target, res_state res, int* ai_error,
-                      int* herrno) {
+static int res_queryN(const char* name, res_target* target, res_state res, int* herrno) {
     u_char buf[MAXPACKET];
     HEADER* hp;
     int n;
@@ -1642,10 +1636,10 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
         }
 
         n = res_nsend(res, buf, n, answer, anslen, &rcode);
-        *ai_error = rcodeToAiError(rcode);
-
         if (n < 0 || hp->rcode != NOERROR || ntohs(hp->ancount) == 0) {
-            rcode = hp->rcode; /* record most recent error */
+            // Record rcode from DNS response header only if no timeout.
+            // Keep rcode timeout for reporting later if any.
+            if (rcode != RCODE_TIMEOUT) rcode = hp->rcode; /* record most recent error */
             /* if the query choked with EDNS0, retry without EDNS0 */
             if ((res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 &&
                 ((oflags ^ res->_flags) & RES_F_EDNS0ERR) != 0) {
@@ -1669,6 +1663,12 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
 
     if (ancount == 0) {
         switch (rcode) {
+            // Not defined in RFC.
+            case RCODE_TIMEOUT:
+                // DNS metrics monitors DNS query timeout.
+                *herrno = NETD_RESOLV_H_ERRNO_EXT_TIMEOUT;  // extended h_errno.
+                break;
+            // Defined in RFC 1035 section 4.1.1.
             case NXDOMAIN:
                 *herrno = HOST_NOT_FOUND;
                 break;
@@ -1696,8 +1696,7 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
  * If enabled, implement search rules until answer or unrecoverable failure
  * is detected.  Error code, if any, is left in *herrno.
  */
-static int res_searchN(const char* name, res_target* target, res_state res, int* ai_error,
-                       int* herrno) {
+static int res_searchN(const char* name, res_target* target, res_state res, int* herrno) {
     const char *cp, *const *domain;
     HEADER* hp;
     u_int dots;
@@ -1722,7 +1721,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
      */
     saved_herrno = -1;
     if (dots >= res->ndots) {
-        ret = res_querydomainN(name, NULL, target, res, ai_error, herrno);
+        ret = res_querydomainN(name, NULL, target, res, herrno);
         if (ret > 0) return (ret);
         saved_herrno = *herrno;
         tried_as_is++;
@@ -1745,7 +1744,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
         _resolv_populate_res_for_net(res);
 
         for (domain = (const char* const*) res->dnsrch; *domain && !done; domain++) {
-            ret = res_querydomainN(name, *domain, target, res, ai_error, herrno);
+            ret = res_querydomainN(name, *domain, target, res, herrno);
             if (ret > 0) return ret;
 
             /*
@@ -1798,7 +1797,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
      * name or whether it ends with a dot.
      */
     if (!tried_as_is) {
-        ret = res_querydomainN(name, NULL, target, res, ai_error, herrno);
+        ret = res_querydomainN(name, NULL, target, res, herrno);
         if (ret > 0) return ret;
     }
 
@@ -1824,7 +1823,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
  * removing a trailing dot from name if domain is NULL.
  */
 static int res_querydomainN(const char* name, const char* domain, res_target* target, res_state res,
-                            int* ai_error, int* herrno) {
+                            int* herrno) {
     char nbuf[MAXDNAME];
     const char* longname = nbuf;
     size_t n, d;
@@ -1860,5 +1859,5 @@ static int res_querydomainN(const char* name, const char* domain, res_target* ta
         }
         snprintf(nbuf, sizeof(nbuf), "%s.%s", name, domain);
     }
-    return res_queryN(longname, target, res, ai_error, herrno);
+    return res_queryN(longname, target, res, herrno);
 }

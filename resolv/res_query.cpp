@@ -111,8 +111,8 @@ int res_nquery(res_state statp, const char* name,  // domain name
                int cl, int type,                   // class and type of query
                u_char* answer,                     // buffer to put answer
                int anslen,                         // size of answer buffer
-               int* ai_error,                      // error will be set based on rcode
-               int* herrno)                        // legacy h_errno
+               int* herrno)                        // legacy and extended h_errno
+                                                   // NETD_RESOLV_H_ERRNO_EXT_*
 {
     u_char buf[MAXPACKET];
     HEADER* hp = (HEADER*) (void*) answer;
@@ -141,7 +141,6 @@ again:
         return n;
     }
     n = res_nsend(statp, buf, n, answer, anslen, &rcode);
-    *ai_error = rcodeToAiError(rcode);
     if (n < 0) {
         /* if the query choked with EDNS0, retry without EDNS0 */
         if ((statp->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0U &&
@@ -153,7 +152,28 @@ again:
 #ifdef DEBUG
         if (statp->options & RES_DEBUG) printf(";; res_query: send error\n");
 #endif
-        *herrno = TRY_AGAIN;
+        // Note that rcodes SERVFAIL, NOTIMP, REFUSED may cause res_nquery() to return a general
+        // error code EAI_AGAIN, but mapping the error code from rcode as res_queryN() does for
+        // getaddrinfo(). Different rcodes trigger different behaviors:
+        //
+        // - SERVFAIL, NOTIMP, REFUSED
+        //   These result in send_dg() returning 0, causing res_nsend() to try the next
+        //   nameserver. After all nameservers failed, res_nsend() returns -ETIMEDOUT, causing
+        //   res_nquery() to return EAI_AGAIN here regardless of the rcode from the DNS response.
+        //
+        // - NXDOMAIN, FORMERR
+        //   These rcodes may cause res_nsend() to return successfully (i.e. the result is a
+        //   positive integer). In this case, res_nquery() returns error number by referring
+        //   the rcode from the DNS response.
+        switch (rcode) {
+            case RCODE_TIMEOUT:  // Not defined in RFC.
+                // DNS metrics monitors DNS query timeout.
+                *herrno = NETD_RESOLV_H_ERRNO_EXT_TIMEOUT;  // extended h_errno.
+                break;
+            default:
+                *herrno = TRY_AGAIN;
+                break;
+        }
         return n;
     }
 
@@ -195,8 +215,8 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
                 int cl, int type,                  /* class and type of query */
                 u_char* answer,                    /* buffer to put answer */
                 int anslen,                        /* size of answer */
-                int* ai_error,                     /* error will be set based on rcode */
-                int* herrno)                       /* legacy h_errno */
+                int* herrno)                       /* legacy and extended
+                                                      h_errno NETD_RESOLV_H_ERRNO_EXT_* */
 {
     const char *cp, *const *domain;
     HEADER* hp = (HEADER*) (void*) answer;
@@ -221,7 +241,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
      */
     saved_herrno = -1;
     if (dots >= statp->ndots || trailing_dot) {
-        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen, ai_error, herrno);
+        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen, herrno);
         if (ret > 0 || trailing_dot) return ret;
         saved_herrno = *herrno;
         tried_as_is++;
@@ -252,8 +272,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
             if (domain[0][0] == '\0' || (domain[0][0] == '.' && domain[0][1] == '\0'))
                 root_on_list++;
 
-            ret = res_nquerydomain(statp, name, *domain, cl, type, answer, anslen, ai_error,
-                                   herrno);
+            ret = res_nquerydomain(statp, name, *domain, cl, type, answer, anslen, herrno);
             if (ret > 0) return ret;
 
             /*
@@ -306,7 +325,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
      */
     if ((dots || !searched || (statp->options & RES_NOTLDQUERY) == 0U) &&
         !(tried_as_is || root_on_list)) {
-        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen, ai_error, herrno);
+        ret = res_nquerydomain(statp, name, NULL, cl, type, answer, anslen, herrno);
         if (ret > 0) return ret;
     }
 
@@ -334,8 +353,7 @@ int res_nquerydomain(res_state statp, const char* name, const char* domain, int 
                      int type,       /* class and type of query */
                      u_char* answer, /* buffer to put answer */
                      int anslen,     /* size of answer */
-                     int* ai_error,  /* error will be set based on rcode */
-                     int* herrno)    /* legacy h_errno */
+                     int* herrno)    /* legacy and extended h_errno NETD_RESOLV_H_ERRNO_EXT_* */
 {
     char nbuf[MAXDNAME];
     const char* longname = nbuf;
@@ -371,5 +389,5 @@ int res_nquerydomain(res_state statp, const char* name, const char* domain, int 
         }
         snprintf(nbuf, sizeof(nbuf), "%s.%s", name, domain);
     }
-    return res_nquery(statp, longname, cl, type, answer, anslen, ai_error, herrno);
+    return res_nquery(statp, longname, cl, type, answer, anslen, herrno);
 }
