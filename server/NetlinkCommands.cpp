@@ -15,11 +15,12 @@
  */
 
 #include <errno.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <unistd.h>
 
 #define LOG_TAG "Netd"
 #include <log/log.h>
