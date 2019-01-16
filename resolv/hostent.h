@@ -42,8 +42,8 @@ struct getnamaddr {
 };
 
 // /etc/hosts lookup
-bool _hf_gethtbyaddr(const unsigned char* uaddr, int len, int af, getnamaddr* info);
-hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info);
+int _hf_gethtbyaddr(const unsigned char* uaddr, int len, int af, getnamaddr* info);
+int _hf_gethtbyname2(const char* name, int af, getnamaddr* info);
 hostent* netbsd_gethostent_r(FILE*, struct hostent*, char*, size_t, int*);
 
 // Reserved padding for remapping IPv4 address to NAT64 synthesis IPv6 address

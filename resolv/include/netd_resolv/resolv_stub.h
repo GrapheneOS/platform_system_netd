@@ -37,8 +37,8 @@ extern struct ResolvStub {
     int (*android_getaddrinfofornetcontext)(const char*, const char*, const addrinfo*,
                                             const android_net_context*, addrinfo**);
 
-    hostent* (*android_gethostbyaddrfornetcontext)(const void*, socklen_t, int,
-                                                   const android_net_context*);
+    int (*android_gethostbyaddrfornetcontext)(const void*, socklen_t, int,
+                                              const android_net_context*, hostent**);
 
     int (*android_gethostbynamefornetcontext)(const char*, int, const android_net_context*,
                                               hostent**);

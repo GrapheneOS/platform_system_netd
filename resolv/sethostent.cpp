@@ -61,7 +61,7 @@ static void endhostent_r(FILE** hf) {
     }
 }
 
-hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
+int _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
     struct hostent *hp, hent;
     char *buf, *ptr;
     size_t len, num, i;
@@ -73,12 +73,13 @@ hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
     if (hf == NULL) {
         errno = EINVAL;
         *info->he = NETDB_INTERNAL;
-        return NULL;
+        // TODO: Consider to remap error code without relying on errno.
+        return EAI_SYSTEM;
     }
 
     if ((ptr = buf = (char*) malloc(len = info->buflen)) == NULL) {
         *info->he = NETDB_INTERNAL;
-        return NULL;
+        return EAI_MEMORY;
     }
 
     hent.h_name = NULL;
@@ -129,7 +130,7 @@ hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
     if (num == 0) {
         *info->he = HOST_NOT_FOUND;
         free(buf);
-        return NULL;
+        return EAI_NODATA;
     }
 
     hp = info->hp;
@@ -160,15 +161,15 @@ hostent* _hf_gethtbyname2(const char* name, int af, getnamaddr* info) {
     hp->h_aliases[anum] = NULL;
 
     free(buf);
-    return hp;
+    return 0;
 nospc:
     *info->he = NETDB_INTERNAL;
     free(buf);
     errno = ENOSPC;
-    return NULL;
+    return EAI_MEMORY;
 }
 
-bool _hf_gethtbyaddr(const unsigned char* uaddr, int len, int af, getnamaddr* info) {
+int _hf_gethtbyaddr(const unsigned char* uaddr, int len, int af, getnamaddr* info) {
     info->hp->h_length = len;
     info->hp->h_addrtype = af;
 
@@ -176,7 +177,8 @@ bool _hf_gethtbyaddr(const unsigned char* uaddr, int len, int af, getnamaddr* in
     sethostent_r(&hf);
     if (hf == NULL) {
         *info->he = NETDB_INTERNAL;
-        return false;
+        // TODO: Consider to remap error code without relying on errno.
+        return EAI_SYSTEM;
     }
     struct hostent* hp;
     while ((hp = netbsd_gethostent_r(hf, info->hp, info->buf, info->buflen, info->he)) != NULL)
@@ -184,9 +186,9 @@ bool _hf_gethtbyaddr(const unsigned char* uaddr, int len, int af, getnamaddr* in
     endhostent_r(&hf);
 
     if (hp == NULL) {
-        if (errno == ENOSPC) return false;  // glibc compatibility.
+        if (errno == ENOSPC) return EAI_MEMORY;  // glibc compatibility.
         *info->he = HOST_NOT_FOUND;
-        return false;
+        return EAI_NODATA;
     }
-    return true;
+    return 0;
 }
