@@ -66,7 +66,7 @@ extern struct ResolvStub {
     void (*resolv_register_private_dns_callback)(private_dns_validated_callback callback);
 
     int (*resolv_res_nsend)(const android_net_context* netContext, const u_char* msg, int msgLen,
-                            u_char* ans, int ansLen, int* rcode);
+                            u_char* ans, int ansLen, int* rcode, uint32_t flags);
 
     int (*resolv_set_nameservers_for_net)(unsigned netid, const char** servers, unsigned numservers,
                                           const char* domains, const __res_params* params);

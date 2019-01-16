@@ -140,7 +140,7 @@ again:
         *herrno = NO_RECOVERY;
         return n;
     }
-    n = res_nsend(statp, buf, n, answer, anslen, &rcode);
+    n = res_nsend(statp, buf, n, answer, anslen, &rcode, 0);
     if (n < 0) {
         /* if the query choked with EDNS0, retry without EDNS0 */
         if ((statp->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0U &&
