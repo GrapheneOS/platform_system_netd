@@ -30,6 +30,7 @@
 
 #include <array>
 #include <cstdlib>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -116,8 +117,6 @@ bool inBpToolsMode() {
 }  // namespace
 
 auto TetherController::iptablesRestoreFunction = execIptablesRestoreWithOutput;
-
-const int MAX_IPT_OUTPUT_LINE_LEN = 256;
 
 const std::string GET_TETHER_STATS_COMMAND = StringPrintf(
     "*filter\n"
@@ -788,66 +787,75 @@ void TetherController::addStats(TetherStatsList& statsList, const TetherStats& s
 int TetherController::addForwardChainStats(TetherStatsList& statsList,
                                            const std::string& statsOutput,
                                            std::string &extraProcessingInfo) {
-    int res;
-    std::string statsLine;
-    char iface0[MAX_IPT_OUTPUT_LINE_LEN];
-    char iface1[MAX_IPT_OUTPUT_LINE_LEN];
-    char rest[MAX_IPT_OUTPUT_LINE_LEN];
-
+    enum IndexOfIptChain {
+        ORIG_LINE,
+        PACKET_COUNTS,
+        BYTE_COUNTS,
+        HYPHEN,
+        IFACE0_NAME,
+        IFACE1_NAME,
+        SOURCE,
+        DESTINATION
+    };
     TetherStats stats;
     const TetherStats empty;
-    const char *buffPtr;
-    int64_t packets, bytes;
 
-    std::stringstream stream(statsOutput);
+    static const std::string NUM = "(\\d+)";
+    static const std::string IFACE = "([^\\s]+)";
+    static const std::string DST = "(0.0.0.0/0|::/0)";
+    static const std::string COUNTERS = "\\s*" + NUM + "\\s+" + NUM +
+                                        " RETURN     all(  --  |      )" + IFACE + "\\s+" + IFACE +
+                                        "\\s+" + DST + "\\s+" + DST;
+    static const std::regex IP_RE(COUNTERS);
 
-    // Skip headers.
-    for (int i = 0; i < 2; i++) {
-        std::getline(stream, statsLine, '\n');
-        extraProcessingInfo += statsLine + "\n";
-        if (statsLine.empty()) {
-            ALOGE("Empty header while parsing tethering stats");
-            return -EREMOTEIO;
+    const std::vector<std::string> lines = base::Split(statsOutput, "\n");
+    int headerLine = 0;
+    for (const std::string& line : lines) {
+        // Skip headers.
+        if (headerLine < 2) {
+            if (line.empty()) {
+                ALOGV("Empty header while parsing tethering stats");
+                return -EREMOTEIO;
+            }
+            headerLine++;
+            continue;
         }
-    }
 
-    while (std::getline(stream, statsLine, '\n')) {
-        buffPtr = statsLine.c_str();
+        if (line.empty()) continue;
 
-        /* Clean up, so a failed parse can still print info */
-        iface0[0] = iface1[0] = rest[0] = packets = bytes = 0;
-        if (strstr(buffPtr, "0.0.0.0")) {
-            // IPv4 has -- indicating what to do with fragments...
-            //       26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
-            res = sscanf(buffPtr, "%" SCNd64" %" SCNd64" RETURN all -- %s %s 0.%s",
-                    &packets, &bytes, iface0, iface1, rest);
-        } else {
-            // ... but IPv6 does not.
-            //       26     2373 RETURN     all      wlan0  rmnet0  ::/0                 ::/0
-            res = sscanf(buffPtr, "%" SCNd64" %" SCNd64" RETURN all %s %s ::/%s",
-                    &packets, &bytes, iface0, iface1, rest);
-        }
-        ALOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%" PRId64" bytes=%" PRId64" rest=<%s> orig line=<%s>", res,
-             iface0, iface1, packets, bytes, rest, buffPtr);
-        extraProcessingInfo += buffPtr;
-        extraProcessingInfo += "\n";
+        extraProcessingInfo = line;
+        std::smatch matches;
+        if (!std::regex_search(line, matches, IP_RE)) return -EREMOTEIO;
+        // Here use IP_RE to distiguish IPv4 and IPv6 iptables.
+        // IPv4 has "--" indicating what to do with fragments...
+        //		 26 	2373 RETURN     all  --  wlan0	rmnet0	0.0.0.0/0			 0.0.0.0/0
+        // ... but IPv6 does not.
+        //		 26 	2373 RETURN 	all      wlan0	rmnet0	::/0				 ::/0
+        // TODO: Replace strtoXX() calls with ParseUint() /ParseInt()
+        int64_t packets = strtoul(matches[PACKET_COUNTS].str().c_str(), nullptr, 10);
+        int64_t bytes = strtoul(matches[BYTE_COUNTS].str().c_str(), nullptr, 10);
+        std::string iface0 = matches[IFACE0_NAME].str();
+        std::string iface1 = matches[IFACE1_NAME].str();
+        std::string rest = matches[SOURCE].str();
 
-        if (res != 5) {
-            return -EREMOTEIO;
-        }
+        ALOGV("parse iface0=<%s> iface1=<%s> pkts=%" PRId64 " bytes=%" PRId64
+              " rest=<%s> orig line=<%s>",
+              iface0.c_str(), iface1.c_str(), packets, bytes, rest.c_str(), line.c_str());
         /*
          * The following assumes that the 1st rule has in:extIface out:intIface,
          * which is what TetherController sets up.
          * The 1st matches rx, and sets up the pair for the tx side.
          */
         if (!stats.intIface[0]) {
-            ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+            ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64 " rx_packets=%" PRId64
+                  " ", iface0.c_str(), iface1.c_str(), bytes, packets);
             stats.intIface = iface0;
             stats.extIface = iface1;
             stats.txPackets = packets;
             stats.txBytes = bytes;
         } else if (stats.intIface == iface1 && stats.extIface == iface0) {
-            ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64" rx_packets=%" PRId64" ", iface0, iface1, bytes, packets);
+            ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%" PRId64 " rx_packets=%" PRId64
+                  " ", iface0.c_str(), iface1.c_str(), bytes, packets);
             stats.rxPackets = packets;
             stats.rxBytes = bytes;
         }
