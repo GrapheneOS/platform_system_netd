@@ -145,8 +145,8 @@ class DnsProxyListener : public FrameworkListener {
 
     class ResNSendHandler {
       public:
-        ResNSendHandler(SocketClient* c, std::string msg, const android_net_context& netcontext,
-                        int reportingLevel);
+        ResNSendHandler(SocketClient* c, std::string msg, uint32_t flags,
+                        const android_net_context& netcontext, int reportingLevel);
         ~ResNSendHandler();
 
         void run();
@@ -154,6 +154,7 @@ class DnsProxyListener : public FrameworkListener {
       private:
         SocketClient* mClient;  // ref counted
         std::string mMsg;
+        uint32_t mFlags;
         android_net_context mNetContext;
         const int mReportingLevel;
     };

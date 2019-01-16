@@ -49,7 +49,6 @@ constexpr bool kDumpData = false;
 
 #include <android-base/logging.h>
 
-#include "netd_resolv/resolv.h"
 #include "res_state_ext.h"
 #include "resolv_cache.h"
 #include "resolv_private.h"
@@ -1248,7 +1247,11 @@ static void _cache_notify_waiting_tid_locked(struct resolv_cache* cache, Entry* 
 }
 
 /* notify the cache that the query failed */
-void _resolv_cache_query_failed(unsigned netid, const void* query, int querylen) {
+void _resolv_cache_query_failed(unsigned netid, const void* query, int querylen, uint32_t flags) {
+    // We should not notify with these flags.
+    if (flags & (ANDROID_RESOLV_NO_CACHE_STORE | ANDROID_RESOLV_NO_CACHE_LOOKUP)) {
+        return;
+    }
     Entry key[1];
     Cache* cache;
 
@@ -1463,7 +1466,11 @@ static void _cache_remove_expired(Cache* cache) {
 }
 
 ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int querylen,
-                                       void* answer, int answersize, int* answerlen) {
+                                       void* answer, int answersize, int* answerlen,
+                                       uint32_t flags) {
+    if (flags & ANDROID_RESOLV_NO_CACHE_LOOKUP) {
+        return RESOLV_CACHE_SKIP;
+    }
     Entry key[1];
     Entry** lookup;
     Entry* e;
@@ -1498,6 +1505,11 @@ ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int qu
 
     if (e == NULL) {
         VLOG << "NOT IN CACHE";
+        // If it is no-cache-store mode, we won't wait for possible query.
+        if (flags & ANDROID_RESOLV_NO_CACHE_STORE) {
+            result = RESOLV_CACHE_SKIP;
+            goto Exit;
+        }
         // calling thread will wait if an outstanding request is found
         // that matching this query
         if (!_cache_check_pending_request_locked(&cache, key, netid) || cache == NULL) {

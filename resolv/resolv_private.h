@@ -239,7 +239,7 @@ int res_nsearch(res_state, const char*, int, int, u_char*, int, int*);
 int res_nquerydomain(res_state, const char*, const char*, int, int, u_char*, int, int*);
 int res_nmkquery(res_state, int, const char*, int, int, const u_char*, int, const u_char*, u_char*,
                  int);
-int res_nsend(res_state, const u_char*, int, u_char*, int, int*);
+int res_nsend(res_state, const u_char*, int, u_char*, int, int*, uint32_t);
 void res_nclose(res_state);
 int res_nopt(res_state, int, u_char*, int, int);
 int res_vinit(res_state, int);
