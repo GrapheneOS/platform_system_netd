@@ -1133,8 +1133,8 @@ void DnsProxyListener::GetHostByAddrHandler::doDns64ReverseLookup(struct hostent
     if (queryLimiter.start(uid)) {
         // Remove NAT64 prefix and do reverse DNS query
         struct in_addr v4addr = {.s_addr = v6addr.s6_addr32[3]};
-        *hpp = RESOLV_STUB.android_gethostbyaddrfornetcontext(&v4addr, sizeof(v4addr), AF_INET,
-                                                              &mNetContext);
+        RESOLV_STUB.android_gethostbyaddrfornetcontext(&v4addr, sizeof(v4addr), AF_INET,
+                                                       &mNetContext, hpp);
         queryLimiter.finish(uid);
         if (*hpp) {
             // Replace IPv4 address with original queried IPv6 address in place. The space has
@@ -1158,21 +1158,22 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     maybeFixupNetContext(&mNetContext);
     const uid_t uid = mClient->getUid();
     hostent* hp = nullptr;
+    int32_t rv = 0;
     if (queryLimiter.start(uid)) {
-        hp = RESOLV_STUB.android_gethostbyaddrfornetcontext(mAddress, mAddressLen, mAddressFamily,
-                                                            &mNetContext);
+        rv = RESOLV_STUB.android_gethostbyaddrfornetcontext(mAddress, mAddressLen, mAddressFamily,
+                                                            &mNetContext, &hp);
         queryLimiter.finish(uid);
     } else {
+        rv = EAI_MEMORY;
         ALOGE("gethostbyaddr: from UID %d, max concurrent queries reached", uid);
     }
 
     doDns64ReverseLookup(&hp);
 
     if (DBG) {
-        ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %zu",
-                hp ? "success" : strerror(errno),
-                (hp && hp->h_name) ? hp->h_name : "null",
-                (hp && hp->h_name) ? strlen(hp->h_name) + 1 : 0);
+        ALOGD("GetHostByAddrHandler::run gethostbyaddr result: %s hp->h_name = %s, name_len = %zu",
+              hp ? "success" : gai_strerror(rv), (hp && hp->h_name) ? hp->h_name : "null",
+              (hp && hp->h_name) ? strlen(hp->h_name) + 1 : 0);
     }
 
     bool success = true;
