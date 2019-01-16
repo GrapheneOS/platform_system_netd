@@ -144,21 +144,9 @@ void _res_stats_set_sample(res_sample* sample, time_t now, int rcode, int rtt);
 
 /* End of stats related definitions */
 
-/*
- * Resolver flags (used to be discrete per-module statics ints).
- */
-#define RES_F_VC 0x00000001       /* socket is TCP */
-#define RES_F_CONN 0x00000002     /* socket is connected */
-#define RES_F_EDNS0ERR 0x00000004 /* EDNS0 caused errors */
-#define RES_F__UNUSED 0x00000008  /* (unused) */
-#define RES_F_LASTMASK 0x000000F0 /* ordinal server of last res_nsend */
-#define RES_F_LASTSHIFT 4         /* bit position of LASTMASK "flag" */
-#define RES_GETLAST(res) (((res)._flags & RES_F_LASTMASK) >> RES_F_LASTSHIFT)
-
-/* res_findzonecut2() options */
-#define RES_EXHAUSTIVE 0x00000001 /* always do all queries */
-#define RES_IPV4ONLY 0x00000002   /* IPv4 only */
-#define RES_IPV6ONLY 0x00000004   /* IPv6 only */
+// Flags for res_state->_flags
+#define RES_F_VC 0x00000001        // socket is TCP
+#define RES_F_EDNS0ERR 0x00000004  // EDNS0 caused errors
 
 /*
  * Resolver options (keep these in synch with res_debug.c, please)
