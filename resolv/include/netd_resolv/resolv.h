@@ -32,6 +32,8 @@
  * This header contains declarations related to per-network DNS server selection.
  * They are used by system/netd/ and should not be exposed by the public NDK headers.
  */
+#include <android/multinetwork.h>  // ResNsendFlags
+
 #include <netinet/in.h>
 
 #include "params.h"
@@ -113,9 +115,9 @@ LIBNETD_RESOLV_PUBLIC int android_getaddrinfofornetcontext(const char*, const ch
 LIBNETD_RESOLV_PUBLIC bool resolv_has_nameservers(unsigned netid);
 
 // Query dns with raw msg
-// TODO: Add a way to control query parameter, like flags, or maybe res_options or even res_state.
-LIBNETD_RESOLV_PUBLIC int resolv_res_nsend(const android_net_context* netContext, const u_char* msg,
-                                           int msgLen, u_char* ans, int ansLen, int* rcode);
+LIBNETD_RESOLV_PUBLIC int resolv_res_nsend(const android_net_context* netContext,
+                                           const uint8_t* msg, int msgLen, uint8_t* ans, int ansLen,
+                                           int* rcode, uint32_t flags);
 
 // Set name servers for a network
 LIBNETD_RESOLV_PUBLIC int resolv_set_nameservers_for_net(unsigned netid, const char** servers,
