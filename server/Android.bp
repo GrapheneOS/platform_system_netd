@@ -124,6 +124,7 @@ cc_binary {
         "libnetdutils",
         "libnetutils",
         "libpcap",
+        "libprocessgroup",
         "libqtaguid",
         "libselinux",
         "libsysutils",
