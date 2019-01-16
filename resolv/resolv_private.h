@@ -211,6 +211,16 @@ void _res_stats_set_sample(res_sample* sample, time_t now, int rcode, int rtt);
 #define RES_PRF_TRUNC 0x00008000
 /*			0x00010000	*/
 
+/*
+ * Error code extending h_errno codes defined in bionic/libc/include/netdb.h.
+ *
+ * This error code, including legacy h_errno, is returned from res_nquery(), res_nsearch(),
+ * res_nquerydomain(), res_queryN(), res_searchN() and res_querydomainN() for DNS metrics.
+ *
+ * TODO: Consider mapping legacy and extended h_errno into a unified resolver error code mapping.
+ */
+#define NETD_RESOLV_H_ERRNO_EXT_TIMEOUT RCODE_TIMEOUT
+
 extern const char* const _res_opcodes[];
 
 /* Things involving an internal (static) resolver context. */
@@ -236,11 +246,9 @@ const char* p_section(int, int);
 /* Things involving a resolver context. */
 int res_ninit(res_state);
 void res_pquery(const res_state, const u_char*, int, FILE*);
-// TODO: Consider that refactor res_nquery, res_nsearch and res_nquerydomain to return one error
-// code but two error codes.
-int res_nquery(res_state, const char*, int, int, u_char*, int, int*, int*);
-int res_nsearch(res_state, const char*, int, int, u_char*, int, int*, int*);
-int res_nquerydomain(res_state, const char*, const char*, int, int, u_char*, int, int*, int*);
+int res_nquery(res_state, const char*, int, int, u_char*, int, int*);
+int res_nsearch(res_state, const char*, int, int, u_char*, int, int*);
+int res_nquerydomain(res_state, const char*, const char*, int, int, u_char*, int, int*);
 int res_nmkquery(res_state, int, const char*, int, int, const u_char*, int, const u_char*, u_char*,
                  int);
 int res_nsend(res_state, const u_char*, int, u_char*, int, int*);
@@ -260,9 +268,6 @@ int getaddrinfo_numeric(const char* hostname, const char* servname, addrinfo hin
                         addrinfo** result);
 
 // Helper function for converting h_errno to the error codes visible to netd
-int herrnoToAiError(int herrno);
-
-// Helper function for converting rcode to the error codes visible to netd
-int rcodeToAiError(int rcode);
+int herrnoToAiErrno(int herrno);
 
 #endif  // NETD_RESOLV_PRIVATE_H
