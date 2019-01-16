@@ -428,7 +428,8 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
 
     // Token unit test of the fact that we return the stats in the error message which the caller
     // ignores.
-    std::string expectedError = counters;
+    // Skip header since we only saved the last line we parsed.
+    std::string expectedError = counterLines[2];
     std::string err = result.status().msg();
     ASSERT_LE(expectedError.size(), err.size());
     EXPECT_TRUE(std::equal(expectedError.rbegin(), expectedError.rend(), err.rbegin()));
