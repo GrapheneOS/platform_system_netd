@@ -31,7 +31,7 @@ namespace android {
 namespace net {
 
 class TetherController {
-private:
+  private:
     struct ForwardingDownstream {
         std::string iface;
         bool active;
@@ -93,7 +93,7 @@ private:
     int setupIptablesHooks();
 
     class TetherStats {
-    public:
+      public:
         TetherStats() = default;
         TetherStats(std::string intIfn, std::string extIfn,
                 int64_t rxB, int64_t rxP,
@@ -142,7 +142,7 @@ private:
 
     std::mutex lock;
 
-private:
+  private:
     bool setIpFwdEnabled();
     std::vector<char*> toCstrVec(const std::vector<std::string>& addrs);
     int setupIPv6CountersChain();
