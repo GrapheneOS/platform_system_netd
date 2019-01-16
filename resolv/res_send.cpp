@@ -523,8 +523,6 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             *rcode = RCODE_INTERNAL_ERROR;
             nsap = get_nsaddr(statp, (size_t) ns);
             nsaplen = get_salen(nsap);
-            statp->_flags &= ~RES_F_LASTMASK;
-            statp->_flags |= (ns << RES_F_LASTSHIFT);
 
         same_ns:
             // TODO: Since we expect there is only one DNS server being queried here while this

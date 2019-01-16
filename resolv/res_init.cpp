@@ -313,7 +313,7 @@ void res_nclose(res_state statp) {
     if (statp->_vcsock >= 0) {
         (void) close(statp->_vcsock);
         statp->_vcsock = -1;
-        statp->_flags &= ~(RES_F_VC | RES_F_CONN);
+        statp->_flags &= ~RES_F_VC;
     }
     for (ns = 0; ns < statp->_u._ext.nscount; ns++) {
         if (statp->_u._ext.nssocks[ns] != -1) {
