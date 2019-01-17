@@ -124,6 +124,7 @@ cc_binary {
         "libpcap",
         "libqtaguid",
         "libselinux",
+        "libstatslog",
         "libsysutils",
         "libutils",
         "netd_aidl_interface-cpp",
