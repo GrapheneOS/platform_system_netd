@@ -113,11 +113,8 @@ class DnsProxyListener : public FrameworkListener {
 
     class GetHostByAddrHandler {
       public:
-        GetHostByAddrHandler(SocketClient *c,
-                            void* address,
-                            int addressLen,
-                            int addressFamily,
-                            const android_net_context& netcontext);
+        GetHostByAddrHandler(SocketClient* c, void* address, int addressLen, int addressFamily,
+                             const android_net_context& netcontext, int reportingLevel);
         ~GetHostByAddrHandler();
 
         void run();
@@ -130,6 +127,7 @@ class DnsProxyListener : public FrameworkListener {
         int mAddressLen; // length of address to look up
         int mAddressFamily;  // address family
         android_net_context mNetContext;
+        const int mReportingLevel;
     };
 
     /* ------ resnsend ------*/
