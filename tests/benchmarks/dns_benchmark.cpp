@@ -89,10 +89,6 @@ public:
         return mappings;
     }
 
-    android::sp<android::net::INetd> getNetd() const {
-        return dns.mNetdSrv;
-    }
-
     void benchmark(benchmark::State& state) {
         while (state.KeepRunning()) {
             const uint32_t ofs = arc4random_uniform(getMappings().size());
