@@ -394,7 +394,7 @@ extern "C" int resNetworkQuery(unsigned netId, const char* dname, int ns_class, 
     return resNetworkSend(netId, buf.data(), len, flags);
 }
 
-extern "C" int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen, uint32_t) {
+extern "C" int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen, uint32_t flags) {
     // Encode
     // Base 64 encodes every 3 bytes into 4 characters, but then adds padding to the next
     // multiple of 4 and a \0
@@ -409,7 +409,8 @@ extern "C" int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen,
     }
     // Send
     netId = getNetworkForResolv(netId);
-    const std::string cmd = "resnsend " + encodedQuery + " " + std::to_string(netId) + '\0';
+    const std::string cmd = "resnsend " + std::to_string(netId) + " " + std::to_string(flags) +
+                            " " + encodedQuery + '\0';
     if (cmd.size() > MAX_CMD_SIZE) {
         // Cmd size must less than buffer size of FrameworkListener
         return -EMSGSIZE;

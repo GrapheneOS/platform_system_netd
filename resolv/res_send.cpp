@@ -388,7 +388,8 @@ int res_queriesmatch(const u_char* buf1, const u_char* eom1, const u_char* buf2,
     return (1);
 }
 
-int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int anssiz, int* rcode) {
+int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int anssiz, int* rcode,
+              uint32_t flags) {
     int gotsomewhere, terrno, v_circuit, resplen, n;
     ResolvCacheStatus cache_status = RESOLV_CACHE_UNSUPPORTED;
 
@@ -404,7 +405,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     terrno = ETIMEDOUT;
 
     int anslen = 0;
-    cache_status = _resolv_cache_lookup(statp->netid, buf, buflen, ans, anssiz, &anslen);
+    cache_status = _resolv_cache_lookup(statp->netid, buf, buflen, ans, anssiz, &anslen, flags);
 
     if (cache_status == RESOLV_CACHE_FOUND) {
         return anslen;
@@ -417,7 +418,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         // We have no nameservers configured, so there's no point trying.
         // Tell the cache the query failed, or any retries and anyone else asking the same
         // question will block for PENDING_REQUEST_TIMEOUT seconds instead of failing fast.
-        _resolv_cache_query_failed(statp->netid, buf, buflen);
+        _resolv_cache_query_failed(statp->netid, buf, buflen, flags);
 
         // TODO: Remove errno once callers stop using it
         errno = ESRCH;
@@ -507,7 +508,9 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     /*
      * Send request, RETRY times, or until successful.
      */
-    for (int attempt = 0; attempt < statp->retry; ++attempt) {
+    int retryTimes = (flags & ANDROID_RESOLV_NO_RETRY) ? 1 : statp->retry;
+
+    for (int attempt = 0; attempt < retryTimes; ++attempt) {
         struct res_stats stats[MAXNS];
         struct __res_params params;
         int revision_id = resolv_cache_get_resolver_stats(statp->netid, &params, stats);
@@ -523,8 +526,6 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             *rcode = RCODE_INTERNAL_ERROR;
             nsap = get_nsaddr(statp, (size_t) ns);
             nsaplen = get_salen(nsap);
-            statp->_flags &= ~RES_F_LASTMASK;
-            statp->_flags |= (ns << RES_F_LASTSHIFT);
 
         same_ns:
             // TODO: Since we expect there is only one DNS server being queried here while this
@@ -541,7 +542,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                     return resplen;
                 }
                 if (!fallback) {
-                    _resolv_cache_query_failed(statp->netid, buf, buflen);
+                    _resolv_cache_query_failed(statp->netid, buf, buflen, flags);
                     res_nclose(statp);
                     return -terrno;
                 }
@@ -556,7 +557,8 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
 
             if (v_circuit) {
                 /* Use VC; at most one attempt per server. */
-                attempt = statp->retry;
+                bool shouldRecordStats = (attempt == 0);
+                attempt = retryTimes;
 
                 n = send_vc(statp, &params, buf, buflen, ans, anssiz, &terrno, ns, &now, rcode,
                             &delay);
@@ -566,7 +568,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                  * queries that deterministically fail (e.g., a name that always returns
                  * SERVFAIL or times out) do not unduly affect the stats.
                  */
-                if (attempt == 0) {
+                if (shouldRecordStats) {
                     res_sample sample;
                     _res_stats_set_sample(&sample, now, *rcode, delay);
                     _resolv_cache_add_resolver_stats_sample(statp->netid, revision_id, ns, &sample,
@@ -576,7 +578,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                 VLOG << "used send_vc " << n;
 
                 if (n < 0) {
-                    _resolv_cache_query_failed(statp->netid, buf, buflen);
+                    _resolv_cache_query_failed(statp->netid, buf, buflen, flags);
                     res_nclose(statp);
                     return -terrno;
                 };
@@ -600,7 +602,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                 VLOG << "used send_dg " << n;
 
                 if (n < 0) {
-                    _resolv_cache_query_failed(statp->netid, buf, buflen);
+                    _resolv_cache_query_failed(statp->netid, buf, buflen, flags);
                     res_nclose(statp);
                     return -terrno;
                 };
@@ -647,7 +649,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     } else {
         errno = terrno;
     }
-    _resolv_cache_query_failed(statp->netid, buf, buflen);
+    _resolv_cache_query_failed(statp->netid, buf, buflen, flags);
 
     return -terrno;
 }
@@ -1316,11 +1318,11 @@ static int res_tls_send(res_state statp, const Slice query, const Slice answer, 
     }
 }
 
-int resolv_res_nsend(const android_net_context* netContext, const u_char* msg, int msgLen,
-                     u_char* ans, int ansLen, int* rcode) {
+int resolv_res_nsend(const android_net_context* netContext, const uint8_t* msg, int msgLen,
+                     uint8_t* ans, int ansLen, int* rcode, uint32_t flags) {
     res_state res = res_get_state();
     res_setnetcontext(res, netContext);
     _resolv_populate_res_for_net(res);
     *rcode = NOERROR;
-    return res_nsend(res, msg, msgLen, ans, ansLen, rcode);
+    return res_nsend(res, msg, msgLen, ans, ansLen, rcode, flags);
 }

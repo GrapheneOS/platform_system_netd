@@ -113,11 +113,8 @@ class DnsProxyListener : public FrameworkListener {
 
     class GetHostByAddrHandler {
       public:
-        GetHostByAddrHandler(SocketClient *c,
-                            void* address,
-                            int addressLen,
-                            int addressFamily,
-                            const android_net_context& netcontext);
+        GetHostByAddrHandler(SocketClient* c, void* address, int addressLen, int addressFamily,
+                             const android_net_context& netcontext, int reportingLevel);
         ~GetHostByAddrHandler();
 
         void run();
@@ -130,6 +127,7 @@ class DnsProxyListener : public FrameworkListener {
         int mAddressLen; // length of address to look up
         int mAddressFamily;  // address family
         android_net_context mNetContext;
+        const int mReportingLevel;
     };
 
     /* ------ resnsend ------*/
@@ -145,8 +143,8 @@ class DnsProxyListener : public FrameworkListener {
 
     class ResNSendHandler {
       public:
-        ResNSendHandler(SocketClient* c, std::string msg, const android_net_context& netcontext,
-                        int reportingLevel);
+        ResNSendHandler(SocketClient* c, std::string msg, uint32_t flags,
+                        const android_net_context& netcontext, int reportingLevel);
         ~ResNSendHandler();
 
         void run();
@@ -154,6 +152,7 @@ class DnsProxyListener : public FrameworkListener {
       private:
         SocketClient* mClient;  // ref counted
         std::string mMsg;
+        uint32_t mFlags;
         android_net_context mNetContext;
         const int mReportingLevel;
     };

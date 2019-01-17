@@ -20,14 +20,14 @@
 #include <chrono>
 
 class Stopwatch {
-public:
+  public:
     Stopwatch() : mStart(clock::now()) {}
 
     virtual ~Stopwatch() {};
 
-    float timeTaken() const {
-        return getElapsed(clock::now());
-    }
+    float timeTaken() const { return getElapsed(clock::now()); }
+
+    int64_t timeTakenUs() const { return getElapsedUs(clock::now()); }
 
     float getTimeAndReset() {
         const auto& now = clock::now();
@@ -35,8 +35,14 @@ public:
         mStart = now;
         return elapsed;
     }
+    float getTimeAndResetUs() {
+        const auto& now = clock::now();
+        float elapsed = getElapsedUs(now);
+        mStart = now;
+        return elapsed;
+    }
 
-private:
+  private:
     typedef std::chrono::steady_clock clock;
     typedef std::chrono::time_point<clock> time_point;
     time_point mStart;
@@ -44,6 +50,9 @@ private:
     float getElapsed(const time_point& now) const {
         using ms = std::chrono::duration<float, std::ratio<1, 1000>>;
         return (std::chrono::duration_cast<ms>(now - mStart)).count();
+    }
+    int64_t getElapsedUs(const time_point& now) const {
+        return (std::chrono::duration_cast<std::chrono::microseconds>(now - mStart)).count();
     }
 };
 
