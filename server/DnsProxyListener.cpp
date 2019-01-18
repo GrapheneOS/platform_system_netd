@@ -220,7 +220,7 @@ int extractGetaddrinfoAnswers(const addrinfo* result, std::vector<std::string>* 
     return total_ip_addr_count;
 }
 
-int extractGethostbyNameAddrAnswers(const hostent* hp, std::vector<std::string>* ip_addrs) {
+int extractGethostbyNameAnswers(const hostent* hp, std::vector<std::string>* ip_addrs) {
     int total_ip_addr_count = 0;
     if (hp == nullptr) {
         return 0;
@@ -1048,7 +1048,7 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     }
 
     std::vector<std::string> ip_addrs;
-    const int total_ip_addr_count = extractGethostbyNameAddrAnswers(hp, &ip_addrs);
+    const int total_ip_addr_count = extractGethostbyNameAnswers(hp, &ip_addrs);
     reportDnsInfoAll(mReportingLevel, INetdEventListener::EVENT_GETHOSTBYNAME, mNetContext,
                      latencyUs, rv, mName, ip_addrs, total_ip_addr_count);
     mClient->decRef();
@@ -1210,10 +1210,8 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
         ALOGW("GetHostByAddrHandler: Error writing DNS result to client");
     }
 
-    std::vector<std::string> ip_addrs;
-    const int total_ip_addr_count = extractGethostbyNameAddrAnswers(hp, &ip_addrs);
     reportDnsInfoAll(mReportingLevel, INetdEventListener::EVENT_GETHOSTBYADDR, mNetContext,
-                     latencyUs, rv, hp->h_name, ip_addrs, total_ip_addr_count);
+                     latencyUs, rv, (hp && hp->h_name) ? hp->h_name : "null", {}, 0);
     mClient->decRef();
 }
 
