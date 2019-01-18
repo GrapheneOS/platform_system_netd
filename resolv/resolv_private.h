@@ -78,11 +78,9 @@
 #define MAXDFLSRCH 3       /* # default domain levels to try */
 #define LOCALDOMAINPARTS 2 /* min levels in name that is "local" */
 
-#define RES_TIMEOUT 5     /* min. seconds between retries */
+#define RES_TIMEOUT 5000 /* min. milliseconds between retries */
 #define MAXRESOLVSORT 10  /* number of net to sort on */
 #define RES_MAXNDOTS 15   /* should reflect bit field size */
-#define RES_MAXRETRANS 30 /* only for resolv.conf/RES_OPTIONS */
-#define RES_MAXRETRY 5    /* only for resolv.conf/RES_OPTIONS */
 #define RES_DFLRETRY 2    /* Default #/tries. */
 #define RES_MAXTIME 65535 /* Infinity, in milliseconds. */
 
@@ -90,8 +88,6 @@ struct res_state_ext;
 
 struct __res_state {
     unsigned netid;                        /* NetId: cache key and socket mark */
-    int retrans;                           /* retransmission time interval */
-    int retry;                             /* number of times to retransmit */
     u_long options;                        /* option flags - see below. */
     int nscount;                           /* number of name srvers */
     struct sockaddr_in nsaddr_list[MAXNS]; /* address of name server */
