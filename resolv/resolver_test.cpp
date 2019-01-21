@@ -111,27 +111,8 @@ bool UnorderedCompareArray(const A& a, const B& b) {
 
 class ResolverTest : public ::testing::Test, public DnsResponderClient {
   protected:
-    void SetUp() {
-        // Ensure resolutions go via proxy.
-        DnsResponderClient::SetUp();
-
-        // If DNS reporting is off: turn it on so we run through everything.
-        auto rv = mNetdSrv->getMetricsReportingLevel(&mOriginalMetricsLevel);
-        ASSERT_TRUE(rv.isOk());
-        if (mOriginalMetricsLevel != INetdEventListener::REPORTING_LEVEL_FULL) {
-            rv = mNetdSrv->setMetricsReportingLevel(INetdEventListener::REPORTING_LEVEL_FULL);
-            ASSERT_TRUE(rv.isOk());
-        }
-    }
-
-    void TearDown() {
-        if (mOriginalMetricsLevel != INetdEventListener::REPORTING_LEVEL_FULL) {
-            auto rv = mNetdSrv->setMetricsReportingLevel(mOriginalMetricsLevel);
-            ASSERT_TRUE(rv.isOk());
-        }
-
-        DnsResponderClient::TearDown();
-    }
+    void SetUp() { DnsResponderClient::SetUp(); }
+    void TearDown() { DnsResponderClient::TearDown(); }
 
     bool GetResolverInfo(std::vector<std::string>* servers, std::vector<std::string>* domains,
                          std::vector<std::string>* tlsServers, __res_params* params,
@@ -298,9 +279,6 @@ class ResolverTest : public ::testing::Test, public DnsResponderClient {
             8,   8,  // {MIN,MAX}_SAMPLES
             100,     // BASE_TIMEOUT_MSEC
     };
-
-  private:
-    int mOriginalMetricsLevel;
 };
 
 TEST_F(ResolverTest, GetHostByName) {
