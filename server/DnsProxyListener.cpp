@@ -205,7 +205,7 @@ int extractResNsendAnswers(const uint8_t* answer, size_t anslen, int ipType,
     return total_ip_addr_count;
 }
 
-int extractGetaddrinfoAnswers(const addrinfo* result, std::vector<std::string>* ip_addrs) {
+int extractGetAddrInfoAnswers(const addrinfo* result, std::vector<std::string>* ip_addrs) {
     int total_ip_addr_count = 0;
     if (result == nullptr) {
         return 0;
@@ -220,7 +220,7 @@ int extractGetaddrinfoAnswers(const addrinfo* result, std::vector<std::string>* 
     return total_ip_addr_count;
 }
 
-int extractGethostbyNameAnswers(const hostent* hp, std::vector<std::string>* ip_addrs) {
+int extractGetHostByNameAnswers(const hostent* hp, std::vector<std::string>* ip_addrs) {
     int total_ip_addr_count = 0;
     if (hp == nullptr) {
         return 0;
@@ -291,40 +291,23 @@ bool parseQuery(const uint8_t* msg, size_t msgLen, int* rr_type, std::string* rr
     return true;
 }
 
-void reportDnsInfoAll(int reportingLevel, int eventType, const android_net_context& netContext,
-                      int latencyUs, int returnCode, const std::string& query_name,
-                      const std::vector<std::string>& ip_addrs = {}, int total_ip_addr_count = 0) {
+void reportDnsEvent(int eventType, const android_net_context& netContext, int latencyUs,
+                    int returnCode, const std::string& query_name,
+                    const std::vector<std::string>& ip_addrs = {}, int total_ip_addr_count = 0) {
+    android::util::stats_write(android::util::NETWORK_DNS_EVENT_REPORTED, eventType, returnCode,
+                               latencyUs);
+
     const auto listener = gCtls->eventReporter.getNetdEventListener();
     if (!listener) return;
-
-    int latencyMs = int(latencyUs / 1000);
-
-    if (reportingLevel != INetdEventListener::REPORTING_LEVEL_NONE) {
-        android::util::stats_write(android::util::NETWORK_DNS_EVENT_REPORTED, eventType, returnCode,
-                                   latencyUs);
-    }
-
-    switch (reportingLevel) {
-        case INetdEventListener::REPORTING_LEVEL_NONE:
-            // Skip reporting.
-            break;
-        case INetdEventListener::REPORTING_LEVEL_METRICS:
-            // Metrics reporting is on. Send metrics.
-            listener->onDnsEvent(netContext.dns_netid, eventType, returnCode, latencyMs, "", {}, -1,
-                                 -1);
-            break;
-        case INetdEventListener::REPORTING_LEVEL_FULL:
-            // Full event info reporting is on. Send full info.
-            listener->onDnsEvent(netContext.dns_netid, eventType, returnCode, latencyMs, query_name,
-                                 ip_addrs, total_ip_addr_count, netContext.uid);
-            break;
-    }
+    const int latencyMs = latencyUs / 1000;
+    listener->onDnsEvent(netContext.dns_netid, eventType, returnCode, latencyMs, query_name,
+                         ip_addrs, total_ip_addr_count, netContext.uid);
 }
 
-bool onlyIPv4Answers(const struct addrinfo* res) {
+bool onlyIPv4Answers(const addrinfo* res) {
     // Null addrinfo pointer isn't checked because the caller doesn't pass null pointer.
 
-    for (const struct addrinfo* ai = res; ai; ai = ai->ai_next)
+    for (const addrinfo* ai = res; ai; ai = ai->ai_next)
         if (ai->ai_family != AF_INET) return false;
 
     return true;
@@ -358,10 +341,10 @@ bool onlyNonSpecialUseIPv4Addresses(struct hostent* hp) {
     return true;
 }
 
-bool onlyNonSpecialUseIPv4Addresses(const struct addrinfo* res) {
+bool onlyNonSpecialUseIPv4Addresses(const addrinfo* res) {
     // Null addrinfo pointer isn't checked because the caller doesn't pass null pointer.
 
-    for (const struct addrinfo* ai = res; ai; ai = ai->ai_next) {
+    for (const addrinfo* ai = res; ai; ai = ai->ai_next) {
         if (ai->ai_family != AF_INET) return false;
         if (isSpecialUseIPv4Address(ai->ai_addr)) return false;
     }
@@ -384,11 +367,11 @@ void logDnsQueryResult(const struct hostent* hp) {
     }
 }
 
-void logDnsQueryResult(const struct addrinfo* res) {
+void logDnsQueryResult(const addrinfo* res) {
     if (res == nullptr) return;
 
     int i;
-    const struct addrinfo* ai;
+    const addrinfo* ai;
     ALOGD("DNS records:");
     for (ai = res, i = 0; ai; ai = ai->ai_next, i++) {
         if ((ai->ai_family != AF_INET) && (ai->ai_family != AF_INET6)) continue;
@@ -452,14 +435,14 @@ bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, struct 
     return true;
 }
 
-bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, struct addrinfo* result) {
+bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, addrinfo* result) {
     if (result == nullptr) return false;
     if (!onlyNonSpecialUseIPv4Addresses(result)) return false;
     if (!isValidNat64Prefix(prefix)) return false;
 
     struct sockaddr_storage ss = netdutils::IPSockAddr(prefix.ip());
     struct sockaddr_in6* v6prefix = (struct sockaddr_in6*) &ss;
-    for (struct addrinfo* ai = result; ai; ai = ai->ai_next) {
+    for (addrinfo* ai = result; ai; ai = ai->ai_next) {
         struct sockaddr_in sinOriginal = *(struct sockaddr_in*) ai->ai_addr;
         struct sockaddr_in6* sin6 = (struct sockaddr_in6*) ai->ai_addr;
         memset(sin6, 0, sizeof(sockaddr_in6));
@@ -489,8 +472,8 @@ bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, struct 
 
 }  // namespace
 
-DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl, EventReporter* eventReporter) :
-        FrameworkListener(SOCKET_NAME), mNetCtrl(netCtrl), mEventReporter(eventReporter) {
+DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl)
+    : FrameworkListener(SOCKET_NAME), mNetCtrl(netCtrl) {
     registerCmd(new GetAddrInfoCmd(this));
     registerCmd(new GetHostByAddrCmd(this));
     registerCmd(new GetHostByNameCmd(this));
@@ -499,14 +482,8 @@ DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl, EventReport
 
 DnsProxyListener::GetAddrInfoHandler::GetAddrInfoHandler(SocketClient* c, char* host, char* service,
                                                          addrinfo* hints,
-                                                         const android_net_context& netcontext,
-                                                         const int reportingLevel)
-    : mClient(c),
-      mHost(host),
-      mService(service),
-      mHints(hints),
-      mNetContext(netcontext),
-      mReportingLevel(reportingLevel) {}
+                                                         const android_net_context& netcontext)
+    : mClient(c), mHost(host), mService(service), mHints(hints), mNetContext(netcontext) {}
 
 DnsProxyListener::GetAddrInfoHandler::~GetAddrInfoHandler() {
     free(mHost);
@@ -589,7 +566,7 @@ static bool sendaddrinfo(SocketClient* c, addrinfo* ai) {
     return true;
 }
 
-void DnsProxyListener::GetAddrInfoHandler::doDns64Synthesis(int32_t* rv, struct addrinfo** res) {
+void DnsProxyListener::GetAddrInfoHandler::doDns64Synthesis(int32_t* rv, addrinfo** res) {
     if (mHost == nullptr) return;
 
     const bool ipv6WantedButNoData = (mHints && mHints->ai_family == AF_INET6 && *rv == EAI_NODATA);
@@ -681,9 +658,9 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
         }
     }
     std::vector<std::string> ip_addrs;
-    const int total_ip_addr_count = extractGetaddrinfoAnswers(result, &ip_addrs);
-    reportDnsInfoAll(mReportingLevel, INetdEventListener::EVENT_GETADDRINFO, mNetContext, latencyUs,
-                     rv, mHost, ip_addrs, total_ip_addr_count);
+    const int total_ip_addr_count = extractGetAddrInfoAnswers(result, &ip_addrs);
+    reportDnsEvent(INetdEventListener::EVENT_GETADDRINFO, mNetContext, latencyUs, rv, mHost,
+                   ip_addrs, total_ip_addr_count);
     freeaddrinfo(result);
     mClient->decRef();
 }
@@ -770,10 +747,8 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
              netcontext.uid);
     }
 
-    const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
-
-    DnsProxyListener::GetAddrInfoHandler* handler = new DnsProxyListener::GetAddrInfoHandler(
-            cli, name, service, hints, netcontext, metricsLevel);
+    DnsProxyListener::GetAddrInfoHandler* handler =
+            new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, netcontext);
     tryThreadOrError(cli, handler);
     return 0;
 }
@@ -813,22 +788,16 @@ int DnsProxyListener::ResNSendCommand::runCommand(SocketClient* cli, int argc, c
     if (checkAndClearUseLocalNameserversFlag(&netId)) {
         netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
     }
-    const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
 
     DnsProxyListener::ResNSendHandler* handler =
-            new DnsProxyListener::ResNSendHandler(cli, argv[3], flags, netcontext, metricsLevel);
+            new DnsProxyListener::ResNSendHandler(cli, argv[3], flags, netcontext);
     tryThreadOrError(cli, handler);
     return 0;
 }
 
 DnsProxyListener::ResNSendHandler::ResNSendHandler(SocketClient* c, std::string msg, uint32_t flags,
-                                                   const android_net_context& netcontext,
-                                                   const int reportingLevel)
-    : mClient(c),
-      mMsg(std::move(msg)),
-      mFlags(flags),
-      mNetContext(netcontext),
-      mReportingLevel(reportingLevel) {}
+                                                   const android_net_context& netcontext)
+    : mClient(c), mMsg(std::move(msg)), mFlags(flags), mNetContext(netcontext) {}
 
 DnsProxyListener::ResNSendHandler::~ResNSendHandler() {
     mClient->decRef();
@@ -887,8 +856,8 @@ void DnsProxyListener::ResNSendHandler::run() {
     if (nsendAns < 0) {
         sendBE32(mClient, nsendAns);
         if (rr_type == ns_t_a || rr_type == ns_t_aaaa) {
-            reportDnsInfoAll(mReportingLevel, INetdEventListener::EVENT_RES_NSEND, mNetContext,
-                             latencyUs, resNSendToAiError(nsendAns, arcode), rr_name);
+            reportDnsEvent(INetdEventListener::EVENT_RES_NSEND, mNetContext, latencyUs,
+                           resNSendToAiError(nsendAns, arcode), rr_name);
         }
         return;
     }
@@ -909,9 +878,8 @@ void DnsProxyListener::ResNSendHandler::run() {
         std::vector<std::string> ip_addrs;
         const int total_ip_addr_count =
                 extractResNsendAnswers((uint8_t*) ansBuf.data(), nsendAns, rr_type, &ip_addrs);
-        reportDnsInfoAll(mReportingLevel, INetdEventListener::EVENT_RES_NSEND, mNetContext,
-                         latencyUs, resNSendToAiError(nsendAns, arcode), rr_name, ip_addrs,
-                         total_ip_addr_count);
+        reportDnsEvent(INetdEventListener::EVENT_RES_NSEND, mNetContext, latencyUs,
+                       resNSendToAiError(nsendAns, arcode), rr_name, ip_addrs, total_ip_addr_count);
     }
 }
 
@@ -954,18 +922,15 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
         netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
     }
 
-    const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
-
     DnsProxyListener::GetHostByNameHandler* handler =
-            new DnsProxyListener::GetHostByNameHandler(cli, name, af, netcontext, metricsLevel);
+            new DnsProxyListener::GetHostByNameHandler(cli, name, af, netcontext);
     tryThreadOrError(cli, handler);
     return 0;
 }
 
 DnsProxyListener::GetHostByNameHandler::GetHostByNameHandler(SocketClient* c, char* name, int af,
-                                                             const android_net_context& netcontext,
-                                                             const int metricsLevel)
-    : mClient(c), mName(name), mAf(af), mNetContext(netcontext), mReportingLevel(metricsLevel) {}
+                                                             const android_net_context& netcontext)
+    : mClient(c), mName(name), mAf(af), mNetContext(netcontext) {}
 
 DnsProxyListener::GetHostByNameHandler::~GetHostByNameHandler() {
     free(mName);
@@ -1048,9 +1013,9 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     }
 
     std::vector<std::string> ip_addrs;
-    const int total_ip_addr_count = extractGethostbyNameAnswers(hp, &ip_addrs);
-    reportDnsInfoAll(mReportingLevel, INetdEventListener::EVENT_GETHOSTBYNAME, mNetContext,
-                     latencyUs, rv, mName, ip_addrs, total_ip_addr_count);
+    const int total_ip_addr_count = extractGetHostByNameAnswers(hp, &ip_addrs);
+    reportDnsEvent(INetdEventListener::EVENT_GETHOSTBYNAME, mNetContext, latencyUs, rv, mName,
+                   ip_addrs, total_ip_addr_count);
     mClient->decRef();
 }
 
@@ -1102,24 +1067,20 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
         netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
     }
 
-    const int metricsLevel = mDnsProxyListener->mEventReporter->getMetricsReportingLevel();
-
     DnsProxyListener::GetHostByAddrHandler* handler = new DnsProxyListener::GetHostByAddrHandler(
-            cli, addr, addrLen, addrFamily, netcontext, metricsLevel);
+            cli, addr, addrLen, addrFamily, netcontext);
     tryThreadOrError(cli, handler);
     return 0;
 }
 
 DnsProxyListener::GetHostByAddrHandler::GetHostByAddrHandler(SocketClient* c, void* address,
                                                              int addressLen, int addressFamily,
-                                                             const android_net_context& netcontext,
-                                                             const int metricsLevel)
+                                                             const android_net_context& netcontext)
     : mClient(c),
       mAddress(address),
       mAddressLen(addressLen),
       mAddressFamily(addressFamily),
-      mNetContext(netcontext),
-      mReportingLevel(metricsLevel) {}
+      mNetContext(netcontext) {}
 
 DnsProxyListener::GetHostByAddrHandler::~GetHostByAddrHandler() {
     free(mAddress);
@@ -1210,8 +1171,8 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
         ALOGW("GetHostByAddrHandler: Error writing DNS result to client");
     }
 
-    reportDnsInfoAll(mReportingLevel, INetdEventListener::EVENT_GETHOSTBYADDR, mNetContext,
-                     latencyUs, rv, (hp && hp->h_name) ? hp->h_name : "null", {}, 0);
+    reportDnsEvent(INetdEventListener::EVENT_GETHOSTBYADDR, mNetContext, latencyUs, rv,
+                   (hp && hp->h_name) ? hp->h_name : "null", {}, 0);
     mClient->decRef();
 }
 

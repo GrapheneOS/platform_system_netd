@@ -302,17 +302,6 @@ interface INetd {
     void setProcSysNet(int ipversion, int which, in @utf8InCpp String ifname,
             in @utf8InCpp String parameter, in @utf8InCpp String value);
 
-    /**
-     * Get/Set metrics reporting level.
-     *
-     * Reporting level is one of:
-     *     0 (NONE)
-     *     1 (METRICS)
-     *     2 (FULL)
-     */
-    int getMetricsReportingLevel();
-    void setMetricsReportingLevel(int level);
-
    /**
     * Sets owner of socket ParcelFileDescriptor to the new UID, checking to ensure that the caller's
     * uid is that of the old owner's, and that this is a UDP-encap socket
