@@ -14,27 +14,10 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "Netd"
-
 #include "EventReporter.h"
-#include "log/log.h"
 
 using android::interface_cast;
 using android::net::metrics::INetdEventListener;
-
-int EventReporter::setMetricsReportingLevel(const int level) {
-    if (level < INetdEventListener::REPORTING_LEVEL_NONE
-            || level > INetdEventListener::REPORTING_LEVEL_FULL) {
-        ALOGE("Invalid metrics reporting level %d", level);
-        return -EINVAL;
-    }
-    mReportingLevel = level;
-    return 0;
-}
-
-int EventReporter::getMetricsReportingLevel() const {
-    return mReportingLevel;
-}
 
 android::sp<INetdEventListener> EventReporter::getNetdEventListener() {
     std::lock_guard lock(mutex);

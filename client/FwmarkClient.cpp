@@ -25,21 +25,12 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <algorithm>  // std::size()
 #include <iterator>
 
 namespace {
 
 const sockaddr_un FWMARK_SERVER_PATH = {AF_UNIX, "/dev/socket/fwmarkd"};
-
-#if defined(NETD_CLIENT_DEBUGGABLE_BUILD)
-constexpr bool isBuildDebuggable = true;
-#else
-constexpr bool isBuildDebuggable = false;
-#endif
-
-bool isOverriddenBy(const char *name) {
-    return isBuildDebuggable && getenv(name);
-}
 
 bool commandHasFd(int cmdId) {
     return (cmdId != FwmarkCommand::QUERY_USER_ACCESS) &&
@@ -50,16 +41,10 @@ bool commandHasFd(int cmdId) {
 }  // namespace
 
 bool FwmarkClient::shouldSetFwmark(int family) {
-    if (isOverriddenBy(ANDROID_NO_USE_FWMARK_CLIENT)) {
-        return false;
-    }
     return FwmarkCommand::isSupportedFamily(family);
 }
 
 bool FwmarkClient::shouldReportConnectComplete(int family) {
-    if (isOverriddenBy(ANDROID_FWMARK_METRICS_ONLY)) {
-        return false;
-    }
     return shouldSetFwmark(family);
 }
 
