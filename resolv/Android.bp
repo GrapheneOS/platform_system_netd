@@ -27,6 +27,7 @@ cc_library {
         "DnsTlsSessionCache.cpp",
         "DnsTlsSocket.cpp",
         "PrivateDnsConfiguration.cpp",
+        "ResolverEventReporter.cpp",
     ],
     // Link everything statically (except for libc) to minimize our dependence
     // on system ABIs
@@ -37,7 +38,10 @@ cc_library {
         "liblog",
         "libnetdutils",
         "libssl",
-        "netd_event_listener_interface-ndk",
+        "netd_event_listener_interface-ndk_platform",
+    ],
+    shared_libs: [
+        "libbinder_ndk",
     ],
     export_include_dirs: ["include"],
     // TODO: pie in the sky: make this code clang-tidy clean
