@@ -24,20 +24,15 @@
 #include "android/net/metrics/INetdEventListener.h"
 
 /*
- * This class stores the reporting level and can be used to get the event listener service.
+ * This class can be used to get the event listener service.
  */
 class EventReporter {
 public:
-    int setMetricsReportingLevel(const int level);
-    int getMetricsReportingLevel() const;
-
     // Returns the binder reference to the netd events listener service, attempting to fetch it if
     // we do not have it already. This method is threadsafe.
     android::sp<android::net::metrics::INetdEventListener> getNetdEventListener();
 
 private:
-    std::atomic_int mReportingLevel{
-            android::net::metrics::INetdEventListener::REPORTING_LEVEL_FULL};
     // TODO: consider changing this into an atomic type such as
     // std::atomic<android::net::metrics::INetdEventListener> and deleting the mutex.
     //

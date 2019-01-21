@@ -37,7 +37,6 @@
 
 #include "Controllers.h"
 #include "DumpWriter.h"
-#include "EventReporter.h"
 #include "InterfaceController.h"
 #include "NetdConstants.h"  // SHA256_SIZE
 #include "NetdNativeService.h"
@@ -720,27 +719,6 @@ binder::Status NetdNativeService::setProcSysNet(int32_t ipversion, int32_t which
                                                       parameter.c_str(), value.c_str());
     gLog.log(entry.returns(err).withAutomaticDuration());
     return statusFromErrcode(err);
-}
-
-binder::Status NetdNativeService::getMetricsReportingLevel(int *reportingLevel) {
-    // This function intentionally does not lock, since the only thing it does is one read from an
-    // atomic_int.
-    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
-    ENFORCE_DEBUGGABLE();
-
-    *reportingLevel = gCtls->eventReporter.getMetricsReportingLevel();
-    return binder::Status::ok();
-}
-
-binder::Status NetdNativeService::setMetricsReportingLevel(const int reportingLevel) {
-    // This function intentionally does not lock, since the only thing it does is one write to an
-    // atomic_int.
-    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
-    ENFORCE_DEBUGGABLE();
-
-    return (gCtls->eventReporter.setMetricsReportingLevel(reportingLevel) == 0)
-            ? binder::Status::ok()
-            : binder::Status::fromExceptionCode(binder::Status::EX_ILLEGAL_ARGUMENT);
 }
 
 binder::Status NetdNativeService::ipSecSetEncapSocketOwner(const ParcelFileDescriptor& socket,
