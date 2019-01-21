@@ -28,6 +28,7 @@
 
 #include "DnsTlsServer.h"
 #include "IDnsTlsSocket.h"
+#include "LockedQueue.h"
 #include "params.h"
 
 namespace android {
@@ -96,20 +97,19 @@ private:
     // will return SSL_ERROR_WANT_READ if there is no data from the server to read.
     int sslRead(const Slice buffer, bool wait) REQUIRES(mLock);
 
-    struct Query {
-        uint16_t id;
-        Slice query;
-    };
-
-    bool sendQuery(const Query& q) REQUIRES(mLock);
+    bool sendQuery(const std::vector<uint8_t>& buf) REQUIRES(mLock);
     bool readResponse() REQUIRES(mLock);
 
-    // SOCK_SEQPACKET socket pair used for sending queries from myriad query
-    // threads to the SSL thread.  EOF indicates a close request.
-    // We have to use a socket pair (i.e. a pipe) because the SSL thread needs
-    // to wait in poll() for input from either a remote server or a query thread.
-    base::unique_fd mIpcInFd;
-    base::unique_fd mIpcOutFd GUARDED_BY(mLock);
+    // Queue of pending queries.  query() pushes items onto the queue and notifies
+    // the loop thread by incrementing mEventFd.  loop() reads items off the queue.
+    LockedQueue<std::vector<uint8_t>> mQueue;
+
+    // eventfd socket used for notifying the SSL thread when queries are ready to send.
+    // This socket acts similarly to an atomic counter, incremented by query() and cleared
+    // by loop().  We have to use a socket because the SSL thread needs to wait in poll()
+    // for input from either a remote server or a query thread.
+    // EOF indicates a close request.
+    base::unique_fd mEventFd;
 
     // SSL Socket fields.
     bssl::UniquePtr<SSL_CTX> mSslCtx GUARDED_BY(mLock);
