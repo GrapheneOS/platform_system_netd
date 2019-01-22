@@ -62,7 +62,7 @@ class DnsTlsSocket : public IDnsTlsSocket {
     // notified that the socket is closed.
     // Note that success here indicates successful sending, not receipt of a response.
     // Thread-safe.
-    bool query(uint16_t id, const netdutils::Slice query) override;
+    bool query(uint16_t id, const netdutils::Slice query) override EXCLUDES(mLock);
 
   private:
     // Lock to be held by the SSL event loop thread.  This is not normally in contention.
@@ -96,6 +96,15 @@ class DnsTlsSocket : public IDnsTlsSocket {
     bool sendQuery(const std::vector<uint8_t>& buf) REQUIRES(mLock);
     bool readResponse() REQUIRES(mLock);
 
+    // Similar to query(), this function uses incrementEventFd to send a message to the
+    // loop thread.  However, instead of incrementing the counter by one (indicating a
+    // new query), it wraps the counter to negative, which we use to indicate a shutdown
+    // request.
+    void requestLoopShutdown() EXCLUDES(mLock);
+
+    // This function sends a message to the loop thread by incrementing mEventFd.
+    bool incrementEventFd(int64_t count) EXCLUDES(mLock);
+
     // Queue of pending queries.  query() pushes items onto the queue and notifies
     // the loop thread by incrementing mEventFd.  loop() reads items off the queue.
     LockedQueue<std::vector<uint8_t>> mQueue;
@@ -103,8 +112,10 @@ class DnsTlsSocket : public IDnsTlsSocket {
     // eventfd socket used for notifying the SSL thread when queries are ready to send.
     // This socket acts similarly to an atomic counter, incremented by query() and cleared
     // by loop().  We have to use a socket because the SSL thread needs to wait in poll()
-    // for input from either a remote server or a query thread.
-    // EOF indicates a close request.
+    // for input from either a remote server or a query thread.  Since eventfd does not have
+    // EOF, we indicate a close request by setting the counter to a negative number.
+    // This file descriptor is opened by initialize(), and closed implicitly after
+    // destruction.
     base::unique_fd mEventFd;
 
     // SSL Socket fields.
