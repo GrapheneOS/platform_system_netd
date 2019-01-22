@@ -350,6 +350,8 @@ void DnsTlsSocket::loop() {
 
         // If we have pending queries, wait for space to write one.
         // Otherwise, listen for new queries.
+        // Note: This blocks the destructor until q is empty, i.e. until all pending
+        // queries are sent or have failed to send.
         if (!q.empty()) {
             fds[SSLFD].events |= POLLOUT;
         } else {
@@ -366,7 +368,7 @@ void DnsTlsSocket::loop() {
             ALOGV("Poll failed: %d", errno);
             break;
         }
-        if (fds[SSLFD].revents & (POLLIN | POLLERR)) {
+        if (fds[SSLFD].revents & (POLLIN | POLLERR | POLLHUP)) {
             if (!readResponse()) {
                 ALOGV("SSL remote close or read error.");
                 break;
@@ -379,23 +381,17 @@ void DnsTlsSocket::loop() {
                 ALOGW("Error during eventfd read");
                 break;
             } else if (res == 0) {
-                ALOGV("eventfd closed; disconnecting");
+                ALOGW("eventfd closed; disconnecting");
                 break;
             } else if (res != sizeof(num_queries)) {
                 ALOGE("Int size mismatch: %zd != %zu", res, sizeof(num_queries));
                 break;
-            } else if (num_queries <= 0) {
-                ALOGE("eventfd reads should always be positive");
+            } else if (num_queries < 0) {
+                ALOGV("Negative eventfd read indicates destructor-initiated shutdown");
                 break;
             }
             // Take ownership of all pending queries.  (q is always empty here.)
             mQueue.swap(q);
-            // The writing thread writes to mQueue and then increments mEventFd, so
-            // there should be at least num_queries entries in mQueue.
-            if (q.size() < (uint64_t) num_queries) {
-                ALOGE("Synchronization error");
-                break;
-            }
         } else if (fds[SSLFD].revents & POLLOUT) {
             // q cannot be empty here.
             // Sending the entire queue here would risk a TCP flow control deadlock, so
@@ -408,8 +404,6 @@ void DnsTlsSocket::loop() {
             q.pop_front();
         }
     }
-    ALOGV("Closing event FD");
-    mEventFd.reset();
     ALOGV("Disconnecting");
     sslDisconnect();
     ALOGV("Calling onClosed");
@@ -420,12 +414,7 @@ void DnsTlsSocket::loop() {
 DnsTlsSocket::~DnsTlsSocket() {
     ALOGV("Destructor");
     // This will trigger an orderly shutdown in loop().
-    // In principle there is a data race here: If there is an I/O error in the network thread
-    // simultaneous with a call to the destructor in a different thread, both threads could
-    // attempt to call mEventFd.reset() at the same time.  However, the implementation of
-    // UniqueFd::reset appears to be thread-safe, and neither thread reads or writes mEventFd
-    // after this point, so we don't expect an issue in practice.
-    mEventFd.reset();
+    requestLoopShutdown();
     {
         // Wait for the orderly shutdown to complete.
         std::lock_guard<std::mutex> guard(mLock);
@@ -443,10 +432,6 @@ DnsTlsSocket::~DnsTlsSocket() {
 }
 
 bool DnsTlsSocket::query(uint16_t id, const Slice query) {
-    if (!mEventFd) {
-        return false;
-    }
-
     // Compose the entire message in a single buffer, so that it can be
     // sent as a single TLS record.
     std::vector<uint8_t> buf(query.size() + 4);
@@ -462,9 +447,25 @@ bool DnsTlsSocket::query(uint16_t id, const Slice query) {
 
     mQueue.push(std::move(buf));
     // Increment the mEventFd counter by 1.
-    constexpr int64_t num_queries = 1;
-    int written = write(mEventFd.get(), &num_queries, sizeof(num_queries));
-    return written == sizeof(num_queries);
+    return incrementEventFd(1);
+}
+
+void DnsTlsSocket::requestLoopShutdown() {
+    // Write a negative number to the eventfd.  This triggers an immediate shutdown.
+    incrementEventFd(INT64_MIN);
+}
+
+bool DnsTlsSocket::incrementEventFd(const int64_t count) {
+    if (!mEventFd) {
+        ALOGV("eventfd is not initialized");
+        return false;
+    }
+    int written = write(mEventFd.get(), &count, sizeof(count));
+    if (written != sizeof(count)) {
+        ALOGE("Failed to increment eventfd by %" PRId64, count);
+        return false;
+    }
+    return true;
 }
 
 // Read exactly len bytes into buffer or fail with an SSL error code
