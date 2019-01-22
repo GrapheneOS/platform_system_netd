@@ -63,6 +63,8 @@ extern struct ResolvStub {
 
     bool (*resolv_has_nameservers)(unsigned netid);
 
+    bool (*resolv_init)(const dnsproxylistener_callbacks& callbacks);
+
     void (*resolv_register_private_dns_callback)(private_dns_validated_callback callback);
 
     int (*resolv_res_nsend)(const android_net_context* netContext, const u_char* msg, int msgLen,
