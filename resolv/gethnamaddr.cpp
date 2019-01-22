@@ -70,6 +70,7 @@
 #include <syslog.h>
 #include <unistd.h>
 #include <functional>
+#include <vector>
 
 #include "hostent.h"
 #include "netd_resolv/resolv.h"
@@ -90,23 +91,10 @@
 #define LOG_AUTH 0
 #endif
 
-#define MULTI_PTRS_ARE_ALIASES 1 /* XXX - experimental */
 
 #define maybe_ok(res, nm, ok) (((res)->options & RES_NOCHECKNAME) != 0U || (ok)(nm) != 0)
 #define maybe_hnok(res, hn) maybe_ok((res), (hn), res_hnok)
 #define maybe_dnok(res, dn) maybe_ok((res), (dn), res_dnok)
-
-#define addalias(d, s, arr, siz)                                            \
-    do {                                                                    \
-        if (d >= &arr[siz]) {                                               \
-            char** xptr = (char**) realloc(arr, (siz + 10) * sizeof(*arr)); \
-            if (xptr == NULL) goto nospc;                                   \
-            d = xptr + (d - arr);                                           \
-            arr = xptr;                                                     \
-            siz += 10;                                                      \
-        }                                                                   \
-        *d++ = s;                                                           \
-    } while (0)
 
 static const char AskedForGot[] = "gethostby*.getanswer: asked for \"%s\", got \"%s\"";
 
@@ -188,7 +176,7 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
     int n;
     size_t qlen;
     const u_char *eom, *erdata;
-    char *bp, **ap, **hap, *ep;
+    char *bp, **hap, *ep;
     int ancount, qdcount;
     int haveanswer, had_error;
     int toobig = 0;
@@ -196,6 +184,7 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
     char* addr_ptrs[MAXADDRS];
     const char* tname;
     int (*name_ok)(const char*);
+    std::vector<char*> aliases;
 
     _DIAGASSERT(answer != NULL);
     _DIAGASSERT(qname != NULL);
@@ -216,9 +205,6 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
             return NULL; /* XXX should be abort(); */
     }
 
-    size_t maxaliases = 10;
-    char** aliases = (char**) malloc(maxaliases * sizeof(char*));
-    if (!aliases) goto nospc;
     /*
      * find first satisfactory answer
      */
@@ -247,9 +233,7 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
         /* The qname can be abbreviated, but h_name is now absolute. */
         qname = hent->h_name;
     }
-    hent->h_aliases = ap = aliases;
     hent->h_addr_list = hap = addr_ptrs;
-    *ap = NULL;
     *hap = NULL;
     haveanswer = 0;
     had_error = 0;
@@ -283,7 +267,7 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
             cp += n;
             if (cp != erdata) goto no_recovery;
             /* Store alias. */
-            addalias(ap, bp, aliases, maxaliases);
+            aliases.push_back(bp);
             n = (int) strlen(bp) + 1; /* for the \0 */
             if (n >= MAXHOSTNAMELEN) {
                 had_error++;
@@ -340,13 +324,12 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
                     had_error++;
                     break;
                 }
-#if MULTI_PTRS_ARE_ALIASES
                 cp += n;
                 if (cp != erdata) goto no_recovery;
                 if (!haveanswer)
                     hent->h_name = bp;
                 else
-                    addalias(ap, bp, aliases, maxaliases);
+                    aliases.push_back(bp);
                 if (n != -1) {
                     n = (int) strlen(bp) + 1; /* for the \0 */
                     if (n >= MAXHOSTNAMELEN) {
@@ -356,19 +339,6 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
                     bp += n;
                 }
                 break;
-#else
-                hent->h_name = bp;
-                if (res->options & RES_USE_INET6) {
-                    n = strlen(bp) + 1; /* for the \0 */
-                    if (n >= MAXHOSTNAMELEN) {
-                        had_error++;
-                        break;
-                    }
-                    bp += n;
-                    map_v4v6_hostent(hent, &bp, ep);
-                }
-                goto success;
-#endif
             case T_A:
             case T_AAAA:
                 if (strcasecmp(hent->h_name, bp) != 0) {
@@ -421,7 +391,6 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
         if (!had_error) haveanswer++;
     }
     if (haveanswer) {
-        *ap = NULL;
         *hap = NULL;
         /*
          * Note: we sort even if host can take only one address
@@ -441,18 +410,15 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
         goto success;
     }
 no_recovery:
-    free(aliases);
     *he = NO_RECOVERY;
     return NULL;
 success:
     bp = (char*) ALIGN(bp);
-    n = (int) (ap - aliases);
-    qlen = (n + 1) * sizeof(*hent->h_aliases);
+    aliases.push_back(nullptr);
+    qlen = aliases.size() * sizeof(*hent->h_aliases);
     if ((size_t)(ep - bp) < qlen) goto nospc;
     hent->h_aliases = (char**) bp;
-    memcpy(bp, aliases, qlen);
-    free(aliases);
-    aliases = NULL;
+    memcpy(bp, aliases.data(), qlen);
 
     bp += qlen;
     n = (int) (hap - addr_ptrs);
@@ -463,7 +429,6 @@ success:
     *he = NETDB_SUCCESS;
     return hent;
 nospc:
-    free(aliases);
     errno = ENOSPC;
     *he = NETDB_INTERNAL;
     return NULL;
@@ -625,10 +590,11 @@ struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, s
                                     int* he) {
     const size_t line_buf_size = sizeof(res_get_static()->hostbuf);
     char *name;
-    char *cp, **q;
+    char* cp;
     int af, len;
     size_t anum;
     struct in6_addr host_addr;
+    std::vector<char*> aliases;
 
     if (hf == NULL) {
         *he = NETDB_INTERNAL;
@@ -636,9 +602,6 @@ struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, s
         return NULL;
     }
     char* p = NULL;
-    size_t maxaliases = 10;
-    char** aliases = (char**) malloc(maxaliases * sizeof(char*));
-    if (!aliases) goto nospc;
 
     /* Allocate a new space to read file lines like upstream does.
      * To keep reentrancy we cannot use res_get_static()->hostbuf here,
@@ -651,7 +614,6 @@ struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, s
     for (;;) {
         if (!fgets(p, line_buf_size, hf)) {
             free(p);
-            free(aliases);
             *he = HOST_NOT_FOUND;
             return NULL;
         }
@@ -688,13 +650,12 @@ struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, s
 
         while (*cp == ' ' || *cp == '\t') cp++;
         if ((cp = strpbrk(name = cp, " \t")) != NULL) *cp++ = '\0';
-        q = aliases;
         while (cp && *cp) {
             if (*cp == ' ' || *cp == '\t') {
                 cp++;
                 continue;
             }
-            addalias(q, cp, aliases, maxaliases);
+            aliases.push_back(cp);
             if ((cp = strpbrk(cp, " \t")) != NULL) *cp++ = '\0';
         }
         break;
@@ -702,7 +663,7 @@ struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, s
     hent->h_length = len;
     hent->h_addrtype = af;
     HENT_ARRAY(hent->h_addr_list, 1, buf, buflen);
-    anum = (size_t)(q - aliases);
+    anum = aliases.size();
     HENT_ARRAY(hent->h_aliases, anum, buf, buflen);
     HENT_COPY(hent->h_addr_list[0], &host_addr, hent->h_length, buf, buflen);
     hent->h_addr_list[1] = NULL;
@@ -715,14 +676,11 @@ struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, s
     HENT_SCOPY(hent->h_name, name, buf, buflen);
     for (size_t i = 0; i < anum; i++) HENT_SCOPY(hent->h_aliases[i], aliases[i], buf, buflen);
     hent->h_aliases[anum] = NULL;
-
     *he = NETDB_SUCCESS;
     free(p);
-    free(aliases);
     return hent;
 nospc:
     free(p);
-    free(aliases);
     errno = ENOSPC;
     *he = NETDB_INTERNAL;
     return NULL;
