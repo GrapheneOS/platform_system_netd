@@ -108,6 +108,24 @@ void onPrivateDnsValidation(unsigned netId, const char* server, const char* host
     }
 }
 
+void getNetworkContextCallback(uint32_t netId, uint32_t uid, android_net_context* netcontext) {
+    net::gCtls->netCtrl.getNetworkContext(netId, uid, netcontext);
+}
+
+bool getDns64PrefixCallback(unsigned netId, in6_addr* v6addr, uint8_t* prefix_len) {
+    netdutils::IPPrefix prefix{};
+    if (net::gCtls->resolverCtrl.getPrefix64(netId, &prefix) != 0) {
+        return false;
+    }
+    *v6addr = prefix.addr6();
+    *prefix_len = prefix.length();
+    return true;
+}
+
+bool checkCallingPermissionCallback(const char* permission) {
+    return checkCallingPermission(String16(permission));
+}
+
 bool allIPv6Only(const std::vector<std::string>& servers) {
     for (const auto& server : servers) {
         if (server.find(':') == std::string::npos) return false;
@@ -354,6 +372,15 @@ void ResolverController::sendNat64PrefixEvent(const Dns64Configuration::Nat64Pre
     }
     netdEventListener->onNat64PrefixEvent(args.netId, args.added, args.prefixString,
                                           args.prefixLength);
+}
+
+bool ResolverController::initResolver() {
+    dnsproxylistener_callbacks callbacks = {
+            .get_network_context = &getNetworkContextCallback,
+            .get_dns64_prefix = &getDns64PrefixCallback,
+            .check_calling_permission = &checkCallingPermissionCallback,
+    };
+    return RESOLV_STUB.resolv_init(callbacks);
 }
 
 void ResolverController::dump(DumpWriter& dw, unsigned netId) {

@@ -18,7 +18,7 @@
 #define NETD_CLIENT_NETID_H
 
 /*
- * Passing NETID_UNSET as the netId causes system/netd/server/DnsProxyListener.cpp to
+ * Passing NETID_UNSET as the netId causes system/netd/resolv/DnsProxyListener.cpp to
  * fill in the appropriate default netId for the query.
  */
 #define NETID_UNSET 0u

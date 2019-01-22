@@ -124,7 +124,6 @@ cc_binary {
         "libpcap",
         "libqtaguid",
         "libselinux",
-        "libstatslog",
         "libsysutils",
         "libutils",
         "netd_aidl_interface-cpp",
@@ -139,7 +138,6 @@ cc_binary {
     srcs: [
         "ClatdController.cpp",
         "CommandListener.cpp",
-        "DnsProxyListener.cpp",
         "DummyNetwork.cpp",
         "DumpWriter.cpp",
         "EventReporter.cpp",
