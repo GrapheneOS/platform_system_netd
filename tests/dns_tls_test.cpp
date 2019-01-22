@@ -28,6 +28,8 @@
 #include "dns/IDnsTlsSocketFactory.h"
 #include "dns/IDnsTlsSocketObserver.h"
 
+#include "dns_responder/dns_tls_frontend.h"
+
 #include <chrono>
 #include <arpa/inet.h>
 #include <android-base/macros.h>
@@ -869,6 +871,45 @@ TEST(QueryMapTest, FillHole) {
     // The map should now be full again.
     EXPECT_EQ(size_t(UINT16_MAX + 1), map.getAll().size());
     EXPECT_FALSE(map.recordQuery(makeSlice(QUERY)));
+}
+
+class StubObserver : public IDnsTlsSocketObserver {
+  public:
+    bool closed = false;
+    void onResponse(std::vector<uint8_t>) override {}
+
+    void onClosed() override { closed = true; }
+};
+
+TEST(DnsTlsSocketTest, SlowDestructor) {
+    constexpr char tls_addr[] = "127.0.0.3";
+    constexpr char tls_port[] = "8530";  // High-numbered port so root isn't required.
+    // This test doesn't perform any queries, so the backend address can be invalid.
+    constexpr char backend_addr[] = "192.0.2.1";
+    constexpr char backend_port[] = "1";
+
+    test::DnsTlsFrontend tls(tls_addr, tls_port, backend_addr, backend_port);
+    ASSERT_TRUE(tls.startServer());
+
+    DnsTlsServer server;
+    parseServer(tls_addr, 8530, &server.ss);
+
+    StubObserver observer;
+    ASSERT_FALSE(observer.closed);
+    DnsTlsSessionCache cache;
+    auto socket = std::make_unique<DnsTlsSocket>(server, MARK, &observer, &cache);
+    ASSERT_TRUE(socket->initialize());
+
+    // Test: Time the socket destructor.  This should be fast.
+    auto before = std::chrono::steady_clock::now();
+    socket.reset();
+    auto after = std::chrono::steady_clock::now();
+    auto delay = after - before;
+    ALOGV("Shutdown took %lld ns", delay / std::chrono::nanoseconds{1});
+    EXPECT_TRUE(observer.closed);
+    // Shutdown should complete in milliseconds, but if the shutdown signal is lost
+    // it will wait for the timeout, which is expected to take 20seconds.
+    EXPECT_LT(delay, std::chrono::seconds{5});
 }
 
 } // end of namespace net
