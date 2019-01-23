@@ -18,6 +18,7 @@ package android.net;
 
 import android.net.UidRangeParcel;
 import android.net.TetherStatsParcel;
+import android.net.INetdUnsolicitedEventListener;
 import android.net.InterfaceConfigurationParcel;
 
 /** {@hide} */
@@ -1181,4 +1182,16 @@ interface INetd {
      * TODO: Remove this once the tests have been updated to listen for onNat64PrefixEvent.
      */
     @utf8InCpp String getPrefix64(int netId);
+
+   /**
+    * Register unsolicited event listener
+    * Netd supports multiple unsolicited event listeners, but only one per pid
+    * A newer listener won't be registed if netd has an old one on the same pid.
+    *
+    * @param listener unsolicited event listener to register
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the the failure.
+    */
+    void registerUnsolicitedEventListener(INetdUnsolicitedEventListener listener);
+
 }

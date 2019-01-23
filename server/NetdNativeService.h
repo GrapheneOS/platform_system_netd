@@ -249,6 +249,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     // DNS64-related commands (internal use only)
     binder::Status getPrefix64(int netId, std::string* _aidl_return);
 
+    binder::Status registerUnsolicitedEventListener(
+            const android::sp<android::net::INetdUnsolicitedEventListener>& listener) override;
+
   private:
     std::vector<uid_t> intsToUids(const std::vector<int32_t>& intUids);
     Permission convertPermission(int32_t permission);
