@@ -30,6 +30,7 @@ LIBNETD_RESOLV {
     resolv_delete_private_dns_for_net;
     resolv_get_private_dns_status_for_net;
     resolv_has_nameservers;
+    resolv_init;
     resolv_register_private_dns_callback;
     resolv_res_nsend;
     resolv_set_nameservers_for_net;

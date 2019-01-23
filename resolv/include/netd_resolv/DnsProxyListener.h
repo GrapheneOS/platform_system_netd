@@ -17,35 +17,32 @@
 #ifndef _DNSPROXYLISTENER_H__
 #define _DNSPROXYLISTENER_H__
 
-#include <binder/IServiceManager.h>
+#include <sysutils/FrameworkCommand.h>
 #include <sysutils/FrameworkListener.h>
 
-#include "NetdCommand.h"
-#include "netd_resolv/resolv.h"  // android_net_context
+#include "resolv.h"  // android_net_context
 
 namespace android {
 namespace net {
 
-class NetworkController;
-
 class DnsProxyListener : public FrameworkListener {
   public:
-    explicit DnsProxyListener(const NetworkController* netCtrl);
+    DnsProxyListener();
     virtual ~DnsProxyListener() {}
+
+    bool setCallbacks(const dnsproxylistener_callbacks& callbacks);
 
     static constexpr const char* SOCKET_NAME = "dnsproxyd";
 
-  private:
-    const NetworkController *mNetCtrl;
+    // TODO: Considering putting this callbacks structure in its own file.
+    dnsproxylistener_callbacks mCallbacks{};
 
-    class GetAddrInfoCmd : public NetdCommand {
+  private:
+    class GetAddrInfoCmd : public FrameworkCommand {
       public:
-        explicit GetAddrInfoCmd(DnsProxyListener* dnsProxyListener);
+        GetAddrInfoCmd();
         virtual ~GetAddrInfoCmd() {}
         int runCommand(SocketClient* c, int argc, char** argv) override;
-
-      private:
-        DnsProxyListener* mDnsProxyListener;
     };
 
     /* ------ getaddrinfo ------*/
@@ -69,14 +66,11 @@ class DnsProxyListener : public FrameworkListener {
     };
 
     /* ------ gethostbyname ------*/
-    class GetHostByNameCmd : public NetdCommand {
+    class GetHostByNameCmd : public FrameworkCommand {
       public:
-        explicit GetHostByNameCmd(DnsProxyListener* dnsProxyListener);
+        GetHostByNameCmd();
         virtual ~GetHostByNameCmd() {}
         int runCommand(SocketClient* c, int argc, char** argv) override;
-
-      private:
-        DnsProxyListener* mDnsProxyListener;
     };
 
     class GetHostByNameHandler {
@@ -97,14 +91,11 @@ class DnsProxyListener : public FrameworkListener {
     };
 
     /* ------ gethostbyaddr ------*/
-    class GetHostByAddrCmd : public NetdCommand {
+    class GetHostByAddrCmd : public FrameworkCommand {
       public:
-        explicit GetHostByAddrCmd(const DnsProxyListener* dnsProxyListener);
+        GetHostByAddrCmd();
         virtual ~GetHostByAddrCmd() {}
         int runCommand(SocketClient* c, int argc, char** argv) override;
-
-      private:
-        const DnsProxyListener* mDnsProxyListener;
     };
 
     class GetHostByAddrHandler {
@@ -126,14 +117,11 @@ class DnsProxyListener : public FrameworkListener {
     };
 
     /* ------ resnsend ------*/
-    class ResNSendCommand : public NetdCommand {
+    class ResNSendCommand : public FrameworkCommand {
       public:
-        explicit ResNSendCommand(DnsProxyListener* dnsProxyListener);
+        ResNSendCommand();
         ~ResNSendCommand() override {}
         int runCommand(SocketClient* c, int argc, char** argv) override;
-
-      private:
-        DnsProxyListener* mDnsProxyListener;
     };
 
     class ResNSendHandler {
