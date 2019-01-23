@@ -74,6 +74,7 @@ class Controllers {
 };
 
 extern netdutils::Log gLog;
+extern netdutils::Log gUnsolicitedLog;
 extern Controllers* gCtls;
 
 }  // namespace net

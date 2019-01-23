@@ -43,6 +43,7 @@ auto Controllers::execIptablesRestore  = ::execIptablesRestore;
 auto Controllers::execIptablesRestoreWithOutput = ::execIptablesRestoreWithOutput;
 
 netdutils::Log gLog("netd");
+netdutils::Log gUnsolicitedLog("netdUnsolicited");
 
 namespace {
 
