@@ -17,10 +17,13 @@
  */
 
 #include <cerrno>
+#include <chrono>
 #include <cinttypes>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <set>
 #include <vector>
 
@@ -49,6 +52,7 @@
 #include "InterfaceController.h"
 #include "NetdConstants.h"
 #include "Stopwatch.h"
+#include "TestUnsolService.h"
 #include "XfrmController.h"
 #include "android/net/INetd.h"
 #include "binder/IServiceManager.h"
@@ -2800,4 +2804,39 @@ TEST_F(BinderTest, TcpBufferSet) {
 
     updateAndCheckTcpBuffer(mNetd, testRmemValue, testWmemValue);
     updateAndCheckTcpBuffer(mNetd, rmemValue, wmemValue);
+}
+
+TEST_F(BinderTest, UnsolEvents) {
+    auto testUnsolService = android::net::TestUnsolService::start();
+    std::string oldTunName = sTun.name();
+    std::string newTunName = "unsolTest";
+    testUnsolService->tarVec.push_back(oldTunName);
+    testUnsolService->tarVec.push_back(newTunName);
+    auto& cv = testUnsolService->getCv();
+    auto& cvMutex = testUnsolService->getCvMutex();
+    binder::Status status = mNetd->registerUnsolicitedEventListener(
+            android::interface_cast<android::net::INetdUnsolicitedEventListener>(testUnsolService));
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // TODO: Add test for below events
+    //       StrictCleartextDetected / InterfaceDnsServersAdded
+    //       InterfaceClassActivity / QuotaLimitReached / InterfaceAddressRemoved
+
+    {
+        std::unique_lock lock(cvMutex);
+
+        // Re-init test Tun, and we expect that we will get some unsol events.
+        // Use the test Tun device name to verify if we receive its unsol events.
+        sTun.destroy();
+        // Use predefined name
+        sTun.init(newTunName);
+
+        EXPECT_EQ(std::cv_status::no_timeout, cv.wait_for(lock, std::chrono::seconds(2)));
+    }
+
+    // bit mask 1101101000
+    // Test only covers below events currently
+    const uint32_t kExpectedEvents = InterfaceAddressUpdated | InterfaceAdded | InterfaceRemoved |
+                                     InterfaceLinkStatusChanged | RouteChanged;
+    EXPECT_EQ(kExpectedEvents, testUnsolService->getReceived());
 }
