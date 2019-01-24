@@ -145,27 +145,17 @@ class TrafficController {
     BpfMap<uint32_t, StatsValue> mAppUidStatsMap;
 
     /*
-     * mUidStatsMap: Store the traffic statistics for a specific combination of
-     * uid, iface and counterSet. We maintain this map in addition to
-     * mTagStatsMap because we want to be able to track per-UID data usage even
-     * if mTagStatsMap is full.
-     * Map Key: Struct StatsKey contains the uid, counterSet and ifaceIndex
-     * information. The Tag in the StatsKey should always be 0.
+     * mStatsMapA/mStatsMapB: Store the traffic statistics for a specific
+     * combination of uid, tag, iface and counterSet. These two maps contain
+     * both tagged and untagged traffic.
+     * Map Key: Struct StatsKey contains the uid, tag, counterSet and ifaceIndex
+     * information.
      * Map Value: struct Stats, contains packet count and byte count of each
      * transport protocol on egress and ingress direction.
      */
-    BpfMap<StatsKey, StatsValue> mUidStatsMap;
+    BpfMap<StatsKey, StatsValue> mStatsMapA;
 
-    /*
-     * mTagStatsMap: Store the traffic statistics for a specific combination of
-     * uid, tag, iface and counterSet. Only tagged socket stats should be stored
-     * in this map.
-     * Map Key: Struct StatsKey contains the uid, counterSet and ifaceIndex
-     * information. The tag field should not be 0.
-     * Map Value: struct Stats, contains packet count and byte count of each
-     * transport protocol on egress and ingress direction.
-     */
-    BpfMap<StatsKey, StatsValue> mTagStatsMap;
+    BpfMap<StatsKey, StatsValue> mStatsMapB;
 
     /*
      * mIfaceIndexNameMap: Store the index name pair of each interface show up
@@ -181,8 +171,16 @@ class TrafficController {
     BpfMap<uint32_t, StatsValue> mIfaceStatsMap;
 
     /*
-     * mPowerSaveUidMap: Store uids that have related rules in power save mode owner match
-     * chain.
+     * mConfigurationMap: Store the current network policy about uid filtering
+     * and the current stats map in use. There are two configuration entries in
+     * the map right now:
+     * - Entry with UID_RULES_CONFIGURATION_KEY:
+     *    Store the configuration for the current uid rules. It indicates the device
+     *    is in doze/powersave/standby mode.
+     * - Entry with CURRENT_STATS_MAP_CONFIGURATION_KEY:
+     *    Stores the current live stats map that kernel program is writing to.
+     *    Userspace can do scraping and cleaning job on the other one depending on the
+     *    current configs.
      */
     BpfMap<uint32_t, uint8_t> mConfigurationMap GUARDED_BY(mOwnerMatchMutex);
 

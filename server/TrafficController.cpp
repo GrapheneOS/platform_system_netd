@@ -137,7 +137,7 @@ Status changeOwnerAndMode(const char* path, gid_t group, const char* debugName, 
         // chmod doesn't grant permission to all processes in that group to
         // read/write the bpf map. They still need correct sepolicy to
         // read/write the map.
-        ret = chmod(path, S_IRWXU | S_IRGRP);
+        ret = chmod(path, S_IRWXU | S_IRGRP | S_IWGRP);
     }
     if (ret != 0) return statusFromErrno(errno, StringPrintf("change %s mode failed", debugName));
     return netdutils::status::ok;
@@ -160,20 +160,16 @@ Status TrafficController::initMaps() {
     RETURN_IF_NOT_OK(changeOwnerAndMode(UID_COUNTERSET_MAP_PATH, AID_NET_BW_ACCT,
                                         "UidCounterSetMap", false));
 
-    RETURN_IF_NOT_OK(
-        mAppUidStatsMap.getOrCreate(UID_STATS_MAP_SIZE, APP_UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mAppUidStatsMap.getOrCreate(APP_STATS_MAP_SIZE, APP_UID_STATS_MAP_PATH,
+                                                 BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(
         changeOwnerAndMode(APP_UID_STATS_MAP_PATH, AID_NET_BW_STATS, "AppUidStatsMap", false));
 
-    RETURN_IF_NOT_OK(
-        mUidStatsMap.getOrCreate(UID_STATS_MAP_SIZE, UID_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(UID_STATS_MAP_PATH, AID_NET_BW_STATS, "UidStatsMap",
-                                        false));
+    RETURN_IF_NOT_OK(mStatsMapA.getOrCreate(STATS_MAP_SIZE, STATS_MAP_A_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(STATS_MAP_A_PATH, AID_NET_BW_STATS, "StatsMapA", false));
 
-    RETURN_IF_NOT_OK(
-        mTagStatsMap.getOrCreate(TAG_STATS_MAP_SIZE, TAG_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(TAG_STATS_MAP_PATH, AID_NET_BW_STATS, "TagStatsMap",
-                                        false));
+    RETURN_IF_NOT_OK(mStatsMapB.getOrCreate(STATS_MAP_SIZE, STATS_MAP_B_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(STATS_MAP_B_PATH, AID_NET_BW_STATS, "StatsMapB", false));
 
     RETURN_IF_NOT_OK(mIfaceIndexNameMap.getOrCreate(IFACE_INDEX_NAME_MAP_SIZE,
                                                     IFACE_INDEX_NAME_MAP_PATH, BPF_MAP_TYPE_HASH));
@@ -187,11 +183,12 @@ Status TrafficController::initMaps() {
 
     RETURN_IF_NOT_OK(mConfigurationMap.getOrCreate(CONFIGURATION_MAP_SIZE, CONFIGURATION_MAP_PATH,
                                                    BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(CONFIGURATION_MAP_PATH, AID_NET_BW_STATS,
+                                        "ConfigurationMap", false));
     RETURN_IF_NOT_OK(
-            changeOwnerAndMode(CONFIGURATION_MAP_PATH, AID_ROOT, "ConfigurationMap", true));
-    uint32_t key = CONFIGURATION_KEY;
-    uint8_t initialConfiguration = DEFAULT_CONFIG;
-    RETURN_IF_NOT_OK(mConfigurationMap.writeValue(key, initialConfiguration, BPF_ANY));
+            mConfigurationMap.writeValue(UID_RULES_CONFIGURATION_KEY, DEFAULT_CONFIG, BPF_ANY));
+    RETURN_IF_NOT_OK(mConfigurationMap.writeValue(CURRENT_STATS_MAP_CONFIGURATION_KEY, SELECT_MAP_A,
+                                                  BPF_ANY));
 
     RETURN_IF_NOT_OK(
             mUidOwnerMap.getOrCreate(UID_OWNER_MAP_SIZE, UID_OWNER_MAP_PATH, BPF_MAP_TYPE_HASH));
@@ -357,6 +354,9 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
     return 0;
 }
 
+// This method only get called by system_server when an app get uinstalled, it
+// is called inside removeUidsLocked() while holding mStatsLock. So it is safe
+// to iterate and modify the stats maps.
 int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
     if (!ebpfSupported) {
         if (legacy_deleteTagData(tag, uid)) return -errno;
@@ -393,7 +393,8 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
         }
         return netdutils::status::ok;
     };
-    mTagStatsMap.iterate(deleteMatchedUidTagEntries).ignoreError();
+    mStatsMapB.iterate(deleteMatchedUidTagEntries).ignoreError();
+    mStatsMapA.iterate(deleteMatchedUidTagEntries).ignoreError();
     // If the tag is not zero, we already deleted all the data entry required. If tag is 0, we also
     // need to delete the stats stored in uidStatsMap and counterSet map.
     if (tag != 0) return 0;
@@ -403,7 +404,6 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
         ALOGE("Failed to delete counterSet data(uid=%u, tag=%u): %s\n", uid, tag,
               strerror(res.code()));
     }
-    mUidStatsMap.iterate(deleteMatchedUidTagEntries).ignoreError();
 
     auto deleteAppUidStatsEntry = [uid](const uint32_t& key, BpfMap<uint32_t, StatsValue>& map) {
         if (key == uid) {
@@ -603,7 +603,7 @@ int TrafficController::replaceUidOwnerMap(const std::string& name, bool isWhitel
 
 int TrafficController::toggleUidOwnerMap(ChildChain chain, bool enable) {
     std::lock_guard guard(mOwnerMatchMutex);
-    uint32_t key = CONFIGURATION_KEY;
+    uint32_t key = UID_RULES_CONFIGURATION_KEY;
     auto oldConfiguration = mConfigurationMap.readValue(key);
     if (!isOk(oldConfiguration)) {
         ALOGE("Cannot read the old configuration from map: %s",
@@ -689,10 +689,10 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
                getMapStatus(mUidCounterSetMap.getMap(), UID_COUNTERSET_MAP_PATH).c_str());
     dw.println("mAppUidStatsMap status: %s",
                getMapStatus(mAppUidStatsMap.getMap(), APP_UID_STATS_MAP_PATH).c_str());
-    dw.println("mUidStatsMap status: %s",
-               getMapStatus(mUidStatsMap.getMap(), UID_STATS_MAP_PATH).c_str());
-    dw.println("mTagStatsMap status: %s",
-               getMapStatus(mTagStatsMap.getMap(), TAG_STATS_MAP_PATH).c_str());
+    dw.println("mStatsMapA status: %s",
+               getMapStatus(mStatsMapA.getMap(), STATS_MAP_A_PATH).c_str());
+    dw.println("mStatsMapB status: %s",
+               getMapStatus(mStatsMapB.getMap(), STATS_MAP_B_PATH).c_str());
     dw.println("mIfaceIndexNameMap status: %s",
                getMapStatus(mIfaceIndexNameMap.getMap(), IFACE_INDEX_NAME_MAP_PATH).c_str());
     dw.println("mIfaceStatsMap status: %s",
@@ -765,7 +765,7 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     // Print uidStatsMap content
     std::string statsHeader = StringPrintf("ifaceIndex ifaceName tag_hex uid_int cnt_set rxBytes"
                                            " rxPackets txBytes txPackets");
-    dumpBpfMap("mUidStatsMap", dw, statsHeader);
+    dumpBpfMap("mStatsMapA", dw, statsHeader);
     const auto printStatsInfo = [&dw, this](const StatsKey& key, const StatsValue& value,
                                             const BpfMap<StatsKey, StatsValue>&) {
         uint32_t ifIndex = key.ifaceIndex;
@@ -778,16 +778,16 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
                    value.rxPackets, value.txBytes, value.txPackets);
         return netdutils::status::ok;
     };
-    res = mUidStatsMap.iterateWithValue(printStatsInfo);
+    res = mStatsMapA.iterateWithValue(printStatsInfo);
     if (!isOk(res)) {
-        dw.println("mUidStatsMap print end with error: %s", res.msg().c_str());
+        dw.println("mStatsMapA print end with error: %s", res.msg().c_str());
     }
 
     // Print TagStatsMap content.
-    dumpBpfMap("mTagStatsMap", dw, statsHeader);
-    res = mTagStatsMap.iterateWithValue(printStatsInfo);
+    dumpBpfMap("mStatsMapB", dw, statsHeader);
+    res = mStatsMapB.iterateWithValue(printStatsInfo);
     if (!isOk(res)) {
-        dw.println("mTagStatsMap print end with error: %s", res.msg().c_str());
+        dw.println("mStatsMapB print end with error: %s", res.msg().c_str());
     }
 
     // Print ifaceIndexToNameMap content.
@@ -824,12 +824,21 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
 
     dw.blankline();
 
-    uint32_t key = CONFIGURATION_KEY;
+    uint32_t key = UID_RULES_CONFIGURATION_KEY;
     auto configuration = mConfigurationMap.readValue(key);
     if (isOk(configuration)) {
-        dw.println("current configuration: %d", configuration.value());
+        dw.println("current ownerMatch configuration: %d", configuration.value());
     } else {
-        dw.println("mConfigurationMap read with error: %s", configuration.status().msg().c_str());
+        dw.println("mConfigurationMap read ownerMatch configure failed with error: %s",
+                   configuration.status().msg().c_str());
+    }
+    key = CURRENT_STATS_MAP_CONFIGURATION_KEY;
+    configuration = mConfigurationMap.readValue(key);
+    if (isOk(configuration)) {
+        dw.println("current statsMap configuration: %d", configuration.value());
+    } else {
+        dw.println("mConfigurationMap read stats map configure failed with error: %s",
+                   configuration.status().msg().c_str());
     }
     dumpBpfMap("mUidOwnerMap", dw, "");
     const auto printUidMatchInfo = [&dw](const uint32_t& key, const uint8_t& value,

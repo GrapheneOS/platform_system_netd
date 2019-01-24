@@ -46,11 +46,11 @@
 
 const int COOKIE_UID_MAP_SIZE = 10000;
 const int UID_COUNTERSET_MAP_SIZE = 2000;
-const int UID_STATS_MAP_SIZE = 10000;
-const int TAG_STATS_MAP_SIZE = 10000;
+const int APP_STATS_MAP_SIZE = 10000;
+const int STATS_MAP_SIZE = 5000;
 const int IFACE_INDEX_NAME_MAP_SIZE = 1000;
 const int IFACE_STATS_MAP_SIZE = 1000;
-const int CONFIGURATION_MAP_SIZE = 1;
+const int CONFIGURATION_MAP_SIZE = 2;
 const int UID_OWNER_MAP_SIZE = 2000;
 
 #define BPF_PATH "/sys/fs/bpf"
@@ -65,8 +65,8 @@ const int UID_OWNER_MAP_SIZE = 2000;
 #define COOKIE_TAG_MAP_PATH BPF_PATH "/map_netd_cookie_tag_map"
 #define UID_COUNTERSET_MAP_PATH BPF_PATH "/map_netd_uid_counterset_map"
 #define APP_UID_STATS_MAP_PATH BPF_PATH "/map_netd_app_uid_stats_map"
-#define UID_STATS_MAP_PATH BPF_PATH "/map_netd_uid_stats_map"
-#define TAG_STATS_MAP_PATH BPF_PATH "/map_netd_tag_stats_map"
+#define STATS_MAP_A_PATH BPF_PATH "/map_netd_stats_map_A"
+#define STATS_MAP_B_PATH BPF_PATH "/map_netd_stats_map_B"
 #define IFACE_INDEX_NAME_MAP_PATH BPF_PATH "/map_netd_iface_index_name_map"
 #define IFACE_STATS_MAP_PATH BPF_PATH "/map_netd_iface_stats_map"
 #define CONFIGURATION_MAP_PATH BPF_PATH "/map_netd_configuration_map"
@@ -82,6 +82,14 @@ enum UidOwnerMatchType {
     POWERSAVE_MATCH = (1 << 4),
 };
 
+// In production we use two identical stats maps to record per uid stats and
+// do swap and clean based on the configuration specified here. The statsMapType
+// value in configuration map specified which map is currently in use.
+enum StatsMapType {
+    SELECT_MAP_A,
+    SELECT_MAP_B,
+};
+
 // TODO: change the configuration object from an 8-bit bitmask to an object with clearer
 // semantics, like a struct.
 typedef uint8_t BpfConfig;
@@ -93,6 +101,7 @@ const BpfConfig DEFAULT_CONFIG = 0;
 // NetdConstants.h can also include it from there.
 #define MIN_SYSTEM_UID 0
 #define MAX_SYSTEM_UID 9999
-#define CONFIGURATION_KEY 1
+#define UID_RULES_CONFIGURATION_KEY 1
+#define CURRENT_STATS_MAP_CONFIGURATION_KEY 2
 
 #endif  // NETDBPF_BPF_SHARED_H
