@@ -72,8 +72,8 @@ TEST_F(BpfBasicTest, TestTrafficControllerSetUp) {
     ASSERT_EQ(0, access(XT_BPF_EGRESS_PROG_PATH, R_OK));
     ASSERT_EQ(0, access(COOKIE_TAG_MAP_PATH, R_OK));
     ASSERT_EQ(0, access(UID_COUNTERSET_MAP_PATH, R_OK));
-    ASSERT_EQ(0, access(UID_STATS_MAP_PATH, R_OK));
-    ASSERT_EQ(0, access(TAG_STATS_MAP_PATH, R_OK));
+    ASSERT_EQ(0, access(STATS_MAP_A_PATH, R_OK));
+    ASSERT_EQ(0, access(STATS_MAP_B_PATH, R_OK));
     ASSERT_EQ(0, access(IFACE_INDEX_NAME_MAP_PATH, R_OK));
     ASSERT_EQ(0, access(IFACE_STATS_MAP_PATH, R_OK));
     ASSERT_EQ(0, access(CONFIGURATION_MAP_PATH, R_OK));
@@ -146,29 +146,29 @@ TEST_F(BpfBasicTest, TestChangeCounterSet) {
 TEST_F(BpfBasicTest, TestDeleteTagData) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    BpfMap<StatsKey, StatsValue> uidStatsMap(mapRetrieve(UID_STATS_MAP_PATH, 0));
-    ASSERT_LE(0, uidStatsMap.getMap());
-    BpfMap<StatsKey, StatsValue> tagStatsMap(mapRetrieve(TAG_STATS_MAP_PATH, 0));
-    ASSERT_LE(0, tagStatsMap.getMap());
+    BpfMap<StatsKey, StatsValue> statsMapA(mapRetrieve(STATS_MAP_A_PATH, 0));
+    ASSERT_LE(0, statsMapA.getMap());
+    BpfMap<StatsKey, StatsValue> statsMapB(mapRetrieve(STATS_MAP_B_PATH, 0));
+    ASSERT_LE(0, statsMapB.getMap());
     BpfMap<uint32_t, StatsValue> appUidStatsMap(mapRetrieve(APP_UID_STATS_MAP_PATH, 0));
     ASSERT_LE(0, appUidStatsMap.getMap());
 
     StatsKey key = {.uid = TEST_UID, .tag = TEST_TAG, .counterSet = TEST_COUNTERSET,
                     .ifaceIndex = 1};
     StatsValue statsMapValue = {.rxPackets = 1, .rxBytes = 100};
-    EXPECT_TRUE(isOk(tagStatsMap.writeValue(key, statsMapValue, BPF_ANY)));
+    EXPECT_TRUE(isOk(statsMapB.writeValue(key, statsMapValue, BPF_ANY)));
     key.tag = 0;
-    EXPECT_TRUE(isOk(uidStatsMap.writeValue(key, statsMapValue, BPF_ANY)));
+    EXPECT_TRUE(isOk(statsMapA.writeValue(key, statsMapValue, BPF_ANY)));
     EXPECT_TRUE(isOk(appUidStatsMap.writeValue(TEST_UID, statsMapValue, BPF_ANY)));
     ASSERT_EQ(0, qtaguid_deleteTagData(0, TEST_UID));
-    StatusOr<StatsValue> statsResult = uidStatsMap.readValue(key);
+    StatusOr<StatsValue> statsResult = statsMapA.readValue(key);
     ASSERT_FALSE(isOk(statsResult));
     ASSERT_EQ(ENOENT, statsResult.status().code());
     statsResult = appUidStatsMap.readValue(TEST_UID);
     ASSERT_FALSE(isOk(statsResult));
     ASSERT_EQ(ENOENT, statsResult.status().code());
     key.tag = TEST_TAG;
-    statsResult = tagStatsMap.readValue(key);
+    statsResult = statsMapB.readValue(key);
     ASSERT_FALSE(isOk(statsResult));
     ASSERT_EQ(ENOENT, statsResult.status().code());
 }

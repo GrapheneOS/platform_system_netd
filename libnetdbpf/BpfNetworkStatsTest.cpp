@@ -77,8 +77,7 @@ class BpfNetworkStatsHelperTest : public testing::Test {
     BpfNetworkStatsHelperTest() {}
     BpfMap<uint64_t, UidTag> mFakeCookieTagMap;
     BpfMap<uint32_t, StatsValue> mFakeAppUidStatsMap;
-    BpfMap<StatsKey, StatsValue> mFakeUidStatsMap;
-    BpfMap<StatsKey, StatsValue> mFakeTagStatsMap;
+    BpfMap<StatsKey, StatsValue> mFakeStatsMap;
     BpfMap<uint32_t, IfaceValue> mFakeIfaceIndexNameMap;
     BpfMap<uint32_t, StatsValue> mFakeIfaceStatsMap;
 
@@ -93,15 +92,10 @@ class BpfNetworkStatsHelperTest : public testing::Test {
             BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakeAppUidStatsMap.getMap());
 
-        mFakeUidStatsMap =
-            BpfMap<StatsKey, StatsValue>(createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey),
-                                                   sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
-        ASSERT_LE(0, mFakeUidStatsMap.getMap());
-
-        mFakeTagStatsMap =
-            BpfMap<StatsKey, StatsValue>(createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey),
-                                                   sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
-        ASSERT_LE(0, mFakeTagStatsMap.getMap());
+        mFakeStatsMap = BpfMap<StatsKey, StatsValue>(
+                createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey), sizeof(struct StatsValue),
+                          TEST_MAP_SIZE, 0));
+        ASSERT_LE(0, mFakeStatsMap.getMap());
 
         mFakeIfaceIndexNameMap = BpfMap<uint32_t, IfaceValue>(
             createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(IfaceValue), TEST_MAP_SIZE, 0));
@@ -234,15 +228,15 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetUidStatsTotal) {
     expectStatsEqual(value2, result2);
     std::vector<stats_line> lines;
     std::vector<std::string> ifaces;
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeUidStatsMap);
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX2, TEST_COUNTERSET1, value1, mFakeUidStatsMap);
-    populateFakeStats(TEST_UID2, 0, IFACE_INDEX3, TEST_COUNTERSET1, value1, mFakeUidStatsMap);
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX2, TEST_COUNTERSET1, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID2, 0, IFACE_INDEX3, TEST_COUNTERSET1, value1, mFakeStatsMap);
     ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, TEST_UID1,
-                                                    mFakeUidStatsMap, mFakeIfaceIndexNameMap));
+                                                    mFakeStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)2, lines.size());
     lines.clear();
     ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, TEST_UID2,
-                                                    mFakeUidStatsMap, mFakeIfaceIndexNameMap));
+                                                    mFakeStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)1, lines.size());
     expectStatsLineEqual(value1, IFACE_NAME3, TEST_UID2, TEST_COUNTERSET1, 0, lines.front());
 }
@@ -301,28 +295,28 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsDetail) {
                          .rxPackets = TEST_PACKET0,
                          .txBytes = TEST_BYTES1,
                          .txPackets = TEST_PACKET1,};
-    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
-    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX2, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
+    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX2, TEST_COUNTERSET0, value1, mFakeStatsMap);
     populateFakeStats(TEST_UID1, TEST_TAG + 1, IFACE_INDEX1, TEST_COUNTERSET0, value1,
-                      mFakeTagStatsMap);
-    populateFakeStats(TEST_UID2, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
+                      mFakeStatsMap);
+    populateFakeStats(TEST_UID2, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
     std::vector<stats_line> lines;
     std::vector<std::string> ifaces;
-    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
-                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL, mFakeStatsMap,
+                                                    mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)4, lines.size());
     lines.clear();
     ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, TEST_UID1,
-                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+                                                    mFakeStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)3, lines.size());
     lines.clear();
     ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TEST_TAG, TEST_UID1,
-                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+                                                    mFakeStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)2, lines.size());
     lines.clear();
     ifaces.push_back(std::string(IFACE_NAME1));
     ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TEST_TAG, TEST_UID1,
-                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+                                                    mFakeStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)1, lines.size());
     expectStatsLineEqual(value1, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, TEST_TAG, lines.front());
 }
@@ -336,29 +330,29 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsWithSkippedIface) {
                          .rxPackets = TEST_PACKET0,
                          .txBytes = TEST_BYTES1,
                          .txPackets = TEST_PACKET1,};
-    populateFakeStats(0, 0, 0, OVERFLOW_COUNTERSET, value1, mFakeUidStatsMap);
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeUidStatsMap);
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX2, TEST_COUNTERSET0, value1, mFakeUidStatsMap);
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET1, value1, mFakeUidStatsMap);
-    populateFakeStats(TEST_UID2, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeUidStatsMap);
+    populateFakeStats(0, 0, 0, OVERFLOW_COUNTERSET, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX2, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET1, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID2, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
     std::vector<stats_line> lines;
     std::vector<std::string> ifaces;
-    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
-                                                    mFakeUidStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL, mFakeStatsMap,
+                                                    mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)4, lines.size());
     lines.clear();
     ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, TEST_UID1,
-                                                    mFakeUidStatsMap, mFakeIfaceIndexNameMap));
+                                                    mFakeStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)3, lines.size());
     lines.clear();
     ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, TEST_UID2,
-                                                    mFakeUidStatsMap, mFakeIfaceIndexNameMap));
+                                                    mFakeStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)1, lines.size());
     expectStatsLineEqual(value1, IFACE_NAME1, TEST_UID2, TEST_COUNTERSET0, 0, lines.front());
     lines.clear();
     ifaces.push_back(std::string(IFACE_NAME1));
     ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, TEST_UID1,
-                                                    mFakeUidStatsMap, mFakeIfaceIndexNameMap));
+                                                    mFakeStatsMap, mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)2, lines.size());
 }
 
@@ -371,31 +365,31 @@ TEST_F(BpfNetworkStatsHelperTest, TestUnkownIfaceError) {
                          .txBytes = TEST_BYTES1 * 20,
                          .txPackets = TEST_PACKET1,};
     uint32_t ifaceIndex = UNKNOWN_IFACE;
-    populateFakeStats(TEST_UID1, 0, ifaceIndex, TEST_COUNTERSET0, value1, mFakeUidStatsMap);
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeUidStatsMap);
+    populateFakeStats(TEST_UID1, 0, ifaceIndex, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
     StatsValue value2 = {.rxBytes = TEST_BYTES0 * 40,
                          .rxPackets = TEST_PACKET0,
                          .txBytes = TEST_BYTES1 * 40,
                          .txPackets = TEST_PACKET1,};
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX2, TEST_COUNTERSET0, value2, mFakeUidStatsMap);
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX2, TEST_COUNTERSET0, value2, mFakeStatsMap);
     StatsKey curKey = {.uid = TEST_UID1,
                        .tag = 0,
                        .ifaceIndex = ifaceIndex,
                        .counterSet = TEST_COUNTERSET0};
     char ifname[IFNAMSIZ];
     int64_t unknownIfaceBytesTotal = 0;
-    ASSERT_EQ(-ENODEV, getIfaceNameFromMap(mFakeIfaceIndexNameMap, mFakeUidStatsMap, ifaceIndex,
+    ASSERT_EQ(-ENODEV, getIfaceNameFromMap(mFakeIfaceIndexNameMap, mFakeStatsMap, ifaceIndex,
                                            ifname, curKey, &unknownIfaceBytesTotal));
     ASSERT_EQ(((int64_t)(TEST_BYTES0 * 20 + TEST_BYTES1 * 20)), unknownIfaceBytesTotal);
     curKey.ifaceIndex = IFACE_INDEX2;
-    ASSERT_EQ(-ENODEV, getIfaceNameFromMap(mFakeIfaceIndexNameMap, mFakeUidStatsMap, ifaceIndex,
+    ASSERT_EQ(-ENODEV, getIfaceNameFromMap(mFakeIfaceIndexNameMap, mFakeStatsMap, ifaceIndex,
                                            ifname, curKey, &unknownIfaceBytesTotal));
     ASSERT_EQ(-1, unknownIfaceBytesTotal);
     std::vector<stats_line> lines;
     std::vector<std::string> ifaces;
     // TODO: find a way to test the total of unknown Iface Bytes go above limit.
-    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
-                                                    mFakeUidStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL, mFakeStatsMap,
+                                                    mFakeIfaceIndexNameMap));
     ASSERT_EQ((unsigned long)1, lines.size());
     expectStatsLineEqual(value1, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, 0, lines.front());
 }
@@ -470,42 +464,36 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsSortedAndGrouped) {
     std::vector<std::string> ifaces;
 
     // Test empty stats.
-    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
-                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL, mFakeStatsMap,
+                                                    mFakeIfaceIndexNameMap));
     ASSERT_EQ((size_t) 0, lines.size());
     lines.clear();
 
     // Test 1 line stats.
-    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1,
-                      mFakeTagStatsMap);
-    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
-                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL, mFakeStatsMap,
+                                                    mFakeIfaceIndexNameMap));
     ASSERT_EQ((size_t) 1, lines.size());
     expectStatsLineEqual(value1, IFACE_NAME1, TEST_UID1, TEST_COUNTERSET0, TEST_TAG, lines[0]);
     lines.clear();
 
     // These items should not be grouped.
-    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX2, TEST_COUNTERSET0, value2,
-                      mFakeTagStatsMap);
-    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX3, TEST_COUNTERSET1, value2,
-                      mFakeTagStatsMap);
+    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX2, TEST_COUNTERSET0, value2, mFakeStatsMap);
+    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX3, TEST_COUNTERSET1, value2, mFakeStatsMap);
     populateFakeStats(TEST_UID1, TEST_TAG + 1, IFACE_INDEX1, TEST_COUNTERSET0, value2,
-                      mFakeTagStatsMap);
-    populateFakeStats(TEST_UID2, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1,
-                      mFakeTagStatsMap);
-    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
-                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+                      mFakeStatsMap);
+    populateFakeStats(TEST_UID2, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL, mFakeStatsMap,
+                                                    mFakeIfaceIndexNameMap));
     ASSERT_EQ((size_t) 5, lines.size());
     lines.clear();
 
     // These items should be grouped.
-    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX3, TEST_COUNTERSET0, value1,
-                      mFakeTagStatsMap);
-    populateFakeStats(TEST_UID2, TEST_TAG, IFACE_INDEX3, TEST_COUNTERSET0, value1,
-                      mFakeTagStatsMap);
+    populateFakeStats(TEST_UID1, TEST_TAG, IFACE_INDEX3, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID2, TEST_TAG, IFACE_INDEX3, TEST_COUNTERSET0, value1, mFakeStatsMap);
 
-    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
-                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL, mFakeStatsMap,
+                                                    mFakeIfaceIndexNameMap));
     ASSERT_EQ((size_t) 5, lines.size());
 
     // Verify Sorted & Grouped.
@@ -550,24 +538,23 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsSortAndOverflow) {
     };
 
     // Mutate uid, 0 < TEST_UID1 < INT_MAX < INT_MIN < UINT_MAX.
-    populateFakeStats(0, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
-    populateFakeStats(UINT_MAX, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
-    populateFakeStats(INT_MIN, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
-    populateFakeStats(INT_MAX, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
+    populateFakeStats(0, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(UINT_MAX, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(INT_MIN, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(INT_MAX, TEST_TAG, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
 
     // Mutate tag, 0 < TEST_TAG < INT_MAX < INT_MIN < UINT_MAX.
-    populateFakeStats(TEST_UID1, INT_MAX, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
-    populateFakeStats(TEST_UID1, INT_MIN, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
-    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeTagStatsMap);
-    populateFakeStats(TEST_UID1, UINT_MAX, IFACE_INDEX1, TEST_COUNTERSET0, value1,
-                      mFakeTagStatsMap);
+    populateFakeStats(TEST_UID1, INT_MAX, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID1, INT_MIN, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID1, 0, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
+    populateFakeStats(TEST_UID1, UINT_MAX, IFACE_INDEX1, TEST_COUNTERSET0, value1, mFakeStatsMap);
 
     // TODO: Mutate counterSet and enlarge TEST_MAP_SIZE if overflow on counterSet is possible.
 
     std::vector<stats_line> lines;
     std::vector<std::string> ifaces;
-    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL,
-                                                    mFakeTagStatsMap, mFakeIfaceIndexNameMap));
+    ASSERT_EQ(0, parseBpfNetworkStatsDetailInternal(&lines, ifaces, TAG_ALL, UID_ALL, mFakeStatsMap,
+                                                    mFakeIfaceIndexNameMap));
     ASSERT_EQ((size_t) 8, lines.size());
 
     // Uid 0 first
