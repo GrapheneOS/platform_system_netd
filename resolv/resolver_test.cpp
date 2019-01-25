@@ -1945,9 +1945,9 @@ TEST_F(ResolverTest, Async_NoRetryFlag) {
 }
 
 // This test checks that the resolver should not generate the request containing OPT RR when using
-// cleartext DNS. If we query the DNS server not supporting EDNS0 and it reponds with FORMERR, we
-// will fallback to no EDNS0 and try again. If the server does no response, we won't retry so that
-// we get no answer.
+// cleartext DNS. If we query the DNS server not supporting EDNS0 and it reponds with
+// FORMERR_ON_EDNS, we will fallback to no EDNS0 and try again. If the server does no response, we
+// won't retry so that we get no answer.
 TEST_F(ResolverTest, BrokenEdns) {
     typedef test::DNSResponder::Edns Edns;
     enum ExpectResult { EXPECT_FAILURE, EXPECT_SUCCESS };
@@ -1982,7 +1982,7 @@ TEST_F(ResolverTest, BrokenEdns) {
                 case Edns::ON:
                     ednsString = "ednsOn";
                     break;
-                case Edns::FORMERR:
+                case Edns::FORMERR_ON_EDNS:
                     ednsString = "ednsFormerr";
                     break;
                 case Edns::DROP:
@@ -2004,10 +2004,10 @@ TEST_F(ResolverTest, BrokenEdns) {
             {OPPORTUNISTIC_UDP, GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
             {OPPORTUNISTIC_TLS, GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
             {STRICT,            GETHOSTBYNAME, Edns::ON,      EXPECT_SUCCESS},
-            {OFF,               GETHOSTBYNAME, Edns::FORMERR, EXPECT_SUCCESS},
-            {OPPORTUNISTIC_UDP, GETHOSTBYNAME, Edns::FORMERR, EXPECT_SUCCESS},
-            {OPPORTUNISTIC_TLS, GETHOSTBYNAME, Edns::FORMERR, EXPECT_FAILURE},
-            {STRICT,            GETHOSTBYNAME, Edns::FORMERR, EXPECT_FAILURE},
+            {OFF,               GETHOSTBYNAME, Edns::FORMERR_ON_EDNS, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETHOSTBYNAME, Edns::FORMERR_ON_EDNS, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_TLS, GETHOSTBYNAME, Edns::FORMERR_ON_EDNS, EXPECT_FAILURE},
+            {STRICT,            GETHOSTBYNAME, Edns::FORMERR_ON_EDNS, EXPECT_FAILURE},
             {OFF,               GETHOSTBYNAME, Edns::DROP,    EXPECT_SUCCESS},
             {OPPORTUNISTIC_UDP, GETHOSTBYNAME, Edns::DROP,    EXPECT_SUCCESS},
             //{OPPORTUNISTIC_TLS, GETHOSTBYNAME, Edns::DROP,    EXPECT_FAILURE},
@@ -2016,10 +2016,10 @@ TEST_F(ResolverTest, BrokenEdns) {
             {OPPORTUNISTIC_UDP, GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
             {OPPORTUNISTIC_TLS, GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
             {STRICT,            GETADDRINFO,   Edns::ON,      EXPECT_SUCCESS},
-            {OFF,               GETADDRINFO,   Edns::FORMERR, EXPECT_SUCCESS},
-            {OPPORTUNISTIC_UDP, GETADDRINFO,   Edns::FORMERR, EXPECT_SUCCESS},
-            {OPPORTUNISTIC_TLS, GETADDRINFO,   Edns::FORMERR, EXPECT_FAILURE},
-            {STRICT,            GETADDRINFO,   Edns::FORMERR, EXPECT_FAILURE},
+            {OFF,               GETADDRINFO,   Edns::FORMERR_ON_EDNS, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_UDP, GETADDRINFO,   Edns::FORMERR_ON_EDNS, EXPECT_SUCCESS},
+            {OPPORTUNISTIC_TLS, GETADDRINFO,   Edns::FORMERR_ON_EDNS, EXPECT_FAILURE},
+            {STRICT,            GETADDRINFO,   Edns::FORMERR_ON_EDNS, EXPECT_FAILURE},
             {OFF,               GETADDRINFO,   Edns::DROP,    EXPECT_SUCCESS},
             {OPPORTUNISTIC_UDP, GETADDRINFO,   Edns::DROP,    EXPECT_SUCCESS},
             //{OPPORTUNISTIC_TLS, GETADDRINFO,   Edns::DROP,   EXPECT_FAILURE},
@@ -2090,6 +2090,72 @@ TEST_F(ResolverTest, BrokenEdns) {
     }
 
     dns.stopServer();
+}
+
+// DNS-over-TLS validation success, but server does not respond to TLS query after a while.
+// Resolver should have a reasonable number of retries instead of spinning forever. We don't have
+// an efficient way to know if resolver is stuck in an infinite loop. However, test case will be
+// failed due to timeout.
+TEST_F(ResolverTest, UnstableTls) {
+    const char CLEARTEXT_ADDR[] = "127.0.0.53";
+    const char CLEARTEXT_PORT[] = "53";
+    const char TLS_PORT[] = "853";
+    const char* host_name1 = "nonexistent1.example.com.";
+    const char* host_name2 = "nonexistent2.example.com.";
+    const std::vector<std::string> servers = {CLEARTEXT_ADDR};
+
+    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, 250, ns_rcode::ns_r_servfail);
+    ASSERT_TRUE(dns.startServer());
+    dns.setEdns(test::DNSResponder::Edns::FORMERR_ON_EDNS);
+    test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
+    ASSERT_TRUE(tls.startServer());
+    ASSERT_TRUE(SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams_Binder, "", {}));
+    // Wait for validation complete.
+    EXPECT_TRUE(tls.waitForQueries(1, 5000));
+    // Shutdown TLS server to get an error. It's similar to no response case but without waiting.
+    tls.stopServer();
+
+    const hostent* h_result = gethostbyname(host_name1);
+    EXPECT_EQ(1U, GetNumQueries(dns, host_name1));
+    ASSERT_TRUE(h_result == nullptr);
+    ASSERT_EQ(HOST_NOT_FOUND, h_errno);
+
+    addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
+    ScopedAddrinfo ai_result = safe_getaddrinfo(host_name2, nullptr, &hints);
+    EXPECT_TRUE(ai_result == nullptr);
+    EXPECT_EQ(1U, GetNumQueries(dns, host_name2));
+}
+
+// DNS-over-TLS validation success, but server does not respond to TLS query after a while.
+// Moreover, server responds RCODE=FORMERR even on non-EDNS query.
+TEST_F(ResolverTest, BogusDnsServer) {
+    const char CLEARTEXT_ADDR[] = "127.0.0.53";
+    const char CLEARTEXT_PORT[] = "53";
+    const char TLS_PORT[] = "853";
+    const char* host_name1 = "nonexistent1.example.com.";
+    const char* host_name2 = "nonexistent2.example.com.";
+    const std::vector<std::string> servers = {CLEARTEXT_ADDR};
+
+    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, 250, ns_rcode::ns_r_servfail);
+    ASSERT_TRUE(dns.startServer());
+    test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
+    ASSERT_TRUE(tls.startServer());
+    ASSERT_TRUE(SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams_Binder, "", {}));
+    // Wait for validation complete.
+    EXPECT_TRUE(tls.waitForQueries(1, 5000));
+    // Shutdown TLS server to get an error. It's similar to no response case but without waiting.
+    tls.stopServer();
+    dns.setEdns(test::DNSResponder::Edns::FORMERR_UNCOND);
+
+    const hostent* h_result = gethostbyname(host_name1);
+    EXPECT_EQ(0U, GetNumQueries(dns, host_name1));
+    ASSERT_TRUE(h_result == nullptr);
+    ASSERT_EQ(HOST_NOT_FOUND, h_errno);
+
+    addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
+    ScopedAddrinfo ai_result = safe_getaddrinfo(host_name2, nullptr, &hints);
+    EXPECT_TRUE(ai_result == nullptr);
+    EXPECT_EQ(0U, GetNumQueries(dns, host_name2));
 }
 
 TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {

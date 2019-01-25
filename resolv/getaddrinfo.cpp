@@ -1606,11 +1606,9 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
     for (t = target; t; t = t->next) {
         u_char* answer;
         int anslen;
-        u_int oflags;
 
         hp = (HEADER*) (void*) t->answer;
-        oflags = res->_flags;
-
+        bool retried = false;
     again:
         hp->rcode = NOERROR; /* default */
 
@@ -1620,16 +1618,15 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
         answer = t->answer;
         anslen = t->anslen;
 #ifdef DEBUG
-        if (res->options & RES_DEBUG) printf(";; res_nquery(%s, %d, %d)\n", name, cl, type);
+        if (res->options & RES_DEBUG) printf(";; res_queryN(%s, %d, %d)\n", name, cl, type);
 #endif
 
         n = res_nmkquery(res, QUERY, name, cl, type, NULL, 0, NULL, buf, sizeof(buf));
-        if (n > 0 && (res->_flags & RES_F_EDNS0ERR) == 0 &&
-            (res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0)
+        if (n > 0 && (res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 && !retried)
             n = res_nopt(res, n, buf, sizeof(buf), anslen);
         if (n <= 0) {
 #ifdef DEBUG
-            if (res->options & RES_DEBUG) printf(";; res_nquery: mkquery failed\n");
+            if (res->options & RES_DEBUG) printf(";; res_queryN: mkquery failed\n");
 #endif
             *herrno = NO_RECOVERY;
             return n;
@@ -1642,11 +1639,11 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
             if (rcode != RCODE_TIMEOUT) rcode = hp->rcode; /* record most recent error */
             /* if the query choked with EDNS0, retry without EDNS0 */
             if ((res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 &&
-                ((oflags ^ res->_flags) & RES_F_EDNS0ERR) != 0) {
-                res->_flags |= RES_F_EDNS0ERR;
+                (res->_flags & RES_F_EDNS0ERR) && !retried) {
 #ifdef DEBUG
-                if (res->options & RES_DEBUG) printf(";; res_nquery: retry without EDNS0\n");
+                if (res->options & RES_DEBUG) printf(";; res_queryN: retry without EDNS0\n");
 #endif
+                retried = true;
                 goto again;
             }
 #ifdef DEBUG
