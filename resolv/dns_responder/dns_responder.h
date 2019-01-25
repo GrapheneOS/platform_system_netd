@@ -49,8 +49,9 @@ class DNSResponder {
 
     enum class Edns : uint8_t {
         ON,
-        FORMERR,  // DNS server not supporting EDNS will reply FORMERR.
-        DROP      // DNS server not supporting EDNS will not do any response.
+        FORMERR_ON_EDNS, // DNS server not supporting EDNS will reply FORMERR.
+        FORMERR_UNCOND,  // DNS server reply FORMERR unconditionally
+        DROP             // DNS server not supporting EDNS will not do any response.
     };
 
     void addMapping(const std::string& name, ns_type type, const std::string& addr);
@@ -126,9 +127,9 @@ class DNSResponder {
 
     // Control how the DNS server behaves when it receives the requests containing OPT RR.
     // If it's set Edns::ON, the server can recognize and reply the response; if it's set
-    // Edns::FORMERR, the server behaves like an old DNS server that doesn't support EDNS0, and
-    // replying FORMERR; if it's Edns::DROP, the server doesn't support EDNS0 either, and ignoring
-    // the requests.
+    // Edns::FORMERR_ON_EDNS, the server behaves like an old DNS server that doesn't support EDNS0,
+    // and replying FORMERR; if it's Edns::DROP, the server doesn't support EDNS0 either, and
+    // ignoring the requests.
     std::atomic<Edns> edns_ = Edns::ON;
 
     // Mappings from (name, type) to registered response and the
