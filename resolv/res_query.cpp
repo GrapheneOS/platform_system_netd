@@ -117,10 +117,8 @@ int res_nquery(res_state statp, const char* name,  // domain name
     u_char buf[MAXPACKET];
     HEADER* hp = (HEADER*) (void*) answer;
     int n;
-    u_int oflags;
     int rcode = NOERROR;
-
-    oflags = statp->_flags;
+    bool retried = false;
 
 again:
     hp->rcode = NOERROR; /* default */
@@ -130,8 +128,7 @@ again:
 #endif
 
     n = res_nmkquery(statp, QUERY, name, cl, type, NULL, 0, NULL, buf, sizeof(buf));
-    if (n > 0 && (statp->_flags & RES_F_EDNS0ERR) == 0 &&
-        (statp->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0U)
+    if (n > 0 && (statp->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0U && !retried)
         n = res_nopt(statp, n, buf, sizeof(buf), anslen);
     if (n <= 0) {
 #ifdef DEBUG
@@ -144,9 +141,9 @@ again:
     if (n < 0) {
         /* if the query choked with EDNS0, retry without EDNS0 */
         if ((statp->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0U &&
-            ((oflags ^ statp->_flags) & RES_F_EDNS0ERR) != 0) {
-            statp->_flags |= RES_F_EDNS0ERR;
+            (statp->_flags & RES_F_EDNS0ERR) && !retried) {
             if (statp->options & RES_DEBUG) printf(";; res_nquery: retry without EDNS0\n");
+            retried = true;
             goto again;
         }
 #ifdef DEBUG

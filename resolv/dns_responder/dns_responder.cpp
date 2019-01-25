@@ -776,11 +776,17 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
         return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response,
                                  response_len);
     }
+
+    if (edns_ == Edns::FORMERR_UNCOND) {
+        ALOGI("force to return RCODE FORMERR");
+        return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response, response_len);
+    }
+
     if (!header.additionals.empty() && edns_ != Edns::ON) {
         ALOGI("DNS request has an additional section (assumed EDNS). "
               "Simulating an ancient (pre-EDNS) server, and returning %s",
-              edns_ == Edns::FORMERR ? "RCODE FORMERR." : "no response.");
-        if (edns_ == Edns::FORMERR) {
+              edns_ == Edns::FORMERR_ON_EDNS ? "RCODE FORMERR." : "no response.");
+        if (edns_ == Edns::FORMERR_ON_EDNS) {
             return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response, response_len);
         }
         // No response.
