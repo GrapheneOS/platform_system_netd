@@ -34,6 +34,9 @@ class DnsResolverService : public aidl::android::net::BnDnsResolver {
     // TODO: Add dump() after libbinder_ndk support it.
 
     ::ndk::ScopedAStatus isAlive(bool* alive) override;
+    ::ndk::ScopedAStatus registerEventListener(
+            const std::shared_ptr<aidl::android::net::metrics::INetdEventListener>& listener)
+            override;
 
   private:
     DnsResolverService() {}
