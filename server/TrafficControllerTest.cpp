@@ -115,8 +115,8 @@ class TrafficControllerTest : public ::testing::Test {
         mTc.mCookieTagMap.reset(mFakeCookieTagMap.getMap());
         mTc.mUidCounterSetMap.reset(mFakeUidCounterSetMap.getMap());
         mTc.mAppUidStatsMap.reset(mFakeAppUidStatsMap.getMap());
-        mTc.mUidStatsMap.reset(mFakeUidStatsMap.getMap());
-        mTc.mTagStatsMap.reset(mFakeTagStatsMap.getMap());
+        mTc.mStatsMapA.reset(mFakeUidStatsMap.getMap());
+        mTc.mStatsMapB.reset(mFakeTagStatsMap.getMap());
         mTc.mConfigurationMap.reset(mFakeConfigurationMap.getMap());
         mTc.mUidOwnerMap.reset(mFakeUidOwnerMap.getMap());
     }

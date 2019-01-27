@@ -40,6 +40,8 @@ namespace bpf {
 
 using netdutils::Status;
 
+static constexpr char const* STATS_MAP_PATH[] = {STATS_MAP_A_PATH, STATS_MAP_B_PATH};
+
 static constexpr uint32_t BPF_OPEN_FLAGS = BPF_F_RDONLY;
 
 int bpfGetUidStatsInternal(uid_t uid, Stats* stats,
@@ -60,7 +62,7 @@ int bpfGetUidStats(uid_t uid, Stats* stats) {
 
     if (!appUidStatsMap.isValid()) {
         int ret = -errno;
-        ALOGE("Opening appUidStatsMap(%s) failed: %s", UID_STATS_MAP_PATH, strerror(errno));
+        ALOGE("Opening appUidStatsMap(%s) failed: %s", APP_UID_STATS_MAP_PATH, strerror(errno));
         return ret;
     }
     return bpfGetUidStatsInternal(uid, stats, appUidStatsMap);
@@ -179,41 +181,74 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
 int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
                                const std::vector<std::string>& limitIfaces, int limitTag,
                                int limitUid) {
-    int ret = 0;
     BpfMap<uint32_t, IfaceValue> ifaceIndexNameMap(
         mapRetrieve(IFACE_INDEX_NAME_MAP_PATH, BPF_OPEN_FLAGS));
     if (!ifaceIndexNameMap.isValid()) {
-        ret = -errno;
+        int ret = -errno;
         ALOGE("get ifaceIndexName map fd failed: %s", strerror(errno));
         return ret;
     }
 
-    // If the caller did not pass in TAG_NONE, read tag data.
-    if (limitTag != TAG_NONE) {
-        BpfMap<StatsKey, StatsValue> tagStatsMap(mapRetrieve(TAG_STATS_MAP_PATH, BPF_OPEN_FLAGS));
-        if (!tagStatsMap.isValid()) {
-            ret = -errno;
-            ALOGE("get tagStats map fd failed: %s", strerror(errno));
-            return ret;
-        }
-        ret = parseBpfNetworkStatsDetailInternal(lines, limitIfaces, limitTag, limitUid,
-                                                 tagStatsMap, ifaceIndexNameMap);
-        if (ret) return ret;
+    BpfMap<uint32_t, uint8_t> configurationMap(mapRetrieve(CONFIGURATION_MAP_PATH, 0));
+    if (!configurationMap.isValid()) {
+        int ret = -errno;
+        ALOGE("get configuration map fd failed: %s", strerror(errno));
+        return ret;
+    }
+    auto configuration = configurationMap.readValue(CURRENT_STATS_MAP_CONFIGURATION_KEY);
+    if (!isOk(configuration)) {
+        ALOGE("Cannot read the old configuration from map: %s",
+              configuration.status().msg().c_str());
+        return -configuration.status().code();
+    }
+    const char* statsMapPath = STATS_MAP_PATH[configuration.value()];
+    BpfMap<StatsKey, StatsValue> statsMap(mapRetrieve(statsMapPath, 0));
+    if (!statsMap.isValid()) {
+        int ret = -errno;
+        ALOGE("get stats map fd failed: %s, path: %s", strerror(errno), statsMapPath);
+        return ret;
     }
 
-    // If the caller did not pass in a specific tag (i.e., if limitTag is TAG_NONE(0) or
-    // TAG_ALL(-1)) read UID data.
-    if (limitTag == TAG_NONE || limitTag == TAG_ALL) {
-        BpfMap<StatsKey, StatsValue> uidStatsMap(mapRetrieve(UID_STATS_MAP_PATH, BPF_OPEN_FLAGS));
-        if (!uidStatsMap.isValid()) {
-            ret = -errno;
-            ALOGE("Opening map fd from %s failed: %s", UID_STATS_MAP_PATH, strerror(errno));
-            return ret;
-        }
-        ret = parseBpfNetworkStatsDetailInternal(lines, limitIfaces, limitTag, limitUid,
-                                                 uidStatsMap, ifaceIndexNameMap);
+    // Write to the configuration map to inform the kernel eBPF program to switch
+    // from using one map to the other.
+    uint8_t newConfigure = (configuration.value() == SELECT_MAP_A) ? SELECT_MAP_B : SELECT_MAP_A;
+    Status res = configurationMap.writeValue(CURRENT_STATS_MAP_CONFIGURATION_KEY, newConfigure,
+                                             BPF_EXIST);
+    if (!isOk(res)) {
+        ALOGE("Failed to toggle the stats map: %s", strerror(res.code()));
+        return -res.code();
     }
-    return ret;
+
+    // After changing the config, we need to make sure all the current running
+    // eBPF programs are finished and all the CPUs are aware of this config change
+    // before we modify the old map. So we do a special hack here to wait for
+    // the kernel to do a synchronize_rcu(). Once the kernel called
+    // synchronize_rcu(), the config we just updated will be available to all cores
+    // and the next eBPF programs triggered inside the kernel will use the new
+    // map configuration. So once this function returns we can safely modify the
+    // old stats map without concerning about race between the kernel and
+    // userspace.
+    int ret = synchronizeKernelRCU();
+    if (ret) {
+        ALOGE("map swap synchronize_rcu() ended with failure: %s", strerror(-ret));
+        return ret;
+    }
+
+    // It is safe to read and clear the old map now.
+    ret = parseBpfNetworkStatsDetailInternal(lines, limitIfaces, limitTag, limitUid, statsMap,
+                                             ifaceIndexNameMap);
+    if (ret) {
+        ALOGE("parse detail network stats failed: %s", strerror(errno));
+        return ret;
+    }
+
+    res = statsMap.clear();
+    if (!isOk(res)) {
+        ALOGE("Clean up current stats map failed: %s", strerror(res.code()));
+        return -res.code();
+    }
+
+    return 0;
 }
 
 int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
