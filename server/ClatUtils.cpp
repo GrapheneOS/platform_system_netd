@@ -16,11 +16,43 @@
 
 #include "ClatUtils.h"
 
+#include <errno.h>
+#include <linux/if.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #define LOG_TAG "ClatUtils"
 #include <log/log.h>
 
+#include "android-base/unique_fd.h"
+
 namespace android {
 namespace net {
+
+int hardwareAddressType(const std::string& interface) {
+    base::unique_fd ufd(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+
+    if (ufd < 0) {
+        const int err = errno;
+        ALOGE("socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0)");
+        return -err;
+    };
+
+    struct ifreq ifr = {};
+    // We use strncpy() instead of strlcpy() since kernel has to be able
+    // to handle non-zero terminated junk passed in by userspace anyway,
+    // and this way too long interface names (more than IFNAMSIZ-1 = 15
+    // characters plus terminating NULL) will not get truncated to 15
+    // characters and zero-terminated and thus potentially erroneously
+    // match a truncated interface if one were to exist.
+    strncpy(ifr.ifr_name, interface.c_str(), sizeof(ifr.ifr_name));
+
+    if (ioctl(ufd, SIOCGIFHWADDR, &ifr, sizeof(ifr))) return -errno;
+
+    return ifr.ifr_hwaddr.sa_family;
+}
 
 }  // namespace net
 }  // namespace android

@@ -17,8 +17,12 @@
 #ifndef _CLAT_UTILS_H
 #define _CLAT_UTILS_H
 
+#include <string>
+
 namespace android {
 namespace net {
+
+int hardwareAddressType(const std::string& interface);
 
 }  // namespace net
 }  // namespace android

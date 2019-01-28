@@ -20,6 +20,8 @@
 
 #include "ClatUtils.h"
 
+#include <linux/if_arp.h>
+
 namespace android {
 namespace net {
 
@@ -27,6 +29,36 @@ class ClatUtilsTest : public ::testing::Test {
   public:
     void SetUp() {}
 };
+
+TEST_F(ClatUtilsTest, HardwareAddressTypeOfNonExistingIf) {
+    EXPECT_EQ(-ENODEV, hardwareAddressType("not_existing_if"));
+}
+
+TEST_F(ClatUtilsTest, HardwareAddressTypeOfLoopback) {
+    EXPECT_EQ(ARPHRD_LOOPBACK, hardwareAddressType("lo"));
+}
+
+// If wireless 'wlan0' interface exists it should be Ethernet.
+TEST_F(ClatUtilsTest, HardwareAddressTypeOfWireless) {
+    int type = hardwareAddressType("wlan0");
+    if (type == -ENODEV) return;
+
+    EXPECT_EQ(ARPHRD_ETHER, type);
+}
+
+// If cellular 'rmnet_data0' interface exists it should
+// *probably* not be Ethernet and instead be RawIp.
+TEST_F(ClatUtilsTest, HardwareAddressTypeOfCellular) {
+    int type = hardwareAddressType("rmnet_data0");
+    if (type == -ENODEV) return;
+
+    EXPECT_NE(ARPHRD_ETHER, type);
+
+    // ARPHRD_RAWIP is 530 on some pre-4.14 Qualcomm devices.
+    if (type == 530) return;
+
+    EXPECT_EQ(ARPHRD_RAWIP, type);
+}
 
 }  // namespace net
 }  // namespace android
