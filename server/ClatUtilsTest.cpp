@@ -70,5 +70,19 @@ TEST_F(ClatUtilsTest, GetClatMapFd) {
     EXPECT_LE(3, ufd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
 }
 
+TEST_F(ClatUtilsTest, GetClatRawIpProgFd) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    base::unique_fd ufd(getClatProgFd(false));
+    EXPECT_LE(3, ufd);
+}
+
+TEST_F(ClatUtilsTest, GetClatEtherProgFd) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    base::unique_fd ufd(getClatProgFd(true));
+    EXPECT_LE(3, ufd);
+}
+
 }  // namespace net
 }  // namespace android

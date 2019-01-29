@@ -26,6 +26,8 @@ int hardwareAddressType(const std::string& interface);
 
 int getClatMapFd(void);
 
+int getClatProgFd(bool with_ethernet_header);
+
 }  // namespace net
 }  // namespace android
 
