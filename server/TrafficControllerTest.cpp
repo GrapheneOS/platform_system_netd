@@ -124,14 +124,16 @@ class TrafficControllerTest : public ::testing::Test {
         mTc.mConfigurationMap.reset(mFakeConfigurationMap.getMap());
         mTc.mUidOwnerMap.reset(mFakeUidOwnerMap.getMap());
         mTc.mUidPermissionMap.reset(mFakeUidPermissionMap.getMap());
+        mTc.mPrivilegedUser.clear();
     }
 
-    int setUpSocketAndTag(int protocol, uint64_t* cookie, uint32_t tag, uid_t uid) {
+    int setUpSocketAndTag(int protocol, uint64_t* cookie, uint32_t tag, uid_t uid,
+                          uid_t callingUid) {
         int sock = socket(protocol, SOCK_STREAM | SOCK_CLOEXEC, 0);
         EXPECT_LE(0, sock);
         *cookie = getSocketCookie(sock);
         EXPECT_NE(NONEXISTENT_COOKIE, *cookie);
-        EXPECT_EQ(0, mTc.tagSocket(sock, tag, uid));
+        EXPECT_EQ(0, mTc.tagSocket(sock, tag, uid, callingUid));
         return sock;
     }
 
@@ -257,13 +259,47 @@ class TrafficControllerTest : public ::testing::Test {
     }
 
     void expectPrivilegedUserSetEmpty() { EXPECT_TRUE(mTc.mPrivilegedUser.empty()); }
+
+    void addPrivilegedUid(uid_t uid) {
+        std::vector privilegedUid = {uid};
+        mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, privilegedUid);
+    }
+
+    void removePrivilegedUid(uid_t uid) {
+        std::vector privilegedUid = {uid};
+        mTc.setPermissionForUids(INetd::NO_PERMISSIONS, privilegedUid);
+    }
+
+    void expectFakeStatsUnchanged(uint64_t cookie, uint32_t tag, uint32_t uid,
+                                  StatsKey tagStatsMapKey) {
+        StatusOr<UidTag> cookieMapResult = mFakeCookieTagMap.readValue(cookie);
+        EXPECT_TRUE(isOk(cookieMapResult));
+        EXPECT_EQ(uid, cookieMapResult.value().uid);
+        EXPECT_EQ(tag, cookieMapResult.value().tag);
+        StatusOr<uint8_t> counterSetResult = mFakeUidCounterSetMap.readValue(uid);
+        EXPECT_TRUE(isOk(counterSetResult));
+        EXPECT_EQ(TEST_COUNTERSET, counterSetResult.value());
+        StatusOr<StatsValue> statsMapResult = mFakeTagStatsMap.readValue(tagStatsMapKey);
+        EXPECT_TRUE(isOk(statsMapResult));
+        EXPECT_EQ((uint64_t)1, statsMapResult.value().rxPackets);
+        EXPECT_EQ((uint64_t)100, statsMapResult.value().rxBytes);
+        tagStatsMapKey.tag = 0;
+        statsMapResult = mFakeUidStatsMap.readValue(tagStatsMapKey);
+        EXPECT_TRUE(isOk(statsMapResult));
+        EXPECT_EQ((uint64_t)1, statsMapResult.value().rxPackets);
+        EXPECT_EQ((uint64_t)100, statsMapResult.value().rxBytes);
+        auto appStatsResult = mFakeAppUidStatsMap.readValue(uid);
+        EXPECT_TRUE(isOk(appStatsResult));
+        EXPECT_EQ((uint64_t)1, appStatsResult.value().rxPackets);
+        EXPECT_EQ((uint64_t)100, appStatsResult.value().rxBytes);
+    }
 };
 
 TEST_F(TrafficControllerTest, TestTagSocketV4) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     uint64_t sockCookie;
-    int v4socket = setUpSocketAndTag(AF_INET, &sockCookie, TEST_TAG, TEST_UID);
+    int v4socket = setUpSocketAndTag(AF_INET, &sockCookie, TEST_TAG, TEST_UID, TEST_UID);
     expectUidTag(sockCookie, TEST_UID, TEST_TAG);
     ASSERT_EQ(0, mTc.untagSocket(v4socket));
     expectNoTag(sockCookie);
@@ -274,9 +310,9 @@ TEST_F(TrafficControllerTest, TestReTagSocket) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     uint64_t sockCookie;
-    int v4socket = setUpSocketAndTag(AF_INET, &sockCookie, TEST_TAG, TEST_UID);
+    int v4socket = setUpSocketAndTag(AF_INET, &sockCookie, TEST_TAG, TEST_UID, TEST_UID);
     expectUidTag(sockCookie, TEST_UID, TEST_TAG);
-    ASSERT_EQ(0, mTc.tagSocket(v4socket, TEST_TAG + 1, TEST_UID + 1));
+    ASSERT_EQ(0, mTc.tagSocket(v4socket, TEST_TAG + 1, TEST_UID + 1, TEST_UID + 1));
     expectUidTag(sockCookie, TEST_UID + 1, TEST_TAG + 1);
 }
 
@@ -285,8 +321,8 @@ TEST_F(TrafficControllerTest, TestTagTwoSockets) {
 
     uint64_t sockCookie1;
     uint64_t sockCookie2;
-    int v4socket1 = setUpSocketAndTag(AF_INET, &sockCookie1, TEST_TAG, TEST_UID);
-    setUpSocketAndTag(AF_INET, &sockCookie2, TEST_TAG, TEST_UID);
+    int v4socket1 = setUpSocketAndTag(AF_INET, &sockCookie1, TEST_TAG, TEST_UID, TEST_UID);
+    setUpSocketAndTag(AF_INET, &sockCookie2, TEST_TAG, TEST_UID, TEST_UID);
     expectUidTag(sockCookie1, TEST_UID, TEST_TAG);
     expectUidTag(sockCookie2, TEST_UID, TEST_TAG);
     ASSERT_EQ(0, mTc.untagSocket(v4socket1));
@@ -299,7 +335,7 @@ TEST_F(TrafficControllerTest, TestTagSocketV6) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     uint64_t sockCookie;
-    int v6socket = setUpSocketAndTag(AF_INET6, &sockCookie, TEST_TAG, TEST_UID);
+    int v6socket = setUpSocketAndTag(AF_INET6, &sockCookie, TEST_TAG, TEST_UID, TEST_UID);
     expectUidTag(sockCookie, TEST_UID, TEST_TAG);
     ASSERT_EQ(0, mTc.untagSocket(v6socket));
     expectNoTag(sockCookie);
@@ -310,8 +346,37 @@ TEST_F(TrafficControllerTest, TestTagInvalidSocket) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int invalidSocket = -1;
-    ASSERT_GT(0, mTc.tagSocket(invalidSocket, TEST_TAG, TEST_UID));
+    ASSERT_GT(0, mTc.tagSocket(invalidSocket, TEST_TAG, TEST_UID, TEST_UID));
     expectMapEmpty(mFakeCookieTagMap);
+}
+
+TEST_F(TrafficControllerTest, TestTagSocketWithoutPermission) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    ASSERT_NE(-1, sock);
+    ASSERT_EQ(-EPERM, mTc.tagSocket(sock, TEST_TAG, TEST_UID, TEST_UID2));
+    expectMapEmpty(mFakeCookieTagMap);
+}
+
+TEST_F(TrafficControllerTest, TestTagSocketWithPermission) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    // Grant permission to calling uid.
+    std::vector<uid_t> callingUid = {TEST_UID2};
+    mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, callingUid);
+
+    // Tag a socket to a different uid other then callingUid.
+    uint64_t sockCookie;
+    int v6socket = setUpSocketAndTag(AF_INET6, &sockCookie, TEST_TAG, TEST_UID, TEST_UID2);
+    expectUidTag(sockCookie, TEST_UID, TEST_TAG);
+    EXPECT_EQ(0, mTc.untagSocket(v6socket));
+    expectNoTag(sockCookie);
+    expectMapEmpty(mFakeCookieTagMap);
+
+    // Clean up the permission
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, callingUid);
+    expectPrivilegedUserSetEmpty();
 }
 
 TEST_F(TrafficControllerTest, TestUntagInvalidSocket) {
@@ -327,12 +392,23 @@ TEST_F(TrafficControllerTest, TestUntagInvalidSocket) {
 TEST_F(TrafficControllerTest, TestSetCounterSet) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    ASSERT_EQ(0, mTc.setCounterSet(TEST_COUNTERSET, TEST_UID));
+    uid_t callingUid = TEST_UID2;
+    addPrivilegedUid(callingUid);
+    ASSERT_EQ(0, mTc.setCounterSet(TEST_COUNTERSET, TEST_UID, callingUid));
     uid_t uid = TEST_UID;
     StatusOr<uint8_t> counterSetResult = mFakeUidCounterSetMap.readValue(uid);
     ASSERT_TRUE(isOk(counterSetResult));
     ASSERT_EQ(TEST_COUNTERSET, counterSetResult.value());
-    ASSERT_EQ(0, mTc.setCounterSet(DEFAULT_COUNTERSET, TEST_UID));
+    ASSERT_EQ(0, mTc.setCounterSet(DEFAULT_COUNTERSET, TEST_UID, callingUid));
+    ASSERT_FALSE(isOk(mFakeUidCounterSetMap.readValue(uid)));
+    expectMapEmpty(mFakeUidCounterSetMap);
+}
+
+TEST_F(TrafficControllerTest, TestSetCounterSetWithoutPermission) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    ASSERT_EQ(-EPERM, mTc.setCounterSet(TEST_COUNTERSET, TEST_UID, TEST_UID2));
+    uid_t uid = TEST_UID;
     ASSERT_FALSE(isOk(mFakeUidCounterSetMap.readValue(uid)));
     expectMapEmpty(mFakeUidCounterSetMap);
 }
@@ -340,13 +416,15 @@ TEST_F(TrafficControllerTest, TestSetCounterSet) {
 TEST_F(TrafficControllerTest, TestSetInvalidCounterSet) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    ASSERT_GT(0, mTc.setCounterSet(OVERFLOW_COUNTERSET, TEST_UID));
+    uid_t callingUid = TEST_UID2;
+    addPrivilegedUid(callingUid);
+    ASSERT_GT(0, mTc.setCounterSet(OVERFLOW_COUNTERSET, TEST_UID, callingUid));
     uid_t uid = TEST_UID;
     ASSERT_FALSE(isOk(mFakeUidCounterSetMap.readValue(uid)));
     expectMapEmpty(mFakeUidCounterSetMap);
 }
 
-TEST_F(TrafficControllerTest, TestDeleteTagData) {
+TEST_F(TrafficControllerTest, TestDeleteTagDataWithoutPermission) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     uint64_t cookie = 1;
@@ -354,7 +432,22 @@ TEST_F(TrafficControllerTest, TestDeleteTagData) {
     uint32_t tag = TEST_TAG;
     StatsKey tagStatsMapKey;
     populateFakeStats(cookie, uid, tag, &tagStatsMapKey);
-    ASSERT_EQ(0, mTc.deleteTagData(TEST_TAG, TEST_UID));
+    ASSERT_EQ(-EPERM, mTc.deleteTagData(0, TEST_UID, TEST_UID2));
+
+    expectFakeStatsUnchanged(cookie, tag, uid, tagStatsMapKey);
+}
+
+TEST_F(TrafficControllerTest, TestDeleteTagData) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    uid_t callingUid = TEST_UID2;
+    addPrivilegedUid(callingUid);
+    uint64_t cookie = 1;
+    uid_t uid = TEST_UID;
+    uint32_t tag = TEST_TAG;
+    StatsKey tagStatsMapKey;
+    populateFakeStats(cookie, uid, tag, &tagStatsMapKey);
+    ASSERT_EQ(0, mTc.deleteTagData(TEST_TAG, TEST_UID, callingUid));
     ASSERT_FALSE(isOk(mFakeCookieTagMap.readValue(cookie)));
     StatusOr<uint8_t> counterSetResult = mFakeUidCounterSetMap.readValue(uid);
     ASSERT_TRUE(isOk(counterSetResult));
@@ -374,12 +467,14 @@ TEST_F(TrafficControllerTest, TestDeleteTagData) {
 TEST_F(TrafficControllerTest, TestDeleteAllUidData) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
+    uid_t callingUid = TEST_UID2;
+    addPrivilegedUid(callingUid);
     uint64_t cookie = 1;
     uid_t uid = TEST_UID;
     uint32_t tag = TEST_TAG;
     StatsKey tagStatsMapKey;
     populateFakeStats(cookie, uid, tag, &tagStatsMapKey);
-    ASSERT_EQ(0, mTc.deleteTagData(0, TEST_UID));
+    ASSERT_EQ(0, mTc.deleteTagData(0, TEST_UID, callingUid));
     ASSERT_FALSE(isOk(mFakeCookieTagMap.readValue(cookie)));
     ASSERT_FALSE(isOk(mFakeUidCounterSetMap.readValue(uid)));
     ASSERT_FALSE(isOk(mFakeTagStatsMap.readValue(tagStatsMapKey)));
@@ -391,6 +486,8 @@ TEST_F(TrafficControllerTest, TestDeleteAllUidData) {
 TEST_F(TrafficControllerTest, TestDeleteDataWithTwoTags) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
+    uid_t callingUid = TEST_UID2;
+    addPrivilegedUid(callingUid);
     uint64_t cookie1 = 1;
     uint64_t cookie2 = 2;
     uid_t uid = TEST_UID;
@@ -400,7 +497,7 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoTags) {
     StatsKey tagStatsMapKey2;
     populateFakeStats(cookie1, uid, tag1, &tagStatsMapKey1);
     populateFakeStats(cookie2, uid, tag2, &tagStatsMapKey2);
-    ASSERT_EQ(0, mTc.deleteTagData(TEST_TAG, TEST_UID));
+    ASSERT_EQ(0, mTc.deleteTagData(TEST_TAG, TEST_UID, callingUid));
     ASSERT_FALSE(isOk(mFakeCookieTagMap.readValue(cookie1)));
     StatusOr<UidTag> cookieMapResult = mFakeCookieTagMap.readValue(cookie2);
     ASSERT_TRUE(isOk(cookieMapResult));
@@ -419,6 +516,8 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoTags) {
 TEST_F(TrafficControllerTest, TestDeleteDataWithTwoUids) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
+    uid_t callingUid = TEST_UID2;
+    addPrivilegedUid(callingUid);
     uint64_t cookie1 = 1;
     uint64_t cookie2 = 2;
     uid_t uid1 = TEST_UID;
@@ -431,7 +530,7 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoUids) {
 
     // Delete the stats of one of the uid. Check if it is properly collected by
     // removedStats.
-    ASSERT_EQ(0, mTc.deleteTagData(0, uid2));
+    ASSERT_EQ(0, mTc.deleteTagData(0, uid2, callingUid));
     ASSERT_FALSE(isOk(mFakeCookieTagMap.readValue(cookie2)));
     StatusOr<uint8_t> counterSetResult = mFakeUidCounterSetMap.readValue(uid1);
     ASSERT_TRUE(isOk(counterSetResult));
@@ -452,7 +551,7 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoUids) {
     ASSERT_EQ((uint64_t)100, appStatsResult.value().rxBytes);
 
     // Delete the stats of the other uid.
-    ASSERT_EQ(0, mTc.deleteTagData(0, uid1));
+    ASSERT_EQ(0, mTc.deleteTagData(0, uid1, callingUid));
     ASSERT_FALSE(isOk(mFakeUidStatsMap.readValue(tagStatsMapKey1)));
     ASSERT_FALSE(isOk(mFakeAppUidStatsMap.readValue(uid1)));
 }
