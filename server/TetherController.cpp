@@ -54,7 +54,6 @@ namespace android {
 namespace net {
 
 using android::base::Join;
-using android::base::StringAppendF;
 using android::base::StringPrintf;
 using android::netdutils::statusFromErrno;
 using android::netdutils::StatusOr;

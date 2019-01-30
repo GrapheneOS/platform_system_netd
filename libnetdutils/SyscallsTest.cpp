@@ -30,13 +30,11 @@
 #include "netdutils/StatusOr.h"
 #include "netdutils/Syscalls.h"
 
+using testing::_;
 using testing::ByMove;
-using testing::DoAll;
 using testing::Invoke;
-using testing::Mock;
 using testing::Return;
 using testing::StrictMock;
-using testing::_;
 
 namespace android {
 namespace netdutils {

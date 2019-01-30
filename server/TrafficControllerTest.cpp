@@ -33,7 +33,6 @@
 #include <android-base/strings.h>
 
 #include <netdutils/MockSyscalls.h>
-#include "netdutils/Status.h"
 #include "netdutils/StatusOr.h"
 
 #include "FirewallController.h"
@@ -42,20 +41,10 @@
 
 using namespace android::bpf;  // NOLINT(google-build-using-namespace): grandfathered
 
-using ::testing::_;
-using ::testing::ByMove;
-using ::testing::Invoke;
-using ::testing::Return;
-using ::testing::StrictMock;
-using ::testing::Test;
-
 namespace android {
 namespace net {
 
-using base::unique_fd;
 using netdutils::isOk;
-using netdutils::Status;
-using netdutils::status::ok;
 using netdutils::StatusOr;
 
 constexpr int TEST_MAP_SIZE = 10;

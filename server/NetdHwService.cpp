@@ -16,7 +16,6 @@
 
 #include <binder/IPCThreadState.h>
 #include <hidl/HidlTransportSupport.h>
-#include <hwbinder/IPCThreadState.h>
 #include "Controllers.h"
 #include "Fwmark.h"
 #include "NetdHwService.h"
@@ -24,7 +23,6 @@
 #include "TetherController.h"
 
 using android::hardware::configureRpcThreadpool;
-using android::hardware::IPCThreadState;
 using android::hardware::Void;
 
 // Tells TetherController::enableForwarding who is requesting forwarding, so that TetherController

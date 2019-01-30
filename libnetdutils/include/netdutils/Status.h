@@ -18,6 +18,7 @@
 #define NETUTILS_STATUS_H
 
 #include <cassert>
+#include <limits>
 #include <ostream>
 
 namespace android {
