@@ -77,6 +77,7 @@ class TrafficControllerTest : public ::testing::Test {
     BpfMap<StatsKey, StatsValue> mFakeTagStatsMap;
     BpfMap<uint32_t, uint8_t> mFakeConfigurationMap;
     BpfMap<uint32_t, uint8_t> mFakeUidOwnerMap;
+    BpfMap<uint32_t, uint8_t> mFakeUidPermissionMap;
 
     void SetUp() {
         std::lock_guard ownerGuard(mTc.mOwnerMatchMutex);
@@ -84,31 +85,34 @@ class TrafficControllerTest : public ::testing::Test {
 
         mFakeCookieTagMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(uint64_t),
                                           sizeof(struct UidTag), TEST_MAP_SIZE, 0));
-        ASSERT_LE(0, mFakeCookieTagMap.getMap());
+        ASSERT_TRUE(mFakeCookieTagMap.isValid());
 
         mFakeUidCounterSetMap.reset(
             createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(uint8_t), TEST_MAP_SIZE, 0));
-        ASSERT_LE(0, mFakeUidCounterSetMap.getMap());
+        ASSERT_TRUE(mFakeUidCounterSetMap.isValid());
 
         mFakeAppUidStatsMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t),
                                             sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
-        ASSERT_LE(0, mFakeAppUidStatsMap.getMap());
+        ASSERT_TRUE(mFakeAppUidStatsMap.isValid());
 
         mFakeUidStatsMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey),
                                          sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
-        ASSERT_LE(0, mFakeUidStatsMap.getMap());
+        ASSERT_TRUE(mFakeUidStatsMap.isValid());
 
         mFakeTagStatsMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey),
                                          sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
-        ASSERT_LE(0, mFakeTagStatsMap.getMap());
+        ASSERT_TRUE(mFakeTagStatsMap.isValid());
 
         mFakeConfigurationMap.reset(
                 createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(uint8_t), 1, 0));
-        ASSERT_LE(0, mFakeConfigurationMap.getMap());
+        ASSERT_TRUE(mFakeConfigurationMap.isValid());
 
         mFakeUidOwnerMap.reset(
                 createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(uint8_t), TEST_MAP_SIZE, 0));
-        ASSERT_LE(0, mFakeUidOwnerMap.getMap());
+        ASSERT_TRUE(mFakeUidOwnerMap.isValid());
+        mFakeUidPermissionMap.reset(
+                createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(uint8_t), TEST_MAP_SIZE, 0));
+        ASSERT_TRUE(mFakeUidPermissionMap.isValid());
         // Make sure trafficController use the eBPF code path.
         mTc.ebpfSupported = true;
 
@@ -119,6 +123,7 @@ class TrafficControllerTest : public ::testing::Test {
         mTc.mStatsMapB.reset(mFakeTagStatsMap.getMap());
         mTc.mConfigurationMap.reset(mFakeConfigurationMap.getMap());
         mTc.mUidOwnerMap.reset(mFakeUidOwnerMap.getMap());
+        mTc.mUidPermissionMap.reset(mFakeUidPermissionMap.getMap());
     }
 
     int setUpSocketAndTag(int protocol, uint64_t* cookie, uint32_t tag, uid_t uid) {
@@ -234,6 +239,24 @@ class TrafficControllerTest : public ::testing::Test {
         ASSERT_TRUE(isEmpty.value());
     }
 
+    void expectUidPermissionMapValues(const std::vector<uid_t>& appUids, uint8_t expectedValue) {
+        for (uid_t uid : appUids) {
+            StatusOr<uint8_t> value = mFakeUidPermissionMap.readValue(uid);
+            EXPECT_TRUE(isOk(value));
+            EXPECT_EQ(expectedValue, value.value())
+                    << "Expected value for UID " << uid << " to be " << expectedValue
+                    << ", but was " << value.value();
+        }
+    }
+
+    void expectPrivilegedUserSet(const std::vector<uid_t>& appUids) {
+        EXPECT_EQ(appUids.size(), mTc.mPrivilegedUser.size());
+        for (uid_t uid : appUids) {
+            EXPECT_NE(mTc.mPrivilegedUser.end(), mTc.mPrivilegedUser.find(uid));
+        }
+    }
+
+    void expectPrivilegedUserSetEmpty() { EXPECT_TRUE(mTc.mPrivilegedUser.empty()); }
 };
 
 TEST_F(TrafficControllerTest, TestTagSocketV4) {
@@ -562,5 +585,104 @@ TEST_F(TrafficControllerTest, TestDeleteWrongMatchSilentlyFails) {
                                            BandwidthController::IptOpDelete)));
     expectUidOwnerMapValues(appStrUids, HAPPY_BOX_MATCH);
 }
+
+TEST_F(TrafficControllerTest, TestGrantInternetPermission) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
+
+    mTc.setPermissionForUids(INetd::PERMISSION_INTERNET, appUids);
+    expectUidPermissionMapValues(appUids, INetd::PERMISSION_INTERNET);
+    expectPrivilegedUserSetEmpty();
+
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
+    expectMapEmpty(mFakeUidPermissionMap);
+}
+
+TEST_F(TrafficControllerTest, TestRevokeInternetPermission) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
+
+    mTc.setPermissionForUids(INetd::PERMISSION_INTERNET, appUids);
+    expectUidPermissionMapValues(appUids, INetd::PERMISSION_INTERNET);
+
+    std::vector<uid_t> uidToRemove = {TEST_UID};
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, uidToRemove);
+
+    std::vector<uid_t> uidRemain = {TEST_UID3, TEST_UID2};
+    expectUidPermissionMapValues(uidRemain, INetd::PERMISSION_INTERNET);
+
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, uidRemain);
+    expectMapEmpty(mFakeUidPermissionMap);
+}
+
+TEST_F(TrafficControllerTest, TestGrantUpdateStatsPermission) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
+
+    mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, appUids);
+    expectMapEmpty(mFakeUidPermissionMap);
+    expectPrivilegedUserSet(appUids);
+
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
+    expectPrivilegedUserSetEmpty();
+}
+
+TEST_F(TrafficControllerTest, TestRevokeUpdateStatsPermission) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
+
+    mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, appUids);
+    expectPrivilegedUserSet(appUids);
+
+    std::vector<uid_t> uidToRemove = {TEST_UID};
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, uidToRemove);
+
+    std::vector<uid_t> uidRemain = {TEST_UID3, TEST_UID2};
+    expectPrivilegedUserSet(uidRemain);
+
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, uidRemain);
+    expectPrivilegedUserSetEmpty();
+}
+
+TEST_F(TrafficControllerTest, TestGrantWrongPermissionSlientlyFail) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
+
+    mTc.setPermissionForUids(INetd::PERMISSION_NONE, appUids);
+    expectPrivilegedUserSetEmpty();
+    expectMapEmpty(mFakeUidPermissionMap);
+}
+
+TEST_F(TrafficControllerTest, TestGrantDuplicatePermissionSlientlyFail) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
+
+    mTc.setPermissionForUids(INetd::PERMISSION_INTERNET, appUids);
+    expectUidPermissionMapValues(appUids, INetd::PERMISSION_INTERNET);
+
+    std::vector<uid_t> uidToAdd = {TEST_UID};
+    mTc.setPermissionForUids(INetd::PERMISSION_INTERNET, uidToAdd);
+
+    expectUidPermissionMapValues(appUids, INetd::PERMISSION_INTERNET);
+
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
+    expectMapEmpty(mFakeUidPermissionMap);
+
+    mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, appUids);
+    expectPrivilegedUserSet(appUids);
+
+    mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, uidToAdd);
+    expectPrivilegedUserSet(appUids);
+
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
+    expectPrivilegedUserSetEmpty();
+}
+
 }  // namespace net
 }  // namespace android
