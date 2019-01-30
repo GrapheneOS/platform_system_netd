@@ -25,9 +25,8 @@
 #include <mutex>
 #include <string>
 
+#include <netdutils/UidConstants.h>
 #include <private/android_filesystem_config.h>
-
-const int MAX_SYSTEM_UID = AID_APP - 1;
 
 // Referred from SHA256_DIGEST_LENGTH in boringssl
 constexpr size_t SHA256_SIZE = 32;

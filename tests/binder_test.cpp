@@ -43,10 +43,12 @@
 #include <android-base/macros.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <bpf/BpfMap.h>
 #include <bpf/BpfUtils.h>
 #include <cutils/multiuser.h>
 #include <gtest/gtest.h>
 #include <logwrap/logwrap.h>
+#include <netdbpf/bpf_shared.h>
 #include <netutils/ifc.h>
 
 #include "InterfaceController.h"
@@ -101,6 +103,12 @@ static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
 static const int TEST_NETID1 = 65501;
 static const int TEST_NETID2 = 65502;
+
+// Use maximum reserved appId for applications to avoid conflict with existing
+// uids.
+static const int TEST_UID1 = 99999;
+static const int TEST_UID2 = 99998;
+
 constexpr int BASE_UID = AID_USER_OFFSET * 5;
 
 static const std::string NO_SOCKET_ALLOW_RULE("! owner UID match 0-4294967294");
@@ -2804,6 +2812,36 @@ TEST_F(BinderTest, TcpBufferSet) {
 
     updateAndCheckTcpBuffer(mNetd, testRmemValue, testWmemValue);
     updateAndCheckTcpBuffer(mNetd, rmemValue, wmemValue);
+}
+
+namespace {
+
+void checkUidsExist(std::vector<int32_t>& uids, bool exist) {
+    android::bpf::BpfMap<uint32_t, uint8_t> uidPermissionMap(
+            android::bpf::mapRetrieve(UID_PERMISSION_MAP_PATH, 0));
+    for (int32_t uid : uids) {
+        android::netdutils::StatusOr<uint8_t> permission = uidPermissionMap.readValue(uid);
+        if (exist) {
+            EXPECT_TRUE(isOk(permission));
+            EXPECT_EQ(ALLOW_SOCK_CREATE, permission.value());
+        } else {
+            EXPECT_FALSE(isOk(permission));
+            EXPECT_EQ(ENOENT, permission.status().code());
+        }
+    }
+}
+
+}  // namespace
+
+TEST_F(BinderTest, TestInternetPermission) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    std::vector<int32_t> appUids = {TEST_UID1, TEST_UID2};
+
+    mNetd->trafficSetNetPermForUids(INetd::PERMISSION_INTERNET, appUids);
+    checkUidsExist(appUids, true);
+    mNetd->trafficSetNetPermForUids(INetd::NO_PERMISSIONS, appUids);
+    checkUidsExist(appUids, false);
 }
 
 TEST_F(BinderTest, UnsolEvents) {
