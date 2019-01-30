@@ -92,6 +92,10 @@ const std::string uidMatchTypeToString(uint8_t match) {
     return matchType;
 }
 
+bool TrafficController::hasUpdateDeviceStatsPermission(uid_t uid) {
+    return mPrivilegedUser.find(uid) != mPrivilegedUser.end();
+}
+
 const std::string UidPermissionTypeToString(uint8_t permission) {
     std::string permissionType;
     FLAG_MSG_TRANS(permissionType, ALLOW_SOCK_CREATE, permission);
@@ -299,7 +303,11 @@ Status TrafficController::start() {
     return netdutils::status::ok;
 }
 
-int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
+int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t callingUid) {
+    if (uid != callingUid && !hasUpdateDeviceStatsPermission(callingUid)) {
+        return -EPERM;
+    }
+
     if (!ebpfSupported) {
         if (legacy_tagSocket(sockFd, tag, uid)) return -errno;
         return 0;
@@ -337,9 +345,11 @@ int TrafficController::untagSocket(int sockFd) {
     return -res.code();
 }
 
-int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
+int TrafficController::setCounterSet(int counterSetNum, uid_t uid, uid_t callingUid) {
     if (counterSetNum < 0 || counterSetNum >= OVERFLOW_COUNTERSET) return -EINVAL;
-    Status res;
+
+    if (!hasUpdateDeviceStatsPermission(callingUid)) return -EPERM;
+
     if (!ebpfSupported) {
         if (legacy_setCounterSet(counterSetNum, uid)) return -errno;
         return 0;
@@ -357,7 +367,7 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
         }
     }
     uint8_t tmpCounterSetNum = (uint8_t)counterSetNum;
-    res = mUidCounterSetMap.writeValue(uid, tmpCounterSetNum, BPF_ANY);
+    Status res = mUidCounterSetMap.writeValue(uid, tmpCounterSetNum, BPF_ANY);
     if (!isOk(res)) {
         ALOGE("Failed to set the counterSet: %s, fd: %d", strerror(res.code()),
               mUidCounterSetMap.getMap().get());
@@ -369,7 +379,9 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
 // This method only get called by system_server when an app get uinstalled, it
 // is called inside removeUidsLocked() while holding mStatsLock. So it is safe
 // to iterate and modify the stats maps.
-int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
+int TrafficController::deleteTagData(uint32_t tag, uid_t uid, uid_t callingUid) {
+    if (!hasUpdateDeviceStatsPermission(callingUid)) return -EPERM;
+
     if (!ebpfSupported) {
         if (legacy_deleteTagData(tag, uid)) return -errno;
         return 0;
