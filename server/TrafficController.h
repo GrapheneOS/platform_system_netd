@@ -58,7 +58,7 @@ class TrafficController {
      * the spinlock initialized with the map. So the behavior of two modules
      * should be the same. No additional lock needed.
      */
-    int tagSocket(int sockFd, uint32_t tag, uid_t uid);
+    int tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t callingUid);
 
     /*
      * The untag process is similiar to tag socket and both old qtaguid module and
@@ -70,7 +70,7 @@ class TrafficController {
     /*
      * Similiar as above, no external lock required.
      */
-    int setCounterSet(int counterSetNum, uid_t uid);
+    int setCounterSet(int counterSetNum, uid_t uid, uid_t callingUid);
 
     /*
      * When deleting a tag data, the qtaguid module will grab the spinlock of each
@@ -80,7 +80,7 @@ class TrafficController {
      * each map one by one. And deleting processes are also protected by the
      * spinlock of the map. So no additional lock is required.
      */
-    int deleteTagData(uint32_t tag, uid_t uid);
+    int deleteTagData(uint32_t tag, uid_t uid, uid_t callingUid);
 
     /*
      * Check if the current device have the bpf traffic stats accounting service
@@ -218,6 +218,8 @@ class TrafficController {
     std::set<uid_t> mPrivilegedUser;
 
     UidOwnerMatchType jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling);
+
+    bool hasUpdateDeviceStatsPermission(uid_t uid);
     // For testing
     friend class TrafficControllerTest;
 };
