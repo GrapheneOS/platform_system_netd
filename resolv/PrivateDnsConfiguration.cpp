@@ -21,8 +21,9 @@
 #include <netdb.h>
 #include <sys/socket.h>
 
-#include "netd_resolv/DnsTlsTransport.h"
-#include "netd_resolv/PrivateDnsConfiguration.h"
+#include "DnsTlsTransport.h"
+#include "PrivateDnsConfiguration.h"
+#include "netd_resolv/resolv.h"
 #include "netdutils/BackoffSequence.h"
 
 int resolv_set_private_dns_for_net(unsigned netid, uint32_t mark, const char** servers,

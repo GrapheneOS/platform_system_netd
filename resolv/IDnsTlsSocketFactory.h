@@ -29,12 +29,10 @@ struct DnsTlsServer;
 // Dependency injection interface for DnsTlsSocketFactory.
 // This pattern allows mocking of DnsTlsSocket for tests.
 class IDnsTlsSocketFactory {
-public:
-    virtual ~IDnsTlsSocketFactory() {};
+  public:
+    virtual ~IDnsTlsSocketFactory(){};
     virtual std::unique_ptr<IDnsTlsSocket> createDnsTlsSocket(
-            const DnsTlsServer& server,
-            unsigned mark,
-            IDnsTlsSocketObserver* _Nonnull observer,
+            const DnsTlsServer& server, unsigned mark, IDnsTlsSocketObserver* _Nonnull observer,
             DnsTlsSessionCache* _Nonnull cache) = 0;
 };
 

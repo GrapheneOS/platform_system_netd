@@ -17,7 +17,7 @@
 #define LOG_TAG "DnsTlsSocket"
 //#define LOG_NDEBUG 0
 
-#include "netd_resolv/DnsTlsSocket.h"
+#include "DnsTlsSocket.h"
 
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
@@ -29,8 +29,8 @@
 #include <sys/poll.h>
 #include <algorithm>
 
-#include "netd_resolv/DnsTlsSessionCache.h"
-#include "netd_resolv/IDnsTlsSocketObserver.h"
+#include "DnsTlsSessionCache.h"
+#include "IDnsTlsSocketObserver.h"
 
 #include "log/log.h"
 #include "netdutils/SocketOption.h"
@@ -40,6 +40,7 @@ namespace android {
 using netdutils::enableSockopt;
 using netdutils::enableTcpKeepAlives;
 using netdutils::isOk;
+using netdutils::Slice;
 using netdutils::Status;
 
 namespace net {

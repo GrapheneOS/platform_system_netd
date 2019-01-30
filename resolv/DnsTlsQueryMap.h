@@ -26,12 +26,9 @@
 #include <netdutils/Slice.h>
 
 #include "DnsTlsServer.h"
-#include "params.h"
 
 namespace android {
 namespace net {
-
-using netdutils::Slice;
 
 // Keeps track of queries and responses.  This class matches responses with queries.
 // All methods are thread-safe and non-blocking.
@@ -41,15 +38,15 @@ class DnsTlsQueryMap {
         // The new ID number assigned to this query.
         uint16_t newId;
         // A query that has been passed to recordQuery(), with its original ID number.
-        const Slice query;
+        const netdutils::Slice query;
     };
 
     typedef DnsTlsServer::Response Response;
     typedef DnsTlsServer::Result Result;
 
     struct QueryFuture {
-        QueryFuture(Query query, std::future<Result> result) :
-                query(query), result(std::move(result)) {}
+        QueryFuture(Query query, std::future<Result> result)
+            : query(query), result(std::move(result)) {}
         Query query;
         // A future which will resolve to the result of this query.
         std::future<Result> result;
@@ -57,7 +54,7 @@ class DnsTlsQueryMap {
 
     // Returns an object containing everything needed to complete processing of
     // this query, or null if the query could not be recorded.
-    std::unique_ptr<QueryFuture> recordQuery(const Slice query);
+    std::unique_ptr<QueryFuture> recordQuery(const netdutils::Slice query);
 
     // Process a response, including a new ID.  If the response
     // is not recognized as matching any query, it will be ignored.
@@ -77,7 +74,7 @@ class DnsTlsQueryMap {
     // Returns true if there are no pending queries.
     bool empty();
 
-private:
+  private:
     std::mutex mLock;
 
     struct QueryPromise {
