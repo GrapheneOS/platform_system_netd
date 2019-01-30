@@ -122,7 +122,7 @@ int netdClientSocket(int domain, int type, int protocol) {
     if (socketFd == -1) {
         return -1;
     }
-    unsigned netId = netIdForProcess;
+    unsigned netId = netIdForProcess & ~NETID_USE_LOCAL_NAMESERVERS;
     if (netId != NETID_UNSET && FwmarkClient::shouldSetFwmark(domain)) {
         if (int error = setNetworkForSocket(netId, socketFd)) {
             return closeFdAndSetErrno(socketFd, error);
@@ -165,7 +165,7 @@ int setNetworkForTarget(unsigned netId, std::atomic_uint* target) {
     }
     int error = setNetworkForSocket(netId, socketFd);
     if (!error) {
-        *target = (target == &netIdForResolv) ? requestedNetId : netId;
+        *target = requestedNetId;
     }
     close(socketFd);
     return error;
@@ -327,7 +327,7 @@ extern "C" int getNetworkForSocket(unsigned* netId, int socketFd) {
 }
 
 extern "C" unsigned getNetworkForProcess() {
-    return netIdForProcess;
+    return netIdForProcess & ~NETID_USE_LOCAL_NAMESERVERS;
 }
 
 extern "C" int setNetworkForSocket(unsigned netId, int socketFd) {
