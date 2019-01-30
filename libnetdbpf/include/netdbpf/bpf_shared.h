@@ -62,6 +62,7 @@ const int UID_OWNER_MAP_SIZE = 2000;
 #define XT_BPF_EGRESS_PROG_PATH BPF_PATH "/prog_netd_skfilter_egress_xtbpf"
 #define XT_BPF_WHITELIST_PROG_PATH BPF_PATH "/prog_netd_skfilter_whitelist_xtbpf"
 #define XT_BPF_BLACKLIST_PROG_PATH BPF_PATH "/prog_netd_skfilter_blacklist_xtbpf"
+#define CGROUP_SOCKET_PROG_PATH BPF_PATH "/prog_netd_cgroupsock_inet_create"
 
 #define COOKIE_TAG_MAP_PATH BPF_PATH "/map_netd_cookie_tag_map"
 #define UID_COUNTERSET_MAP_PATH BPF_PATH "/map_netd_uid_counterset_map"
