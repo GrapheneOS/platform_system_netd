@@ -65,10 +65,11 @@ public:
     void TearDownOemNetwork(int oemNetId);
 
     virtual void SetUp();
-
     virtual void TearDown();
 
-public:
+    android::net::INetd* netdService() const { return mNetdSrv.get(); }
+
+  private:
     android::sp<android::net::INetd> mNetdSrv = nullptr;
     int mOemNetId = -1;
 };
