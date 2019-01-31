@@ -17,6 +17,7 @@
 #ifndef NETDBPF_BPF_SHARED_H
 #define NETDBPF_BPF_SHARED_H
 
+#include <netdutils/UidConstants.h>
 // const values shared by bpf kernel program bpfloader and netd
 
 
@@ -61,6 +62,7 @@ const int UID_OWNER_MAP_SIZE = 2000;
 #define XT_BPF_EGRESS_PROG_PATH BPF_PATH "/prog_netd_skfilter_egress_xtbpf"
 #define XT_BPF_WHITELIST_PROG_PATH BPF_PATH "/prog_netd_skfilter_whitelist_xtbpf"
 #define XT_BPF_BLACKLIST_PROG_PATH BPF_PATH "/prog_netd_skfilter_blacklist_xtbpf"
+#define CGROUP_SOCKET_PROG_PATH BPF_PATH "/prog_netd_cgroupsock_inet_create"
 
 #define COOKIE_TAG_MAP_PATH BPF_PATH "/map_netd_cookie_tag_map"
 #define UID_COUNTERSET_MAP_PATH BPF_PATH "/map_netd_uid_counterset_map"
@@ -74,12 +76,18 @@ const int UID_OWNER_MAP_SIZE = 2000;
 #define UID_PERMISSION_MAP_PATH BPF_PATH "/map_netd_uid_permission_map"
 
 enum UidOwnerMatchType {
-    NO_MATCH,
+    NO_MATCH = 0,
     HAPPY_BOX_MATCH = (1 << 0),
     PENALTY_BOX_MATCH = (1 << 1),
     DOZABLE_MATCH = (1 << 2),
     STANDBY_MATCH = (1 << 3),
     POWERSAVE_MATCH = (1 << 4),
+};
+
+enum UidPermissionType {
+    NO_PERMISSION = 0,
+    ALLOW_SOCK_CREATE = (1 << 0),
+    ALLOW_UPDATE_DEVICE_STATS = (1 << 1),
 };
 
 // In production we use two identical stats maps to record per uid stats and
@@ -95,12 +103,6 @@ enum StatsMapType {
 typedef uint8_t BpfConfig;
 const BpfConfig DEFAULT_CONFIG = 0;
 
-// These are also defined in NetdConstants.h, but we want to minimize the number of headers
-// included by the BPF kernel program.
-// TODO: refactor the the following constant into a seperate file so
-// NetdConstants.h can also include it from there.
-#define MIN_SYSTEM_UID 0
-#define MAX_SYSTEM_UID 9999
 #define UID_RULES_CONFIGURATION_KEY 1
 #define CURRENT_STATS_MAP_CONFIGURATION_KEY 2
 

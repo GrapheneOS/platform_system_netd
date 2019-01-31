@@ -71,25 +71,39 @@ using netdutils::status::ok;
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
 
-#define UID_MATCH_MSG_TRANS(result, target, match)       \
-    do {                                                 \
-        if (match & target) {                            \
-            result.append(StringPrintf(" %s", #target)); \
-            match &= ~target;                            \
-        }                                                \
+#define FLAG_MSG_TRANS(result, flag, value)            \
+    do {                                               \
+        if (value & flag) {                            \
+            result.append(StringPrintf(" %s", #flag)); \
+            value &= ~flag;                            \
+        }                                              \
     } while (0)
 
 const std::string uidMatchTypeToString(uint8_t match) {
     std::string matchType;
-    UID_MATCH_MSG_TRANS(matchType, HAPPY_BOX_MATCH, match);
-    UID_MATCH_MSG_TRANS(matchType, PENALTY_BOX_MATCH, match);
-    UID_MATCH_MSG_TRANS(matchType, DOZABLE_MATCH, match);
-    UID_MATCH_MSG_TRANS(matchType, STANDBY_MATCH, match);
-    UID_MATCH_MSG_TRANS(matchType, POWERSAVE_MATCH, match);
+    FLAG_MSG_TRANS(matchType, HAPPY_BOX_MATCH, match);
+    FLAG_MSG_TRANS(matchType, PENALTY_BOX_MATCH, match);
+    FLAG_MSG_TRANS(matchType, DOZABLE_MATCH, match);
+    FLAG_MSG_TRANS(matchType, STANDBY_MATCH, match);
+    FLAG_MSG_TRANS(matchType, POWERSAVE_MATCH, match);
     if (match) {
         return StringPrintf("Unknown match: %u", match);
     }
     return matchType;
+}
+
+bool TrafficController::hasUpdateDeviceStatsPermission(uid_t uid) {
+    return mPrivilegedUser.find(uid) != mPrivilegedUser.end();
+}
+
+const std::string UidPermissionTypeToString(uint8_t permission) {
+    std::string permissionType;
+    FLAG_MSG_TRANS(permissionType, ALLOW_SOCK_CREATE, permission);
+    FLAG_MSG_TRANS(permissionType, ALLOW_UPDATE_DEVICE_STATS, permission);
+    if (permission) {
+        return StringPrintf("Unknown permission: %u", permission);
+    }
+    return permissionType;
 }
 
 StatusOr<std::unique_ptr<NetlinkListenerInterface>> TrafficController::makeSkDestroyListener() {
@@ -194,6 +208,8 @@ Status TrafficController::initMaps() {
             mUidOwnerMap.getOrCreate(UID_OWNER_MAP_SIZE, UID_OWNER_MAP_PATH, BPF_MAP_TYPE_HASH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(UID_OWNER_MAP_PATH, AID_ROOT, "UidOwnerMap", true));
     RETURN_IF_NOT_OK(mUidOwnerMap.clear());
+    RETURN_IF_NOT_OK(mUidPermissionMap.getOrCreate(UID_OWNER_MAP_SIZE, UID_PERMISSION_MAP_PATH,
+                                                   BPF_MAP_TYPE_HASH));
     return netdutils::status::ok;
 }
 
@@ -222,6 +238,16 @@ static Status initPrograms() {
     }
     RETURN_IF_NOT_OK(attachProgramToCgroup(BPF_EGRESS_PROG_PATH, cg_fd, BPF_CGROUP_INET_EGRESS));
     RETURN_IF_NOT_OK(attachProgramToCgroup(BPF_INGRESS_PROG_PATH, cg_fd, BPF_CGROUP_INET_INGRESS));
+
+    // For the devices that support cgroup socket filter, the socket filter
+    // should be loaded successfully by bpfloader. So we attach the filter to
+    // cgroup if the program is pinned properly.
+    // TODO: delete the if statement once all devices should support cgroup
+    // socket filter (ie. the minimum kernel version required is 4.14).
+    if (!access(CGROUP_SOCKET_PROG_PATH, F_OK)) {
+        RETURN_IF_NOT_OK(
+                attachProgramToCgroup(CGROUP_SOCKET_PROG_PATH, cg_fd, BPF_CGROUP_INET_SOCK_CREATE));
+    }
     return netdutils::status::ok;
 }
 
@@ -287,7 +313,11 @@ Status TrafficController::start() {
     return netdutils::status::ok;
 }
 
-int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid) {
+int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t callingUid) {
+    if (uid != callingUid && !hasUpdateDeviceStatsPermission(callingUid)) {
+        return -EPERM;
+    }
+
     if (!ebpfSupported) {
         if (legacy_tagSocket(sockFd, tag, uid)) return -errno;
         return 0;
@@ -325,9 +355,11 @@ int TrafficController::untagSocket(int sockFd) {
     return -res.code();
 }
 
-int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
+int TrafficController::setCounterSet(int counterSetNum, uid_t uid, uid_t callingUid) {
     if (counterSetNum < 0 || counterSetNum >= OVERFLOW_COUNTERSET) return -EINVAL;
-    Status res;
+
+    if (!hasUpdateDeviceStatsPermission(callingUid)) return -EPERM;
+
     if (!ebpfSupported) {
         if (legacy_setCounterSet(counterSetNum, uid)) return -errno;
         return 0;
@@ -345,7 +377,7 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
         }
     }
     uint8_t tmpCounterSetNum = (uint8_t)counterSetNum;
-    res = mUidCounterSetMap.writeValue(uid, tmpCounterSetNum, BPF_ANY);
+    Status res = mUidCounterSetMap.writeValue(uid, tmpCounterSetNum, BPF_ANY);
     if (!isOk(res)) {
         ALOGE("Failed to set the counterSet: %s, fd: %d", strerror(res.code()),
               mUidCounterSetMap.getMap().get());
@@ -357,7 +389,9 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid) {
 // This method only get called by system_server when an app get uinstalled, it
 // is called inside removeUidsLocked() while holding mStatsLock. So it is safe
 // to iterate and modify the stats maps.
-int TrafficController::deleteTagData(uint32_t tag, uid_t uid) {
+int TrafficController::deleteTagData(uint32_t tag, uid_t uid, uid_t callingUid) {
+    if (!hasUpdateDeviceStatsPermission(callingUid)) return -EPERM;
+
     if (!ebpfSupported) {
         if (legacy_deleteTagData(tag, uid)) return -errno;
         return 0;
@@ -639,6 +673,33 @@ bool TrafficController::checkBpfStatsEnable() {
     return ebpfSupported;
 }
 
+void TrafficController::setPermissionForUids(int permission, const std::vector<uid_t>& uids) {
+    bool internet = (permission & INetd::PERMISSION_INTERNET);
+    bool privileged = (permission & INetd::PERMISSION_UPDATE_DEVICE_STATS);
+
+    for (uid_t uid : uids) {
+        if (internet) {
+            Status ret = mUidPermissionMap.writeValue(uid, ALLOW_SOCK_CREATE, BPF_ANY);
+            if (!isOk(ret)) {
+                ALOGE("Failed to grant INTERNET permission to uid: %u: %s", uid,
+                      strerror(ret.code()));
+            }
+        } else {
+            Status ret = mUidPermissionMap.deleteValue(uid);
+            if (!isOk(ret) && ret.code() != ENOENT) {
+                ALOGE("Failed to revoke permission INTERNET from uid: %u: %s", uid,
+                      strerror(ret.code()));
+            }
+        }
+
+        if (privileged) {
+            mPrivilegedUser.insert(uid);
+        } else {
+            mPrivilegedUser.erase(uid);
+        }
+    }
+}
+
 std::string getProgramStatus(const char *path) {
     int ret = access(path, R_OK);
     if (ret == 0) {
@@ -849,6 +910,21 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     res = mUidOwnerMap.iterateWithValue(printUidMatchInfo);
     if (!isOk(res)) {
         dw.println("mUidOwnerMap print end with error: %s", res.msg().c_str());
+    }
+    dumpBpfMap("mUidPermissionMap", dw, "");
+    const auto printUidPermissionInfo = [&dw](const uint32_t& key, const uint8_t& value,
+                                              const BpfMap<uint32_t, uint8_t>&) {
+        dw.println("%u %s", key, UidPermissionTypeToString(value).c_str());
+        return netdutils::status::ok;
+    };
+    res = mUidPermissionMap.iterateWithValue(printUidPermissionInfo);
+    if (!isOk(res)) {
+        dw.println("mUidPermissionMap print end with error: %s", res.msg().c_str());
+    }
+
+    dumpBpfMap("mPrivilegedUser", dw, "");
+    for (uid_t uid : mPrivilegedUser) {
+        dw.println("%u ALLOW_UPDATE_DEVICE_STATS", (uint32_t)uid);
     }
 }
 
