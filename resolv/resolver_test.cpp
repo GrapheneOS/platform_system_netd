@@ -1621,7 +1621,7 @@ TEST_F(ResolverTest, StrictMode_NoTlsServers) {
 
 namespace {
 
-int getAsyncResponse(int fd, int* rcode, u_char* buf, int bufLen) {
+int getAsyncResponse(int fd, int* rcode, uint8_t* buf, int bufLen) {
     struct pollfd wait_fd[1];
     wait_fd[0].fd = fd;
     wait_fd[0].events = POLLIN;
@@ -1641,7 +1641,7 @@ int getAsyncResponse(int fd, int* rcode, u_char* buf, int bufLen) {
     return -1;
 }
 
-std::string toString(u_char* buf, int bufLen, int ipType) {
+std::string toString(uint8_t* buf, int bufLen, int ipType) {
     ns_msg handle;
     int ancount, n = 0;
     ns_rr rr;
@@ -1649,7 +1649,7 @@ std::string toString(u_char* buf, int bufLen, int ipType) {
     if (ns_initparse((const uint8_t*) buf, bufLen, &handle) >= 0) {
         ancount = ns_msg_count(handle, ns_s_an);
         if (ns_parserr(&handle, ns_s_an, n, &rr) == 0) {
-            const u_char* rdata = ns_rr_rdata(rr);
+            const uint8_t* rdata = ns_rr_rdata(rr);
             char buffer[INET6_ADDRSTRLEN];
             if (inet_ntop(ipType, (const char*) rdata, buffer, sizeof(buffer))) {
                 return buffer;
@@ -1718,7 +1718,7 @@ TEST_F(ResolverTest, Async_NormalQueryV4V6) {
     EXPECT_TRUE(fd1 != -1);
     EXPECT_TRUE(fd2 != -1);
 
-    u_char buf[MAXPACKET] = {};
+    uint8_t buf[MAXPACKET] = {};
     int rcode;
     int res = getAsyncResponse(fd2, &rcode, buf, MAXPACKET);
     EXPECT_GT(res, 0);
@@ -1782,7 +1782,7 @@ TEST_F(ResolverTest, Async_BadQuery) {
 
     // dns_responder return empty resp(packet only contains query part) with no error currently
     for (const auto& td : kTestData) {
-        u_char buf[MAXPACKET] = {};
+        uint8_t buf[MAXPACKET] = {};
         int rcode;
         SCOPED_TRACE(td.dname);
         int res = getAsyncResponse(td.fd, &rcode, buf, MAXPACKET);
@@ -1899,7 +1899,7 @@ TEST_F(ResolverTest, Async_MalformedQuery) {
     ssize_t rc = TEMP_FAILURE_RETRY(write(fd, cmd.c_str(), cmd.size()));
     EXPECT_EQ(rc, static_cast<ssize_t>(cmd.size()));
 
-    u_char smallBuf[1] = {};
+    uint8_t smallBuf[1] = {};
     int rcode;
     rc = getAsyncResponse(fd, &rcode, smallBuf, 1);
     EXPECT_EQ(-EMSGSIZE, rc);
@@ -1909,7 +1909,7 @@ TEST_F(ResolverTest, Async_MalformedQuery) {
     EXPECT_TRUE(fd > 0);
     rc = TEMP_FAILURE_RETRY(write(fd, cmd.c_str(), cmd.size()));
     EXPECT_EQ(rc, static_cast<ssize_t>(cmd.size()));
-    u_char buf[MAXPACKET] = {};
+    uint8_t buf[MAXPACKET] = {};
     rc = getAsyncResponse(fd, &rcode, buf, MAXPACKET);
     EXPECT_EQ("1.2.3.4", toString(buf, rc, AF_INET));
 }
@@ -1981,19 +1981,25 @@ TEST_F(ResolverTest, Async_CacheFlags) {
 }
 
 TEST_F(ResolverTest, Async_NoRetryFlag) {
-    constexpr char listen_addr[] = "127.0.0.4";
+    constexpr char listen_addr0[] = "127.0.0.4";
+    constexpr char listen_addr1[] = "127.0.0.6";
     constexpr char host_name[] = "howdy.example.com.";
     const std::vector<DnsRecord> records = {
             {host_name, ns_type::ns_t_a, "1.2.3.4"},
             {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
     };
 
-    test::DNSResponder dns(listen_addr);
-    StartDns(dns, records);
-    std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
+    test::DNSResponder dns0(listen_addr0);
+    test::DNSResponder dns1(listen_addr1);
+    StartDns(dns0, records);
+    StartDns(dns1, records);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork({listen_addr0, listen_addr1}));
 
-    dns.setResponseProbability(0.0);
+    dns0.clearQueries();
+    dns1.clearQueries();
+
+    dns0.setResponseProbability(0.0);
+    dns1.setResponseProbability(0.0);
 
     int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a,
                               ANDROID_RESOLV_NO_RETRY);
@@ -2007,10 +2013,11 @@ TEST_F(ResolverTest, Async_NoRetryFlag) {
     expectAnswersNotValid(fd1, -ETIMEDOUT);
     expectAnswersNotValid(fd2, -ETIMEDOUT);
 
-    // No retry case, expect 2 queries
-    EXPECT_EQ(2U, GetNumQueries(dns, host_name));
+    // No retry case, expect total 2 queries. The server is selected randomly.
+    EXPECT_EQ(2U, GetNumQueries(dns0, host_name) + GetNumQueries(dns1, host_name));
 
-    dns.clearQueries();
+    dns0.clearQueries();
+    dns1.clearQueries();
 
     fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a, 0);
     EXPECT_TRUE(fd1 != -1);
@@ -2023,7 +2030,80 @@ TEST_F(ResolverTest, Async_NoRetryFlag) {
     expectAnswersNotValid(fd2, -ETIMEDOUT);
 
     // Retry case, expect 4 queries
-    EXPECT_EQ(4U, GetNumQueries(dns, host_name));
+    EXPECT_EQ(4U, GetNumQueries(dns0, host_name));
+    EXPECT_EQ(4U, GetNumQueries(dns1, host_name));
+}
+
+TEST_F(ResolverTest, Async_VerifyQueryID) {
+    constexpr char listen_addr[] = "127.0.0.4";
+    constexpr char host_name[] = "howdy.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
+    std::vector<std::string> servers = {listen_addr};
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
+
+    const uint8_t queryBuf1[] = {
+            /* Header */
+            0x55, 0x66, /* Transaction ID */
+            0x01, 0x00, /* Flags */
+            0x00, 0x01, /* Questions */
+            0x00, 0x00, /* Answer RRs */
+            0x00, 0x00, /* Authority RRs */
+            0x00, 0x00, /* Additional RRs */
+            /* Queries */
+            0x05, 0x68, 0x6f, 0x77, 0x64, 0x79, 0x07, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65,
+            0x03, 0x63, 0x6f, 0x6d, 0x00, /* Name */
+            0x00, 0x01,                   /* Type */
+            0x00, 0x01                    /* Class */
+    };
+
+    int fd = resNetworkSend(TEST_NETID, queryBuf1, sizeof(queryBuf1), 0);
+    EXPECT_TRUE(fd != -1);
+
+    uint8_t buf[MAXPACKET] = {};
+    int rcode;
+
+    int res = getAsyncResponse(fd, &rcode, buf, MAXPACKET);
+    EXPECT_GT(res, 0);
+    EXPECT_EQ("1.2.3.4", toString(buf, res, AF_INET));
+
+    auto hp = reinterpret_cast<HEADER*>(buf);
+    EXPECT_EQ(21862U, htons(hp->id));
+
+    EXPECT_EQ(1U, GetNumQueries(dns, host_name));
+
+    const uint8_t queryBuf2[] = {
+            /* Header */
+            0x00, 0x53, /* Transaction ID */
+            0x01, 0x00, /* Flags */
+            0x00, 0x01, /* Questions */
+            0x00, 0x00, /* Answer RRs */
+            0x00, 0x00, /* Authority RRs */
+            0x00, 0x00, /* Additional RRs */
+            /* Queries */
+            0x05, 0x68, 0x6f, 0x77, 0x64, 0x79, 0x07, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65,
+            0x03, 0x63, 0x6f, 0x6d, 0x00, /* Name */
+            0x00, 0x01,                   /* Type */
+            0x00, 0x01                    /* Class */
+    };
+
+    // Re-query verify cache works and query id is correct
+    fd = resNetworkSend(TEST_NETID, queryBuf2, sizeof(queryBuf2), 0);
+
+    EXPECT_TRUE(fd != -1);
+
+    res = getAsyncResponse(fd, &rcode, buf, MAXPACKET);
+    EXPECT_GT(res, 0);
+    EXPECT_EQ("1.2.3.4", toString(buf, res, AF_INET));
+
+    EXPECT_EQ(0x0053U, htons(hp->id));
+
+    EXPECT_EQ(1U, GetNumQueries(dns, host_name));
 }
 
 // This test checks that the resolver should not generate the request containing OPT RR when using

@@ -246,6 +246,15 @@ static int random_bind(int s, int family) {
 }
 /* BIONIC-END */
 
+// Disables all nameservers other than selectedServer
+static void res_set_usable_server(int selectedServer, int nscount, bool usable_servers[]) {
+    int usableIndex = 0;
+    for (int ns = 0; ns < nscount; ns++) {
+        if (usable_servers[ns]) ++usableIndex;
+        if (usableIndex != selectedServer) usable_servers[ns] = false;
+    }
+}
+
 /* int
  * res_isourserver(ina)
  *	looks up "ina" in _res.ns_addr_list[]
@@ -493,7 +502,16 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         return -ESRCH;
     }
     bool usable_servers[MAXNS];
-    android_net_res_stats_get_usable_servers(&params, stats, statp->nscount, usable_servers);
+    int usableServersCount = android_net_res_stats_get_usable_servers(
+            &params, stats, statp->nscount, usable_servers);
+
+    if ((flags & ANDROID_RESOLV_NO_RETRY) && usableServersCount > 1) {
+        auto hp = reinterpret_cast<const HEADER*>(buf);
+
+        // Select a random server based on the query id
+        int selectedServer = (hp->id % usableServersCount) + 1;
+        res_set_usable_server(selectedServer, statp->nscount, usable_servers);
+    }
     if (params.retry_count != 0) statp->retry = params.retry_count;
 
     /*
