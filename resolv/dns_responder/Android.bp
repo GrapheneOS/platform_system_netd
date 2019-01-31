@@ -1,10 +1,6 @@
 cc_library_static {
     name: "libnetd_test_dnsresponder",
     defaults: ["netd_defaults"],
-    cflags: [
-        "-Wunused-parameter",
-        "-Wthread-safety",
-    ],
     shared_libs: [
         "libbase",
         "libbinder",
