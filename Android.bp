@@ -20,15 +20,23 @@ cc_defaults {
     tidy_checks: [
         "android-*",
         "cert-*",
-        // Disabling cert-err34-c for now because it complains about each use
-        // of atoi() and sscanf() in protocol parsers.
-        // TODO: re-aneble cert-err34-c once we move to Binder.
-        "-cert-err34-c",
         "clang-analyzer-security*",
-        // Disabling due to many unavoidable warnings from strtol() usage.
-        "-google-runtime-int",
+        "google-*",
+        "misc-*",
+        "performance-*",
+        "-cert-err34-c",  // TODO: re-enable after removing atoi() and sscanf() calls
+        "-google-readability-*",  // Too pedantic
+        "-google-runtime-int",  // Too many unavoidable warnings due to strtol()
+        "-google-runtime-references",  // Grandfathered usage of pass by non-const reference
+        "-misc-non-private-member-variables-in-classes",  // Also complains about structs
     ],
     tidy_flags: [
-        "-warnings-as-errors=android-*,clang-analyzer-security*,cert-*"
+        "-warnings-as-errors="
+        + "'android-*'"
+        + ",'clang-analyzer-security*'"
+        + ",'cert-*'"
+        + ",'google-*'"
+        + ",'performance-*'"
+        + ",'misc-*'"
     ],
 }

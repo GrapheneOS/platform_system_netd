@@ -59,7 +59,6 @@ namespace net {
 
 using base::StringPrintf;
 using base::unique_fd;
-using base::Join;
 using netdutils::extract;
 using netdutils::Slice;
 using netdutils::sSyscalls;
@@ -721,6 +720,7 @@ std::string getMapStatus(const base::unique_fd& map_fd, const char* path) {
     return StringPrintf("OK");
 }
 
+// NOLINTNEXTLINE(google-runtime-references): grandfathered pass by non-const reference
 void dumpBpfMap(const std::string& mapName, DumpWriter& dw, const std::string& header) {
     dw.blankline();
     dw.println("%s:", mapName.c_str());

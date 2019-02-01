@@ -32,16 +32,14 @@
 namespace android {
 namespace net {
 
+using netdutils::extract;
+using netdutils::findWithDefault;
+using netdutils::makeSlice;
 using netdutils::Slice;
+using netdutils::sSyscalls;
 using netdutils::Status;
 using netdutils::StatusOr;
-using netdutils::UniqueFd;
-using netdutils::Status;
-using netdutils::makeSlice;
-using netdutils::sSyscalls;
-using netdutils::findWithDefault;
 using netdutils::status::ok;
-using netdutils::extract;
 
 constexpr int kNFLogConfigMsgType = (NFNL_SUBSYS_ULOG << 8) | NFULNL_MSG_CONFIG;
 constexpr int kNFLogPacketMsgType = (NFNL_SUBSYS_ULOG << 8) | NFULNL_MSG_PACKET;

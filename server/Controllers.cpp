@@ -35,7 +35,6 @@
 namespace android {
 namespace net {
 
-using android::base::Join;
 using android::base::StringPrintf;
 using android::base::StringAppendF;
 
