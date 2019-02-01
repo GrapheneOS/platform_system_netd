@@ -30,7 +30,6 @@
 #include "IptablesBaseTest.h"
 
 using android::base::Join;
-using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 
 namespace android {
@@ -86,8 +85,8 @@ TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
         "COMMIT\n"
     };
     std::vector<std::pair<IptablesTarget, std::string>> expectedRestoreCommands = {
-        { V4, android::base::Join(expectedRestore4, '\n') },
-        { V6, android::base::Join(expectedRestore6, '\n') },
+            {V4, Join(expectedRestore4, '\n')},
+            {V6, Join(expectedRestore6, '\n')},
     };
 
     createChain("fw_whitelist", WHITELIST);
@@ -104,8 +103,8 @@ TEST_F(FirewallControllerTest, TestCreateBlacklistChain) {
         "COMMIT\n"
     };
     std::vector<std::pair<IptablesTarget, std::string>> expectedRestoreCommands = {
-        { V4, android::base::Join(expectedRestore, '\n') },
-        { V6, android::base::Join(expectedRestore, '\n') },
+            {V4, Join(expectedRestore, '\n')},
+            {V6, Join(expectedRestore, '\n')},
     };
 
     createChain("fw_blacklist", BLACKLIST);

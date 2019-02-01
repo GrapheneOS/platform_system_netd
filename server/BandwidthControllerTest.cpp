@@ -38,18 +38,17 @@
 #include "netdbpf/bpf_shared.h"
 #include "tun_interface.h"
 
+using ::testing::_;
 using ::testing::ByMove;
 using ::testing::Invoke;
 using ::testing::Return;
 using ::testing::StrictMock;
-using ::testing::Test;
-using ::testing::_;
 
 using android::base::Join;
 using android::base::StringPrintf;
 using android::net::TunInterface;
-using android::netdutils::status::ok;
 using android::netdutils::UniqueFile;
+using android::netdutils::status::ok;
 
 const std::string ACCOUNT_RULES_WITHOUT_BPF =
         "*filter\n"

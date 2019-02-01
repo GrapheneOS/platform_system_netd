@@ -35,7 +35,6 @@
 #include <android-base/properties.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
-#include <binder/ProcessState.h>
 
 #include "CommandListener.h"
 #include "Controllers.h"
@@ -51,18 +50,15 @@
 
 #include "netd_resolv/resolv_stub.h"
 
-using android::status_t;
-using android::sp;
 using android::IPCThreadState;
-using android::ProcessState;
-using android::defaultServiceManager;
+using android::status_t;
 using android::net::CommandListener;
 using android::net::FwmarkServer;
+using android::net::makeNFLogListener;
 using android::net::NetdHwService;
 using android::net::NetdNativeService;
 using android::net::NetlinkManager;
 using android::net::NFLogListener;
-using android::net::makeNFLogListener;
 
 const char* const PID_FILE_PATH = "/data/misc/net/netd_pid";
 constexpr const char DNSPROXYLISTENER_SOCKET_NAME[] = "dnsproxyd";
@@ -70,8 +66,8 @@ constexpr const char DNSPROXYLISTENER_SOCKET_NAME[] = "dnsproxyd";
 std::mutex android::net::gBigNetdLock;
 
 int main() {
-    using android::net::gLog;
     using android::net::gCtls;
+    using android::net::gLog;
     Stopwatch s;
     gLog.info("netd 1.0 starting");
 
