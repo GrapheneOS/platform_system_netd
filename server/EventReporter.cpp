@@ -38,36 +38,35 @@ android::sp<INetdEventListener> EventReporter::getNetdEventListener() {
     return mNetdEventListener;
 }
 
-std::map<pid_t, const android::sp<INetdUnsolicitedEventListener>>
-EventReporter::getNetdUnsolicitedEventListenerVec() {
+EventReporter::UnsolListeners EventReporter::getNetdUnsolicitedEventListeners() {
     std::lock_guard lock(mUnsolicitedMutex);
-    return mNetdUnsolicitedEventListenerMap;
+    return mUnsolListeners;
 }
 
 void EventReporter::registerUnsolEventListener(
-        pid_t pid, const android::sp<INetdUnsolicitedEventListener>& listener) {
+        const android::sp<INetdUnsolicitedEventListener>& listener) {
     std::lock_guard lock(mUnsolicitedMutex);
-    if (mNetdUnsolicitedEventListenerMap.find(pid) != mNetdUnsolicitedEventListenerMap.end()) {
-        return;
-    }
-    mNetdUnsolicitedEventListenerMap.insert({pid, listener});
+    mUnsolListeners.insert(listener);
 
     // Create the death listener.
     class DeathRecipient : public android::IBinder::DeathRecipient {
       public:
-        DeathRecipient(UnsolListenerMap* map, pid_t pid, std::mutex& unsolMutex)
-            : mNetdUnsolicitedEventListenerMap(map), mPid(pid), mMutex(unsolMutex) {}
+        DeathRecipient(UnsolListeners* listeners,
+                       android::sp<INetdUnsolicitedEventListener> listener, std::mutex& unsolMutex)
+            : mMutex(unsolMutex), mUnsolListeners(listeners), mListener(std::move(listener)) {}
+        ~DeathRecipient() override = default;
 
       private:
         void binderDied(const android::wp<android::IBinder>& /* who */) override {
             std::lock_guard lock(mMutex);
-            mNetdUnsolicitedEventListenerMap->erase(mPid);
+            mUnsolListeners->erase(mListener);
         }
-        UnsolListenerMap* mNetdUnsolicitedEventListenerMap;
-        pid_t mPid;
+
         std::mutex& mMutex;
+        UnsolListeners* mUnsolListeners GUARDED_BY(mMutex);
+        android::sp<INetdUnsolicitedEventListener> mListener;
     };
     android::sp<android::IBinder::DeathRecipient> deathRecipient =
-            new DeathRecipient(&mNetdUnsolicitedEventListenerMap, pid, mUnsolicitedMutex);
+            new DeathRecipient(&mUnsolListeners, listener, mUnsolicitedMutex);
     android::IInterface::asBinder(listener)->linkToDeath(deathRecipient);
 }
