@@ -37,8 +37,6 @@
 #include "bpf/BpfUtils.h"
 #include "netdbpf/bpf_shared.h"
 
-using android::base::unique_fd;
-using android::netdutils::status::ok;
 using android::netdutils::StatusOr;
 
 namespace android {

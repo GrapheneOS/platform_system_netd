@@ -104,8 +104,8 @@ public:
         processTerminated = true;
     }
 
-    const pid_t pid;
-    const int stdIn;
+    const pid_t pid;  // NOLINT(misc-non-private-member-variables-in-classes)
+    const int stdIn;  // NOLINT(misc-non-private-member-variables-in-classes)
 
     struct pollfd pollFds[2];
     std::string errBuf;
