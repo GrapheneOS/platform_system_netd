@@ -1518,10 +1518,8 @@ binder::Status NetdNativeService::getPrefix64(int netId, std::string* _aidl_retu
 binder::Status NetdNativeService::registerUnsolicitedEventListener(
         const android::sp<android::net::INetdUnsolicitedEventListener>& listener) {
     ENFORCE_PERMISSION(NETWORK_STACK);
-    pid_t pid = IPCThreadState::self()->getCallingPid();
-    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(pid);
-
-    gCtls->eventReporter.registerUnsolEventListener(pid, listener);
+    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
+    gCtls->eventReporter.registerUnsolEventListener(listener);
     gLog.log(entry.withAutomaticDuration());
     return binder::Status::ok();
 }
