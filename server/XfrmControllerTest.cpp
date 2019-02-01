@@ -60,8 +60,6 @@ using android::netdutils::Fd;
 using android::netdutils::MockSyscalls;
 using android::netdutils::Slice;
 using android::netdutils::Status;
-using android::netdutils::StatusOr;
-using android::netdutils::Syscalls;
 
 using ::testing::_;
 using ::testing::DoAll;

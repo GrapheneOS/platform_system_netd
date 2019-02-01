@@ -56,7 +56,6 @@
 #include "ResolverStats.h"
 
 #include "android/net/INetd.h"
-#include "android/net/metrics/INetdEventListener.h"
 #include "binder/IServiceManager.h"
 #include "netdutils/SocketOption.h"
 
@@ -72,7 +71,6 @@ extern "C" int android_getaddrinfofornet(const char* hostname, const char* servn
 
 using android::base::StringPrintf;
 using android::net::ResolverStats;
-using android::net::metrics::INetdEventListener;
 using android::netdutils::enableSockopt;
 
 // TODO: move into libnetdutils?

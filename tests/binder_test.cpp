@@ -71,7 +71,6 @@
 #define NAT_TABLE "nat"
 
 namespace binder = android::binder;
-namespace netdutils = android::netdutils;
 
 using android::IBinder;
 using android::IServiceManager;
@@ -83,7 +82,6 @@ using android::base::ReadFileToString;
 using android::base::StartsWith;
 using android::base::StringPrintf;
 using android::base::Trim;
-using android::base::WriteStringToFile;
 using android::bpf::hasBpfSupport;
 using android::net::INetd;
 using android::net::InterfaceConfigurationParcel;
@@ -91,7 +89,6 @@ using android::net::InterfaceController;
 using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
-using android::net::XfrmController;
 using android::netdutils::sSyscalls;
 
 #define SKIP_IF_BPF_SUPPORTED        \
@@ -352,6 +349,9 @@ TEST_F(BinderTest, IpSecSetEncapSocketOwner) {
 // IPsec tests are not run in 32 bit mode; both 32-bit kernels and
 // mismatched ABIs (64-bit kernel with 32-bit userspace) are unsupported.
 #if INTPTR_MAX != INT32_MAX
+
+using android::net::XfrmController;
+
 static const int XFRM_DIRECTIONS[] = {static_cast<int>(android::net::XfrmDirection::IN),
                                       static_cast<int>(android::net::XfrmDirection::OUT)};
 static const int ADDRESS_FAMILIES[] = {AF_INET, AF_INET6};
@@ -359,7 +359,7 @@ static const int ADDRESS_FAMILIES[] = {AF_INET, AF_INET6};
 #define RETURN_FALSE_IF_NEQ(_expect_, _ret_) \
         do { if ((_expect_) != (_ret_)) return false; } while(false)
 bool BinderTest::allocateIpSecResources(bool expectOk, int32_t* spi) {
-    netdutils::Status status = XfrmController::ipSecAllocateSpi(0, "::", "::1", 123, spi);
+    android::netdutils::Status status = XfrmController::ipSecAllocateSpi(0, "::", "::1", 123, spi);
     SCOPED_TRACE(status);
     RETURN_FALSE_IF_NEQ(status.ok(), expectOk);
 
@@ -375,7 +375,7 @@ bool BinderTest::allocateIpSecResources(bool expectOk, int32_t* spi) {
 }
 
 TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV4) {
-    binder::Status status;
+    android::binder::Status status;
 
     // Repeat to ensure cleanup and recreation works correctly
     for (int i = 0; i < 2; i++) {
@@ -423,7 +423,7 @@ TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV6) {
 }
 
 TEST_F(BinderTest, XfrmControllerInit) {
-    netdutils::Status status;
+    android::netdutils::Status status;
     status = XfrmController::Init();
     SCOPED_TRACE(status);
 
@@ -454,7 +454,8 @@ TEST_F(BinderTest, XfrmControllerInit) {
     // Remove Virtual Tunnel Interface.
     ASSERT_TRUE(XfrmController::ipSecRemoveTunnelInterface("ipsec_test").ok());
 }
-#endif
+
+#endif  // INTPTR_MAX != INT32_MAX
 
 static int bandwidthDataSaverEnabled(const char *binary) {
     std::vector<std::string> lines = listIptablesRule(binary, "bw_data_saver");
