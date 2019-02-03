@@ -33,7 +33,6 @@
 #include <cutils/qtaguid.h>
 
 #include <netdutils/Misc.h>
-#include <netdutils/StatusOr.h>
 #include <netdutils/Syscalls.h>
 #include "NetlinkListener.h"
 #include "TrafficController.h"
@@ -49,14 +48,8 @@ constexpr uint32_t TEST_TAG = 0xFF0F0F0F;
 constexpr uint32_t SOCK_CLOSE_WAIT_US = 10 * 1000;
 constexpr uint32_t ENOBUFS_POLL_WAIT_US = 10 * 1000;
 
-using android::net::NetlinkListenerInterface;
-using android::net::TrafficController;
-using android::netdutils::Slice;
-using android::netdutils::sSyscalls;
 using android::netdutils::Status;
 using android::netdutils::statusFromErrno;
-using android::netdutils::StatusOr;
-using android::netdutils::status::ok;
 
 #define SKIP_TEST_IF_BPF_NOT_SUPPORTED()                                             \
     do {                                                                             \
@@ -119,8 +112,8 @@ class NetlinkListenerTest : public testing::Test {
     }
 
     void checkMassiveSocketDestroy(const int totalNumber, bool expectError) {
-        std::unique_ptr<NetlinkListenerInterface> skDestroyListener;
-        auto result = TrafficController::makeSkDestroyListener();
+        std::unique_ptr<android::net::NetlinkListenerInterface> skDestroyListener;
+        auto result = android::net::TrafficController::makeSkDestroyListener();
         if (!isOk(result)) {
             ALOGE("Unable to create SkDestroyListener: %s", toString(result).c_str());
         } else {

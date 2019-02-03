@@ -43,6 +43,7 @@
 
 #include <netdutils/Misc.h>
 #include <netdutils/Syscalls.h>
+#include <processgroup/processgroup.h>
 #include "TrafficController.h"
 #include "bpf/BpfMap.h"
 
@@ -59,7 +60,6 @@ namespace net {
 
 using base::StringPrintf;
 using base::unique_fd;
-using base::Join;
 using netdutils::extract;
 using netdutils::Slice;
 using netdutils::sSyscalls;
@@ -230,7 +230,15 @@ static Status attachProgramToCgroup(const char* programPath, const int cgroupFd,
 }
 
 static Status initPrograms() {
-    unique_fd cg_fd(open(CGROUP_ROOT_PATH, O_DIRECTORY | O_RDONLY | O_CLOEXEC));
+    std::string cg2_path;
+
+    if (!CgroupGetControllerPath(CGROUPV2_CONTROLLER_NAME, &cg2_path)) {
+         int ret = errno;
+         ALOGE("Failed to find cgroup v2 root");
+         return statusFromErrno(ret, "Failed to find cgroup v2 root");
+    }
+
+    unique_fd cg_fd(open(cg2_path.c_str(), O_DIRECTORY | O_RDONLY | O_CLOEXEC));
     if (cg_fd == -1) {
         int ret = errno;
         ALOGE("Failed to open the cgroup directory: %s", strerror(ret));
@@ -721,6 +729,7 @@ std::string getMapStatus(const base::unique_fd& map_fd, const char* path) {
     return StringPrintf("OK");
 }
 
+// NOLINTNEXTLINE(google-runtime-references): grandfathered pass by non-const reference
 void dumpBpfMap(const std::string& mapName, DumpWriter& dw, const std::string& header) {
     dw.blankline();
     dw.println("%s:", mapName.c_str());
