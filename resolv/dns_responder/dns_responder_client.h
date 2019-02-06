@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2019 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless requied by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
 #ifndef DNS_RESPONDER_CLIENT_H
 #define DNS_RESPONDER_CLIENT_H
 
@@ -15,6 +32,15 @@
 #include "NetdClient.h"
 #include "dns_responder.h"
 
+inline const std::vector<std::string> kDefaultServers = {"127.0.0.3"};
+inline const std::vector<std::string> kDefaultSearchDomains = {"example.com"};
+inline const std::vector<int> kDefaultParams = {
+        300,     // sample validity in seconds
+        25,      // success threshod in percent
+        8,   8,  // {MIN,MAX}_SAMPLES
+        100,     // BASE_TIMEOUT_MSEC
+};
+
 class DnsResponderClient {
 public:
     struct Mapping {
@@ -29,8 +55,9 @@ public:
     static void SetupMappings(unsigned num_hosts, const std::vector<std::string>& domains,
             std::vector<Mapping>* mappings);
 
-    bool SetResolversForNetwork(const std::vector<std::string>& servers,
-            const std::vector<std::string>& domains, const std::vector<int>& params);
+    bool SetResolversForNetwork(const std::vector<std::string>& servers = kDefaultServers,
+                                const std::vector<std::string>& domains = kDefaultSearchDomains,
+                                const std::vector<int>& params = kDefaultParams);
 
     bool SetResolversForNetwork(const std::vector<std::string>& servers,
             const std::vector<std::string>& searchDomains,

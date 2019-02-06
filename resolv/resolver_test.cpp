@@ -109,6 +109,12 @@ bool UnorderedCompareArray(const A& a, const B& b) {
 
 class ResolverTest : public ::testing::Test {
   protected:
+    struct DnsRecord {
+        std::string host_name;  // host name
+        ns_type type;           // record type
+        std::string addr;       // ipv4/v6 address
+    };
+
     void SetUp() { mDnsClient.SetUp(); }
     void TearDown() { mDnsClient.TearDown(); }
 
@@ -234,7 +240,7 @@ class ResolverTest : public ::testing::Test {
         ASSERT_NO_FATAL_FAILURE(mDnsClient.SetupMappings(num_hosts, domains, &mappings));
         ASSERT_NO_FATAL_FAILURE(mDnsClient.SetupDNSServers(MAXNS, mappings, &dns, &servers));
 
-        ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains, mDefaultParams));
+        ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains, kDefaultParams));
 
         auto t0 = std::chrono::steady_clock::now();
         std::vector<std::thread> threads(num_threads);
@@ -269,32 +275,32 @@ class ResolverTest : public ::testing::Test {
         ASSERT_NO_FATAL_FAILURE(mDnsClient.ShutdownDNSServers(&dns));
     }
 
-    const std::vector<std::string> mDefaultSearchDomains = { "example.com" };
-    // <sample validity in s> <success threshold in percent> <min samples> <max samples>
-    const std::vector<int> mDefaultParams = {
-            300,     // SAMPLE_VALIDITY
-            25,      // SUCCESS_THRESHOLD
-            8,   8,  // {MIN,MAX}_SAMPLES
-            100,     // BASE_TIMEOUT_MSEC
-    };
+    void StartDns(test::DNSResponder& dns, const std::vector<DnsRecord>& records) {
+        for (const auto& r : records) {
+            dns.addMapping(r.host_name, r.type, r.addr);
+        }
+
+        ASSERT_TRUE(dns.startServer());
+        dns.clearQueries();
+    }
 
     DnsResponderClient mDnsClient;
+
+    static constexpr char kLocalHost[] = "localhost";
+    static constexpr char kLocalHostAddr[] = "127.0.0.1";
+    static constexpr char kIp6LocalHost[] = "ip6-localhost";
+    static constexpr char kIp6LocalHostAddr[] = "::1";
+    static constexpr char kHelloExampleCom[] = "hello.example.com.";
 };
 
 TEST_F(ResolverTest, GetHostByName) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_srv = "53";
-    const char* host_name = "hello.example.com.";
-    const char *nonexistent_host_name = "nonexistent.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    constexpr char nonexistent_host_name[] = "nonexistent.example.com.";
+
+    test::DNSResponder dns;
+    StartDns(dns, {{kHelloExampleCom, ns_type::ns_t_a, "1.2.3.3"}});
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 
     const hostent* result;
-
-    dns.clearQueries();
     result = gethostbyname("nonexistent");
     EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, nonexistent_host_name));
     ASSERT_TRUE(result == nullptr);
@@ -302,41 +308,31 @@ TEST_F(ResolverTest, GetHostByName) {
 
     dns.clearQueries();
     result = gethostbyname("hello");
-    EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, host_name));
+    EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, kHelloExampleCom));
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
     EXPECT_EQ("1.2.3.3", ToString(result));
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
-
-    dns.stopServer();
 }
 
 TEST_F(ResolverTest, GetHostByName_localhost) {
-    constexpr char name[] = "localhost";
     constexpr char name_camelcase[] = "LocalHost";
-    constexpr char addr[] = "127.0.0.1";
-    constexpr char name_ip6[] = "ip6-localhost";
-    constexpr char addr_ip6[] = "::1";
     constexpr char name_ip6_dot[] = "ip6-localhost.";
     constexpr char name_ip6_fqdn[] = "ip6-localhost.example.com.";
 
     // Add a dummy nameserver which shouldn't receive any queries
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    test::DNSResponder dns;
+    StartDns(dns, {});
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 
     // Expect no DNS queries; localhost is resolved via /etc/hosts
-    const hostent* result = gethostbyname(name);
+    const hostent* result = gethostbyname(kLocalHost);
     EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
-    EXPECT_EQ(addr, ToString(result));
+    EXPECT_EQ(kLocalHostAddr, ToString(result));
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
 
     // Ensure the hosts file resolver ignores case of hostnames
@@ -345,7 +341,7 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
-    EXPECT_EQ(addr, ToString(result));
+    EXPECT_EQ(kLocalHostAddr, ToString(result));
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
 
     // The hosts file also contains ip6-localhost, but gethostbyname() won't
@@ -355,7 +351,7 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
     // So we check the legacy behavior, which results in amusing A-record
     // lookups for ip6-localhost, with and without search domains appended.
     dns.clearQueries();
-    result = gethostbyname(name_ip6);
+    result = gethostbyname(kIp6LocalHost);
     EXPECT_EQ(2U, dns.queries().size()) << dns.dumpQueries();
     EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6_dot)) << dns.dumpQueries();
     EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, name_ip6_fqdn)) << dns.dumpQueries();
@@ -364,29 +360,23 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
     // Finally, use gethostbyname2() to resolve ip6-localhost to ::1 from
     // the hosts file.
     dns.clearQueries();
-    result = gethostbyname2(name_ip6, AF_INET6);
+    result = gethostbyname2(kIp6LocalHost, AF_INET6);
     EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(16, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
-    EXPECT_EQ(addr_ip6, ToString(result));
+    EXPECT_EQ(kIp6LocalHostAddr, ToString(result));
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
-
-    dns.stopServer();
 }
 
 TEST_F(ResolverTest, GetHostByName_numeric) {
     // Add a dummy nameserver which shouldn't receive any queries
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    ASSERT_TRUE(dns.startServer());
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork({listen_addr}, mDefaultSearchDomains,
-                                                  mDefaultParams));
+    test::DNSResponder dns;
+    StartDns(dns, {});
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 
     // Numeric v4 address: expect no DNS queries
     constexpr char numeric_v4[] = "192.168.0.1";
-    dns.clearQueries();
     const hostent* result = gethostbyname(numeric_v4);
     EXPECT_EQ(0U, dns.queries().size());
     ASSERT_FALSE(result == nullptr);
@@ -422,8 +412,6 @@ TEST_F(ResolverTest, GetHostByName_numeric) {
     result = gethostbyname2(numeric_v6_scope, AF_INET6);
     EXPECT_EQ(2U, dns.queries().size());  // OUCH!
     ASSERT_TRUE(result == nullptr);
-
-    dns.stopServer();
 }
 
 TEST_F(ResolverTest, BinderSerialization) {
@@ -455,7 +443,7 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
     ASSERT_EQ(1U, mappings.size());
     const DnsResponderClient::Mapping& mapping = mappings[0];
 
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains, mDefaultParams));
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains, kDefaultParams));
 
     const hostent* result = gethostbyname(mapping.host.c_str());
     const size_t total_queries =
@@ -480,13 +468,13 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
     EXPECT_EQ(servers.size(), res_servers.size());
     EXPECT_EQ(domains.size(), res_domains.size());
     EXPECT_EQ(0U, res_tls_servers.size());
-    ASSERT_EQ(static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT), mDefaultParams.size());
-    EXPECT_EQ(mDefaultParams[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY], res_params.sample_validity);
-    EXPECT_EQ(mDefaultParams[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
+    ASSERT_EQ(static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT), kDefaultParams.size());
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY], res_params.sample_validity);
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
               res_params.success_threshold);
-    EXPECT_EQ(mDefaultParams[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
-    EXPECT_EQ(mDefaultParams[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
-    EXPECT_EQ(mDefaultParams[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
               res_params.base_timeout_msec);
     EXPECT_EQ(servers.size(), res_stats.size());
 
@@ -497,22 +485,20 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
 }
 
 TEST_F(ResolverTest, GetAddrInfo) {
-    const char* listen_addr = "127.0.0.4";
-    const char* listen_addr2 = "127.0.0.5";
-    const char* listen_srv = "53";
-    const char* host_name = "howdy.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.4";
+    constexpr char listen_addr2[] = "127.0.0.5";
+    constexpr char host_name[] = "howdy.example.com.";
 
-    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns2.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns2.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
-    ASSERT_TRUE(dns2.startServer());
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+    test::DNSResponder dns(listen_addr);
+    test::DNSResponder dns2(listen_addr2);
+    StartDns(dns, records);
+    StartDns(dns2, records);
 
-    std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork({listen_addr}));
     dns.clearQueries();
     dns2.clearQueries();
 
@@ -537,8 +523,7 @@ TEST_F(ResolverTest, GetAddrInfo) {
         << result_str;
 
     // Change the DNS resolver, ensure that queries are still cached.
-    servers = { listen_addr2 };
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork({listen_addr2}));
     dns.clearQueries();
     dns2.clearQueries();
 
@@ -553,68 +538,49 @@ TEST_F(ResolverTest, GetAddrInfo) {
     result_str = ToString(result);
     EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
         << ", result_str='" << result_str << "'";
-
-    dns.stopServer();
-    dns2.stopServer();
 }
 
 TEST_F(ResolverTest, GetAddrInfoV4) {
-    constexpr char listen_addr[] = "127.0.0.5";
-    constexpr char listen_srv[] = "53";
-    constexpr char host_name[] = "hola.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.5");
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    test::DNSResponder dns;
+    StartDns(dns, {{kHelloExampleCom, ns_type::ns_t_a, "1.2.3.5"}});
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 
-    addrinfo hints = {.ai_family = AF_INET};
-    ScopedAddrinfo result = safe_getaddrinfo("hola", nullptr, &hints);
+    const addrinfo hints = {.ai_family = AF_INET};
+    ScopedAddrinfo result = safe_getaddrinfo("hello", nullptr, &hints);
     EXPECT_TRUE(result != nullptr);
-    EXPECT_EQ(1U, GetNumQueries(dns, host_name));
+    EXPECT_EQ(1U, GetNumQueries(dns, kHelloExampleCom));
     EXPECT_EQ("1.2.3.5", ToString(result));
 }
 
 TEST_F(ResolverTest, GetAddrInfo_localhost) {
-    constexpr char name[] = "localhost";
-    constexpr char addr[] = "127.0.0.1";
-    constexpr char name_ip6[] = "ip6-localhost";
-    constexpr char addr_ip6[] = "::1";
-
     // Add a dummy nameserver which shouldn't receive any queries
-    constexpr char listen_addr[] = "127.0.0.5";
-    constexpr char listen_srv[] = "53";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    test::DNSResponder dns;
+    StartDns(dns, {});
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 
-    ScopedAddrinfo result = safe_getaddrinfo(name, nullptr, nullptr);
+    ScopedAddrinfo result = safe_getaddrinfo(kLocalHost, nullptr, nullptr);
     EXPECT_TRUE(result != nullptr);
     // Expect no DNS queries; localhost is resolved via /etc/hosts
     EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
-    EXPECT_EQ(addr, ToString(result));
+    EXPECT_EQ(kLocalHostAddr, ToString(result));
 
-    result = safe_getaddrinfo(name_ip6, nullptr, nullptr);
+    result = safe_getaddrinfo(kIp6LocalHost, nullptr, nullptr);
     EXPECT_TRUE(result != nullptr);
     // Expect no DNS queries; ip6-localhost is resolved via /etc/hosts
     EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
-    EXPECT_EQ(addr_ip6, ToString(result));
+    EXPECT_EQ(kIp6LocalHostAddr, ToString(result));
 }
 
 TEST_F(ResolverTest, MultidomainResolution) {
+    constexpr char host_name[] = "nihao.example2.com.";
     std::vector<std::string> searchDomains = { "example1.com", "example2.com", "example3.com" };
-    const char* listen_addr = "127.0.0.6";
-    const char* listen_srv = "53";
-    const char* host_name = "nihao.example2.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, searchDomains, mDefaultParams));
 
-    dns.clearQueries();
+    test::DNSResponder dns("127.0.0.6");
+    StartDns(dns, {{host_name, ns_type::ns_t_a, "1.2.3.3"}});
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork({"127.0.0.6"}, searchDomains));
+
     const hostent* result = gethostbyname("nihao");
+
     EXPECT_EQ(1U, GetNumQueriesForType(dns, ns_type::ns_t_a, host_name));
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);
@@ -625,17 +591,13 @@ TEST_F(ResolverTest, MultidomainResolution) {
 }
 
 TEST_F(ResolverTest, GetAddrInfoV6_numeric) {
-    constexpr char listen_addr0[] = "127.0.0.7";
-    constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "ohayou.example.com.";
     constexpr char numeric_addr[] = "fe80::1%lo";
 
-    test::DNSResponder dns(listen_addr0, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     dns.setResponseProbability(0.0);
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::5");
-    ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = {listen_addr0};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    StartDns(dns, {{host_name, ns_type::ns_t_aaaa, "2001:db8::5"}});
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 
     addrinfo hints = {.ai_family = AF_INET6};
     ScopedAddrinfo result = safe_getaddrinfo(numeric_addr, nullptr, &hints);
@@ -652,28 +614,27 @@ TEST_F(ResolverTest, GetAddrInfoV6_numeric) {
 }
 
 TEST_F(ResolverTest, GetAddrInfoV6_failing) {
-    const char* listen_addr0 = "127.0.0.7";
-    const char* listen_addr1 = "127.0.0.8";
-    const char* listen_srv = "53";
+    constexpr char listen_addr0[] = "127.0.0.7";
+    constexpr char listen_addr1[] = "127.0.0.8";
     const char* host_name = "ohayou.example.com.";
-    test::DNSResponder dns0(listen_addr0, listen_srv, 250, ns_rcode::ns_r_servfail);
-    test::DNSResponder dns1(listen_addr1, listen_srv, 250, ns_rcode::ns_r_servfail);
+
+    test::DNSResponder dns0(listen_addr0);
+    test::DNSResponder dns1(listen_addr1);
     dns0.setResponseProbability(0.0);
-    dns0.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::5");
-    dns1.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::6");
-    ASSERT_TRUE(dns0.startServer());
-    ASSERT_TRUE(dns1.startServer());
+    StartDns(dns0, {{host_name, ns_type::ns_t_aaaa, "2001:db8::5"}});
+    StartDns(dns1, {{host_name, ns_type::ns_t_aaaa, "2001:db8::6"}});
+
     std::vector<std::string> servers = { listen_addr0, listen_addr1 };
     // <sample validity in s> <success threshold in percent> <min samples> <max samples>
     int sample_count = 8;
     const std::vector<int> params = { 300, 25, sample_count, sample_count };
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, params));
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, kDefaultSearchDomains, params));
 
     // Repeatedly perform resolutions for non-existing domains until MAXNSSAMPLES resolutions have
     // reached the dns0, which is set to fail. No more requests should then arrive at that server
     // for the next sample_lifetime seconds.
     // TODO: This approach is implementation-dependent, change once metrics reporting is available.
-    addrinfo hints = {.ai_family = AF_INET6};
+    const addrinfo hints = {.ai_family = AF_INET6};
     for (int i = 0; i < sample_count; ++i) {
         std::string domain = StringPrintf("nonexistent%d", i);
         ScopedAddrinfo result = safe_getaddrinfo(domain.c_str(), nullptr, &hints);
@@ -689,25 +650,28 @@ TEST_F(ResolverTest, GetAddrInfoV6_failing) {
 }
 
 TEST_F(ResolverTest, GetAddrInfoV6_nonresponsive) {
-    const char* listen_addr0 = "127.0.0.7";
-    const char* listen_addr1 = "127.0.0.8";
-    const char* listen_srv = "53";
-    const char* host_name1 = "ohayou.example.com.";
-    const char* host_name2 = "ciao.example.com.";
+    constexpr char listen_addr0[] = "127.0.0.7";
+    constexpr char listen_addr1[] = "127.0.0.8";
+    constexpr char listen_srv[] = "53";
+    constexpr char host_name1[] = "ohayou.example.com.";
+    constexpr char host_name2[] = "ciao.example.com.";
+    const std::vector<DnsRecord> records0 = {
+            {host_name1, ns_type::ns_t_aaaa, "2001:db8::5"},
+            {host_name2, ns_type::ns_t_aaaa, "2001:db8::5"},
+    };
+    const std::vector<DnsRecord> records1 = {
+            {host_name1, ns_type::ns_t_aaaa, "2001:db8::6"},
+            {host_name2, ns_type::ns_t_aaaa, "2001:db8::6"},
+    };
 
     // dns0 does not respond with 100% probability, while
     // dns1 responds normally, at least initially.
     test::DNSResponder dns0(listen_addr0, listen_srv, 250, static_cast<ns_rcode>(-1));
     test::DNSResponder dns1(listen_addr1, listen_srv, 250, static_cast<ns_rcode>(-1));
     dns0.setResponseProbability(0.0);
-    dns0.addMapping(host_name1, ns_type::ns_t_aaaa, "2001:db8::5");
-    dns1.addMapping(host_name1, ns_type::ns_t_aaaa, "2001:db8::6");
-    dns0.addMapping(host_name2, ns_type::ns_t_aaaa, "2001:db8::5");
-    dns1.addMapping(host_name2, ns_type::ns_t_aaaa, "2001:db8::6");
-    ASSERT_TRUE(dns0.startServer());
-    ASSERT_TRUE(dns1.startServer());
-    std::vector<std::string> servers = {listen_addr0, listen_addr1};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    StartDns(dns0, records0);
+    StartDns(dns1, records1);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork({listen_addr0, listen_addr1}));
 
     const addrinfo hints = {.ai_family = AF_INET6};
 
@@ -729,20 +693,18 @@ TEST_F(ResolverTest, GetAddrInfoV6_nonresponsive) {
 }
 
 TEST_F(ResolverTest, GetAddrInfoV6_concurrent) {
-    const char* listen_addr0 = "127.0.0.9";
-    const char* listen_addr1 = "127.0.0.10";
-    const char* listen_addr2 = "127.0.0.11";
-    const char* listen_srv = "53";
-    const char* host_name = "konbanha.example.com.";
-    test::DNSResponder dns0(listen_addr0, listen_srv, 250, ns_rcode::ns_r_servfail);
-    test::DNSResponder dns1(listen_addr1, listen_srv, 250, ns_rcode::ns_r_servfail);
-    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns0.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::5");
-    dns1.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::6");
-    dns2.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::7");
-    ASSERT_TRUE(dns0.startServer());
-    ASSERT_TRUE(dns1.startServer());
-    ASSERT_TRUE(dns2.startServer());
+    constexpr char listen_addr0[] = "127.0.0.9";
+    constexpr char listen_addr1[] = "127.0.0.10";
+    constexpr char listen_addr2[] = "127.0.0.11";
+    constexpr char host_name[] = "konbanha.example.com.";
+
+    test::DNSResponder dns0(listen_addr0);
+    test::DNSResponder dns1(listen_addr1);
+    test::DNSResponder dns2(listen_addr2);
+    StartDns(dns0, {{host_name, ns_type::ns_t_aaaa, "2001:db8::5"}});
+    StartDns(dns1, {{host_name, ns_type::ns_t_aaaa, "2001:db8::6"}});
+    StartDns(dns2, {{host_name, ns_type::ns_t_aaaa, "2001:db8::7"}});
+
     const std::vector<std::string> servers = { listen_addr0, listen_addr1, listen_addr2 };
     std::vector<std::thread> threads(10);
     for (std::thread& thread : threads) {
@@ -756,9 +718,8 @@ TEST_F(ResolverTest, GetAddrInfoV6_concurrent) {
                 }
             }
             if (serverSubset.empty()) serverSubset = servers;
-            ASSERT_TRUE(mDnsClient.SetResolversForNetwork(serverSubset, mDefaultSearchDomains,
-                                                          mDefaultParams));
-            addrinfo hints = {.ai_family = AF_INET6};
+            ASSERT_TRUE(mDnsClient.SetResolversForNetwork(serverSubset));
+            const addrinfo hints = {.ai_family = AF_INET6};
             addrinfo* result = nullptr;
             int rv = getaddrinfo("konbanha", nullptr, &hints, &result);
             EXPECT_EQ(0, rv) << "error [" << rv << "] " << gai_strerror(rv);
@@ -791,7 +752,7 @@ TEST_F(ResolverTest, EmptySetup) {
     using android::net::INetd;
     std::vector<std::string> servers;
     std::vector<std::string> domains;
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains, mDefaultParams));
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains));
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
     std::vector<std::string> res_tls_servers;
@@ -802,28 +763,30 @@ TEST_F(ResolverTest, EmptySetup) {
     EXPECT_EQ(0U, res_servers.size());
     EXPECT_EQ(0U, res_domains.size());
     EXPECT_EQ(0U, res_tls_servers.size());
-    ASSERT_EQ(static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT), mDefaultParams.size());
-    EXPECT_EQ(mDefaultParams[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY], res_params.sample_validity);
-    EXPECT_EQ(mDefaultParams[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
+    ASSERT_EQ(static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT), kDefaultParams.size());
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY], res_params.sample_validity);
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
               res_params.success_threshold);
-    EXPECT_EQ(mDefaultParams[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
-    EXPECT_EQ(mDefaultParams[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
-    EXPECT_EQ(mDefaultParams[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
               res_params.base_timeout_msec);
 }
 
 TEST_F(ResolverTest, SearchPathChange) {
-    const char* listen_addr = "127.0.0.13";
-    const char* listen_srv = "53";
-    const char* host_name1 = "test13.domain1.org.";
-    const char* host_name2 = "test13.domain2.org.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name1, ns_type::ns_t_aaaa, "2001:db8::13");
-    dns.addMapping(host_name2, ns_type::ns_t_aaaa, "2001:db8::1:13");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.13";
+    constexpr char host_name1[] = "test13.domain1.org.";
+    constexpr char host_name2[] = "test13.domain2.org.";
     std::vector<std::string> servers = { listen_addr };
     std::vector<std::string> domains = { "domain1.org" };
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains, mDefaultParams));
+
+    const std::vector<DnsRecord> records = {
+            {host_name1, ns_type::ns_t_aaaa, "2001:db8::13"},
+            {host_name2, ns_type::ns_t_aaaa, "2001:db8::1:13"},
+    };
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains));
 
     const addrinfo hints = {.ai_family = AF_INET6};
     ScopedAddrinfo result = safe_getaddrinfo("test13", nullptr, &hints);
@@ -834,7 +797,7 @@ TEST_F(ResolverTest, SearchPathChange) {
 
     // Test that changing the domain search path on its own works.
     domains = { "domain2.org" };
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains, mDefaultParams));
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains));
     dns.clearQueries();
 
     result = safe_getaddrinfo("test13", nullptr, &hints);
@@ -858,8 +821,8 @@ static std::string base64Encode(const std::vector<uint8_t>& input) {
 static void setupTlsServers(const std::vector<std::string>& servers,
                             std::vector<std::unique_ptr<test::DnsTlsFrontend>>* tls,
                             std::vector<std::string>* fingerprints) {
-    const char* listen_udp = "53";
-    const char* listen_tls = "853";
+    constexpr char listen_udp[] = "53";
+    constexpr char listen_tls[] = "853";
 
     for (const auto& server : servers) {
         auto t = std::make_unique<test::DnsTlsFrontend>(server, listen_tls, server, listen_udp);
@@ -894,7 +857,7 @@ TEST_F(ResolverTest, MaxServerPrune_Binder) {
     ASSERT_NO_FATAL_FAILURE(mDnsClient.SetupDNSServers(MAXNS + 1, mappings, &dns, &servers));
     ASSERT_NO_FATAL_FAILURE(setupTlsServers(servers, &tls, &fingerprints));
 
-    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, domains, mDefaultParams, "", fingerprints));
+    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, domains, kDefaultParams, "", fingerprints));
 
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
@@ -917,34 +880,32 @@ TEST_F(ResolverTest, MaxServerPrune_Binder) {
 }
 
 TEST_F(ResolverTest, ResolverStats) {
-    const char* listen_addr1 = "127.0.0.4";
-    const char* listen_addr2 = "127.0.0.5";
-    const char* listen_addr3 = "127.0.0.6";
-    const char* listen_srv = "53";
-    const char* host_name = "hello.example.com.";
+    constexpr char listen_addr1[] = "127.0.0.4";
+    constexpr char listen_addr2[] = "127.0.0.5";
+    constexpr char listen_addr3[] = "127.0.0.6";
 
     // Set server 1 timeout.
-    test::DNSResponder dns1(listen_addr1, listen_srv, 250, static_cast<ns_rcode>(-1));
+    test::DNSResponder dns1(listen_addr1, "53", 250, static_cast<ns_rcode>(-1));
     dns1.setResponseProbability(0.0);
     ASSERT_TRUE(dns1.startServer());
 
     // Set server 2 responding server failure.
-    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns2(listen_addr2);
     dns2.setResponseProbability(0.0);
     ASSERT_TRUE(dns2.startServer());
 
     // Set server 3 workable.
-    test::DNSResponder dns3(listen_addr3, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns3.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    test::DNSResponder dns3(listen_addr3);
+    dns3.addMapping(kHelloExampleCom, ns_type::ns_t_a, "1.2.3.4");
     ASSERT_TRUE(dns3.startServer());
 
     std::vector<std::string> servers = {listen_addr1, listen_addr2, listen_addr3};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     dns3.clearQueries();
-    addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
+    const addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
     ScopedAddrinfo result = safe_getaddrinfo("hello", nullptr, &hints);
-    size_t found = GetNumQueries(dns3, host_name);
+    size_t found = GetNumQueries(dns3, kHelloExampleCom);
     EXPECT_LE(1U, found);
     std::string result_str = ToString(result);
     EXPECT_TRUE(result_str == "1.2.3.4") << ", result_str='" << result_str << "'";
@@ -960,26 +921,21 @@ TEST_F(ResolverTest, ResolverStats) {
     EXPECT_EQ(1, res_stats[0].timeouts);
     EXPECT_EQ(1, res_stats[1].errors);
     EXPECT_EQ(1, res_stats[2].successes);
-
-    dns1.stopServer();
-    dns2.stopServer();
-    dns3.stopServer();
 }
 
 // Test what happens if the specified TLS server is nonexistent.
 TEST_F(ResolverTest, GetHostByName_TlsMissing) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_srv = "53";
-    const char* host_name = "tlsmissing.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.3");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char host_name[] = "tlsmissing.example.com.";
+
+    test::DNSResponder dns;
+    StartDns(dns, {{host_name, ns_type::ns_t_a, "1.2.3.3"}});
     std::vector<std::string> servers = { listen_addr };
 
     // There's nothing listening on this address, so validation will either fail or
     /// hang.  Either way, queries will continue to flow to the DNSResponder.
     ASSERT_TRUE(
-            mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams, "", {}));
+            mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, "", {}));
 
     const hostent* result;
 
@@ -988,20 +944,21 @@ TEST_F(ResolverTest, GetHostByName_TlsMissing) {
     EXPECT_EQ("1.2.3.3", ToString(result));
 
     // Clear TLS bit.
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.stopServer();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 }
 
 // Test what happens if the specified TLS server replies with garbage.
 TEST_F(ResolverTest, GetHostByName_TlsBroken) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_srv = "53";
-    const char* host_name1 = "tlsbroken1.example.com.";
-    const char* host_name2 = "tlsbroken2.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name1, ns_type::ns_t_a, "1.2.3.1");
-    dns.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.2");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char host_name1[] = "tlsbroken1.example.com.";
+    constexpr char host_name2[] = "tlsbroken2.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name1, ns_type::ns_t_a, "1.2.3.1"},
+            {host_name2, ns_type::ns_t_a, "1.2.3.2"},
+    };
+
+    test::DNSResponder dns;
+    StartDns(dns, records);
     std::vector<std::string> servers = { listen_addr };
 
     // Bind the specified private DNS socket but don't respond to any client sockets yet.
@@ -1019,7 +976,7 @@ TEST_F(ResolverTest, GetHostByName_TlsBroken) {
 
     // Trigger TLS validation.
     ASSERT_TRUE(
-            mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams, "", {}));
+            mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, "", {}));
 
     struct sockaddr_storage cliaddr;
     socklen_t sin_size = sizeof(cliaddr);
@@ -1046,29 +1003,31 @@ TEST_F(ResolverTest, GetHostByName_TlsBroken) {
     EXPECT_EQ("1.2.3.2", ToString(result));
 
     // Clear TLS bit.
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.stopServer();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
     close(s);
 }
 
 TEST_F(ResolverTest, GetHostByName_Tls) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_udp = "53";
-    const char* listen_tls = "853";
-    const char* host_name1 = "tls1.example.com.";
-    const char* host_name2 = "tls2.example.com.";
-    const char* host_name3 = "tls3.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name1, ns_type::ns_t_a, "1.2.3.1");
-    dns.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.2");
-    dns.addMapping(host_name3, ns_type::ns_t_a, "1.2.3.3");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_udp[] = "53";
+    constexpr char listen_tls[] = "853";
+    constexpr char host_name1[] = "tls1.example.com.";
+    constexpr char host_name2[] = "tls2.example.com.";
+    constexpr char host_name3[] = "tls3.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name1, ns_type::ns_t_a, "1.2.3.1"},
+            {host_name2, ns_type::ns_t_a, "1.2.3.2"},
+            {host_name3, ns_type::ns_t_a, "1.2.3.3"},
+    };
+
+    test::DNSResponder dns;
+    StartDns(dns, records);
     std::vector<std::string> servers = { listen_addr };
 
     test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
     ASSERT_TRUE(tls.startServer());
     ASSERT_TRUE(
-            mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams, "", {}));
+            mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, "", {}));
 
     const hostent* result;
 
@@ -1097,20 +1056,18 @@ TEST_F(ResolverTest, GetHostByName_Tls) {
 
     // Reset the resolvers without enabling TLS.  Queries should still be routed
     // to the UDP endpoint.
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 
     result = gethostbyname("tls3");
     ASSERT_FALSE(result == nullptr);
     EXPECT_EQ("1.2.3.3", ToString(result));
-
-    dns.stopServer();
 }
 
 TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_udp = "53";
-    const char* listen_tls = "853";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_udp[] = "53";
+    constexpr char listen_tls[] = "853";
+    test::DNSResponder dns;
     ASSERT_TRUE(dns.startServer());
     for (int chain_length = 1; chain_length <= 3; ++chain_length) {
         std::string host_name = StringPrintf("tlsfingerprint%d.example.com.", chain_length);
@@ -1120,7 +1077,7 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
         test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
         tls.set_chain_length(chain_length);
         ASSERT_TRUE(tls.startServer());
-        ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams,
+        ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams,
                                                    "", {base64Encode(tls.fingerprint())}));
 
         const hostent* result;
@@ -1138,28 +1095,26 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
         }
 
         // Clear TLS bit to ensure revalidation.
-        ASSERT_TRUE(
-                mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+        ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
         tls.stopServer();
     }
-    dns.stopServer();
 }
 
 TEST_F(ResolverTest, GetHostByName_BadTlsFingerprint) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_udp = "53";
-    const char* listen_tls = "853";
-    const char* host_name = "badtlsfingerprint.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_udp[] = "53";
+    constexpr char listen_tls[] = "853";
+    constexpr char host_name[] = "badtlsfingerprint.example.com.";
+
+    test::DNSResponder dns;
+    StartDns(dns, {{host_name, ns_type::ns_t_a, "1.2.3.1"}});
     std::vector<std::string> servers = { listen_addr };
 
     test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
     ASSERT_TRUE(tls.startServer());
     std::vector<uint8_t> bad_fingerprint = tls.fingerprint();
     bad_fingerprint[5] += 1;  // Corrupt the fingerprint.
-    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams, "",
+    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, "",
                                                {base64Encode(bad_fingerprint)}));
 
     // The initial validation should fail at the fingerprint check before
@@ -1170,21 +1125,19 @@ TEST_F(ResolverTest, GetHostByName_BadTlsFingerprint) {
     EXPECT_EQ(nullptr, gethostbyname("badtlsfingerprint"));
 
     // Clear TLS bit.
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    tls.stopServer();
-    dns.stopServer();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 }
 
 // Test that we can pass two different fingerprints, and connection succeeds as long as
 // at least one of them matches the server.
 TEST_F(ResolverTest, GetHostByName_TwoTlsFingerprints) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_udp = "53";
-    const char* listen_tls = "853";
-    const char* host_name = "twotlsfingerprints.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_udp[] = "53";
+    constexpr char listen_tls[] = "853";
+    constexpr char host_name[] = "twotlsfingerprints.example.com.";
+
+    test::DNSResponder dns;
+    StartDns(dns, {{host_name, ns_type::ns_t_a, "1.2.3.1"}});
     std::vector<std::string> servers = { listen_addr };
 
     test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
@@ -1192,7 +1145,7 @@ TEST_F(ResolverTest, GetHostByName_TwoTlsFingerprints) {
     std::vector<uint8_t> bad_fingerprint = tls.fingerprint();
     bad_fingerprint[5] += 1;  // Corrupt the fingerprint.
     ASSERT_TRUE(mDnsClient.SetResolversWithTls(
-            servers, mDefaultSearchDomains, mDefaultParams, "",
+            servers, kDefaultSearchDomains, kDefaultParams, "",
             {base64Encode(bad_fingerprint), base64Encode(tls.fingerprint())}));
 
     const hostent* result;
@@ -1208,26 +1161,27 @@ TEST_F(ResolverTest, GetHostByName_TwoTlsFingerprints) {
     EXPECT_TRUE(tls.waitForQueries(2, 5000));
 
     // Clear TLS bit.
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    tls.stopServer();
-    dns.stopServer();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 }
 
 TEST_F(ResolverTest, GetHostByName_TlsFingerprintGoesBad) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_udp = "53";
-    const char* listen_tls = "853";
-    const char* host_name1 = "tlsfingerprintgoesbad1.example.com.";
-    const char* host_name2 = "tlsfingerprintgoesbad2.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name1, ns_type::ns_t_a, "1.2.3.1");
-    dns.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.2");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_udp[] = "53";
+    constexpr char listen_tls[] = "853";
+    constexpr char host_name1[] = "tlsfingerprintgoesbad1.example.com.";
+    constexpr char host_name2[] = "tlsfingerprintgoesbad2.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name1, ns_type::ns_t_a, "1.2.3.1"},
+            {host_name2, ns_type::ns_t_a, "1.2.3.2"},
+    };
+
+    test::DNSResponder dns;
+    StartDns(dns, records);
     std::vector<std::string> servers = { listen_addr };
 
     test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
     ASSERT_TRUE(tls.startServer());
-    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams, "",
+    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, "",
                                                {base64Encode(tls.fingerprint())}));
 
     const hostent* result;
@@ -1252,26 +1206,30 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprintGoesBad) {
     EXPECT_EQ(HOST_NOT_FOUND, h_errno);
 
     // Clear TLS bit.
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    tls.stopServer();
-    dns.stopServer();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 }
 
 TEST_F(ResolverTest, GetHostByName_TlsFailover) {
-    const char* listen_addr1 = "127.0.0.3";
-    const char* listen_addr2 = "127.0.0.4";
-    const char* listen_udp = "53";
-    const char* listen_tls = "853";
-    const char* host_name1 = "tlsfailover1.example.com.";
-    const char* host_name2 = "tlsfailover2.example.com.";
-    test::DNSResponder dns1(listen_addr1, listen_udp, 250, ns_rcode::ns_r_servfail);
-    test::DNSResponder dns2(listen_addr2, listen_udp, 250, ns_rcode::ns_r_servfail);
-    dns1.addMapping(host_name1, ns_type::ns_t_a, "1.2.3.1");
-    dns1.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.2");
-    dns2.addMapping(host_name1, ns_type::ns_t_a, "1.2.3.3");
-    dns2.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.4");
-    ASSERT_TRUE(dns1.startServer());
-    ASSERT_TRUE(dns2.startServer());
+    constexpr char listen_addr1[] = "127.0.0.3";
+    constexpr char listen_addr2[] = "127.0.0.4";
+    constexpr char listen_udp[] = "53";
+    constexpr char listen_tls[] = "853";
+    constexpr char host_name1[] = "tlsfailover1.example.com.";
+    constexpr char host_name2[] = "tlsfailover2.example.com.";
+    const std::vector<DnsRecord> records1 = {
+            {host_name1, ns_type::ns_t_a, "1.2.3.1"},
+            {host_name2, ns_type::ns_t_a, "1.2.3.2"},
+    };
+    const std::vector<DnsRecord> records2 = {
+            {host_name1, ns_type::ns_t_a, "1.2.3.3"},
+            {host_name2, ns_type::ns_t_a, "1.2.3.4"},
+    };
+
+    test::DNSResponder dns1(listen_addr1);
+    test::DNSResponder dns2(listen_addr2);
+    StartDns(dns1, records1);
+    StartDns(dns2, records2);
+
     std::vector<std::string> servers = { listen_addr1, listen_addr2 };
 
     test::DnsTlsFrontend tls1(listen_addr1, listen_tls, listen_addr1, listen_udp);
@@ -1279,7 +1237,7 @@ TEST_F(ResolverTest, GetHostByName_TlsFailover) {
     ASSERT_TRUE(tls1.startServer());
     ASSERT_TRUE(tls2.startServer());
     ASSERT_TRUE(mDnsClient.SetResolversWithTls(
-            servers, mDefaultSearchDomains, mDefaultParams, "",
+            servers, kDefaultSearchDomains, kDefaultParams, "",
             {base64Encode(tls1.fingerprint()), base64Encode(tls2.fingerprint())}));
 
     const hostent* result;
@@ -1311,25 +1269,22 @@ TEST_F(ResolverTest, GetHostByName_TlsFailover) {
     EXPECT_EQ(2U, dns2.queries().size());
 
     // Clear TLS bit.
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    tls2.stopServer();
-    dns1.stopServer();
-    dns2.stopServer();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 }
 
 TEST_F(ResolverTest, GetHostByName_BadTlsName) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_udp = "53";
-    const char* listen_tls = "853";
-    const char* host_name = "badtlsname.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.1");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_udp[] = "53";
+    constexpr char listen_tls[] = "853";
+    constexpr char host_name[] = "badtlsname.example.com.";
+
+    test::DNSResponder dns;
+    StartDns(dns, {{host_name, ns_type::ns_t_a, "1.2.3.1"}});
     std::vector<std::string> servers = { listen_addr };
 
     test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
     ASSERT_TRUE(tls.startServer());
-    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams,
+    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams,
                                                "www.example.com", {}));
 
     // The TLS server's certificate doesn't chain to a known CA, and a nonempty name was specified,
@@ -1340,25 +1295,26 @@ TEST_F(ResolverTest, GetHostByName_BadTlsName) {
     EXPECT_EQ(nullptr, gethostbyname("badtlsname"));
 
     // Clear TLS bit.
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    tls.stopServer();
-    dns.stopServer();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 }
 
 TEST_F(ResolverTest, GetAddrInfo_Tls) {
-    const char* listen_addr = "127.0.0.3";
-    const char* listen_udp = "53";
-    const char* listen_tls = "853";
-    const char* host_name = "addrinfotls.example.com.";
-    test::DNSResponder dns(listen_addr, listen_udp, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.3";
+    constexpr char listen_udp[] = "53";
+    constexpr char listen_tls[] = "853";
+    constexpr char host_name[] = "addrinfotls.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+
+    test::DNSResponder dns;
+    StartDns(dns, records);
     std::vector<std::string> servers = { listen_addr };
 
     test::DnsTlsFrontend tls(listen_addr, listen_tls, listen_addr, listen_udp);
     ASSERT_TRUE(tls.startServer());
-    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams, "",
+    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, "",
                                                {base64Encode(tls.fingerprint())}));
 
     // Wait for validation to complete.
@@ -1377,9 +1333,7 @@ TEST_F(ResolverTest, GetAddrInfo_Tls) {
     EXPECT_TRUE(tls.waitForQueries(3, 5000));
 
     // Clear TLS bit.
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    tls.stopServer();
-    dns.stopServer();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
 }
 
 TEST_F(ResolverTest, TlsBypass) {
@@ -1403,7 +1357,7 @@ TEST_F(ResolverTest, TlsBypass) {
     const char tls_port[] = "853";
     const std::vector<std::string> servers = { cleartext_addr };
 
-    test::DNSResponder dns(cleartext_addr, cleartext_port, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(cleartext_addr);
     ASSERT_TRUE(dns.startServer());
 
     test::DnsTlsFrontend tls(cleartext_addr, tls_port, cleartext_addr, cleartext_port);
@@ -1452,11 +1406,11 @@ TEST_F(ResolverTest, TlsBypass) {
         if (config.withWorkingTLS) ASSERT_TRUE(tls.startServer());
 
         if (config.mode == OFF) {
-            ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains,
-                                                          mDefaultParams));
+            ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, kDefaultSearchDomains,
+                                                          kDefaultParams));
         } else if (config.mode == OPPORTUNISTIC) {
-            ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains,
-                                                       mDefaultParams, "", {}));
+            ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
+                                                       kDefaultParams, "", {}));
             // Wait for validation to complete.
             if (config.withWorkingTLS) EXPECT_TRUE(tls.waitForQueries(1, 5000));
         } else if (config.mode == STRICT) {
@@ -1464,8 +1418,8 @@ TEST_F(ResolverTest, TlsBypass) {
             // rather than hostname validation.
             const auto& fingerprint =
                     (config.withWorkingTLS) ? tls.fingerprint() : NOOP_FINGERPRINT;
-            ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains,
-                                                       mDefaultParams, "",
+            ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
+                                                       kDefaultParams, "",
                                                        {base64Encode(fingerprint)}));
             // Wait for validation to complete.
             if (config.withWorkingTLS) EXPECT_TRUE(tls.waitForQueries(1, 5000));
@@ -1522,23 +1476,22 @@ TEST_F(ResolverTest, TlsBypass) {
         tls.stopServer();
         dns.clearQueries();
     }
-
-    dns.stopServer();
 }
 
 TEST_F(ResolverTest, StrictMode_NoTlsServers) {
     const std::vector<uint8_t> NOOP_FINGERPRINT(SHA256_SIZE, 0U);
-    const char cleartext_addr[] = "127.0.0.53";
-    const char cleartext_port[] = "53";
+    constexpr char cleartext_addr[] = "127.0.0.53";
     const std::vector<std::string> servers = { cleartext_addr };
+    constexpr char host_name[] = "strictmode.notlsips.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
 
-    test::DNSResponder dns(cleartext_addr, cleartext_port, 250, ns_rcode::ns_r_servfail);
-    const char* host_name = "strictmode.notlsips.example.com.";
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    test::DNSResponder dns(cleartext_addr);
+    StartDns(dns, records);
 
-    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams, {},
+    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, {},
                                                "", {base64Encode(NOOP_FINGERPRINT)}));
 
     addrinfo* ai_result = nullptr;
@@ -1628,16 +1581,17 @@ void expectAnswersNotValid(int fd, int expectedErrno) {
 }  // namespace
 
 TEST_F(ResolverTest, Async_NormalQueryV4V6) {
-    const char listen_addr[] = "127.0.0.4";
-    const char listen_srv[] = "53";
-    const char host_name[] = "howdy.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.4";
+    constexpr char host_name[] = "howdy.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a, 0);
     int fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_aaaa, 0);
@@ -1675,16 +1629,17 @@ TEST_F(ResolverTest, Async_NormalQueryV4V6) {
 }
 
 TEST_F(ResolverTest, Async_BadQuery) {
-    const char listen_addr[] = "127.0.0.4";
-    const char listen_srv[] = "53";
-    const char host_name[] = "howdy.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.4";
+    constexpr char host_name[] = "howdy.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     static struct {
         int fd;
@@ -1717,16 +1672,17 @@ TEST_F(ResolverTest, Async_BadQuery) {
 }
 
 TEST_F(ResolverTest, Async_EmptyAnswer) {
-    const char listen_addr[] = "127.0.0.4";
-    const char listen_srv[] = "53";
-    const char host_name[] = "howdy.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, static_cast<ns_rcode>(-1));
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.4";
+    constexpr char host_name[] = "howdy.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // TODO: Disable retry to make this test explicit.
     auto& cv = dns.getCv();
@@ -1777,22 +1733,23 @@ TEST_F(ResolverTest, Async_EmptyAnswer) {
 }
 
 TEST_F(ResolverTest, Async_MalformedQuery) {
-    const char listen_addr[] = "127.0.0.4";
-    const char listen_srv[] = "53";
-    const char host_name[] = "howdy.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.4";
+    constexpr char host_name[] = "howdy.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     int fd = dns_open_proxy();
     EXPECT_TRUE(fd > 0);
 
     const std::string badMsg = "16-52512#";
-    static struct {
+    static const struct {
         const std::string cmd;
         const int expectErr;
     } kTestData[] = {
@@ -1838,16 +1795,17 @@ TEST_F(ResolverTest, Async_MalformedQuery) {
 }
 
 TEST_F(ResolverTest, Async_CacheFlags) {
-    const char listen_addr[] = "127.0.0.4";
-    const char listen_srv[] = "53";
-    const char host_name[] = "howdy.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.4";
+    constexpr char host_name[] = "howdy.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // ANDROID_RESOLV_NO_CACHE_STORE
     int fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_a,
@@ -1903,16 +1861,17 @@ TEST_F(ResolverTest, Async_CacheFlags) {
 }
 
 TEST_F(ResolverTest, Async_NoRetryFlag) {
-    const char listen_addr[] = "127.0.0.4";
-    const char listen_srv[] = "53";
-    const char host_name[] = "howdy.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, static_cast<ns_rcode>(-1));
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    constexpr char listen_addr[] = "127.0.0.4";
+    constexpr char host_name[] = "howdy.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     dns.setResponseProbability(0.0);
 
@@ -2038,21 +1997,20 @@ TEST_F(ResolverTest, BrokenEdns) {
         dns.setEdns(config.edns);
 
         if (config.mode == OFF) {
-            ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains,
-                                                          mDefaultParams));
+            ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
         } else if (config.mode == OPPORTUNISTIC_UDP) {
-            ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains,
-                                                       mDefaultParams, "", {}));
+            ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
+                                                       kDefaultParams, "", {}));
         } else if (config.mode == OPPORTUNISTIC_TLS) {
             ASSERT_TRUE(tls.startServer());
-            ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains,
-                                                       mDefaultParams, "", {}));
+            ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
+                                                       kDefaultParams, "", {}));
             // Wait for validation to complete.
             EXPECT_TRUE(tls.waitForQueries(1, 5000));
         } else if (config.mode == STRICT) {
             ASSERT_TRUE(tls.startServer());
-            ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains,
-                                                       mDefaultParams, "",
+            ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
+                                                       kDefaultParams, "",
                                                        {base64Encode(tls.fingerprint())}));
             // Wait for validation to complete.
             EXPECT_TRUE(tls.waitForQueries(1, 5000));
@@ -2114,7 +2072,7 @@ TEST_F(ResolverTest, UnstableTls) {
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
     ASSERT_TRUE(tls.startServer());
     ASSERT_TRUE(
-            mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams, "", {}));
+            mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, "", {}));
     // Wait for validation complete.
     EXPECT_TRUE(tls.waitForQueries(1, 5000));
     // Shutdown TLS server to get an error. It's similar to no response case but without waiting.
@@ -2146,7 +2104,7 @@ TEST_F(ResolverTest, BogusDnsServer) {
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
     ASSERT_TRUE(tls.startServer());
     ASSERT_TRUE(
-            mDnsClient.SetResolversWithTls(servers, mDefaultSearchDomains, mDefaultParams, "", {}));
+            mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, "", {}));
     // Wait for validation complete.
     EXPECT_TRUE(tls.waitForQueries(1, 5000));
     // Shutdown TLS server to get an error. It's similar to no response case but without waiting.
@@ -2167,31 +2125,27 @@ TEST_F(ResolverTest, BogusDnsServer) {
 TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
     constexpr char listen_addr[] = "::1";
     constexpr char listen_addr2[] = "127.0.0.5";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char host_name[] = "v4only.example.com.";
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+    };
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
-
-    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns2.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    ASSERT_TRUE(dns2.startServer());
+    test::DNSResponder dns(listen_addr);
+    test::DNSResponder dns2(listen_addr2);
+    StartDns(dns, records);
+    StartDns(dns2, {{dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"}});
 
     std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // hints are necessary in order to let netd know which type of addresses the caller is
     // interested in.
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
+    const addrinfo hints = {.ai_family = AF_UNSPEC};
     ScopedAddrinfo result = safe_getaddrinfo("v4only", nullptr, &hints);
     EXPECT_TRUE(result != nullptr);
     EXPECT_LE(1U, GetNumQueries(dns, host_name));
@@ -2201,7 +2155,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
 
     // Let's test the case when there's an IPv4 resolver.
     servers = {listen_addr, listen_addr2};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
     dns.clearQueries();
     dns2.clearQueries();
 
@@ -2218,18 +2172,17 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
 
 TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecified) {
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char host_name[] = "v4only.example.com.";
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+    };
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
-
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2254,32 +2207,29 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecified) {
 
 TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedV6) {
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char host_name[] = "v4v6.example.com.";
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "2001:db8::1.2.3.4"},
+    };
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
-
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
+    const addrinfo hints = {.ai_family = AF_UNSPEC};
     ScopedAddrinfo result = safe_getaddrinfo("v4v6", nullptr, &hints);
     EXPECT_TRUE(result != nullptr);
     EXPECT_LE(2U, GetNumQueries(dns, host_name));
 
     // In AF_UNSPEC case, do not synthesize AAAA if there's at least one AAAA answer.
-    std::vector<std::string> result_strs = ToStrings(result);
+    const std::vector<std::string> result_strs = ToStrings(result);
     for (const auto& str : result_strs) {
         EXPECT_TRUE(str == "1.2.3.4" || str == "2001:db8::102:304")
                 << ", result_str='" << str << "'";
@@ -2288,25 +2238,22 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedV6) {
 
 TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedNoV6) {
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char host_name[] = "v4v6.example.com.";
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+    };
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
-
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
+    const addrinfo hints = {.ai_family = AF_UNSPEC};
     ScopedAddrinfo result = safe_getaddrinfo("v4v6", nullptr, &hints);
     EXPECT_TRUE(result != nullptr);
     EXPECT_LE(2U, GetNumQueries(dns, host_name));
@@ -2330,16 +2277,12 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecialUseIPv4Addresses) {
     constexpr char ADDR_LIMITED_BROADCAST[] = "255.255.255.255";
 
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::");
-    ASSERT_TRUE(dns.startServer());
-
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, {{dns64_name, ns_type::ns_t_aaaa, "64:ff9b::"}});
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2388,21 +2331,20 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecialUseIPv4Addresses) {
 
 TEST_F(ResolverTest, GetAddrInfo_Dns64QueryWithNullArgumentHints) {
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char host_name[] = "v4only.example.com.";
     constexpr char host_name2[] = "v4v6.example.com.";
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name2, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name2, ns_type::ns_t_aaaa, "2001:db8::1.2.3.4"},
+    };
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name2, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name2, ns_type::ns_t_aaaa, "2001:db8::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
-
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2437,16 +2379,12 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryNullArgumentNode) {
     constexpr char PORT_NUMBER_HTTP[] = "80";
 
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::");
-    ASSERT_TRUE(dns.startServer());
-
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, {{dns64_name, ns_type::ns_t_aaaa, "64:ff9b::"}});
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2471,12 +2409,12 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryNullArgumentNode) {
     for (const auto& config : testConfigs) {
         SCOPED_TRACE(config.asParameters());
 
-        addrinfo hints;
-        memset(&hints, 0, sizeof(hints));
-        hints.ai_family = AF_UNSPEC;  // any address family
-        hints.ai_socktype = 0;        // any type
-        hints.ai_protocol = 0;        // any protocol
-        hints.ai_flags = config.flag;
+        addrinfo hints = {
+                .ai_family = AF_UNSPEC,  // any address family
+                .ai_socktype = 0,        // any type
+                .ai_protocol = 0,        // any protocol
+                .ai_flags = config.flag,
+        };
 
         // Assign hostname as null and service as port name.
         ScopedAddrinfo result = safe_getaddrinfo(nullptr, PORT_NAME_HTTP, &hints);
@@ -2509,7 +2447,6 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDnsQueryWithHavingNat64Prefix) {
     struct in6_addr v6addr;
 
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char ptr_name[] = "v4v6.example.com.";
     // PTR record for IPv4 address 1.2.3.4
@@ -2517,16 +2454,16 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDnsQueryWithHavingNat64Prefix) {
     // PTR record for IPv6 address 2001:db8::102:304
     constexpr char ptr_addr_v6[] =
             "4.0.3.0.2.0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.";
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {ptr_addr_v4, ns_type::ns_t_ptr, ptr_name},
+            {ptr_addr_v6, ns_type::ns_t_ptr, ptr_name},
+    };
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(ptr_addr_v4, ns_type::ns_t_ptr, ptr_name);
-    dns.addMapping(ptr_addr_v6, ns_type::ns_t_ptr, ptr_name);
-    ASSERT_TRUE(dns.startServer());
-
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2548,7 +2485,6 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDnsQueryWithHavingNat64Prefix) {
 
 TEST_F(ResolverTest, GetHostByAddr_ReverseDns64Query) {
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char ptr_name[] = "v4only.example.com.";
     // PTR record for IPv4 address 1.2.3.4
@@ -2560,17 +2496,17 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDns64Query) {
     // PTR record for IPv6 address 64:ff9b::5.6.7.8
     constexpr char ptr_addr_v6_synthesis[] =
             "8.0.7.0.6.0.5.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.b.9.f.f.4.6.0.0.ip6.arpa.";
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {ptr_addr_v4, ns_type::ns_t_ptr, ptr_name},
+            {ptr_addr_v6_synthesis, ns_type::ns_t_ptr, ptr_name_v6_synthesis},
+    };
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(ptr_addr_v4, ns_type::ns_t_ptr, ptr_name);
-    dns.addMapping(ptr_addr_v6_synthesis, ns_type::ns_t_ptr, ptr_name_v6_synthesis);
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     // "ptr_addr_v6_nomapping" is not mapped in DNS server
-    ASSERT_TRUE(dns.startServer());
-
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2610,15 +2546,12 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDns64QueryFromHostFile) {
     constexpr char host_name[] = "localhost";
     // The address is synthesized by prefix64:localhost.
     constexpr char host_addr[] = "64:ff9b::7f00:1";
-
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    ASSERT_TRUE(dns.startServer());
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, {{dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"}});
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2643,7 +2576,6 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDns64QueryFromHostFile) {
 
 TEST_F(ResolverTest, GetNameInfo_ReverseDnsQueryWithHavingNat64Prefix) {
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char ptr_name[] = "v4v6.example.com.";
     // PTR record for IPv4 address 1.2.3.4
@@ -2651,16 +2583,16 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDnsQueryWithHavingNat64Prefix) {
     // PTR record for IPv6 address 2001:db8::102:304
     constexpr char ptr_addr_v6[] =
             "4.0.3.0.2.0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.";
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {ptr_addr_v4, ns_type::ns_t_ptr, ptr_name},
+            {ptr_addr_v6, ns_type::ns_t_ptr, ptr_name},
+    };
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(ptr_addr_v4, ns_type::ns_t_ptr, ptr_name);
-    dns.addMapping(ptr_addr_v6, ns_type::ns_t_ptr, ptr_name);
-    ASSERT_TRUE(dns.startServer());
-
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2718,7 +2650,6 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDnsQueryWithHavingNat64Prefix) {
 
 TEST_F(ResolverTest, GetNameInfo_ReverseDns64Query) {
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char ptr_name[] = "v4only.example.com.";
     // PTR record for IPv4 address 1.2.3.4
@@ -2730,16 +2661,16 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64Query) {
     // PTR record for IPv6 address 64:ff9b::5.6.7.8
     constexpr char ptr_addr_v6_synthesis[] =
             "8.0.7.0.6.0.5.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.b.9.f.f.4.6.0.0.ip6.arpa.";
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {ptr_addr_v4, ns_type::ns_t_ptr, ptr_name},
+            {ptr_addr_v6_synthesis, ns_type::ns_t_ptr, ptr_name_v6_synthesis},
+    };
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(ptr_addr_v4, ns_type::ns_t_ptr, ptr_name);
-    dns.addMapping(ptr_addr_v6_synthesis, ns_type::ns_t_ptr, ptr_name_v6_synthesis);
-    ASSERT_TRUE(dns.startServer());
-
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2803,15 +2734,12 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64QueryFromHostFile) {
     constexpr char host_name[] = "localhost";
     // The address is synthesized by prefix64:localhost.
     constexpr char host_addr[] = "64:ff9b::7f00:1";
-
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    ASSERT_TRUE(dns.startServer());
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, {{dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"}});
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2820,9 +2748,7 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64QueryFromHostFile) {
     // from host file /etc/hosts and "localhost" is the only name in /etc/hosts. Note that this is
     // not realistic: the code never synthesizes AAAA records for addresses in 127.0.0.0/8.
     char host[NI_MAXHOST];
-    struct sockaddr_in6 sin6;
-    memset(&sin6, 0, sizeof(sin6));
-    sin6.sin6_family = AF_INET6;
+    struct sockaddr_in6 sin6 = {.sin6_family = AF_INET6};
     inet_pton(AF_INET6, host_addr, &sin6.sin6_addr);
     int rv = getnameinfo((const struct sockaddr*) &sin6, sizeof(sin6), host, sizeof(host), nullptr,
                          0, NI_NAMEREQD);
@@ -2835,18 +2761,18 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64QueryFromHostFile) {
 }
 
 TEST_F(ResolverTest, GetHostByName2_Dns64Synthesize) {
+    constexpr char listen_addr[] = "::1";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char host_name[] = "ipv4only.example.com.";
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+    };
 
-    constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2862,17 +2788,17 @@ TEST_F(ResolverTest, GetHostByName2_Dns64Synthesize) {
 TEST_F(ResolverTest, GetHostByName2_DnsQueryWithHavingNat64Prefix) {
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char host_name[] = "v4v6.example.com.";
-
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170");
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "2001:db8::1.2.3.4");
-    ASSERT_TRUE(dns.startServer());
+    const std::vector<DnsRecord> records = {
+            {dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"},
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "2001:db8::1.2.3.4"},
+    };
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
@@ -2907,16 +2833,12 @@ TEST_F(ResolverTest, GetHostByName2_Dns64QuerySpecialUseIPv4Addresses) {
     constexpr char ADDR_LIMITED_BROADCAST[] = "255.255.255.255";
 
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_srv[] = "53";
     constexpr char dns64_name[] = "ipv4only.arpa.";
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
-    dns.addMapping(dns64_name, ns_type::ns_t_aaaa, "64:ff9b::");
-    ASSERT_TRUE(dns.startServer());
-
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, {{dns64_name, ns_type::ns_t_aaaa, "64:ff9b::"}});
     const std::vector<std::string> servers = {listen_addr};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, mDefaultSearchDomains, mDefaultParams));
-    dns.clearQueries();
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Wait for detecting prefix to complete.
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
