@@ -145,6 +145,7 @@ int ResolverController::setDnsServers(unsigned netId, const char* searchDomains,
 }
 
 int ResolverController::clearDnsServers(unsigned netId) {
+    // It will create the cache if it doesn't exist.
     RESOLV_STUB.resolv_set_nameservers_for_net(netId, nullptr, 0, "", nullptr);
     if (DBG) {
         ALOGD("clearDnsServers netId = %u\n", netId);
