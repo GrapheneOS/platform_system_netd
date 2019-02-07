@@ -769,5 +769,6 @@ void MDnsSdListener::Monitor::freeServiceRef(int id) {
 void MDnsSdListener::Monitor::deallocateServiceRef(DNSServiceRef* ref) {
     pthread_mutex_lock(&mHeadMutex);
     DNSServiceRefDeallocate(*ref);
+    *ref = nullptr;
     pthread_mutex_unlock(&mHeadMutex);
 }
