@@ -93,7 +93,7 @@ const std::string uidMatchTypeToString(uint8_t match) {
 }
 
 bool TrafficController::hasUpdateDeviceStatsPermission(uid_t uid) {
-    return mPrivilegedUser.find(uid) != mPrivilegedUser.end();
+    return ((uid == AID_ROOT) || mPrivilegedUser.find(uid) != mPrivilegedUser.end());
 }
 
 const std::string UidPermissionTypeToString(uint8_t permission) {
