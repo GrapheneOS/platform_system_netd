@@ -17,14 +17,15 @@
 #define LOG_TAG "DnsTlsQueryMap"
 //#define LOG_NDEBUG 0
 
-#include "netd_resolv/DnsTlsQueryMap.h"
+#include "DnsTlsQueryMap.h"
 
 #include "log/log.h"
 
 namespace android {
 namespace net {
 
-std::unique_ptr<DnsTlsQueryMap::QueryFuture> DnsTlsQueryMap::recordQuery(const Slice query) {
+std::unique_ptr<DnsTlsQueryMap::QueryFuture> DnsTlsQueryMap::recordQuery(
+        const netdutils::Slice query) {
     std::lock_guard guard(mLock);
 
     // Store the query so it can be matched to the response or reissued.

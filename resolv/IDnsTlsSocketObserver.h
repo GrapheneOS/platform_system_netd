@@ -25,8 +25,8 @@ namespace net {
 // DnsTlsTransport, but it is a separate interface for clarity and to avoid a
 // circular dependency with DnsTlsSocket.
 class IDnsTlsSocketObserver {
-public:
-    virtual ~IDnsTlsSocketObserver() {};
+  public:
+    virtual ~IDnsTlsSocketObserver(){};
     virtual void onResponse(std::vector<uint8_t> response) = 0;
 
     virtual void onClosed() = 0;

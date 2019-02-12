@@ -19,15 +19,15 @@
 
 #include <gtest/gtest.h>
 
-#include "netd_resolv/DnsTlsDispatcher.h"
-#include "netd_resolv/DnsTlsQueryMap.h"
-#include "netd_resolv/DnsTlsServer.h"
-#include "netd_resolv/DnsTlsSessionCache.h"
-#include "netd_resolv/DnsTlsSocket.h"
-#include "netd_resolv/DnsTlsTransport.h"
-#include "netd_resolv/IDnsTlsSocket.h"
-#include "netd_resolv/IDnsTlsSocketFactory.h"
-#include "netd_resolv/IDnsTlsSocketObserver.h"
+#include "DnsTlsDispatcher.h"
+#include "DnsTlsQueryMap.h"
+#include "DnsTlsServer.h"
+#include "DnsTlsSessionCache.h"
+#include "DnsTlsSocket.h"
+#include "DnsTlsTransport.h"
+#include "IDnsTlsSocket.h"
+#include "IDnsTlsSocketFactory.h"
+#include "IDnsTlsSocketObserver.h"
 
 #include <chrono>
 #include <arpa/inet.h>

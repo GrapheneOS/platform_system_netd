@@ -17,10 +17,9 @@
 #ifndef _DNSPROXYLISTENER_H__
 #define _DNSPROXYLISTENER_H__
 
+#include <netd_resolv/resolv.h>  // android_net_context
 #include <sysutils/FrameworkCommand.h>
 #include <sysutils/FrameworkListener.h>
-
-#include "resolv.h"  // android_net_context
 
 namespace android {
 namespace net {
@@ -84,8 +83,8 @@ class DnsProxyListener : public FrameworkListener {
       private:
         void doDns64Synthesis(int32_t* rv, hostent** hpp);
 
-        SocketClient* mClient; //ref counted
-        char* mName;           // owned. TODO: convert to std::string.
+        SocketClient* mClient;  // ref counted
+        char* mName;            // owned. TODO: convert to std::string.
         int mAf;
         android_net_context mNetContext;
     };
@@ -110,9 +109,9 @@ class DnsProxyListener : public FrameworkListener {
         void doDns64ReverseLookup(hostent** hpp);
 
         SocketClient* mClient;  // ref counted
-        void* mAddress;    // address to lookup; owned
-        int mAddressLen; // length of address to look up
-        int mAddressFamily;  // address family
+        void* mAddress;         // address to lookup; owned
+        int mAddressLen;        // length of address to look up
+        int mAddressFamily;     // address family
         android_net_context mNetContext;
     };
 

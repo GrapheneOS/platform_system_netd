@@ -17,9 +17,9 @@
 #ifndef _DNS_DNSTLSSOCKET_H
 #define _DNS_DNSTLSSOCKET_H
 
+#include <openssl/ssl.h>
 #include <future>
 #include <mutex>
-#include <openssl/ssl.h>
 
 #include <android-base/thread_annotations.h>
 #include <android-base/unique_fd.h>
@@ -29,15 +29,12 @@
 #include "DnsTlsServer.h"
 #include "IDnsTlsSocket.h"
 #include "LockedQueue.h"
-#include "params.h"
 
 namespace android {
 namespace net {
 
 class IDnsTlsSocketObserver;
 class DnsTlsSessionCache;
-
-using netdutils::Slice;
 
 // A class for managing a TLS socket that sends and receives messages in
 // [length][value] format, with a 2-byte length (i.e. DNS-over-TCP format).
@@ -50,9 +47,8 @@ using netdutils::Slice;
 class DnsTlsSocket : public IDnsTlsSocket {
   public:
     DnsTlsSocket(const DnsTlsServer& server, unsigned mark,
-                 IDnsTlsSocketObserver* _Nonnull observer,
-                 DnsTlsSessionCache* _Nonnull cache) :
-            mMark(mark), mServer(server), mObserver(observer), mCache(cache) {}
+                 IDnsTlsSocketObserver* _Nonnull observer, DnsTlsSessionCache* _Nonnull cache)
+        : mMark(mark), mServer(server), mObserver(observer), mCache(cache) {}
     ~DnsTlsSocket();
 
     // Creates the SSL context for this session and connect.  Returns false on failure.
@@ -66,9 +62,9 @@ class DnsTlsSocket : public IDnsTlsSocket {
     // notified that the socket is closed.
     // Note that success here indicates successful sending, not receipt of a response.
     // Thread-safe.
-    bool query(uint16_t id, const Slice query) override;
+    bool query(uint16_t id, const netdutils::Slice query) override;
 
-private:
+  private:
     // Lock to be held by the SSL event loop thread.  This is not normally in contention.
     std::mutex mLock;
 
@@ -89,13 +85,13 @@ private:
     void sslDisconnect() REQUIRES(mLock);
 
     // Writes a buffer to the socket.
-    bool sslWrite(const Slice buffer) REQUIRES(mLock);
+    bool sslWrite(const netdutils::Slice buffer) REQUIRES(mLock);
 
     // Reads exactly the specified number of bytes from the socket, or fails.
     // Returns SSL_ERROR_NONE on success.
     // If |wait| is true, then this function always blocks.  Otherwise, it
     // will return SSL_ERROR_WANT_READ if there is no data from the server to read.
-    int sslRead(const Slice buffer, bool wait) REQUIRES(mLock);
+    int sslRead(const netdutils::Slice buffer, bool wait) REQUIRES(mLock);
 
     bool sendQuery(const std::vector<uint8_t>& buf) REQUIRES(mLock);
     bool readResponse() REQUIRES(mLock);
