@@ -24,15 +24,13 @@
 
 #include <android-base/thread_annotations.h>
 #include <android-base/unique_fd.h>
+#include <netdutils/Slice.h>
 
 #include "DnsTlsQueryMap.h"
 #include "DnsTlsServer.h"
 #include "DnsTlsSessionCache.h"
 #include "IDnsTlsSocket.h"
 #include "IDnsTlsSocketObserver.h"
-#include "params.h"
-
-#include <netdutils/Slice.h>
 
 namespace android {
 namespace net {
@@ -44,8 +42,8 @@ class IDnsTlsSocketFactory;
 class DnsTlsTransport : public IDnsTlsSocketObserver {
   public:
     DnsTlsTransport(const DnsTlsServer& server, unsigned mark,
-                    IDnsTlsSocketFactory* _Nonnull factory) :
-            mMark(mark), mServer(server), mFactory(factory) {}
+                    IDnsTlsSocketFactory* _Nonnull factory)
+        : mMark(mark), mServer(server), mFactory(factory) {}
     ~DnsTlsTransport();
 
     typedef DnsTlsServer::Response Response;
@@ -63,7 +61,7 @@ class DnsTlsTransport : public IDnsTlsSocketObserver {
     void onResponse(std::vector<uint8_t> response) override;
     void onClosed() override EXCLUDES(mLock);
 
-private:
+  private:
     std::mutex mLock;
 
     DnsTlsSessionCache mCache;

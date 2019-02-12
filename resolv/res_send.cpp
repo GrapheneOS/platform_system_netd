@@ -101,9 +101,9 @@ constexpr bool kVerboseLogging = false;
 #include <android-base/logging.h>
 
 #include <netdutils/Slice.h>
-#include "netd_resolv/DnsTlsDispatcher.h"
-#include "netd_resolv/DnsTlsTransport.h"
-#include "netd_resolv/PrivateDnsConfiguration.h"
+#include "DnsTlsDispatcher.h"
+#include "DnsTlsTransport.h"
+#include "PrivateDnsConfiguration.h"
 #include "netd_resolv/resolv.h"
 #include "netd_resolv/stats.h"
 #include "private/android_filesystem_config.h"
@@ -113,6 +113,7 @@ constexpr bool kVerboseLogging = false;
 
 // TODO: use the namespace something like android::netd_resolv for libnetd_resolv
 using namespace android::net;
+using android::netdutils::Slice;
 
 #define VLOG if (!kVerboseLogging) {} else LOG(INFO)
 

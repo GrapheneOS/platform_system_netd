@@ -23,7 +23,7 @@
 
 #include <netinet/in.h>
 
-#include "params.h"
+#include <netd_resolv/params.h>
 
 namespace android {
 namespace net {
@@ -61,15 +61,15 @@ struct DnsTlsServer {
     int protocol = IPPROTO_TCP;
 
     // Exact comparison of DnsTlsServer objects
-    bool operator <(const DnsTlsServer& other) const;
-    bool operator ==(const DnsTlsServer& other) const;
+    bool operator<(const DnsTlsServer& other) const;
+    bool operator==(const DnsTlsServer& other) const;
 
     bool wasExplicitlyConfigured() const;
 };
 
 // This comparison only checks the IP address.  It ignores ports, names, and fingerprints.
 struct AddressComparator {
-    bool operator() (const DnsTlsServer& x, const DnsTlsServer& y) const;
+    bool operator()(const DnsTlsServer& x, const DnsTlsServer& y) const;
 };
 
 }  // namespace net

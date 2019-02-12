@@ -16,7 +16,7 @@
 
 #include <android/binder_manager.h>
 
-#include "netd_resolv/ResolverEventReporter.h"
+#include "ResolverEventReporter.h"
 
 using aidl::android::net::metrics::INetdEventListener;
 
