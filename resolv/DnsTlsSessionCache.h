@@ -23,9 +23,6 @@
 #include <openssl/ssl.h>
 
 #include <android-base/thread_annotations.h>
-#include <android-base/unique_fd.h>
-
-#include "params.h"
 
 namespace android {
 namespace net {
@@ -33,7 +30,7 @@ namespace net {
 // Cache of recently seen SSL_SESSIONs.  This is used to support session tickets.
 // This class is thread-safe.
 class DnsTlsSessionCache {
-public:
+  public:
     // Prepare SSL objects to use this session cache.  These methods must be called
     // before making use of either object.
     void prepareSslContext(SSL_CTX* _Nonnull ssl_ctx);
@@ -46,7 +43,7 @@ public:
     // pointer.)
     bssl::UniquePtr<SSL_SESSION> getSession() EXCLUDES(mLock);
 
-private:
+  private:
     static constexpr size_t kMaxSize = 5;
     static int newSessionCallback(SSL* _Nullable ssl, SSL_SESSION* _Nullable session);
 

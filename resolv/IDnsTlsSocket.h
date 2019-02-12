@@ -32,8 +32,8 @@ class DnsTlsSessionCache;
 // [length][value] format, with a 2-byte length (i.e. DNS-over-TCP format).
 // This interface is not aware of query-response pairing or anything else about DNS.
 class IDnsTlsSocket {
-public:
-    virtual ~IDnsTlsSocket() {};
+  public:
+    virtual ~IDnsTlsSocket(){};
     // Send a query on the provided SSL socket.  |query| contains
     // the body of a query, not including the ID bytes.  This function will typically return before
     // the query is actually sent.  If this function fails, the observer will be
