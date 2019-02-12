@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "netd_resolv/DnsTlsSessionCache.h"
+#include "DnsTlsSessionCache.h"
 
 #define LOG_TAG "DnsTlsSessionCache"
 //#define LOG_NDEBUG 0

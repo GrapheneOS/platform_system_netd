@@ -31,10 +31,10 @@ struct DnsTlsServer;
 
 // Trivial RAII factory for DnsTlsSocket.  This is owned by DnsTlsDispatcher.
 class DnsTlsSocketFactory : public IDnsTlsSocketFactory {
-public:
+  public:
     std::unique_ptr<IDnsTlsSocket> createDnsTlsSocket(const DnsTlsServer& server, unsigned mark,
-                                                     IDnsTlsSocketObserver* _Nonnull observer,
-                                                     DnsTlsSessionCache* _Nonnull cache) override {
+                                                      IDnsTlsSocketObserver* _Nonnull observer,
+                                                      DnsTlsSessionCache* _Nonnull cache) override {
         auto socket = std::make_unique<DnsTlsSocket>(server, mark, observer, cache);
         if (!socket->initialize()) {
             return nullptr;
