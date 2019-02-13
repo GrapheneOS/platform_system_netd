@@ -17,13 +17,13 @@
 #define LOG_TAG "DnsTlsTransport"
 //#define LOG_NDEBUG 0
 
-#include "netd_resolv/DnsTlsTransport.h"
+#include "DnsTlsTransport.h"
 
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 
-#include "netd_resolv/DnsTlsSocketFactory.h"
-#include "netd_resolv/IDnsTlsSocketFactory.h"
+#include "DnsTlsSocketFactory.h"
+#include "IDnsTlsSocketFactory.h"
 
 #include "log/log.h"
 
@@ -178,7 +178,7 @@ bool DnsTlsTransport::validate(const DnsTlsServer& server, unsigned netid, uint3
     int replylen = 0;
     DnsTlsSocketFactory factory;
     DnsTlsTransport transport(server, mark, &factory);
-    auto r = transport.query(Slice(query, qlen)).get();
+    auto r = transport.query(netdutils::Slice(query, qlen)).get();
     if (r.code != Response::success) {
         ALOGV("query failed");
         return false;

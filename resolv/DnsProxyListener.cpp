@@ -46,11 +46,11 @@
 #include <sysutils/SocketClient.h>
 
 // TODO: Considering moving ResponseCode.h Stopwatch.h thread_util.h to libnetdutils.
+#include "DnsProxyListener.h"
 #include "NetdClient.h"  // NETID_USE_LOCAL_NAMESERVERS
+#include "ResolverEventReporter.h"
 #include "ResponseCode.h"
 #include "Stopwatch.h"
-#include "netd_resolv/DnsProxyListener.h"
-#include "netd_resolv/ResolverEventReporter.h"
 #include "netd_resolv/stats.h"  // RCODE_TIMEOUT
 #include "netdutils/InternetAddresses.h"
 #include "thread_util.h"

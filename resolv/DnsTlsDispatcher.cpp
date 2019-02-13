@@ -17,8 +17,8 @@
 #define LOG_TAG "DnsTlsDispatcher"
 //#define LOG_NDEBUG 0
 
-#include "netd_resolv/DnsTlsDispatcher.h"
-#include "netd_resolv/DnsTlsSocketFactory.h"
+#include "DnsTlsDispatcher.h"
+#include "DnsTlsSocketFactory.h"
 
 #include "log/log.h"
 

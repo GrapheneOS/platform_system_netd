@@ -22,9 +22,11 @@
 #include <vector>
 
 #include <android-base/thread_annotations.h>
+#include <netd_resolv/resolv.h>
 
 #include "DnsTlsServer.h"
-#include "resolv.h"
+
+struct ExternalPrivateDnsStatus;  // Defined in netd_resolv/resolv.h
 
 namespace android {
 namespace net {
