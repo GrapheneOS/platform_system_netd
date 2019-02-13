@@ -32,6 +32,10 @@ int openNetlinkSocket(void);
 
 int processNetlinkResponse(int fd);
 
+int tcQdiscAddDevClsact(int fd, int ifIndex);
+int tcQdiscReplaceDevClsact(int fd, int ifIndex);
+int tcQdiscDelDevClsact(int fd, int ifIndex);
+
 }  // namespace net
 }  // namespace android
 

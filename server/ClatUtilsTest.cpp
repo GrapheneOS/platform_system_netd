@@ -93,5 +93,24 @@ TEST_F(ClatUtilsTest, TryOpeningNetlinkSocket) {
     close(fd);
 }
 
+// See Linux kernel source in include/net/flow.h
+#define LOOPBACK_IFINDEX 1
+
+TEST_F(ClatUtilsTest, AttachReplaceDetachClsactLo) {
+    // Technically does not depend on ebpf, but does depend on clsact,
+    // and we do not really care if it works on pre-4.9-Q anyway.
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    int fd = openNetlinkSocket();
+    ASSERT_LE(3, fd);
+
+    // This attaches and detaches a configuration-less and thus no-op clsact
+    // qdisc to loopback interface (and it takes fractions of a second)
+    EXPECT_EQ(0, tcQdiscAddDevClsact(fd, LOOPBACK_IFINDEX));
+    EXPECT_EQ(0, tcQdiscReplaceDevClsact(fd, LOOPBACK_IFINDEX));
+    EXPECT_EQ(0, tcQdiscDelDevClsact(fd, LOOPBACK_IFINDEX));
+    close(fd);
+}
+
 }  // namespace net
 }  // namespace android
