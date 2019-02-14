@@ -44,6 +44,23 @@ aidl_interface {
     },
 }
 
+aidl_interface {
+    name: "netd_aidl_parcelables",
+    local_include_dir: "binder",
+    srcs: [
+        "binder/android/net/InterfaceConfigurationParcel.aidl",
+        "binder/android/net/TetherStatsParcel.aidl",
+        "binder/android/net/UidRangeParcel.aidl",
+    ],
+    api_dir: "binder/api",
+    // NDK doesn't support array now.
+    backend: {
+        ndk: {
+            enabled: false,
+        },
+    },
+}
+
 // Modules common to both netd and netd_unit_test
 cc_library_static {
     name: "libnetd_server",
