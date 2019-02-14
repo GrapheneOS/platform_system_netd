@@ -50,7 +50,8 @@ extern struct ResolvStub {
     int (*android_net_res_stats_get_info_for_net)(unsigned netid, int* nscount,
                                                   sockaddr_storage servers[MAXNS], int* dcount,
                                                   char domains[MAXDNSRCH][MAXDNSRCHPATH],
-                                                  __res_params* params, res_stats stats[MAXNS]);
+                                                  __res_params* params, res_stats stats[MAXNS],
+                                                  int* wait_for_pending_req_timeout_count);
 
     void (*android_net_res_stats_get_usable_servers)(const __res_params* params, res_stats stats[],
                                                      int nscount, bool valid_servers[]);

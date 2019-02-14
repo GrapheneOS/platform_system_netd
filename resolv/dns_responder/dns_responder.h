@@ -79,6 +79,7 @@ class DNSResponder {
     void clearQueries();
     std::condition_variable& getCv() { return cv; }
     std::mutex& getCvMutex() { return cv_mutex_; }
+    void setDeferredResp(bool deferred_resp);
 
   private:
     // Key used for accessing mappings.
@@ -159,6 +160,10 @@ class DNSResponder {
     std::mutex update_mutex_;
     std::condition_variable cv;
     std::mutex cv_mutex_;
+
+    std::condition_variable cv_for_deferred_resp_;
+    std::mutex cv_mutex_for_deferred_resp_;
+    bool deferred_resp_ GUARDED_BY(cv_mutex_for_deferred_resp_) = false;
 };
 
 }  // namespace test
