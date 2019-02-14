@@ -45,6 +45,8 @@
 
 #define CEIL(x, y) (((x) + (y) - 1) / (y))
 
+constexpr char RESCAN[] = "1";
+
 MDnsSdListener::MDnsSdListener() : FrameworkListener(SOCKET_NAME, true) {
     Monitor *m = new Monitor();
     registerCmd(new Handler(m, this));
