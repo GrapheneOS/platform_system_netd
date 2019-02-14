@@ -236,6 +236,8 @@ interface INetd {
      *         </ul>
      *         in this order. For example, the timeout counter for server N is stored at position
      *         RESOLVER_STATS_COUNT*N + RESOLVER_STATS_TIMEOUTS
+     * @param wait_for_pending_req_timeout_count an internal counter used to count the number of
+     *        timeouts while resolver is handling concurrent DNS queries on the same hostname.
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
      *
@@ -243,7 +245,7 @@ interface INetd {
      */
     void getResolverInfo(int netId, out @utf8InCpp String[] servers,
             out @utf8InCpp String[] domains, out @utf8InCpp String[] tlsServers, out int[] params,
-            out int[] stats);
+            out int[] stats, out int[] wait_for_pending_req_timeout_count);
 
     /**
      * Instruct the tethering DNS server to reevaluated serving interfaces.
