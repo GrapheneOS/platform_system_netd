@@ -120,12 +120,16 @@ class ResolverTest : public ::testing::Test {
 
     bool GetResolverInfo(std::vector<std::string>* servers, std::vector<std::string>* domains,
                          std::vector<std::string>* tlsServers, __res_params* params,
-                         std::vector<ResolverStats>* stats) {
+                         std::vector<ResolverStats>* stats,
+                         int* wait_for_pending_req_timeout_count) {
         using android::net::INetd;
         std::vector<int32_t> params32;
         std::vector<int32_t> stats32;
+        std::vector<int32_t> wait_for_pending_req_timeout_count32{0};
         auto rv = mDnsClient.netdService()->getResolverInfo(TEST_NETID, servers, domains,
-                                                            tlsServers, &params32, &stats32);
+                                                            tlsServers, &params32, &stats32,
+                                                            &wait_for_pending_req_timeout_count32);
+
         if (!rv.isOk() || params32.size() != static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT)) {
             return false;
         }
@@ -140,6 +144,7 @@ class ResolverTest : public ::testing::Test {
                     params32[INetd::RESOLVER_PARAMS_MAX_SAMPLES]),
             .base_timeout_msec = params32[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
         };
+        *wait_for_pending_req_timeout_count = wait_for_pending_req_timeout_count32[0];
         return ResolverStats::decodeAll(stats32, stats);
     }
 
@@ -272,6 +277,17 @@ class ResolverTest : public ::testing::Test {
         auto t1 = std::chrono::steady_clock::now();
         ALOGI("%u hosts, %u threads, %u queries, %Es", num_hosts, num_threads, num_queries,
                 std::chrono::duration<double>(t1 - t0).count());
+
+        std::vector<std::string> res_servers;
+        std::vector<std::string> res_domains;
+        std::vector<std::string> res_tls_servers;
+        __res_params res_params;
+        std::vector<ResolverStats> res_stats;
+        int wait_for_pending_req_timeout_count;
+        ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
+                                    &res_stats, &wait_for_pending_req_timeout_count));
+        EXPECT_EQ(0, wait_for_pending_req_timeout_count);
+
         ASSERT_NO_FATAL_FAILURE(mDnsClient.ShutdownDNSServers(&dns));
     }
 
@@ -463,8 +479,9 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
     std::vector<std::string> res_tls_servers;
     __res_params res_params;
     std::vector<ResolverStats> res_stats;
-    ASSERT_TRUE(
-            GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params, &res_stats));
+    int wait_for_pending_req_timeout_count;
+    ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
+                                &res_stats, &wait_for_pending_req_timeout_count));
     EXPECT_EQ(servers.size(), res_servers.size());
     EXPECT_EQ(domains.size(), res_domains.size());
     EXPECT_EQ(0U, res_tls_servers.size());
@@ -569,6 +586,95 @@ TEST_F(ResolverTest, GetAddrInfo_localhost) {
     // Expect no DNS queries; ip6-localhost is resolved via /etc/hosts
     EXPECT_TRUE(dns.queries().empty()) << dns.dumpQueries();
     EXPECT_EQ(kIp6LocalHostAddr, ToString(result));
+}
+
+// Verify if the resolver correctly handle multiple queries simultaneously
+// step 1: set dns server#1 into deferred responding mode.
+// step 2: thread#1 query "hello.example.com." --> resolver send query to server#1.
+// step 3: thread#2 query "hello.example.com." --> resolver hold the request and wait for
+//           response of previous pending query sent by thread#1.
+// step 4: thread#3 query "konbanha.example.com." --> resolver send query to server#3. Server
+//           respond to resolver immediately.
+// step 5: check if server#1 get 1 query by thread#1, server#2 get 0 query, server#3 get 1 query.
+// step 6: resume dns server#1 to respond dns query in step#2.
+// step 7: thread#1 and #2 should get returned from DNS query after step#6. Also, check the
+//           number of queries in server#2 is 0 to ensure thread#2 does not wake up unexpectedly
+//           before signaled by thread#1.
+TEST_F(ResolverTest, GetAddrInfoV4_deferred_resp) {
+    const char* listen_addr1 = "127.0.0.9";
+    const char* listen_addr2 = "127.0.0.10";
+    const char* listen_addr3 = "127.0.0.11";
+    const char* listen_srv = "53";
+    const char* host_name_deferred = "hello.example.com.";
+    const char* host_name_normal = "konbanha.example.com.";
+    test::DNSResponder dns1(listen_addr1, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns3(listen_addr3, listen_srv, 250, ns_rcode::ns_r_servfail);
+    dns1.addMapping(host_name_deferred, ns_type::ns_t_a, "1.2.3.4");
+    dns2.addMapping(host_name_deferred, ns_type::ns_t_a, "1.2.3.4");
+    dns3.addMapping(host_name_normal, ns_type::ns_t_a, "1.2.3.5");
+    ASSERT_TRUE(dns1.startServer());
+    ASSERT_TRUE(dns2.startServer());
+    ASSERT_TRUE(dns3.startServer());
+    const std::vector<std::string> servers_for_t1 = {listen_addr1};
+    const std::vector<std::string> servers_for_t2 = {listen_addr2};
+    const std::vector<std::string> servers_for_t3 = {listen_addr3};
+    addrinfo hints = {.ai_family = AF_INET};
+    const std::vector<int> params = {300, 25, 8, 8, 5000};
+    bool t3_task_done = false;
+
+    dns1.setDeferredResp(true);
+    std::thread t1([&, this]() {
+        ASSERT_TRUE(
+                mDnsClient.SetResolversForNetwork(servers_for_t1, kDefaultSearchDomains, params));
+        ScopedAddrinfo result = safe_getaddrinfo(host_name_deferred, nullptr, &hints);
+        // t3's dns query should got returned first
+        EXPECT_TRUE(t3_task_done);
+        EXPECT_EQ(1U, GetNumQueries(dns1, host_name_deferred));
+        EXPECT_TRUE(result != nullptr);
+        EXPECT_EQ("1.2.3.4", ToString(result));
+    });
+
+    // ensuring t1 and t2 handler functions are processed in order
+    usleep(100 * 1000);
+    std::thread t2([&, this]() {
+        ASSERT_TRUE(
+                mDnsClient.SetResolversForNetwork(servers_for_t2, kDefaultSearchDomains, params));
+        ScopedAddrinfo result = safe_getaddrinfo(host_name_deferred, nullptr, &hints);
+        EXPECT_TRUE(t3_task_done);
+        EXPECT_EQ(0U, GetNumQueries(dns2, host_name_deferred));
+        EXPECT_TRUE(result != nullptr);
+        EXPECT_EQ("1.2.3.4", ToString(result));
+
+        std::vector<std::string> res_servers;
+        std::vector<std::string> res_domains;
+        std::vector<std::string> res_tls_servers;
+        __res_params res_params;
+        std::vector<ResolverStats> res_stats;
+        int wait_for_pending_req_timeout_count;
+        ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
+                                    &res_stats, &wait_for_pending_req_timeout_count));
+        EXPECT_EQ(0, wait_for_pending_req_timeout_count);
+    });
+
+    // ensuring t2 and t3 handler functions are processed in order
+    usleep(100 * 1000);
+    std::thread t3([&, this]() {
+        ASSERT_TRUE(
+                mDnsClient.SetResolversForNetwork(servers_for_t3, kDefaultSearchDomains, params));
+        ScopedAddrinfo result = safe_getaddrinfo(host_name_normal, nullptr, &hints);
+        EXPECT_EQ(1U, GetNumQueries(dns1, host_name_deferred));
+        EXPECT_EQ(0U, GetNumQueries(dns2, host_name_deferred));
+        EXPECT_EQ(1U, GetNumQueries(dns3, host_name_normal));
+        EXPECT_TRUE(result != nullptr);
+        EXPECT_EQ("1.2.3.5", ToString(result));
+
+        t3_task_done = true;
+        dns1.setDeferredResp(false);
+    });
+    t3.join();
+    t1.join();
+    t2.join();
 }
 
 TEST_F(ResolverTest, MultidomainResolution) {
@@ -732,6 +838,16 @@ TEST_F(ResolverTest, GetAddrInfoV6_concurrent) {
     for (std::thread& thread : threads) {
         thread.join();
     }
+
+    std::vector<std::string> res_servers;
+    std::vector<std::string> res_domains;
+    std::vector<std::string> res_tls_servers;
+    __res_params res_params;
+    std::vector<ResolverStats> res_stats;
+    int wait_for_pending_req_timeout_count;
+    ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
+                                &res_stats, &wait_for_pending_req_timeout_count));
+    EXPECT_EQ(0, wait_for_pending_req_timeout_count);
 }
 
 TEST_F(ResolverTest, GetAddrInfoStressTest_Binder_100) {
@@ -758,8 +874,9 @@ TEST_F(ResolverTest, EmptySetup) {
     std::vector<std::string> res_tls_servers;
     __res_params res_params;
     std::vector<ResolverStats> res_stats;
-    ASSERT_TRUE(
-            GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params, &res_stats));
+    int wait_for_pending_req_timeout_count;
+    ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
+                                &res_stats, &wait_for_pending_req_timeout_count));
     EXPECT_EQ(0U, res_servers.size());
     EXPECT_EQ(0U, res_domains.size());
     EXPECT_EQ(0U, res_tls_servers.size());
@@ -864,8 +981,9 @@ TEST_F(ResolverTest, MaxServerPrune_Binder) {
     std::vector<std::string> res_tls_servers;
     __res_params res_params;
     std::vector<ResolverStats> res_stats;
-    ASSERT_TRUE(
-            GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params, &res_stats));
+    int wait_for_pending_req_timeout_count;
+    ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
+                                &res_stats, &wait_for_pending_req_timeout_count));
 
     // Check the size of the stats and its contents.
     EXPECT_EQ(static_cast<size_t>(MAXNS), res_servers.size());
@@ -915,8 +1033,9 @@ TEST_F(ResolverTest, ResolverStats) {
     std::vector<std::string> res_tls_servers;
     __res_params res_params;
     std::vector<ResolverStats> res_stats;
-    ASSERT_TRUE(
-            GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params, &res_stats));
+    int wait_for_pending_req_timeout_count;
+    ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
+                                &res_stats, &wait_for_pending_req_timeout_count));
 
     EXPECT_EQ(1, res_stats[0].timeouts);
     EXPECT_EQ(1, res_stats[1].errors);
