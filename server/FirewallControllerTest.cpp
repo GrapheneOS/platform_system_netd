@@ -39,7 +39,10 @@ class FirewallControllerTest : public IptablesBaseTest {
 protected:
     FirewallControllerTest() {
         FirewallController::execIptablesRestore = fakeExecIptablesRestore;
-        mFw.mUseBpfOwnerMatch = false;
+        // This unit test currently doesn't cover the eBPF owner match case so
+        // we have to manually turn eBPF support off.
+        // TODO: find a way to unit test the eBPF code path.
+        mFw.mUseBpfOwnerMatch = android::bpf::BpfLevel::NONE;
     }
     FirewallController mFw;
 
