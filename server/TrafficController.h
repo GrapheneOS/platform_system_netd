@@ -86,7 +86,7 @@ class TrafficController {
      * Check if the current device have the bpf traffic stats accounting service
      * running.
      */
-    bool checkBpfStatsEnable();
+    bpf::BpfLevel getBpfLevel();
 
     /*
      * Add the interface name and index pair into the eBPF map.
@@ -204,7 +204,7 @@ class TrafficController {
     netdutils::Status addMatch(BpfMap<uint32_t, uint8_t>& map, uint32_t uid,
                                UidOwnerMatchType match) REQUIRES(mOwnerMatchMutex);
 
-    bool ebpfSupported;
+    bpf::BpfLevel mBpfLevel;
 
     std::mutex mOwnerMatchMutex;
 
