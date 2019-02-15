@@ -1107,8 +1107,10 @@ interface INetd {
     */
     @utf8InCpp String[] interfaceGetList();
 
+    // Must be kept in sync with constant in InterfaceConfiguration.java
     const String IF_STATE_UP = "up";
     const String IF_STATE_DOWN = "down";
+
     const String IF_FLAG_BROADCAST = "broadcast";
     const String IF_FLAG_LOOPBACK = "loopback";
     const String IF_FLAG_POINTOPOINT = "point-to-point";
