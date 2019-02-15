@@ -911,12 +911,6 @@ binder::Status NetdNativeService::wakeupDelInterface(const std::string& ifName,
     return asBinderStatus(gCtls->wakeupCtrl.delInterface(ifName, prefix, mark, mask));
 }
 
-binder::Status NetdNativeService::trafficCheckBpfStatsEnable(bool* ret) {
-    ENFORCE_PERMISSION(NETWORK_STACK);
-    *ret = gCtls->trafficCtrl.checkBpfStatsEnable();
-    return binder::Status::ok();
-}
-
 binder::Status NetdNativeService::idletimerAddInterface(const std::string& ifName, int32_t timeout,
                                                         const std::string& classLabel) {
     NETD_LOCKING_RPC(NETWORK_STACK, gCtls->idletimerCtrl.lock);

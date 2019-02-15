@@ -51,14 +51,6 @@ constexpr uint32_t ENOBUFS_POLL_WAIT_US = 10 * 1000;
 using android::netdutils::Status;
 using android::netdutils::statusFromErrno;
 
-#define SKIP_TEST_IF_BPF_NOT_SUPPORTED()                                             \
-    do {                                                                             \
-        if (!android::bpf::hasBpfSupport()) {                                        \
-            GTEST_LOG_(INFO) << "This test is skipped since bpf is not available\n"; \
-            return;                                                                  \
-        }                                                                            \
-    } while (0)
-
 // This test set up a SkDestroyListener that is runing parallel with the production
 // SkDestroyListener. The test will create thousands of sockets and tag them on the
 // production cookieUidTagMap and close them in a short time. When the number of
@@ -75,14 +67,14 @@ class NetlinkListenerTest : public testing::Test {
     BpfMap<uint64_t, UidTag> mCookieTagMap;
 
     void SetUp() {
-        SKIP_TEST_IF_BPF_NOT_SUPPORTED();
+        SKIP_IF_BPF_NOT_SUPPORTED;
 
         mCookieTagMap.reset(android::bpf::mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
         ASSERT_TRUE(mCookieTagMap.isValid());
     }
 
     void TearDown() {
-        SKIP_TEST_IF_BPF_NOT_SUPPORTED();
+        SKIP_IF_BPF_NOT_SUPPORTED;
 
         const auto deleteTestCookieEntries = [](const uint64_t& key, const UidTag& value,
                                                 BpfMap<uint64_t, UidTag>& map) {
@@ -152,7 +144,7 @@ class NetlinkListenerTest : public testing::Test {
 };
 
 TEST_F(NetlinkListenerTest, TestAllSocketUntagged) {
-    SKIP_TEST_IF_BPF_NOT_SUPPORTED();
+    SKIP_IF_BPF_NOT_SUPPORTED;
 
     checkMassiveSocketDestroy(10, false);
     checkMassiveSocketDestroy(100, false);
@@ -160,7 +152,7 @@ TEST_F(NetlinkListenerTest, TestAllSocketUntagged) {
 }
 
 TEST_F(NetlinkListenerTest, TestSkDestroyError) {
-    SKIP_TEST_IF_BPF_NOT_SUPPORTED();
+    SKIP_IF_BPF_NOT_SUPPORTED;
 
     checkMassiveSocketDestroy(10000, true);
 }
