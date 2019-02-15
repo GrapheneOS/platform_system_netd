@@ -48,6 +48,7 @@
 // TODO: Considering moving ResponseCode.h Stopwatch.h thread_util.h to libnetdutils.
 #include "DnsProxyListener.h"
 #include "NetdClient.h"  // NETID_USE_LOCAL_NAMESERVERS
+#include "NetdPermissions.h"
 #include "ResolverEventReporter.h"
 #include "ResponseCode.h"
 #include "Stopwatch.h"
@@ -76,12 +77,6 @@ namespace android {
 namespace net {
 
 namespace {
-
-// TODO: move to a separate file (with other constants from FwmarkService and NetdNativeService)
-constexpr const char CONNECTIVITY_USE_RESTRICTED_NETWORKS[] =
-    "android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS";
-constexpr const char NETWORK_BYPASS_PRIVATE_DNS[] =
-    "android.permission.NETWORK_BYPASS_PRIVATE_DNS";
 
 // Limits the number of outstanding DNS queries by client UID.
 constexpr int MAX_QUERIES_PER_UID = 256;
@@ -154,7 +149,8 @@ bool hasPermissionToBypassPrivateDns(uid_t uid) {
     }
 
     for (const char* const permission :
-         {CONNECTIVITY_USE_RESTRICTED_NETWORKS, NETWORK_BYPASS_PRIVATE_DNS}) {
+         {PERM_CONNECTIVITY_USE_RESTRICTED_NETWORKS, PERM_NETWORK_BYPASS_PRIVATE_DNS,
+          PERM_MAINLINE_NETWORK_STACK}) {
         if (gDnsProxyListener.mCallbacks.check_calling_permission(permission)) {
             return true;
         }
