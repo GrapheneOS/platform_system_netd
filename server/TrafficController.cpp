@@ -93,7 +93,7 @@ const std::string uidMatchTypeToString(uint8_t match) {
 }
 
 bool TrafficController::hasUpdateDeviceStatsPermission(uid_t uid) {
-    return mPrivilegedUser.find(uid) != mPrivilegedUser.end();
+    return ((uid == AID_ROOT) || mPrivilegedUser.find(uid) != mPrivilegedUser.end());
 }
 
 const std::string UidPermissionTypeToString(uint8_t permission) {
@@ -157,9 +157,7 @@ Status changeOwnerAndMode(const char* path, gid_t group, const char* debugName, 
     return netdutils::status::ok;
 }
 
-TrafficController::TrafficController() {
-    ebpfSupported = hasBpfSupport();
-}
+TrafficController::TrafficController() : mBpfLevel(getBpfSupportLevel()) {}
 
 Status TrafficController::initMaps() {
     std::lock_guard ownerMapGuard(mOwnerMatchMutex);
@@ -260,8 +258,7 @@ static Status initPrograms() {
 }
 
 Status TrafficController::start() {
-
-    if (!ebpfSupported) {
+    if (mBpfLevel == BpfLevel::NONE) {
         return netdutils::status::ok;
     }
 
@@ -326,7 +323,7 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
         return -EPERM;
     }
 
-    if (!ebpfSupported) {
+    if (mBpfLevel == BpfLevel::NONE) {
         if (legacy_tagSocket(sockFd, tag, uid)) return -errno;
         return 0;
     }
@@ -349,7 +346,7 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
 }
 
 int TrafficController::untagSocket(int sockFd) {
-    if (!ebpfSupported) {
+    if (mBpfLevel == BpfLevel::NONE) {
         if (legacy_untagSocket(sockFd)) return -errno;
         return 0;
     }
@@ -368,7 +365,7 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid, uid_t calling
 
     if (!hasUpdateDeviceStatsPermission(callingUid)) return -EPERM;
 
-    if (!ebpfSupported) {
+    if (mBpfLevel == BpfLevel::NONE) {
         if (legacy_setCounterSet(counterSetNum, uid)) return -errno;
         return 0;
     }
@@ -400,7 +397,7 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid, uid_t calling
 int TrafficController::deleteTagData(uint32_t tag, uid_t uid, uid_t callingUid) {
     if (!hasUpdateDeviceStatsPermission(callingUid)) return -EPERM;
 
-    if (!ebpfSupported) {
+    if (mBpfLevel == BpfLevel::NONE) {
         if (legacy_deleteTagData(tag, uid)) return -errno;
         return 0;
     }
@@ -462,7 +459,7 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid, uid_t callingUid) 
 }
 
 int TrafficController::addInterface(const char* name, uint32_t ifaceIndex) {
-    if (!ebpfSupported) return 0;
+    if (mBpfLevel == BpfLevel::NONE) return 0;
 
     IfaceValue iface;
     if (ifaceIndex == 0) {
@@ -563,7 +560,7 @@ Status TrafficController::updateUidOwnerMap(const std::vector<std::string>& appS
 
 int TrafficController::changeUidOwnerRule(ChildChain chain, uid_t uid, FirewallRule rule,
                                           FirewallType type) {
-    if (!ebpfSupported) {
+    if (mBpfLevel == BpfLevel::NONE) {
         ALOGE("bpf is not set up, should use iptables rule");
         return -ENOSYS;
     }
@@ -677,8 +674,8 @@ int TrafficController::toggleUidOwnerMap(ChildChain chain, bool enable) {
     return -res.code();
 }
 
-bool TrafficController::checkBpfStatsEnable() {
-    return ebpfSupported;
+BpfLevel TrafficController::getBpfLevel() {
+    return mBpfLevel;
 }
 
 void TrafficController::setPermissionForUids(int permission, const std::vector<uid_t>& uids) {
@@ -746,9 +743,9 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     dw.println("TrafficController");
 
     ScopedIndent indentPreBpfModule(dw);
-    dw.println("BPF module status: %s", ebpfSupported? "ON" : "OFF");
+    dw.println("BPF module status: %s", BpfLevelToString(mBpfLevel).c_str());
 
-    if (!ebpfSupported) {
+    if (mBpfLevel == BpfLevel::NONE) {
         return;
     }
 

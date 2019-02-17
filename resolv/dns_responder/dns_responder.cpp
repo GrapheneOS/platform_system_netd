@@ -723,6 +723,13 @@ void DNSResponder::requestHandler() {
         size_t response_len = sizeof(response);
         if (handleDNSRequest(buffer, len, response, &response_len) &&
             response_len > 0) {
+            // place wait_for after handleDNSRequest() so we can check the number of queries in
+            // test case before it got responded.
+            std::unique_lock guard(cv_mutex_for_deferred_resp_);
+            cv_for_deferred_resp_.wait(guard, [this]() REQUIRES(cv_mutex_for_deferred_resp_) {
+                return !deferred_resp_;
+            });
+
             len = sendto(socket_, response, response_len, 0,
                          reinterpret_cast<const sockaddr*>(&sa), sa_len);
             std::string host_str =
@@ -914,6 +921,14 @@ bool DNSResponder::makeErrorResponse(DNSHeader* header, ns_rcode rcode,
     if (response_cur == nullptr) return false;
     *response_len = response_cur - response;
     return true;
+}
+
+void DNSResponder::setDeferredResp(bool deferred_resp) {
+    std::lock_guard<std::mutex> guard(cv_mutex_for_deferred_resp_);
+    deferred_resp_ = deferred_resp;
+    if (!deferred_resp_) {
+        cv_for_deferred_resp_.notify_one();
+    }
 }
 
 }  // namespace test

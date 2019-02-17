@@ -82,7 +82,6 @@ using android::base::ReadFileToString;
 using android::base::StartsWith;
 using android::base::StringPrintf;
 using android::base::Trim;
-using android::bpf::hasBpfSupport;
 using android::net::INetd;
 using android::net::InterfaceConfigurationParcel;
 using android::net::InterfaceController;
@@ -90,11 +89,6 @@ using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
 using android::netdutils::sSyscalls;
-
-#define SKIP_IF_BPF_SUPPORTED        \
-    do {                             \
-        if (hasBpfSupport()) return; \
-    } while (0)
 
 static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";

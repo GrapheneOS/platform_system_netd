@@ -59,6 +59,28 @@ Accept4FunctionType libcAccept4 = nullptr;
 ConnectFunctionType libcConnect = nullptr;
 SocketFunctionType libcSocket = nullptr;
 
+int checkSocket(int socketFd) {
+    if (socketFd < 0) {
+        return -EBADF;
+    }
+    int family;
+    socklen_t familyLen = sizeof(family);
+    if (getsockopt(socketFd, SOL_SOCKET, SO_DOMAIN, &family, &familyLen) == -1) {
+        return -errno;
+    }
+    if (!FwmarkClient::shouldSetFwmark(family)) {
+        return -EAFNOSUPPORT;
+    }
+    return 0;
+}
+
+bool shouldMarkSocket(int socketFd, const sockaddr* dst) {
+    // Only mark inet sockets that are connecting to inet destinations. This excludes, for example,
+    // inet sockets connecting to AF_UNSPEC (i.e., being disconnected), and non-inet sockets that
+    // for some reason the caller wants to attempt to connect to an inet destination.
+    return dst && FwmarkClient::shouldSetFwmark(dst->sa_family) && (checkSocket(socketFd) == 0);
+}
+
 int closeFdAndSetErrno(int fd, int error) {
     close(fd);
     errno = -error;
@@ -89,8 +111,7 @@ int netdClientAccept4(int sockfd, sockaddr* addr, socklen_t* addrlen, int flags)
 }
 
 int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
-    const bool shouldSetFwmark = (sockfd >= 0) && addr
-            && FwmarkClient::shouldSetFwmark(addr->sa_family);
+    const bool shouldSetFwmark = shouldMarkSocket(sockfd, addr);
     if (shouldSetFwmark) {
         FwmarkCommand command = {FwmarkCommand::ON_CONNECT, 0, 0, 0};
         if (int error = FwmarkClient().send(&command, sockfd, nullptr)) {
@@ -169,21 +190,6 @@ int setNetworkForTarget(unsigned netId, std::atomic_uint* target) {
     }
     close(socketFd);
     return error;
-}
-
-int checkSocket(int socketFd) {
-    if (socketFd < 0) {
-        return -EBADF;
-    }
-    int family;
-    socklen_t familyLen = sizeof(family);
-    if (getsockopt(socketFd, SOL_SOCKET, SO_DOMAIN, &family, &familyLen) == -1) {
-        return -errno;
-    }
-    if (!FwmarkClient::shouldSetFwmark(family)) {
-        return -EAFNOSUPPORT;
-    }
-    return 0;
 }
 
 int dns_open_proxy() {

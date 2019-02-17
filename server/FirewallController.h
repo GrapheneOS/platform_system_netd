@@ -26,6 +26,7 @@
 #include "android/net/INetd.h"
 
 #include "NetdConstants.h"
+#include "bpf/BpfUtils.h"
 
 namespace android {
 namespace net {
@@ -103,7 +104,7 @@ private:
   //    fails with EPERM. Netd can therefore assumes the max valid uid to be const.
   const uid_t mMaxUid;
   FirewallType mFirewallType;
-  bool mUseBpfOwnerMatch;
+  android::bpf::BpfLevel mUseBpfOwnerMatch;
   std::set<std::string> mIfaceRules;
   int attachChain(const char*, const char*);
   int detachChain(const char*, const char*);
