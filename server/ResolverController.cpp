@@ -109,13 +109,6 @@ bool checkCallingPermissionCallback(const char* permission) {
     return checkCallingPermission(String16(permission));
 }
 
-bool allIPv6Only(const std::vector<std::string>& servers) {
-    for (const auto& server : servers) {
-        if (server.find(':') == std::string::npos) return false;
-    }
-    return !servers.empty();
-}
-
 }  // namespace
 
 int ResolverController::setDnsServers(unsigned netId, const char* searchDomains,
@@ -287,30 +280,8 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         res_params.retry_count = params[INetd::RESOLVER_PARAMS_RETRY_COUNT];
     }
 
-    const auto rval = setDnsServers(netId, domains_str.c_str(), server_ptrs.data(),
-                                    server_ptrs.size(), &res_params);
-
-    if (rval == 0) {
-        // Start DNS64 discovery after successfully setting any new DNS servers
-        // as the cache may have been cleared (if the nameservers differ), and
-        // we might discover a different DNS64 prefix. If the cache has not been
-        // cleared, we may quickly rediscover the same prefix.
-        //
-        // Operators may choose to use a longer TTL in order to reduce repeated
-        // resolution (see also https://tools.ietf.org/html/rfc7050#section-5).
-        if (allIPv6Only(servers)) {
-            // TODO: Keep any existing discovered prefix around for use while
-            // re-discovery is in progress. Otherwise, whenever DNS servers are
-            // pushed to netd there can be gaps where it would appear there was
-            // no prefix64 when in fact we had previously discovered one (and
-            // are highly likely to rediscover the same one).
-            mDns64Configuration.startPrefixDiscovery(netId);
-        } else {
-            mDns64Configuration.stopPrefixDiscovery(netId);
-        }
-    }
-
-    return rval;
+    return setDnsServers(netId, domains_str.c_str(), server_ptrs.data(), server_ptrs.size(),
+                         &res_params);
 }
 
 int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>* servers,
@@ -346,6 +317,14 @@ int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>*
     (*params)[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC] = res_params.base_timeout_msec;
     (*params)[INetd::RESOLVER_PARAMS_RETRY_COUNT] = res_params.retry_count;
     return 0;
+}
+
+void ResolverController::startPrefix64Discovery(int32_t netId) {
+    mDns64Configuration.startPrefixDiscovery(netId);
+}
+
+void ResolverController::stopPrefix64Discovery(int32_t netId) {
+    return mDns64Configuration.stopPrefixDiscovery(netId);
 }
 
 // TODO: use StatusOr<T> to wrap the result.

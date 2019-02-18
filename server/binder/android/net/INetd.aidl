@@ -249,6 +249,20 @@ interface INetd {
             out int[] stats, out int[] wait_for_pending_req_timeout_count);
 
     /**
+     * Starts NAT64 prefix discovery on the given network.
+     *
+     * @param netId the netId to start prefix discovery on.
+     */
+    void resolverStartPrefix64Discovery(int netId);
+
+    /**
+     * Stops NAT64 prefix discovery on the given network.
+     *
+     * @param netId the netId to stop prefix discovery on.
+     */
+    void resolverStopPrefix64Discovery(int netId);
+
+    /**
      * Instruct the tethering DNS server to reevaluated serving interfaces.
      * This is needed to for the DNS server to observe changes in the set
      * of potential listening IP addresses. (Listening on wildcard addresses

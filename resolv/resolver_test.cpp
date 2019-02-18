@@ -116,7 +116,10 @@ class ResolverTest : public ::testing::Test {
     };
 
     void SetUp() { mDnsClient.SetUp(); }
-    void TearDown() { mDnsClient.TearDown(); }
+    void TearDown() {
+        mDnsClient.netdService()->resolverStopPrefix64Discovery(TEST_NETID);
+        mDnsClient.TearDown();
+    }
 
     bool GetResolverInfo(std::vector<std::string>* servers, std::vector<std::string>* domains,
                          std::vector<std::string>* tlsServers, res_params* params,
@@ -2241,7 +2244,6 @@ TEST_F(ResolverTest, BogusDnsServer) {
 
 TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
     constexpr char listen_addr[] = "::1";
-    constexpr char listen_addr2[] = "127.0.0.5";
     constexpr char dns64_name[] = "ipv4only.arpa.";
     constexpr char host_name[] = "v4only.example.com.";
     const std::vector<DnsRecord> records = {
@@ -2250,14 +2252,13 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
     };
 
     test::DNSResponder dns(listen_addr);
-    test::DNSResponder dns2(listen_addr2);
     StartDns(dns, records);
-    StartDns(dns2, {{dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"}});
 
     std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // hints are necessary in order to let netd know which type of addresses the caller is
@@ -2265,23 +2266,24 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
     const addrinfo hints = {.ai_family = AF_UNSPEC};
     ScopedAddrinfo result = safe_getaddrinfo("v4only", nullptr, &hints);
     EXPECT_TRUE(result != nullptr);
-    EXPECT_LE(1U, GetNumQueries(dns, host_name));
+    // TODO: BUG: there should only be two queries, one AAAA (which returns no records) and one A
+    // (which returns 1.2.3.4). But there is an extra AAAA.
+    EXPECT_EQ(3U, GetNumQueries(dns, host_name));
 
     std::string result_str = ToString(result);
     EXPECT_EQ(result_str, "64:ff9b::102:304");
 
-    // Let's test the case when there's an IPv4 resolver.
-    servers = {listen_addr, listen_addr2};
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
-    dns.clearQueries();
-    dns2.clearQueries();
+    // Stopping NAT64 prefix discovery disables synthesis.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStopPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_FALSE(WaitForPrefix64Detected(TEST_NETID, 300));
 
-    // Netd doesn't detect prefix because there has an IPv4 resolver but all IPv6 resolvers.
-    EXPECT_FALSE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    dns.clearQueries();
 
     result = safe_getaddrinfo("v4only", nullptr, &hints);
     EXPECT_TRUE(result != nullptr);
-    EXPECT_LE(1U, GetNumQueries(dns, host_name));
+    // TODO: BUG: there should only be one query, an AAAA (which returns no records), because the
+    // A is already cached. But there is an extra AAAA.
+    EXPECT_EQ(2U, GetNumQueries(dns, host_name));
 
     result_str = ToString(result);
     EXPECT_EQ(result_str, "1.2.3.4");
@@ -2301,7 +2303,8 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecified) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Ensure to synthesize AAAA if AF_INET6 is specified, and not to synthesize AAAA
@@ -2337,7 +2340,8 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedV6) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     const addrinfo hints = {.ai_family = AF_UNSPEC};
@@ -2367,7 +2371,8 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedNoV6) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     const addrinfo hints = {.ai_family = AF_UNSPEC};
@@ -2401,7 +2406,8 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecialUseIPv4Addresses) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     static const struct TestConfig {
@@ -2463,7 +2469,8 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryWithNullArgumentHints) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Assign argument hints of getaddrinfo() as null is equivalent to set ai_family AF_UNSPEC.
@@ -2503,7 +2510,8 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryNullArgumentNode) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // If node is null, return address is listed by libc/getaddrinfo.c as follows.
@@ -2582,7 +2590,8 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDnsQueryWithHavingNat64Prefix) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Reverse IPv4 DNS query. Prefix should have no effect on it.
@@ -2625,7 +2634,8 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDns64Query) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Synthesized PTR record doesn't exist on DNS server
@@ -2670,7 +2680,8 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDns64QueryFromHostFile) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Using synthesized "localhost" address to be a trick for resolving host name
@@ -2711,7 +2722,8 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDnsQueryWithHavingNat64Prefix) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     static const struct TestConfig {
@@ -2789,7 +2801,8 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64Query) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     static const struct TestConfig {
@@ -2858,7 +2871,8 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64QueryFromHostFile) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Using synthesized "localhost" address to be a trick for resolving host name
@@ -2891,7 +2905,8 @@ TEST_F(ResolverTest, GetHostByName2_Dns64Synthesize) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Query an IPv4-only hostname. Expect that gets a synthesized address.
@@ -2917,7 +2932,8 @@ TEST_F(ResolverTest, GetHostByName2_DnsQueryWithHavingNat64Prefix) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // IPv4 DNS query. Prefix should have no effect on it.
@@ -2957,7 +2973,8 @@ TEST_F(ResolverTest, GetHostByName2_Dns64QuerySpecialUseIPv4Addresses) {
     const std::vector<std::string> servers = {listen_addr};
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
-    // Wait for detecting prefix to complete.
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     static const struct TestConfig {
