@@ -8,8 +8,6 @@ aidl_interface {
     api_dir: "binder/api",
 }
 
-
-
 // These are used in netd_integration_test
 // TODO: fold these into a cc_library_static after converting netd/server to Android.bp
 filegroup {
@@ -38,6 +36,9 @@ aidl_interface {
     api_dir: "binder/api",
     // NDK doesn't support array now.
     backend: {
+        cpp: {
+            gen_log: true,
+        },
         ndk: {
             enabled: false,
         },
