@@ -506,17 +506,19 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         statp->_u._ext.nstimes[lastns] = nstime;
     }
 
+    struct res_stats stats[MAXNS];
+    struct __res_params params;
+    int revision_id = resolv_cache_get_resolver_stats(statp->netid, &params, stats);
+    bool usable_servers[MAXNS];
+    android_net_res_stats_get_usable_servers(&params, stats, statp->nscount, usable_servers);
+    if (params.retry_count != 0) statp->retry = params.retry_count;
+
     /*
      * Send request, RETRY times, or until successful.
      */
     int retryTimes = (flags & ANDROID_RESOLV_NO_RETRY) ? 1 : statp->retry;
 
     for (int attempt = 0; attempt < retryTimes; ++attempt) {
-        struct res_stats stats[MAXNS];
-        struct __res_params params;
-        int revision_id = resolv_cache_get_resolver_stats(statp->netid, &params, stats);
-        bool usable_servers[MAXNS];
-        android_net_res_stats_get_usable_servers(&params, stats, statp->nscount, usable_servers);
 
         for (int ns = 0; ns < statp->nscount; ns++) {
             if (!usable_servers[ns]) continue;

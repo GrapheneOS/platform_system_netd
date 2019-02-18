@@ -180,7 +180,8 @@ interface INetd {
     const int RESOLVER_PARAMS_MIN_SAMPLES = 2;
     const int RESOLVER_PARAMS_MAX_SAMPLES = 3;
     const int RESOLVER_PARAMS_BASE_TIMEOUT_MSEC = 4;
-    const int RESOLVER_PARAMS_COUNT = 5;
+    const int RESOLVER_PARAMS_RETRY_COUNT = 5;
+    const int RESOLVER_PARAMS_COUNT = 6;
 
     /**
      * Sets the name servers, search domains and resolver params for the given network. Flushes the
