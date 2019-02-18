@@ -251,7 +251,7 @@ static int random_bind(int s, int family) {
     /* first try to bind to a random source port a few times */
     for (j = 0; j < 10; j++) {
         /* find a random port between 1025 .. 65534 */
-        int port = 1025 + (res_randomid() % (65535 - 1025));
+        int port = 1025 + (arc4random_uniform(65535 - 1025));
         if (family == AF_INET)
             u.sin.sin_port = htons(port);
         else

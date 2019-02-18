@@ -144,7 +144,7 @@ int res_vinit(res_state statp, int preinit) {
         statp->retrans = RES_TIMEOUT;
         statp->retry = RES_DFLRETRY;
         statp->options = RES_DEFAULT;
-        statp->id = res_randomid();
+        statp->id = arc4random_uniform(65536);
         statp->_mark = MARK_UNSET;
     }
 
