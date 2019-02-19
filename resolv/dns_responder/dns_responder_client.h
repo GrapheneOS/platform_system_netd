@@ -39,6 +39,7 @@ inline const std::vector<int> kDefaultParams = {
         25,      // success threshod in percent
         8,   8,  // {MIN,MAX}_SAMPLES
         100,     // BASE_TIMEOUT_MSEC
+        2,       // retry count
 };
 
 class DnsResponderClient {
