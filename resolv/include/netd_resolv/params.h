@@ -34,6 +34,7 @@ struct __res_params {
     uint8_t min_samples;        // min # samples needed for statistics to be considered meaningful
     uint8_t max_samples;        // max # samples taken into account for statistics
     int base_timeout_msec;      // base query retry timeout (if 0, use RES_TIMEOUT)
+    int retry_count;            // number of retries
 };
 
 // The DNS over TLS mode on a specific netId.

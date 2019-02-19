@@ -133,16 +133,15 @@ class ResolverTest : public ::testing::Test {
         if (!rv.isOk() || params32.size() != static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT)) {
             return false;
         }
-        *params = __res_params {
-            .sample_validity = static_cast<uint16_t>(
-                    params32[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY]),
-            .success_threshold = static_cast<uint8_t>(
-                    params32[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD]),
-            .min_samples = static_cast<uint8_t>(
-                    params32[INetd::RESOLVER_PARAMS_MIN_SAMPLES]),
-            .max_samples = static_cast<uint8_t>(
-                    params32[INetd::RESOLVER_PARAMS_MAX_SAMPLES]),
-            .base_timeout_msec = params32[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+        *params = __res_params{
+                .sample_validity =
+                        static_cast<uint16_t>(params32[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY]),
+                .success_threshold =
+                        static_cast<uint8_t>(params32[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD]),
+                .min_samples = static_cast<uint8_t>(params32[INetd::RESOLVER_PARAMS_MIN_SAMPLES]),
+                .max_samples = static_cast<uint8_t>(params32[INetd::RESOLVER_PARAMS_MAX_SAMPLES]),
+                .base_timeout_msec = params32[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+                .retry_count = params32[INetd::RESOLVER_PARAMS_RETRY_COUNT],
         };
         *wait_for_pending_req_timeout_count = wait_for_pending_req_timeout_count32[0];
         return ResolverStats::decodeAll(stats32, stats);
@@ -433,11 +432,9 @@ TEST_F(ResolverTest, GetHostByName_numeric) {
 TEST_F(ResolverTest, BinderSerialization) {
     using android::net::INetd;
     std::vector<int> params_offsets = {
-        INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY,
-        INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD,
-        INetd::RESOLVER_PARAMS_MIN_SAMPLES,
-        INetd::RESOLVER_PARAMS_MAX_SAMPLES,
-        INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC,
+            INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY,   INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD,
+            INetd::RESOLVER_PARAMS_MIN_SAMPLES,       INetd::RESOLVER_PARAMS_MAX_SAMPLES,
+            INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC, INetd::RESOLVER_PARAMS_RETRY_COUNT,
     };
     const int size = static_cast<int>(params_offsets.size());
     EXPECT_EQ(size, INetd::RESOLVER_PARAMS_COUNT);
@@ -888,6 +885,7 @@ TEST_F(ResolverTest, EmptySetup) {
     EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
     EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
               res_params.base_timeout_msec);
+    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_RETRY_COUNT], res_params.retry_count);
 }
 
 TEST_F(ResolverTest, SearchPathChange) {

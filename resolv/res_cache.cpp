@@ -1712,6 +1712,7 @@ static void resolv_set_default_params(struct __res_params* params) {
     params->min_samples = 0;
     params->max_samples = 0;
     params->base_timeout_msec = 0;  // 0 = legacy algorithm
+    params->retry_count = 0;
 }
 
 int resolv_set_nameservers_for_net(unsigned netid, const char** servers, const int numservers,
