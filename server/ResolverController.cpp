@@ -119,7 +119,8 @@ bool allIPv6Only(const std::vector<std::string>& servers) {
 }  // namespace
 
 int ResolverController::setDnsServers(unsigned netId, const char* searchDomains,
-        const char** servers, int numservers, const __res_params* params) {
+                                      const char** servers, int numservers,
+                                      const res_params* params) {
     if (DBG) {
         ALOGD("setDnsServers netId = %u, numservers = %d", netId, numservers);
     }
@@ -139,7 +140,7 @@ int ResolverController::clearDnsServers(unsigned netId) {
 }
 
 int ResolverController::getDnsInfo(unsigned netId, std::vector<std::string>* servers,
-                                   std::vector<std::string>* domains, __res_params* params,
+                                   std::vector<std::string>* domains, res_params* params,
                                    std::vector<android::net::ResolverStats>* stats,
                                    std::vector<int32_t>* wait_for_pending_req_timeout_count) {
     using android::net::ResolverStats;
@@ -160,7 +161,7 @@ int ResolverController::getDnsInfo(unsigned netId, std::vector<std::string>* ser
     res_stats res_stats[MAXNS];
     servers->clear();
     domains->clear();
-    *params = __res_params{};
+    *params = res_params{};
     stats->clear();
     int res_wait_for_pending_req_timeout_count;
     int revision_id = RESOLV_STUB.android_net_res_stats_get_info_for_net(
@@ -274,7 +275,7 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         }
     }
 
-    __res_params res_params = {};
+    res_params res_params = {};
     res_params.sample_validity = params[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY];
     res_params.success_threshold = params[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD];
     res_params.min_samples = params[INetd::RESOLVER_PARAMS_MIN_SAMPLES];
@@ -319,7 +320,7 @@ int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>*
                                         std::vector<int32_t>* wait_for_pending_req_timeout_count) {
     using android::net::ResolverStats;
     using android::net::INetd;
-    __res_params res_params;
+    res_params res_params;
     std::vector<ResolverStats> res_stats;
     int ret = getDnsInfo(netId, servers, domains, &res_params, &res_stats,
                          wait_for_pending_req_timeout_count);
@@ -382,7 +383,7 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
     using android::net::ResolverStats;
     std::vector<std::string> servers;
     std::vector<std::string> domains;
-    __res_params params = {};
+    res_params params = {};
     std::vector<ResolverStats> stats;
     std::vector<int32_t> wait_for_pending_req_timeout_count(1, 0);
     time_t now = time(nullptr);

@@ -36,7 +36,8 @@
 #include <vector>
 
 #include <android-base/stringprintf.h>
-#include <cutils/misc.h>
+#include <android/multinetwork.h>  // ResNsendFlags
+#include <cutils/misc.h>           // FIRST_APPLICATION_UID
 #include <log/log.h>
 #include <netdutils/OperationLimiter.h>
 #include <netdutils/Slice.h>
