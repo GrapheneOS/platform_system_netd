@@ -113,10 +113,6 @@ typedef void (*get_network_context_callback)(unsigned netid, uid_t uid,
 // libbinder_ndk or by converting IPermissionController into a stable AIDL interface.
 typedef bool (*check_calling_permission_callback)(const char* permission);
 
-// TODO: Remove the callback.
-typedef void (*private_dns_validated_callback)(unsigned netid, const char* server,
-                                               const char* hostname, bool success);
-
 // TODO: Remove the callback after moving NAT64 prefix discovery out of netd to libnetd_resolv.
 typedef bool (*get_dns64_prefix_callback)(unsigned netid, in6_addr* prefix, uint8_t* prefix_len);
 
@@ -156,11 +152,6 @@ LIBNETD_RESOLV_PUBLIC void resolv_delete_private_dns_for_net(unsigned netid);
 
 LIBNETD_RESOLV_PUBLIC void resolv_get_private_dns_status_for_net(unsigned netid,
                                                                  ExternalPrivateDnsStatus* status);
-
-// Register callback to listen whether private DNS validated
-// TODO: Remove it. Use ResolverEventReporter instead.
-LIBNETD_RESOLV_PUBLIC void resolv_register_private_dns_callback(
-        private_dns_validated_callback callback);
 
 // Delete the cache associated with a certain network
 LIBNETD_RESOLV_PUBLIC void resolv_delete_cache_for_net(unsigned netid);
