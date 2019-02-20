@@ -49,8 +49,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
-#include <syslog.h>
 #include <unistd.h>
+
+#include <android-base/logging.h>
 
 #include "netd_resolv/resolv.h"
 #include "resolv_cache.h"
@@ -798,8 +799,6 @@ trynumeric:
 
 /* code duplicate with gethnamaddr.c */
 
-static const char AskedForGot[] = "gethostby*.getanswer: asked for \"%s\", got \"%s\"";
-
 #define BOUNDED_INCR(x)      \
     do {                     \
         BOUNDS_CHECK(cp, x); \
@@ -931,9 +930,9 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
             }
         } else if (type != qtype) {
             if (type != T_KEY && type != T_SIG)
-                syslog(LOG_NOTICE | LOG_AUTH,
-                       "gethostby*.getanswer: asked for \"%s %s %s\", got type \"%s\"", qname,
-                       p_class(C_IN), p_type(qtype), p_type(type));
+                LOG(DEBUG) << __func__ << "(getanswer): asked for \"" << qname << " "
+                           << p_class(C_IN) << " " << p_type(qtype) << "\", got type \""
+                           << p_type(type) << "\"";
             cp += n;
             continue; /* XXX - had_error++ ? */
         }
@@ -941,7 +940,8 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
             case T_A:
             case T_AAAA:
                 if (strcasecmp(canonname, bp) != 0) {
-                    syslog(LOG_NOTICE | LOG_AUTH, AskedForGot, canonname, bp);
+                    LOG(DEBUG) << __func__ << "(getanswer): asked for \"" << canonname
+                               << "\", got \"" << bp << "\"";
                     cp += n;
                     continue; /* XXX - had_error++ ? */
                 }
@@ -1605,17 +1605,14 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
         int type = t->qtype;
         answer = t->answer;
         anslen = t->anslen;
-#ifdef DEBUG
-        if (res->options & RES_DEBUG) printf(";; res_queryN(%s, %d, %d)\n", name, cl, type);
-#endif
+
+        LOG(DEBUG) << ";; res_queryN(" << name << ", " << cl << " , " << type << ")";
 
         n = res_nmkquery(res, QUERY, name, cl, type, NULL, 0, NULL, buf, sizeof(buf));
         if (n > 0 && (res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 && !retried)
             n = res_nopt(res, n, buf, sizeof(buf), anslen);
         if (n <= 0) {
-#ifdef DEBUG
-            if (res->options & RES_DEBUG) printf(";; res_queryN: mkquery failed\n");
-#endif
+            LOG(DEBUG) << ";; res_queryN: mkquery failed";
             *herrno = NO_RECOVERY;
             return n;
         }
@@ -1628,16 +1625,11 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
             /* if the query choked with EDNS0, retry without EDNS0 */
             if ((res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 &&
                 (res->_flags & RES_F_EDNS0ERR) && !retried) {
-#ifdef DEBUG
-                if (res->options & RES_DEBUG) printf(";; res_queryN: retry without EDNS0\n");
-#endif
+                LOG(DEBUG) << ";; res_queryN: retry without EDNS0";
                 retried = true;
                 goto again;
             }
-#ifdef DEBUG
-            if (res->options & RES_DEBUG)
-                printf(";; rcode = %u, ancount=%u\n", hp->rcode, ntohs(hp->ancount));
-#endif
+            LOG(DEBUG) << ";; rcode = " << hp->rcode << ", ancount=" << ntohs(hp->ancount);
             continue;
         }
 
@@ -1815,12 +1807,8 @@ static int res_querydomainN(const char* name, const char* domain, res_target* ta
 
     assert(name != NULL);
     /* XXX: target may be NULL??? */
-
-#ifdef DEBUG
-    if (res->options & RES_DEBUG)
-        printf(";; res_querydomain(%s, %s)\n", name, domain ? domain : "<Nil>");
-#endif
     if (domain == NULL) {
+        LOG(DEBUG) << ";; res_querydomain(" << name << ", <Nil>)";
         /*
          * Check for trailing '.';
          * copy without '.' if present.
@@ -1836,6 +1824,7 @@ static int res_querydomainN(const char* name, const char* domain, res_target* ta
         } else
             longname = name;
     } else {
+        LOG(DEBUG) << ";; res_querydomain(" << name << ", " << domain << ")";
         n = strlen(name);
         d = strlen(domain);
         if (n + 1 + d + 1 > sizeof(nbuf)) {

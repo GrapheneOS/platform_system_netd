@@ -51,6 +51,7 @@
  * --Copyright--
  */
 
+#include <android-base/logging.h>
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <assert.h>
@@ -67,7 +68,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
-#include <syslog.h>
 #include <unistd.h>
 #include <functional>
 #include <vector>
@@ -87,16 +87,9 @@
 #define ALIGNBYTES (sizeof(uintptr_t) - 1)
 #define ALIGN(p) (((uintptr_t)(p) + ALIGNBYTES) & ~ALIGNBYTES)
 
-#ifndef LOG_AUTH
-#define LOG_AUTH 0
-#endif
-
-
 #define maybe_ok(res, nm, ok) (((res)->options & RES_NOCHECKNAME) != 0U || (ok)(nm) != 0)
 #define maybe_hnok(res, hn) maybe_ok((res), (hn), res_hnok)
 #define maybe_dnok(res, dn) maybe_ok((res), (dn), res_dnok)
-
-static const char AskedForGot[] = "gethostby*.getanswer: asked for \"%s\", got \"%s\"";
 
 #define MAXPACKET (8 * 1024)
 
@@ -110,9 +103,6 @@ typedef union {
     char ac;
 } align;
 
-#ifdef DEBUG
-static void debugprintf(const char*, res_state, ...) __attribute__((__format__(__printf__, 1, 3)));
-#endif
 static struct hostent* getanswer(const querybuf*, int, const char*, int, res_state, struct hostent*,
                                  char*, size_t, int*);
 static void convert_v4v6_hostent(struct hostent* hp, char** bpp, char* ep,
@@ -137,25 +127,6 @@ static int android_gethostbyaddrfornetcontext_proxy_internal(const void*, sockle
 static int android_gethostbyaddrfornetcontext_proxy(const void* addr, socklen_t len, int af,
                                                     const struct android_net_context* netcontext,
                                                     hostent** hp);
-
-#ifdef DEBUG
-static void debugprintf(const char* msg, res_state res, ...) {
-    _DIAGASSERT(msg != NULL);
-
-    if (res->options & RES_DEBUG) {
-        int save = errno;
-        va_list ap;
-
-        va_start(ap, res);
-        vprintf(msg, ap);
-        va_end(ap);
-
-        errno = save;
-    }
-}
-#else
-#define debugprintf(msg, res, num) /*nada*/
-#endif
 
 #define BOUNDED_INCR(x)      \
     do {                     \
@@ -306,16 +277,17 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
         }
         if (type != qtype) {
             if (type != T_KEY && type != T_SIG)
-                syslog(LOG_NOTICE | LOG_AUTH,
-                       "gethostby*.getanswer: asked for \"%s %s %s\", got type \"%s\"", qname,
-                       p_class(C_IN), p_type(qtype), p_type(type));
+                LOG(DEBUG) << __func__ << "(getanswer): asked for \"" << qname << " "
+                           << p_class(C_IN) << " " << p_type(qtype) << "\", got type \""
+                           << p_type(type) << "\"";
             cp += n;
             continue; /* XXX - had_error++ ? */
         }
         switch (type) {
             case T_PTR:
                 if (strcasecmp(tname, bp) != 0) {
-                    syslog(LOG_NOTICE | LOG_AUTH, AskedForGot, qname, bp);
+                    LOG(DEBUG) << __func__ << "(getanswer): asked for \"" << qname << "\", got \""
+                               << bp << "\"";
                     cp += n;
                     continue; /* XXX - had_error++ ? */
                 }
@@ -342,7 +314,8 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
             case T_A:
             case T_AAAA:
                 if (strcasecmp(hent->h_name, bp) != 0) {
-                    syslog(LOG_NOTICE | LOG_AUTH, AskedForGot, hent->h_name, bp);
+                    LOG(DEBUG) << __func__ << "(getanswer): asked for \"" << hent->h_name
+                               << "\", got \"" << bp << "\"";
                     cp += n;
                     continue; /* XXX - had_error++ ? */
                 }
@@ -369,13 +342,13 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
                 bp += sizeof(align) - (size_t)((u_long) bp % sizeof(align));
 
                 if (bp + n >= ep) {
-                    debugprintf("size (%d) too big\n", res, n);
+                    LOG(DEBUG) << "size (" << n << ") too big";
                     had_error++;
                     continue;
                 }
                 if (hap >= &addr_ptrs[MAXADDRS - 1]) {
                     if (!toobig++) {
-                        debugprintf("Too many addresses (%d)\n", res, MAXADDRS);
+                        LOG(DEBUG) << "Too many addresses (" << MAXADDRS << ")";
                     }
                     cp += n;
                     continue;
@@ -820,7 +793,7 @@ static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
     n = res_nsearch(res, name, C_IN, type, buf->buf, (int) sizeof(buf->buf), &herrno);
     if (n < 0) {
         free(buf);
-        debugprintf("res_nsearch failed (%d)\n", res, n);
+        LOG(DEBUG) << "res_nsearch failed (" << n << ")";
         // Pass herrno to catch more detailed errors rather than EAI_NODATA.
         return herrnoToAiErrno(herrno);
     }
@@ -885,7 +858,7 @@ static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
     n = res_nquery(res, qbuf, C_IN, T_PTR, buf->buf, (int) sizeof(buf->buf), &herrno);
     if (n < 0) {
         free(buf);
-        debugprintf("res_nquery failed (%d)\n", res, n);
+        LOG(DEBUG) << "res_nquery failed (" << n << ")";
         return herrnoToAiErrno(herrno);
     }
     hp = getanswer(buf, n, qbuf, T_PTR, res, info->hp, info->buf, info->buflen, &herrno);

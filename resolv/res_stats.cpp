@@ -13,8 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-constexpr bool kVerboseLogging = false;
 #define LOG_TAG "res_stats"
 
 #include <arpa/nameser.h>
@@ -25,13 +23,6 @@ constexpr bool kVerboseLogging = false;
 
 #include "netd_resolv/stats.h"
 
-#define VLOG if (!kVerboseLogging) {} else LOG(INFO)
-
-#ifndef RESOLV_ALLOW_VERBOSE_LOGGING
-static_assert(kVerboseLogging == false,
-              "Verbose logging floods logs at high-rate and exposes privacy-sensitive information. "
-              "Do not enable in release builds.");
-#endif
 
 // Calculate the round-trip-time from start time t0 and end time t1.
 int _res_stats_calculate_rtt(const timespec* t1, const timespec* t0) {
@@ -43,7 +34,7 @@ int _res_stats_calculate_rtt(const timespec* t1, const timespec* t0) {
 
 // Create a sample for calculating server reachability statistics.
 void _res_stats_set_sample(res_sample* sample, time_t now, int rcode, int rtt) {
-    VLOG << __func__ << ": rcode = " << rcode << ", sec = " << rtt;
+    LOG(INFO) << __func__ << ": rcode = " << rcode << ", sec = " << rtt;
     sample->at = now;
     sample->rcode = rcode;
     sample->rtt = rtt;
@@ -129,26 +120,22 @@ static bool res_stats_usable_server(const res_params* params, res_stats* stats) 
                                     &rtt_avg, &last_sample_time);
     if (successes >= 0 && errors >= 0 && timeouts >= 0) {
         int total = successes + errors + timeouts;
-        VLOG << "NS stats: S " << successes
-             << " + E " << errors
-             << " + T " << timeouts
-             << " + I " << internal_errors
-             << " = " << total
-             << ", rtt = " << rtt_avg
-             << ", min_samples = " << params->min_samples;
+        LOG(INFO) << "NS stats: S " << successes << " + E " << errors << " + T " << timeouts
+                  << " + I " << internal_errors << " = " << total << ", rtt = " << rtt_avg
+                  << ", min_samples = " << params->min_samples;
         if (total >= params->min_samples && (errors > 0 || timeouts > 0)) {
             int success_rate = successes * 100 / total;
-            VLOG << "success rate " << success_rate;
+            LOG(INFO) << "success rate " << success_rate;
             if (success_rate < params->success_threshold) {
                 time_t now = time(NULL);
                 if (now - last_sample_time > params->sample_validity) {
                     // Note: It might be worth considering to expire old servers after their expiry
                     // date has been reached, however the code for returning the ring buffer to its
                     // previous non-circular state would induce additional complexity.
-                    VLOG << "samples stale, retrying server";
+                    LOG(INFO) << "samples stale, retrying server";
                     _res_stats_clear_samples(stats);
                 } else {
-                    VLOG << "too many resolution errors, ignoring server";
+                    LOG(INFO) << "too many resolution errors, ignoring server";
                     return 0;
                 }
             }

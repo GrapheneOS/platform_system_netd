@@ -103,6 +103,7 @@
 #include <arpa/nameser.h>
 #include <netinet/in.h>
 
+#include <android-base/logging.h>
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
@@ -121,12 +122,34 @@ struct res_sym {
     const char* humanname; /* Its fun name, like "mail exchanger" */
 };
 
-static void do_section(const res_state statp, ns_msg* handle, ns_sect section, int pflag,
-                       FILE* file) {
+/* add a formatted string to a bounded buffer */
+static char* dbprint(char* p, char* end, const char* format, ...) {
+    int avail, n;
+    va_list args;
+
+    avail = end - p;
+
+    if (avail <= 0) return p;
+
+    va_start(args, format);
+    n = vsnprintf(p, avail, format, args);
+    va_end(args);
+
+    /* certain C libraries return -1 in case of truncation */
+    if (n < 0 || n > avail) n = avail;
+
+    p += n;
+    /* certain C libraries do not zero-terminate in case of truncation */
+    if (p == end) p[-1] = 0;
+
+    return p;
+}
+static void do_section(const res_state statp, ns_msg* handle, ns_sect section, int pflag) {
     int n, sflag, rrnum;
     int buflen = 2048;
     ns_opcode opcode;
     ns_rr rr;
+    char temp[2048], *p = temp, *end = p + sizeof(temp);
 
     /*
      * Print answer records.
@@ -136,7 +159,8 @@ static void do_section(const res_state statp, ns_msg* handle, ns_sect section, i
 
     char* buf = (char*) malloc((size_t) buflen);
     if (buf == NULL) {
-        fprintf(file, ";; memory allocation failure\n");
+        dbprint(p, end, ";; memory allocation failure\n");
+        LOG(VERBOSE) << temp;
         return;
     }
 
@@ -145,23 +169,23 @@ static void do_section(const res_state statp, ns_msg* handle, ns_sect section, i
     for (;;) {
         if (ns_parserr(handle, section, rrnum, &rr)) {
             if (errno != ENODEV)
-                fprintf(file, ";; ns_parserr: %s\n", strerror(errno));
+                dbprint(p, end, ";; ns_parserr: %s", strerror(errno));
             else if (rrnum > 0 && sflag != 0 && (statp->pfcode & RES_PRF_HEAD1))
-                putc('\n', file);
+                dbprint(p, end, "\n");
             goto cleanup;
         }
         if (rrnum == 0 && sflag != 0 && (statp->pfcode & RES_PRF_HEAD1))
-            fprintf(file, ";; %s SECTION:\n", p_section(section, opcode));
+            dbprint(p, end, ";; %s SECTION:\n", p_section(section, opcode));
         if (section == ns_s_qd)
-            fprintf(file, ";;\t%s, type = %s, class = %s\n", ns_rr_name(rr), p_type(ns_rr_type(rr)),
-                    p_class(ns_rr_class(rr)));
+            dbprint(p, end, ";;\t%s, type = %s, class = %s\n", ns_rr_name(rr),
+                    p_type(ns_rr_type(rr)), p_class(ns_rr_class(rr)));
         else if (section == ns_s_ar && ns_rr_type(rr) == ns_t_opt) {
             size_t rdatalen, ttl;
             uint16_t optcode, optlen;
 
             rdatalen = ns_rr_rdlen(rr);
             ttl = ns_rr_ttl(rr);
-            fprintf(file, "; EDNS: version: %zu, udp=%u, flags=%04zx\n", (ttl >> 16) & 0xff,
+            dbprint(p, end, "; EDNS: version: %zu, udp=%u, flags=%04zx\n", (ttl >> 16) & 0xff,
                     ns_rr_class(rr), ttl & 0xffff);
             while (rdatalen >= 4) {
                 const u_char* cp = ns_rr_rdata(rr);
@@ -171,27 +195,33 @@ static void do_section(const res_state statp, ns_msg* handle, ns_sect section, i
                 GETSHORT(optlen, cp);
 
                 if (optcode == NS_OPT_NSID) {
-                    fputs("; NSID: ", file);
+                    p = dbprint(p, end, "; NSID: ");
                     if (optlen == 0) {
-                        fputs("; NSID\n", file);
+                        p = dbprint(p, end, "; NSID\n");
                     } else {
-                        fputs("; NSID: ", file);
-                        for (i = 0; i < optlen; i++) fprintf(file, "%02x ", cp[i]);
-                        fputs(" (", file);
-                        for (i = 0; i < optlen; i++)
-                            fprintf(file, "%c", isprint(cp[i]) ? cp[i] : '.');
-                        fputs(")\n", file);
+                        p = dbprint(p, end, "; NSID: ");
+                        for (i = 0; i < optlen; i++) {
+                            p = dbprint(p, end, "%02x ", cp[i]);
+                        }
+                        p = dbprint(p, end, " (");
+                        for (i = 0; i < optlen; i++) {
+                            p = dbprint(p, end, "%c", isprint(cp[i]) ? cp[i] : '.');
+                        }
+                        p = dbprint(p, end, ")\n");
                     }
                 } else {
                     if (optlen == 0) {
-                        fprintf(file, "; OPT=%u\n", optcode);
+                        p = dbprint(p, end, "; OPT=%u\n", optcode);
                     } else {
-                        fprintf(file, "; OPT=%u: ", optcode);
-                        for (i = 0; i < optlen; i++) fprintf(file, "%02x ", cp[i]);
-                        fputs(" (", file);
-                        for (i = 0; i < optlen; i++)
-                            fprintf(file, "%c", isprint(cp[i]) ? cp[i] : '.');
-                        fputs(")\n", file);
+                        p = dbprint(p, end, "; OPT=%u: ", optcode);
+                        for (i = 0; i < optlen; i++) {
+                            p = dbprint(p, end, "%02x ", cp[i]);
+                        }
+                        p = dbprint(p, end, " (");
+                        for (i = 0; i < optlen; i++) {
+                            p = dbprint(p, end, "%c", isprint(cp[i]) ? cp[i] : '.');
+                        }
+                        p = dbprint(p, end, ")\n");
                     }
                 }
                 rdatalen -= 4 + optlen;
@@ -206,34 +236,37 @@ static void do_section(const res_state statp, ns_msg* handle, ns_sect section, i
                         buf = (char*) malloc((size_t)(buflen += 1024));
                     }
                     if (buf == NULL) {
-                        fprintf(file, ";; memory allocation failure\n");
+                        p = dbprint(p, end, ";; memory allocation failure\n");
+                        LOG(VERBOSE) << temp;
                         return;
                     }
                     continue;
                 }
-                fprintf(file, ";; ns_sprintrr: %s\n", strerror(errno));
+                p = dbprint(p, end, ";; ns_sprintrr: %s\n", strerror(errno));
                 goto cleanup;
             }
-            fputs(buf, file);
-            fputc('\n', file);
+            p = dbprint(p, end, ";; %s\n", buf);
         }
         rrnum++;
     }
 cleanup:
     free(buf);
+    LOG(VERBOSE) << temp;
 }
 
 /*
  * Print the contents of a query.
  * This is intended to be primarily a debugging routine.
  */
-void res_pquery(const res_state statp, const u_char* msg, int len, FILE* file) {
+
+void res_pquery(const res_state statp, const u_char* msg, int len) {
     ns_msg handle;
     int qdcount, ancount, nscount, arcount;
     u_int opcode, rcode, id;
+    char temp[2048], *p = temp, *end = p + sizeof(temp);
 
     if (ns_initparse(msg, len, &handle) < 0) {
-        fprintf(file, ";; ns_initparse: %s\n", strerror(errno));
+        dbprint(p, end, ";; ns_initparse: %s\n", strerror(errno));
         return;
     }
     opcode = ns_msg_getflag(handle, ns_f_opcode);
@@ -248,37 +281,39 @@ void res_pquery(const res_state statp, const u_char* msg, int len, FILE* file) {
      * Print header fields.
      */
     if ((!statp->pfcode) || (statp->pfcode & RES_PRF_HEADX) || rcode)
-        fprintf(file, ";; ->>HEADER<<- opcode: %s, status: %s, id: %d\n", _res_opcodes[opcode],
-                p_rcode((int) rcode), id);
-    if ((!statp->pfcode) || (statp->pfcode & RES_PRF_HEADX)) putc(';', file);
+        dbprint(p, end, ";; ->>HEADER<<- opcode: %s, status: %s, id: %d\n", _res_opcodes[opcode],
+                p_rcode((int)rcode), id);
+    if ((!statp->pfcode) || (statp->pfcode & RES_PRF_HEADX)) p = dbprint(p, end, ";");
     if ((!statp->pfcode) || (statp->pfcode & RES_PRF_HEAD2)) {
-        fprintf(file, "; flags:");
-        if (ns_msg_getflag(handle, ns_f_qr)) fprintf(file, " qr");
-        if (ns_msg_getflag(handle, ns_f_aa)) fprintf(file, " aa");
-        if (ns_msg_getflag(handle, ns_f_tc)) fprintf(file, " tc");
-        if (ns_msg_getflag(handle, ns_f_rd)) fprintf(file, " rd");
-        if (ns_msg_getflag(handle, ns_f_ra)) fprintf(file, " ra");
-        if (ns_msg_getflag(handle, ns_f_z)) fprintf(file, " ??");
-        if (ns_msg_getflag(handle, ns_f_ad)) fprintf(file, " ad");
-        if (ns_msg_getflag(handle, ns_f_cd)) fprintf(file, " cd");
+        p = dbprint(p, end, "; flags:");
+        if (ns_msg_getflag(handle, ns_f_qr)) p = dbprint(p, end, " qr");
+        if (ns_msg_getflag(handle, ns_f_aa)) p = dbprint(p, end, " aa");
+        if (ns_msg_getflag(handle, ns_f_tc)) p = dbprint(p, end, " tc");
+        if (ns_msg_getflag(handle, ns_f_rd)) p = dbprint(p, end, " rd");
+        if (ns_msg_getflag(handle, ns_f_ra)) p = dbprint(p, end, " ra");
+        if (ns_msg_getflag(handle, ns_f_z)) p = dbprint(p, end, " ??");
+        if (ns_msg_getflag(handle, ns_f_ad)) p = dbprint(p, end, " ad");
+        if (ns_msg_getflag(handle, ns_f_cd)) p = dbprint(p, end, " cd");
     }
     if ((!statp->pfcode) || (statp->pfcode & RES_PRF_HEAD1)) {
-        fprintf(file, "; %s: %d", p_section(ns_s_qd, (int) opcode), qdcount);
-        fprintf(file, ", %s: %d", p_section(ns_s_an, (int) opcode), ancount);
-        fprintf(file, ", %s: %d", p_section(ns_s_ns, (int) opcode), nscount);
-        fprintf(file, ", %s: %d", p_section(ns_s_ar, (int) opcode), arcount);
+        p = dbprint(p, end, "; %s: %d", p_section(ns_s_qd, (int)opcode), qdcount);
+        p = dbprint(p, end, ", %s: %d", p_section(ns_s_an, (int)opcode), ancount);
+        p = dbprint(p, end, ", %s: %d", p_section(ns_s_ns, (int)opcode), nscount);
+        p = dbprint(p, end, ", %s: %d", p_section(ns_s_ar, (int)opcode), arcount);
     }
     if ((!statp->pfcode) || (statp->pfcode & (RES_PRF_HEADX | RES_PRF_HEAD2 | RES_PRF_HEAD1))) {
-        putc('\n', file);
+        p = dbprint(p, end, " \n");
     }
+    LOG(VERBOSE) << temp;
+
     /*
      * Print the various sections.
      */
-    do_section(statp, &handle, ns_s_qd, RES_PRF_QUES, file);
-    do_section(statp, &handle, ns_s_an, RES_PRF_ANS, file);
-    do_section(statp, &handle, ns_s_ns, RES_PRF_AUTH, file);
-    do_section(statp, &handle, ns_s_ar, RES_PRF_ADD, file);
-    if (qdcount == 0 && ancount == 0 && nscount == 0 && arcount == 0) putc('\n', file);
+    do_section(statp, &handle, ns_s_qd, RES_PRF_QUES);
+    do_section(statp, &handle, ns_s_an, RES_PRF_ANS);
+    do_section(statp, &handle, ns_s_ns, RES_PRF_AUTH);
+    do_section(statp, &handle, ns_s_ar, RES_PRF_ADD);
+    if (qdcount == 0 && ancount == 0 && nscount == 0 && arcount == 0) LOG(VERBOSE) << ";;";
 }
 
 const u_char* p_cdnname(const u_char* cp, const u_char* msg, int len, FILE* file) {
@@ -515,4 +550,28 @@ const char* p_class(int cl) {
  */
 const char* p_rcode(int rcode) {
     return (sym_ntos(p_rcode_syms, rcode, (int*) 0));
+}
+
+android::base::LogSeverity logSeverityStrToEnum(const std::string& logSeverityStr) {
+    android::base::LogSeverity logSeverityEnum;
+    if (logSeverityStr == "VERBOSE") {
+        logSeverityEnum = android::base::VERBOSE;
+    } else if (logSeverityStr == "DEBUG") {
+        logSeverityEnum = android::base::DEBUG;
+    } else if (logSeverityStr == "INFO") {
+        logSeverityEnum = android::base::INFO;
+    } else if (logSeverityStr == "WARNING") {
+        logSeverityEnum = android::base::WARNING;
+    } else if (logSeverityStr == "ERROR") {
+        logSeverityEnum = android::base::ERROR;
+    } else if (logSeverityStr == "FATAL_WITHOUT_ABORT") {
+        logSeverityEnum = android::base::FATAL_WITHOUT_ABORT;
+    } else if (logSeverityStr == "FATAL") {
+        logSeverityEnum = android::base::FATAL;
+    } else {
+        // Invalid parameter is treated as WARNING (default setting)
+        logSeverityEnum = android::base::WARNING;
+    }
+    LOG(INFO) << "logSeverityEnum " << logSeverityEnum;
+    return logSeverityEnum;
 }
