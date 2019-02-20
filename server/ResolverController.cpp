@@ -300,6 +300,9 @@ int ResolverController::setResolverConfiguration(int32_t netId,
     if (params.size() > INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC) {
         res_params.base_timeout_msec = params[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC];
     }
+    if (params.size() > INetd::RESOLVER_PARAMS_RETRY_COUNT) {
+        res_params.retry_count = params[INetd::RESOLVER_PARAMS_RETRY_COUNT];
+    }
 
     const auto rval = setDnsServers(netId, domains_str.c_str(), server_ptrs.data(),
                                     server_ptrs.size(), &res_params);
@@ -358,6 +361,7 @@ int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>*
     (*params)[INetd::RESOLVER_PARAMS_MIN_SAMPLES] = res_params.min_samples;
     (*params)[INetd::RESOLVER_PARAMS_MAX_SAMPLES] = res_params.max_samples;
     (*params)[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC] = res_params.base_timeout_msec;
+    (*params)[INetd::RESOLVER_PARAMS_RETRY_COUNT] = res_params.retry_count;
     return 0;
 }
 
