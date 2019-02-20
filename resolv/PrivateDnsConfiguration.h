@@ -19,6 +19,7 @@
 
 #include <list>
 #include <map>
+#include <mutex>
 #include <vector>
 
 #include <android-base/thread_annotations.h>
@@ -46,9 +47,7 @@ class PrivateDnsConfiguration {
     // Externally used for netd.
     void getStatus(unsigned netId, ExternalPrivateDnsStatus* status);
 
-    int getPrivateDnsModeAndStatus(unsigned netId);
     void clear(unsigned netId);
-    void setCallback(private_dns_validated_callback callback);
 
   private:
     typedef std::map<DnsTlsServer, Validation, AddressComparator> PrivateDnsTracker;
@@ -69,7 +68,6 @@ class PrivateDnsConfiguration {
     // Structure for tracking the validation status of servers on a specific netId.
     // Using the AddressComparator ensures at most one entry per IP address.
     std::map<unsigned, PrivateDnsTracker> mPrivateDnsTransports GUARDED_BY(mPrivateDnsLock);
-    private_dns_validated_callback mCallback = nullptr;
 };
 
 extern PrivateDnsConfiguration gPrivateDnsConfiguration;

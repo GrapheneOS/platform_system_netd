@@ -83,7 +83,6 @@ int resolv_stub_init() {
     RESOLV_STUB_LOAD_SYMBOL(resolv_get_private_dns_status_for_net);
     RESOLV_STUB_LOAD_SYMBOL(resolv_has_nameservers);
     RESOLV_STUB_LOAD_SYMBOL(resolv_init);
-    RESOLV_STUB_LOAD_SYMBOL(resolv_register_private_dns_callback);
     RESOLV_STUB_LOAD_SYMBOL(resolv_set_nameservers_for_net);
     RESOLV_STUB_LOAD_SYMBOL(resolv_set_private_dns_for_net);
 #undef RESOLV_STUB_LOAD_SYMBOL

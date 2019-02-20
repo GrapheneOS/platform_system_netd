@@ -91,23 +91,6 @@ constexpr const char* validationStatusToString(Validation value) {
     }
 }
 
-void onPrivateDnsValidation(unsigned netId, const char* server, const char* hostname,
-                            bool success) {
-    // Send a validation event to NetdEventListenerService.
-    const auto netdEventListener = net::gCtls->eventReporter.getNetdEventListener();
-    if (netdEventListener != nullptr) {
-        netdEventListener->onPrivateDnsValidationEvent(netId, android::String16(server),
-                                                       android::String16(hostname), success);
-        if (DBG) {
-            ALOGD("Sending validation %s event on netId %u for %s with hostname %s",
-                  success ? "success" : "failure", netId, server, hostname);
-        }
-
-    } else {
-        ALOGE("Validation event not sent since NetdEventListenerService is unavailable.");
-    }
-}
-
 void getNetworkContextCallback(uint32_t netId, uint32_t uid, android_net_context* netcontext) {
     net::gCtls->netCtrl.getNetworkContext(netId, uid, netcontext);
 }
@@ -273,7 +256,6 @@ int ResolverController::setResolverConfiguration(int32_t netId,
     if (err != 0) {
         return err;
     }
-    RESOLV_STUB.resolv_register_private_dns_callback(&onPrivateDnsValidation);
 
     // Convert network-assigned server list to bionic's format.
     server_ptrs.clear();
