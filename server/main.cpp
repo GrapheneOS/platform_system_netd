@@ -130,6 +130,17 @@ int main() {
     gCtls = new android::net::Controllers();
     gCtls->init();
 
+    // NetdNativeService must start before CommandListener.
+    // TODO: put NetdNativeService starting back after subsystems started
+    // after migrating CommandListener to NDC, aosp/929861.
+    Stopwatch subTime;
+    status_t ret;
+    if ((ret = NetdNativeService::start()) != android::OK) {
+        ALOGE("Unable to start NetdNativeService: %d", ret);
+        exit(1);
+    }
+    gLog.info("Registering NetdNativeService: %.1fms", subTime.getTimeAndReset());
+
     CommandListener cl;
     nm->setBroadcaster((SocketListener *) &cl);
 
@@ -175,14 +186,6 @@ int main() {
         ALOGE("Unable to start FwmarkServer (%s)", strerror(errno));
         exit(1);
     }
-
-    Stopwatch subTime;
-    status_t ret;
-    if ((ret = NetdNativeService::start()) != android::OK) {
-        ALOGE("Unable to start NetdNativeService: %d", ret);
-        exit(1);
-    }
-    gLog.info("Registering NetdNativeService: %.1fms", subTime.getTimeAndReset());
 
     /*
      * Now that we're up, we can respond to commands. Starting the listener also tells

@@ -19,7 +19,9 @@
 
 #include <mutex>
 
+#include <android/net/INetd.h>
 #include <sysutils/FrameworkListener.h>
+#include "binder/IServiceManager.h"
 
 #include "BandwidthController.h"
 #include "ClatdController.h"
@@ -28,27 +30,19 @@
 #include "InterfaceController.h"
 #include "NetdCommand.h"
 #include "NetdConstants.h"
-#include "NetworkController.h"
-#include "PppController.h"
-#include "StrictController.h"
-#include "TetherController.h"
 
 namespace android {
 namespace net {
 
 class CommandListener : public FrameworkListener {
-public:
+  public:
     CommandListener();
     virtual ~CommandListener() {}
 
     static constexpr const char* SOCKET_NAME = "netd";
+    static sp<INetd> mNetd;
 
-private:
-    void registerLockingCmd(FrameworkCommand *cmd, std::mutex& lock);
-    void registerLockingCmd(FrameworkCommand *cmd) {
-        registerLockingCmd(cmd, android::net::gBigNetdLock);
-    }
-
+  private:
     class InterfaceCmd : public NetdCommand {
     public:
         InterfaceCmd();
@@ -77,20 +71,6 @@ private:
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 
-    class ListTtysCmd : public NetdCommand {
-    public:
-        ListTtysCmd();
-        virtual ~ListTtysCmd() {}
-        int runCommand(SocketClient *c, int argc, char ** argv);
-    };
-
-    class PppdCmd : public NetdCommand {
-    public:
-        PppdCmd();
-        virtual ~PppdCmd() {}
-        int runCommand(SocketClient *c, int argc, char ** argv);
-    };
-
     class BandwidthControlCmd : public NetdCommand {
     public:
         BandwidthControlCmd();
@@ -109,16 +89,6 @@ private:
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 
-    class ResolverCmd : public NetdCommand {
-    public:
-        ResolverCmd();
-        virtual ~ResolverCmd() {}
-        int runCommand(SocketClient *c, int argc, char ** argv);
-
-    private:
-        bool parseAndExecuteSetNetDns(int netId, int argc, const char** argv);
-    };
-
     class FirewallCmd: public NetdCommand {
     public:
         FirewallCmd();
@@ -126,9 +96,9 @@ private:
         int runCommand(SocketClient *c, int argc, char ** argv);
     protected:
         int sendGenericOkFail(SocketClient *cli, int cond);
-        static FirewallRule parseRule(const char* arg);
-        static FirewallType parseFirewallType(const char* arg);
-        static ChildChain parseChildChain(const char* arg);
+        static int parseRule(const char* arg);
+        static int parseFirewallType(const char* arg);
+        static int parseChildChain(const char* arg);
     };
 
     class ClatdCmd : public NetdCommand {
@@ -145,7 +115,7 @@ private:
         int runCommand(SocketClient *c, int argc, char ** argv);
     protected:
         int sendGenericOkFail(SocketClient *cli, int cond);
-        static StrictPenalty parsePenalty(const char* arg);
+        static int parsePenalty(const char* arg);
     };
 
     class NetworkCommand : public NetdCommand {
