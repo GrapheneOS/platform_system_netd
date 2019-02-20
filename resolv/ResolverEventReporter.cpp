@@ -14,20 +14,25 @@
  * limitations under the License.
  */
 
-#include <android/binder_manager.h>
-
 #include "ResolverEventReporter.h"
+
+#include <android/binder_manager.h>
 
 using aidl::android::net::metrics::INetdEventListener;
 
 std::shared_ptr<INetdEventListener> ResolverEventReporter::getListener() {
     // It should be initialized only once.
     static ResolverEventReporter reporter;
-
-    return reporter.mListener;
+    return reporter.getNetdEventListener();
 }
 
-ResolverEventReporter::ResolverEventReporter() {
-    ndk::SpAIBinder binder = ndk::SpAIBinder(AServiceManager_getService("netd_listener"));
-    mListener = INetdEventListener::fromBinder(binder);
+std::shared_ptr<INetdEventListener> ResolverEventReporter::getNetdEventListener() {
+    std::lock_guard lock(mEventMutex);
+    if (mListener == nullptr) {
+        // Use the non-blocking call AServiceManager_checkService in order not to delay DNS
+        // lookup threads when the netd_listener service is not ready.
+        ndk::SpAIBinder binder = ndk::SpAIBinder(AServiceManager_checkService("netd_listener"));
+        mListener = INetdEventListener::fromBinder(binder);
+    }
+    return mListener;
 }

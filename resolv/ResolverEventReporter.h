@@ -17,6 +17,8 @@
 #ifndef NETD_RESOLV_EVENT_REPORTER_H
 #define NETD_RESOLV_EVENT_REPORTER_H
 
+#include <android-base/thread_annotations.h>
+
 #include "aidl/android/net/metrics/INetdEventListener.h"
 
 /*
@@ -29,10 +31,12 @@ class ResolverEventReporter {
     static std::shared_ptr<aidl::android::net::metrics::INetdEventListener> getListener();
 
   private:
-    // Get netd events listener binder.
-    ResolverEventReporter();
+    std::mutex mEventMutex;
+    std::shared_ptr<aidl::android::net::metrics::INetdEventListener> mListener
+            GUARDED_BY(mEventMutex);
 
-    std::shared_ptr<aidl::android::net::metrics::INetdEventListener> mListener;
+    std::shared_ptr<aidl::android::net::metrics::INetdEventListener> getNetdEventListener()
+            EXCLUDES(mEventMutex);
 };
 
 #endif  // NETD_RESOLV_EVENT_REPORTER_H
