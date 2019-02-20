@@ -268,26 +268,25 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
                                      const struct android_net_context* netcontext,
                                      struct addrinfo** res) {
     struct addrinfo sentinel = {};
-    struct addrinfo* cur;
+    struct addrinfo* cur = &sentinel;
     int error = 0;
-    struct addrinfo ai;
-    struct addrinfo ai0;
 
-    /* hostname is allowed to be NULL */
-    /* servname is allowed to be NULL */
-    /* hints is allowed to be NULL */
-    assert(res != NULL);
-    assert(netcontext != NULL);
-    cur = &sentinel;
+    // hostname is allowed to be nullptr
+    // servname is allowed to be nullptr
+    // hints is allowed to be nullptr
+    assert(res != nullptr);
+    assert(netcontext != nullptr);
 
-    ai.ai_flags = 0;
-    ai.ai_family = PF_UNSPEC;
-    ai.ai_socktype = ANY;
-    ai.ai_protocol = ANY;
-    ai.ai_addrlen = 0;
-    ai.ai_canonname = nullptr;
-    ai.ai_addr = nullptr;
-    ai.ai_next = nullptr;
+    struct addrinfo ai = {
+            .ai_flags = 0,
+            .ai_family = PF_UNSPEC,
+            .ai_socktype = ANY,
+            .ai_protocol = ANY,
+            .ai_addrlen = 0,
+            .ai_canonname = nullptr,
+            .ai_addr = nullptr,
+            .ai_next = nullptr,
+    };
 
     do {
         if (hostname == NULL && servname == NULL) {
@@ -332,28 +331,21 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
         }
 
         /*
-         * check for special cases.  (1) numeric servname is disallowed if
-         * socktype/protocol are left unspecified. (2) servname is disallowed
-         * for raw and other inet{,6} sockets.
+         * Check for special cases:
+         * (1) numeric servname is disallowed if socktype/protocol are left unspecified.
+         * (2) servname is disallowed for raw and other inet{,6} sockets.
          */
         if (MATCH_FAMILY(ai.ai_family, PF_INET, 1) || MATCH_FAMILY(ai.ai_family, PF_INET6, 1)) {
-            ai0 = ai;  // backup ai
-
-            if (ai.ai_family == PF_UNSPEC) {
-                ai.ai_family = PF_INET6;
+            struct addrinfo tmp = ai;
+            if (tmp.ai_family == PF_UNSPEC) {
+                tmp.ai_family = PF_INET6;
             }
-            error = get_portmatch(&ai, servname);
+            error = get_portmatch(&tmp, servname);
             if (error) break;
-
-            ai = ai0;  // restore ai
         }
-
-        ai0 = ai;
 
         // NULL hostname, or numeric hostname
         for (const Explore& ex : explore_options) {
-            ai = ai0;
-
             /* PF_UNSPEC entries are prepared for DNS queries only */
             if (ex.e_af == PF_UNSPEC) continue;
 
@@ -361,14 +353,15 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
             if (!MATCH(ai.ai_socktype, ex.e_socktype, WILD_SOCKTYPE(ex))) continue;
             if (!MATCH(ai.ai_protocol, ex.e_protocol, WILD_PROTOCOL(ex))) continue;
 
-            if (ai.ai_family == PF_UNSPEC) ai.ai_family = ex.e_af;
-            if (ai.ai_socktype == ANY && ex.e_socktype != ANY) ai.ai_socktype = ex.e_socktype;
-            if (ai.ai_protocol == ANY && ex.e_protocol != ANY) ai.ai_protocol = ex.e_protocol;
+            struct addrinfo tmp = ai;
+            if (tmp.ai_family == PF_UNSPEC) tmp.ai_family = ex.e_af;
+            if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
+            if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
 
-            if (hostname == NULL)
-                error = explore_null(&ai, servname, &cur->ai_next);
+            if (hostname == nullptr)
+                error = explore_null(&tmp, servname, &cur->ai_next);
             else
-                error = explore_numeric_scope(&ai, hostname, servname, &cur->ai_next);
+                error = explore_numeric_scope(&tmp, hostname, servname, &cur->ai_next);
 
             if (error) break;
 
@@ -397,8 +390,6 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
          * We would like to prefer AF_INET6 over AF_INET, so we'll make a outer loop by AFs.
          */
         for (const Explore& ex : explore_options) {
-            ai = ai0;
-
             // Require exact match for family field
             if (ai.ai_family != ex.e_af) continue;
 
@@ -409,10 +400,11 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
                 continue;
             }
 
-            if (ai.ai_socktype == ANY && ex.e_socktype != ANY) ai.ai_socktype = ex.e_socktype;
-            if (ai.ai_protocol == ANY && ex.e_protocol != ANY) ai.ai_protocol = ex.e_protocol;
+            struct addrinfo tmp = ai;
+            if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
+            if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
 
-            error = explore_fqdn(&ai, hostname, servname, &cur->ai_next, netcontext);
+            error = explore_fqdn(&tmp, hostname, servname, &cur->ai_next, netcontext);
 
             while (cur->ai_next) cur = cur->ai_next;
         }
