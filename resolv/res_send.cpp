@@ -99,6 +99,7 @@ constexpr bool kVerboseLogging = false;
 #include <unistd.h>
 
 #include <android-base/logging.h>
+#include <android/multinetwork.h>  // ResNsendFlags
 
 #include <netdutils/Slice.h>
 #include "DnsTlsDispatcher.h"
@@ -145,10 +146,10 @@ static DnsTlsDispatcher sDnsTlsDispatcher;
 
 static int get_salen(const struct sockaddr*);
 static struct sockaddr* get_nsaddr(res_state, size_t);
-static int send_vc(res_state, struct __res_params* params, const u_char*, int, u_char*, int, int*,
-                   int, time_t*, int*, int*);
-static int send_dg(res_state, struct __res_params* params, const u_char*, int, u_char*, int, int*,
-                   int, int*, int*, time_t*, int*, int*);
+static int send_vc(res_state, res_params* params, const u_char*, int, u_char*, int, int*, int,
+                   time_t*, int*, int*);
+static int send_dg(res_state, res_params* params, const u_char*, int, u_char*, int, int*, int, int*,
+                   int*, time_t*, int*, int*);
 static void Aerror(const res_state, FILE*, const char*, int, const struct sockaddr*, int);
 static void Perror(const res_state, FILE*, const char*, int);
 static int sock_eq(struct sockaddr*, struct sockaddr*);
@@ -506,8 +507,8 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         statp->_u._ext.nstimes[lastns] = nstime;
     }
 
-    struct res_stats stats[MAXNS];
-    struct __res_params params;
+    res_stats stats[MAXNS];
+    res_params params;
     int revision_id = resolv_cache_get_resolver_stats(statp->netid, &params, stats);
     bool usable_servers[MAXNS];
     android_net_res_stats_get_usable_servers(&params, stats, statp->nscount, usable_servers);
@@ -689,8 +690,7 @@ static struct sockaddr* get_nsaddr(res_state statp, size_t n) {
     }
 }
 
-static struct timespec get_timeout(const res_state statp, const struct __res_params* params,
-                                   const int ns) {
+static struct timespec get_timeout(const res_state statp, const res_params* params, const int ns) {
     int msec;
     if (params->base_timeout_msec != 0) {
         // TODO: scale the timeout by retry attempt and maybe number of servers
@@ -715,9 +715,8 @@ static struct timespec get_timeout(const res_state statp, const struct __res_par
     return result;
 }
 
-static int send_vc(res_state statp, struct __res_params* params, const u_char* buf, int buflen,
-                   u_char* ans, int anssiz, int* terrno, int ns, time_t* at, int* rcode,
-                   int* delay) {
+static int send_vc(res_state statp, res_params* params, const u_char* buf, int buflen, u_char* ans,
+                   int anssiz, int* terrno, int ns, time_t* at, int* rcode, int* delay) {
     *at = time(NULL);
     *delay = 0;
     const HEADER* hp = (const HEADER*) (const void*) buf;
@@ -984,9 +983,9 @@ retry:
     return n;
 }
 
-static int send_dg(res_state statp, struct __res_params* params, const u_char* buf, int buflen,
-                   u_char* ans, int anssiz, int* terrno, int ns, int* v_circuit, int* gotsomewhere,
-                   time_t* at, int* rcode, int* delay) {
+static int send_dg(res_state statp, res_params* params, const u_char* buf, int buflen, u_char* ans,
+                   int anssiz, int* terrno, int ns, int* v_circuit, int* gotsomewhere, time_t* at,
+                   int* rcode, int* delay) {
     *at = time(NULL);
     *delay = 0;
     const HEADER* hp = (const HEADER*) (const void*) buf;

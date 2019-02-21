@@ -75,10 +75,8 @@
 #include "FwmarkClient.h"
 #include "SockDiag.h"
 #include "Stopwatch.h"
-#include "android/net/metrics/INetdEventListener.h"
 
 using android::base::StringPrintf;
-using android::net::metrics::INetdEventListener;
 
 static int bindAndListen(int s) {
     sockaddr_in6 sin6 = { .sin6_family = AF_INET6 };
