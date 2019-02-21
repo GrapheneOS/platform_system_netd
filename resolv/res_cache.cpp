@@ -1502,6 +1502,9 @@ ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int qu
                                        cache = find_named_cache_locked(netid);
                                        return !cache_has_pending_request_locked(cache, &key, false);
                                    });
+            if (!cache) {
+                return RESOLV_CACHE_NOTFOUND;
+            }
             if (ret == false) {
                 resolv_cache_info* info = find_cache_info_locked(netid);
                 if (info != NULL) {
