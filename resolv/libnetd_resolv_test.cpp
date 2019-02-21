@@ -79,7 +79,7 @@ class TestBase : public ::testing::Test {
     }
 
     const char* mDefaultSearchDomains = "example.com";
-    const __res_params mDefaultParams_Binder = {
+    const res_params mDefaultParams_Binder = {
             .sample_validity = 300,
             .success_threshold = 25,
             .min_samples = 8,

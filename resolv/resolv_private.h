@@ -128,7 +128,7 @@ typedef struct __res_state* res_state;
 /* Retrieve a local copy of the stats for the given netid. The buffer must have space for
  * MAXNS __resolver_stats. Returns the revision id of the resolvers used.
  */
-int resolv_cache_get_resolver_stats(unsigned netid, __res_params* params, res_stats stats[MAXNS]);
+int resolv_cache_get_resolver_stats(unsigned netid, res_params* params, res_stats stats[MAXNS]);
 
 /* Add a sample to the shared struct for the given netid and server, provided that the
  * revision_id of the stored servers has not changed.

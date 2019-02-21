@@ -44,10 +44,10 @@ extern struct ResolvStub {
     int (*android_net_res_stats_get_info_for_net)(unsigned netid, int* nscount,
                                                   sockaddr_storage servers[MAXNS], int* dcount,
                                                   char domains[MAXDNSRCH][MAXDNSRCHPATH],
-                                                  __res_params* params, res_stats stats[MAXNS],
+                                                  res_params* params, res_stats stats[MAXNS],
                                                   int* wait_for_pending_req_timeout_count);
 
-    void (*android_net_res_stats_get_usable_servers)(const __res_params* params, res_stats stats[],
+    void (*android_net_res_stats_get_usable_servers)(const res_params* params, res_stats stats[],
                                                      int nscount, bool valid_servers[]);
 
     void (*resolv_delete_cache_for_net)(unsigned netid);
@@ -61,7 +61,7 @@ extern struct ResolvStub {
     bool (*resolv_init)(const dnsproxylistener_callbacks& callbacks);
 
     int (*resolv_set_nameservers_for_net)(unsigned netid, const char** servers, unsigned numservers,
-                                          const char* domains, const __res_params* params);
+                                          const char* domains, const res_params* params);
 
     int (*resolv_set_private_dns_for_net)(unsigned netid, uint32_t mark, const char** servers,
                                           const unsigned numServers, const char* tlsName,

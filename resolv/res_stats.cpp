@@ -118,7 +118,7 @@ void android_net_res_stats_aggregate(res_stats* stats, int* successes, int* erro
 // Returns true if the server is considered unusable, i.e. if the success rate is not lower than the
 // threshold for the stored stored samples. If not enough samples are stored, the server is
 // considered usable.
-static bool res_stats_usable_server(const struct __res_params* params, res_stats* stats) {
+static bool res_stats_usable_server(const res_params* params, res_stats* stats) {
     int successes = -1;
     int errors = -1;
     int timeouts = -1;
@@ -157,7 +157,7 @@ static bool res_stats_usable_server(const struct __res_params* params, res_stats
     return 1;
 }
 
-void android_net_res_stats_get_usable_servers(const struct __res_params* params, res_stats stats[],
+void android_net_res_stats_get_usable_servers(const res_params* params, res_stats stats[],
                                               int nscount, bool usable_servers[]) {
     unsigned usable_servers_found = 0;
     for (int ns = 0; ns < nscount; ns++) {

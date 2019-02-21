@@ -191,8 +191,8 @@ interface INetd {
      * @param servers the DNS servers to configure for the network.
      * @param domains the search domains to configure.
      * @param params the params to set. This array contains RESOLVER_PARAMS_COUNT integers that
-     *   encode the contents of Bionic's __res_params struct, i.e. sample_validity is stored at
-     *   position RESOLVER_PARAMS_SAMPLE_VALIDITY, etc.
+     *   encode the contents of the res_params struct, i.e. sample_validity is stored at position
+     *   RESOLVER_PARAMS_SAMPLE_VALIDITY, etc.
      * @param tlsName The TLS subject name to require for all servers, or empty if there is none.
      * @param tlsServers the DNS servers to configure for strict mode Private DNS.
      * @param tlsFingerprints An array containing TLS public key fingerprints (pins) of which each
@@ -223,7 +223,7 @@ interface INetd {
      * @param servers the DNS servers that are currently configured for the network.
      * @param domains the search domains currently configured.
      * @param tlsServers the DNS-over-TLS servers that are currently configured for the network.
-     * @param params the resolver parameters configured, i.e. the contents of __res_params in order.
+     * @param params the resolver parameters configured, i.e. the contents of res_params in order.
      * @param stats the stats for each server in the order specified by RESOLVER_STATS_XXX
      *         constants, serialized as an int array. The contents of this array are the number of
      *         <ul>
