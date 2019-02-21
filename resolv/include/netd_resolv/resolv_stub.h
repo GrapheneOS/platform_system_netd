@@ -60,8 +60,6 @@ extern struct ResolvStub {
 
     bool (*resolv_init)(const dnsproxylistener_callbacks& callbacks);
 
-    void (*resolv_register_private_dns_callback)(private_dns_validated_callback callback);
-
     int (*resolv_set_nameservers_for_net)(unsigned netid, const char** servers, unsigned numservers,
                                           const char* domains, const __res_params* params);
 

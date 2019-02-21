@@ -300,7 +300,10 @@ void reportDnsEvent(int eventType, const android_net_context& netContext, int la
                                latencyUs);
 
     const std::shared_ptr<INetdEventListener> listener = ResolverEventReporter::getListener();
-    if (!listener) return;
+    if (!listener) {
+        ALOGE("DNS event not sent since NetdEventListenerService is unavailable.");
+        return;
+    }
     const int latencyMs = latencyUs / 1000;
     listener->onDnsEvent(netContext.dns_netid, eventType, returnCode, latencyMs, query_name,
                          ip_addrs, total_ip_addr_count, netContext.uid);

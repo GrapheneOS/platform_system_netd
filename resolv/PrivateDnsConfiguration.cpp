@@ -17,14 +17,18 @@
 #define LOG_TAG "PrivateDnsConfiguration"
 #define DBG 0
 
+#include "PrivateDnsConfiguration.h"
+
 #include <log/log.h>
 #include <netdb.h>
 #include <sys/socket.h>
 
 #include "DnsTlsTransport.h"
-#include "PrivateDnsConfiguration.h"
+#include "ResolverEventReporter.h"
 #include "netd_resolv/resolv.h"
 #include "netdutils/BackoffSequence.h"
+
+using aidl::android::net::metrics::INetdEventListener;
 
 int resolv_set_private_dns_for_net(unsigned netid, uint32_t mark, const char** servers,
                                    const int numServers, const char* tlsName,
@@ -50,10 +54,6 @@ void resolv_delete_private_dns_for_net(unsigned netid) {
 
 void resolv_get_private_dns_status_for_net(unsigned netid, ExternalPrivateDnsStatus* status) {
     android::net::gPrivateDnsConfiguration.getStatus(netid, status);
-}
-
-void resolv_register_private_dns_callback(private_dns_validated_callback callback) {
-    android::net::gPrivateDnsConfiguration.setCallback(callback);
 }
 
 namespace android {
@@ -82,12 +82,6 @@ bool parseServer(const char* server, sockaddr_storage* parsed) {
     memcpy(parsed, res->ai_addr, res->ai_addrlen);
     freeaddrinfo(res);
     return true;
-}
-
-void PrivateDnsConfiguration::setCallback(private_dns_validated_callback callback) {
-    if (mCallback == nullptr) {
-        mCallback = callback;
-    }
 }
 
 int PrivateDnsConfiguration::set(int32_t netId, uint32_t mark,
@@ -221,13 +215,13 @@ void PrivateDnsConfiguration::validatePrivateDnsProvider(const DnsTlsServer& ser
                                                          PrivateDnsTracker& tracker, unsigned netId,
                                                          uint32_t mark) REQUIRES(mPrivateDnsLock) {
     if (DBG) {
-        ALOGD("validatePrivateDnsProvider(%s, %u)", addrToString(&(server.ss)).c_str(), netId);
+        ALOGD("validatePrivateDnsProvider(%s, %u)", addrToString(&server.ss).c_str(), netId);
     }
 
     tracker[server] = Validation::in_process;
     if (DBG) {
         ALOGD("Server %s marked as in_process.  Tracker now has size %zu",
-              addrToString(&(server.ss)).c_str(), tracker.size());
+              addrToString(&server.ss).c_str(), tracker.size());
     }
     // Note that capturing |server| and |netId| in this lambda create copies.
     std::thread validate_thread([this, server, netId, mark] {
@@ -255,7 +249,7 @@ void PrivateDnsConfiguration::validatePrivateDnsProvider(const DnsTlsServer& ser
             const bool success = DnsTlsTransport::validate(server, netId, mark);
             if (DBG) {
                 ALOGD("validateDnsTlsServer returned %d for %s", success,
-                      addrToString(&(server.ss)).c_str());
+                      addrToString(&server.ss).c_str());
             }
 
             const bool needs_reeval = this->recordPrivateDnsValidation(server, netId, success);
@@ -300,30 +294,37 @@ bool PrivateDnsConfiguration::recordPrivateDnsValidation(const DnsTlsServer& ser
     auto serverPair = tracker.find(server);
     if (serverPair == tracker.end()) {
         ALOGW("Server %s was removed during private DNS validation",
-              addrToString(&(server.ss)).c_str());
+              addrToString(&server.ss).c_str());
         success = false;
         reevaluationStatus = DONT_REEVALUATE;
     } else if (!(serverPair->first == server)) {
         // TODO: It doesn't seem correct to overwrite the tracker entry for
         // |server| down below in this circumstance... Fix this.
         ALOGW("Server %s was changed during private DNS validation",
-              addrToString(&(server.ss)).c_str());
+              addrToString(&server.ss).c_str());
         success = false;
         reevaluationStatus = DONT_REEVALUATE;
     }
 
-    // Invoke the callback to send a validation event to NetdEventListenerService.
-    if (mCallback != nullptr) {
-        const std::string ipLiteral = addrToString(&(server.ss));
-        const char* hostname = server.name.empty() ? "" : server.name.c_str();
-        mCallback(netId, ipLiteral.c_str(), hostname, success);
+    // Send a validation event to NetdEventListenerService.
+    const std::shared_ptr<INetdEventListener> listener = ResolverEventReporter::getListener();
+    if (listener != nullptr) {
+        listener->onPrivateDnsValidationEvent(netId, addrToString(&server.ss), server.name,
+                                              success);
+        if (DBG) {
+            ALOGD("Sent validation %s event on netId %u for %s with hostname %s",
+                  success ? "success" : "failure", netId, addrToString(&server.ss).c_str(),
+                  server.name.c_str());
+        }
+    } else {
+        ALOGE("Validation event not sent since NetdEventListenerService is unavailable.");
     }
 
     if (success) {
         tracker[server] = Validation::success;
         if (DBG) {
             ALOGD("Validation succeeded for %s! Tracker now has %zu entries.",
-                  addrToString(&(server.ss)).c_str(), tracker.size());
+                  addrToString(&server.ss).c_str(), tracker.size());
         }
     } else {
         // Validation failure is expected if a user is on a captive portal.
@@ -332,7 +333,7 @@ bool PrivateDnsConfiguration::recordPrivateDnsValidation(const DnsTlsServer& ser
         tracker[server] = (reevaluationStatus == NEEDS_REEVALUATION) ? Validation::in_process
                                                                      : Validation::fail;
         if (DBG) {
-            ALOGD("Validation failed for %s!", addrToString(&(server.ss)).c_str());
+            ALOGD("Validation failed for %s!", addrToString(&server.ss).c_str());
         }
     }
 
