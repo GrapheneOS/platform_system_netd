@@ -119,7 +119,7 @@ class ResolverTest : public ::testing::Test {
     void TearDown() { mDnsClient.TearDown(); }
 
     bool GetResolverInfo(std::vector<std::string>* servers, std::vector<std::string>* domains,
-                         std::vector<std::string>* tlsServers, __res_params* params,
+                         std::vector<std::string>* tlsServers, res_params* params,
                          std::vector<ResolverStats>* stats,
                          int* wait_for_pending_req_timeout_count) {
         using android::net::INetd;
@@ -133,7 +133,7 @@ class ResolverTest : public ::testing::Test {
         if (!rv.isOk() || params32.size() != static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT)) {
             return false;
         }
-        *params = __res_params{
+        *params = res_params{
                 .sample_validity =
                         static_cast<uint16_t>(params32[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY]),
                 .success_threshold =
@@ -280,7 +280,7 @@ class ResolverTest : public ::testing::Test {
         std::vector<std::string> res_servers;
         std::vector<std::string> res_domains;
         std::vector<std::string> res_tls_servers;
-        __res_params res_params;
+        res_params res_params;
         std::vector<ResolverStats> res_stats;
         int wait_for_pending_req_timeout_count;
         ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
@@ -474,7 +474,7 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
     std::vector<std::string> res_tls_servers;
-    __res_params res_params;
+    res_params res_params;
     std::vector<ResolverStats> res_stats;
     int wait_for_pending_req_timeout_count;
     ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
@@ -646,7 +646,7 @@ TEST_F(ResolverTest, GetAddrInfoV4_deferred_resp) {
         std::vector<std::string> res_servers;
         std::vector<std::string> res_domains;
         std::vector<std::string> res_tls_servers;
-        __res_params res_params;
+        res_params res_params;
         std::vector<ResolverStats> res_stats;
         int wait_for_pending_req_timeout_count;
         ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
@@ -839,7 +839,7 @@ TEST_F(ResolverTest, GetAddrInfoV6_concurrent) {
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
     std::vector<std::string> res_tls_servers;
-    __res_params res_params;
+    res_params res_params;
     std::vector<ResolverStats> res_stats;
     int wait_for_pending_req_timeout_count;
     ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
@@ -869,7 +869,7 @@ TEST_F(ResolverTest, EmptySetup) {
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
     std::vector<std::string> res_tls_servers;
-    __res_params res_params;
+    res_params res_params;
     std::vector<ResolverStats> res_stats;
     int wait_for_pending_req_timeout_count;
     ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
@@ -977,7 +977,7 @@ TEST_F(ResolverTest, MaxServerPrune_Binder) {
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
     std::vector<std::string> res_tls_servers;
-    __res_params res_params;
+    res_params res_params;
     std::vector<ResolverStats> res_stats;
     int wait_for_pending_req_timeout_count;
     ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
@@ -1029,7 +1029,7 @@ TEST_F(ResolverTest, ResolverStats) {
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
     std::vector<std::string> res_tls_servers;
-    __res_params res_params;
+    res_params res_params;
     std::vector<ResolverStats> res_stats;
     int wait_for_pending_req_timeout_count;
     ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
