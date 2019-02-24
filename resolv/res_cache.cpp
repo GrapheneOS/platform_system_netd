@@ -32,6 +32,8 @@ constexpr bool kVerboseLogging = false;
 constexpr bool kDumpData = false;
 #define LOG_TAG "res_cache"
 
+#include "resolv_cache.h"
+
 #include <resolv.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -49,9 +51,9 @@ constexpr bool kDumpData = false;
 
 #include <android-base/logging.h>
 #include <android-base/thread_annotations.h>
+#include <android/multinetwork.h>  // ResNsendFlags
 
 #include "res_state_ext.h"
-#include "resolv_cache.h"
 #include "resolv_private.h"
 
 #define VLOG if (!kVerboseLogging) {} else LOG(INFO)
@@ -187,7 +189,7 @@ static_assert(kVerboseLogging == false && kDumpData == false,
  *     printf( "%s", buff );
  */
 
-/* Defaults used for initializing __res_params */
+/* Defaults used for initializing res_params */
 
 // If successes * 100 / total_samples is less than this value, the server is considered failing
 #define SUCCESS_THRESHOLD 75
@@ -1145,7 +1147,7 @@ struct resolv_cache_info {
     char* nameservers[MAXNS];
     struct addrinfo* nsaddrinfo[MAXNS];
     int revision_id;  // # times the nameservers have been replaced
-    struct __res_params params;
+    res_params params;
     struct res_stats nsstats[MAXNS];
     char defdname[MAXDNSRCHPATH];
     int dnsrch_offset[MAXDNSRCH + 1];  // offsets into defdname
@@ -1709,7 +1711,7 @@ static resolv_cache_info* find_cache_info_locked(unsigned netid) {
     return cache_info;
 }
 
-static void resolv_set_default_params(struct __res_params* params) {
+static void resolv_set_default_params(res_params* params) {
     params->sample_validity = NSSAMPLE_VALIDITY;
     params->success_threshold = SUCCESS_THRESHOLD;
     params->min_samples = 0;
@@ -1719,7 +1721,7 @@ static void resolv_set_default_params(struct __res_params* params) {
 }
 
 int resolv_set_nameservers_for_net(unsigned netid, const char** servers, const int numservers,
-                                   const char* domains, const __res_params* params) {
+                                   const char* domains, const res_params* params) {
     char* cp;
     int* offset;
     struct addrinfo* nsaddrinfo[MAXNS];
@@ -1940,8 +1942,7 @@ static void res_cache_clear_stats_locked(resolv_cache_info* cache_info) {
 int android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
                                            struct sockaddr_storage servers[MAXNS], int* dcount,
                                            char domains[MAXDNSRCH][MAXDNSRCHPATH],
-                                           struct __res_params* params,
-                                           struct res_stats stats[MAXNS],
+                                           res_params* params, struct res_stats stats[MAXNS],
                                            int* wait_for_pending_req_timeout_count) {
     int revision_id = -1;
     std::lock_guard guard(cache_mutex);
@@ -2002,7 +2003,7 @@ int android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
     return revision_id;
 }
 
-int resolv_cache_get_resolver_stats(unsigned netid, __res_params* params, res_stats stats[MAXNS]) {
+int resolv_cache_get_resolver_stats(unsigned netid, res_params* params, res_stats stats[MAXNS]) {
     std::lock_guard guard(cache_mutex);
     resolv_cache_info* info = find_cache_info_locked(netid);
     if (info) {
