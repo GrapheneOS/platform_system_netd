@@ -19,10 +19,11 @@
 #include <map>
 #include <string>
 
-#include <unistd.h>
 #include <errno.h>
+#include <spawn.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #define LOG_TAG "ClatdController"
 #include <log/log.h>
@@ -87,32 +88,24 @@ int ClatdController::startClatd(const char* interface) {
     std::string progname("clatd-");
     progname += interface;
 
-    if ((pid = fork()) < 0) {
+    char* args[] = {(char*)progname.c_str(),
+                    (char*)"-i",
+                    interfaceName,
+                    (char*)"-n",
+                    netIdString,
+                    (char*)"-m",
+                    fwmarkString,
+                    nullptr};
+    // Specify no flags and no actions, posix_spawn will use vfork and is
+    // guaranteed to return only once exec has been called.
+    if (posix_spawn(&pid, kClatdPath, nullptr, nullptr, args, nullptr)) {
         int res = errno;
-        ALOGE("fork failed (%s)", strerror(errno));
+        ALOGE("posix_spawn failed (%s)", strerror(errno));
         return -res;
     }
 
-    if (!pid) {
-        char* args[] = {(char*) progname.c_str(),
-                        (char*) "-i",
-                        interfaceName,
-                        (char*) "-n",
-                        netIdString,
-                        (char*) "-m",
-                        fwmarkString,
-                        nullptr};
-
-        if (execv(kClatdPath, args)) {
-            ALOGE("execv failed (%s)", strerror(errno));
-            _exit(1);
-        }
-        ALOGE("Should never get here!");
-        _exit(1);
-    } else {
-        mClatdPids[interface] = pid;
-        ALOGD("clatd started on %s", interface);
-    }
+    mClatdPids[interface] = pid;
+    ALOGD("clatd started on %s", interface);
 
     return 0;
 }

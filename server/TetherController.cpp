@@ -113,6 +113,27 @@ bool inBpToolsMode() {
     return !strcmp(BP_TOOLS_MODE, bootmode);
 }
 
+pid_t vfork_and_exec(const char* path, char* const argv[], int pipefd[2]) {
+    auto pid = vfork();
+    if (pid) {
+        // Parent process, or vfork() failed. Let caller deal with it.
+        return pid;
+    }
+
+    // Don't modify any memory between vfork and execv.
+    // Changing state of file descriptors would be fine.
+    // dup2 creates fd without CLOEXEC, dnsmasq will receive commands through the
+    // duplicated fd.
+    if (dup2(pipefd[0], STDIN_FILENO) != STDIN_FILENO) {
+        // dup2 failed
+        _exit(EXIT_FAILURE);
+    }
+    execv(path, argv);
+    // Should never get here!
+    _exit(EXIT_FAILURE);
+    return pid;
+}
+
 }  // namespace
 
 auto TetherController::iptablesRestoreFunction = execIptablesRestoreWithOutput;
@@ -195,47 +216,24 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
 
     ALOGD("Starting tethering services");
 
-    pid_t pid;
     int pipefd[2];
 
-    if (pipe(pipefd) < 0) {
+    if (pipe2(pipefd, O_CLOEXEC) < 0) {
         int res = errno;
-        ALOGE("pipe failed (%s)", strerror(errno));
+        ALOGE("pipe2() failed (%s)", strerror(errno));
         return -res;
     }
 
-    /*
-     * TODO: Create a monitoring thread to handle and restart
-     * the daemon if it exits prematurely
-     */
-    if ((pid = fork()) < 0) {
-        int res = errno;
-        ALOGE("fork failed (%s)", strerror(errno));
-        close(pipefd[0]);
-        close(pipefd[1]);
-        return -res;
-    }
+    // Set parameters
+    Fwmark fwmark;
+    fwmark.netId = NetworkController::LOCAL_NET_ID;
+    fwmark.explicitlySelected = true;
+    fwmark.protectedFromVpn = true;
+    fwmark.permission = PERMISSION_SYSTEM;
+    char markStr[UINT32_HEX_STRLEN];
+    snprintf(markStr, sizeof(markStr), "0x%x", fwmark.intValue);
 
-    if (!pid) {
-        close(pipefd[1]);
-        if (pipefd[0] != STDIN_FILENO) {
-            if (dup2(pipefd[0], STDIN_FILENO) != STDIN_FILENO) {
-                int res = errno;
-                ALOGE("dup2 failed (%s)", strerror(errno));
-                return -res;
-            }
-            close(pipefd[0]);
-        }
-
-        Fwmark fwmark;
-        fwmark.netId = NetworkController::LOCAL_NET_ID;
-        fwmark.explicitlySelected = true;
-        fwmark.protectedFromVpn = true;
-        fwmark.permission = PERMISSION_SYSTEM;
-        char markStr[UINT32_HEX_STRLEN];
-        snprintf(markStr, sizeof(markStr), "0x%x", fwmark.intValue);
-
-        std::vector<const std::string> argVector = {
+    std::vector<const std::string> argVector = {
             "/system/bin/dnsmasq",
             "--keep-in-foreground",
             "--no-resolv",
@@ -244,34 +242,43 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
             // TODO: pipe through metered status from ConnService
             "--dhcp-option-force=43,ANDROID_METERED",
             "--pid-file",
-            "--listen-mark", markStr,
-            "--user", kDnsmasqUsername,
-        };
+            "--listen-mark",
+            markStr,
+            "--user",
+            kDnsmasqUsername,
+    };
 
-        // DHCP server will be disabled if num_addrs == 0 and no --dhcp-range is passed.
-        for (int addrIndex = 0; addrIndex < num_addrs; addrIndex += 2) {
-            argVector.push_back(StringPrintf("--dhcp-range=%s,%s,1h", dhcp_ranges[addrIndex],
-                                             dhcp_ranges[addrIndex + 1]));
-        }
-
-        auto args = (char**)std::calloc(argVector.size() + 1, sizeof(char*));
-        for (unsigned i = 0; i < argVector.size(); i++) {
-            args[i] = (char*)argVector[i].c_str();
-        }
-
-        if (execv(args[0], args)) {
-            ALOGE("execv failed (%s)", strerror(errno));
-        }
-        ALOGE("Should never get here!");
-        _exit(-1);
-    } else {
-        close(pipefd[0]);
-        mDaemonPid = pid;
-        mDaemonFd = pipefd[1];
-        configureForTethering(true);
-        applyDnsInterfaces();
-        ALOGD("Tethering services running");
+    // DHCP server will be disabled if num_addrs == 0 and no --dhcp-range is
+    // passed.
+    for (int addrIndex = 0; addrIndex < num_addrs; addrIndex += 2) {
+        argVector.push_back(StringPrintf("--dhcp-range=%s,%s,1h", dhcp_ranges[addrIndex],
+                                         dhcp_ranges[addrIndex + 1]));
     }
+
+    auto args = (char**)std::calloc(argVector.size() + 1, sizeof(char*));
+    for (unsigned i = 0; i < argVector.size(); i++) {
+        args[i] = (char*)argVector[i].c_str();
+    }
+
+    /*
+     * TODO: Create a monitoring thread to handle and restart
+     * the daemon if it exits prematurely
+     */
+    pid_t pid = vfork_and_exec(args[0], args, pipefd);
+    int res = errno;
+    close(pipefd[0]);
+    free(args);
+    if (pid < 0) {
+        ALOGE("vfork & exec failed (%s)", strerror(errno));
+        close(pipefd[1]);
+        return -res;
+    }
+
+    mDaemonPid = pid;
+    mDaemonFd = pipefd[1];
+    configureForTethering(true);
+    applyDnsInterfaces();
+    ALOGD("Tethering services running");
 
     return 0;
 }
