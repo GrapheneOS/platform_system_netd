@@ -273,7 +273,6 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
     int error = 0;
     struct addrinfo ai;
     struct addrinfo ai0;
-    struct addrinfo* pai;
     const struct explore* ex;
 
     /* hostname is allowed to be NULL */
@@ -282,15 +281,16 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
     assert(res != NULL);
     assert(netcontext != NULL);
     cur = &sentinel;
-    pai = &ai;
-    pai->ai_flags = 0;
-    pai->ai_family = PF_UNSPEC;
-    pai->ai_socktype = ANY;
-    pai->ai_protocol = ANY;
-    pai->ai_addrlen = 0;
-    pai->ai_canonname = NULL;
-    pai->ai_addr = NULL;
-    pai->ai_next = NULL;
+
+    ai.ai_flags = 0;
+    ai.ai_family = PF_UNSPEC;
+    ai.ai_socktype = ANY;
+    ai.ai_protocol = ANY;
+    ai.ai_addrlen = 0;
+    ai.ai_canonname = nullptr;
+    ai.ai_addr = nullptr;
+    ai.ai_next = nullptr;
+
     do {
         if (hostname == NULL && servname == NULL) {
             error = EAI_NONAME;
@@ -312,18 +312,19 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
                 error = EAI_FAMILY;
                 break;
             }
-            *pai = *hints;
+
+            ai = *hints;
 
             /*
              * if both socktype/protocol are specified, check if they
              * are meaningful combination.
              */
-            if (pai->ai_socktype != ANY && pai->ai_protocol != ANY) {
+            if (ai.ai_socktype != ANY && ai.ai_protocol != ANY) {
                 for (ex = explore_options; ex->e_af >= 0; ex++) {
-                    if (pai->ai_family != ex->e_af) continue;
+                    if (ai.ai_family != ex->e_af) continue;
                     if (ex->e_socktype == ANY) continue;
                     if (ex->e_protocol == ANY) continue;
-                    if (pai->ai_socktype == ex->e_socktype && pai->ai_protocol != ex->e_protocol) {
+                    if (ai.ai_socktype == ex->e_socktype && ai.ai_protocol != ex->e_protocol) {
                         error = EAI_BADHINTS;
                         break;
                     }
@@ -337,41 +338,39 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
          * socktype/protocol are left unspecified. (2) servname is disallowed
          * for raw and other inet{,6} sockets.
          */
-        if (MATCH_FAMILY(pai->ai_family, PF_INET, 1)
-            || MATCH_FAMILY(pai->ai_family, PF_INET6, 1)
-        ) {
-            ai0 = *pai; /* backup *pai */
+        if (MATCH_FAMILY(ai.ai_family, PF_INET, 1) || MATCH_FAMILY(ai.ai_family, PF_INET6, 1)) {
+            ai0 = ai;  // backup ai
 
-            if (pai->ai_family == PF_UNSPEC) {
-                pai->ai_family = PF_INET6;
+            if (ai.ai_family == PF_UNSPEC) {
+                ai.ai_family = PF_INET6;
             }
-            error = get_portmatch(pai, servname);
+            error = get_portmatch(&ai, servname);
             if (error) break;
 
-            *pai = ai0;
+            ai = ai0;  // restore ai
         }
 
-        ai0 = *pai;
+        ai0 = ai;
 
         /* NULL hostname, or numeric hostname */
         for (ex = explore_options; ex->e_af >= 0; ex++) {
-            *pai = ai0;
+            ai = ai0;
 
             /* PF_UNSPEC entries are prepared for DNS queries only */
             if (ex->e_af == PF_UNSPEC) continue;
 
-            if (!MATCH_FAMILY(pai->ai_family, ex->e_af, WILD_AF(ex))) continue;
-            if (!MATCH(pai->ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) continue;
-            if (!MATCH(pai->ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) continue;
+            if (!MATCH_FAMILY(ai.ai_family, ex->e_af, WILD_AF(ex))) continue;
+            if (!MATCH(ai.ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) continue;
+            if (!MATCH(ai.ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) continue;
 
-            if (pai->ai_family == PF_UNSPEC) pai->ai_family = ex->e_af;
-            if (pai->ai_socktype == ANY && ex->e_socktype != ANY) pai->ai_socktype = ex->e_socktype;
-            if (pai->ai_protocol == ANY && ex->e_protocol != ANY) pai->ai_protocol = ex->e_protocol;
+            if (ai.ai_family == PF_UNSPEC) ai.ai_family = ex->e_af;
+            if (ai.ai_socktype == ANY && ex->e_socktype != ANY) ai.ai_socktype = ex->e_socktype;
+            if (ai.ai_protocol == ANY && ex->e_protocol != ANY) ai.ai_protocol = ex->e_protocol;
 
             if (hostname == NULL)
-                error = explore_null(pai, servname, &cur->ai_next);
+                error = explore_null(&ai, servname, &cur->ai_next);
             else
-                error = explore_numeric_scope(pai, hostname, servname, &cur->ai_next);
+                error = explore_numeric_scope(&ai, hostname, servname, &cur->ai_next);
 
             if (error) break;
 
@@ -390,7 +389,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
             error = EAI_NODATA;
             break;
         }
-        if (pai->ai_flags & AI_NUMERICHOST) {
+        if (ai.ai_flags & AI_NUMERICHOST) {
             error = EAI_NONAME;
             break;
         }
@@ -401,22 +400,22 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
          * outer loop by AFs.
          */
         for (ex = explore_options; ex->e_af >= 0; ex++) {
-            *pai = ai0;
+            ai = ai0;
 
             /* require exact match for family field */
-            if (pai->ai_family != ex->e_af) continue;
+            if (ai.ai_family != ex->e_af) continue;
 
-            if (!MATCH(pai->ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) {
+            if (!MATCH(ai.ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) {
                 continue;
             }
-            if (!MATCH(pai->ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) {
+            if (!MATCH(ai.ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) {
                 continue;
             }
 
-            if (pai->ai_socktype == ANY && ex->e_socktype != ANY) pai->ai_socktype = ex->e_socktype;
-            if (pai->ai_protocol == ANY && ex->e_protocol != ANY) pai->ai_protocol = ex->e_protocol;
+            if (ai.ai_socktype == ANY && ex->e_socktype != ANY) ai.ai_socktype = ex->e_socktype;
+            if (ai.ai_protocol == ANY && ex->e_protocol != ANY) ai.ai_protocol = ex->e_protocol;
 
-            error = explore_fqdn(pai, hostname, servname, &cur->ai_next, netcontext);
+            error = explore_fqdn(&ai, hostname, servname, &cur->ai_next, netcontext);
 
             while (cur->ai_next) cur = cur->ai_next;
         }
