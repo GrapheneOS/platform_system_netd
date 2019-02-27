@@ -35,6 +35,7 @@
 #include <list>
 #include <vector>
 
+#include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 #include <android/multinetwork.h>  // ResNsendFlags
 #include <cutils/misc.h>           // FIRST_APPLICATION_UID
@@ -58,11 +59,14 @@
 #include "thread_util.h"
 
 using aidl::android::net::metrics::INetdEventListener;
-using android::base::StringPrintf;
 
 static android::net::DnsProxyListener gDnsProxyListener;
 
 bool resolv_init(const dnsproxylistener_callbacks& callbacks) {
+    android::base::InitLogging(/*argv=*/nullptr);
+    android::base::SetDefaultTag("libnetd_resolv");
+    ALOGI("Initializing resolver");
+
     if (!gDnsProxyListener.setCallbacks(callbacks)) {
         ALOGE("Unable to set callbacks to DnsProxyListener");
         return false;
