@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <netdb.h>
+#include <spawn.h>
 #include <string.h>
 
 #include <sys/socket.h>
@@ -113,25 +114,20 @@ bool inBpToolsMode() {
     return !strcmp(BP_TOOLS_MODE, bootmode);
 }
 
-pid_t vfork_and_exec(const char* path, char* const argv[], int pipefd[2]) {
-    auto pid = vfork();
-    if (pid) {
-        // Parent process, or vfork() failed. Let caller deal with it.
-        return pid;
+int setPosixSpawnFileActionsAddDup2(posix_spawn_file_actions_t* fa, int fd, int new_fd) {
+    int res = posix_spawn_file_actions_init(fa);
+    if (res) {
+        return res;
     }
+    return posix_spawn_file_actions_adddup2(fa, fd, new_fd);
+}
 
-    // Don't modify any memory between vfork and execv.
-    // Changing state of file descriptors would be fine.
-    // dup2 creates fd without CLOEXEC, dnsmasq will receive commands through the
-    // duplicated fd.
-    if (dup2(pipefd[0], STDIN_FILENO) != STDIN_FILENO) {
-        // dup2 failed
-        _exit(EXIT_FAILURE);
+int setPosixSpawnAttrFlags(posix_spawnattr_t* attr, short flags) {
+    int res = posix_spawnattr_init(attr);
+    if (res) {
+        return res;
     }
-    execv(path, argv);
-    // Should never get here!
-    _exit(EXIT_FAILURE);
-    return pid;
+    return posix_spawnattr_setflags(attr, flags);
 }
 
 }  // namespace
@@ -264,16 +260,36 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
      * TODO: Create a monitoring thread to handle and restart
      * the daemon if it exits prematurely
      */
-    pid_t pid = vfork_and_exec(args[0], args, pipefd);
-    int res = errno;
-    close(pipefd[0]);
-    free(args);
-    if (pid < 0) {
-        ALOGE("vfork & exec failed (%s)", strerror(errno));
-        close(pipefd[1]);
+
+    // Note that don't modify any memory between vfork and execv.
+    // Changing state of file descriptors would be fine. See posix_spawn_file_actions_add*
+    // dup2 creates fd without CLOEXEC, dnsmasq will receive commands through the
+    // duplicated fd.
+    posix_spawn_file_actions_t fa;
+    int res = setPosixSpawnFileActionsAddDup2(&fa, pipefd[0], STDIN_FILENO);
+    if (res) {
+        ALOGE("posix_spawn set fa failed (%s)", strerror(res));
         return -res;
     }
 
+    posix_spawnattr_t attr;
+    res = setPosixSpawnAttrFlags(&attr, POSIX_SPAWN_USEVFORK);
+    if (res) {
+        ALOGE("posix_spawn set attr flag failed (%s)", strerror(res));
+        return -res;
+    }
+
+    pid_t pid;
+    res = posix_spawn(&pid, args[0], &fa, &attr, args, nullptr);
+    close(pipefd[0]);
+    free(args);
+    posix_spawnattr_destroy(&attr);
+    posix_spawn_file_actions_destroy(&fa);
+    if (res) {
+        ALOGE("posix_spawn failed (%s)", strerror(res));
+        close(pipefd[1]);
+        return -res;
+    }
     mDaemonPid = pid;
     mDaemonFd = pipefd[1];
     configureForTethering(true);
