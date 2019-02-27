@@ -79,12 +79,9 @@
 #include <string.h>
 #include <sys/types.h>
 
-#include "resolv_private.h"
+#include <android-base/logging.h>
 
-/* Options.  Leave them on. */
-#ifndef DEBUG
-#define DEBUG
-#endif
+#include "resolv_private.h"
 
 // Queries will be padded to a multiple of this length when EDNS0 is active.
 constexpr uint16_t kEdns0Padding = 128;
@@ -114,11 +111,9 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
     int n;
     u_char *dnptrs[20], **dpp, **lastdnptr;
 
-#ifdef DEBUG
-    if (statp->options & RES_DEBUG)
-        printf(";; res_nmkquery(%s, %s, %s, %s)\n", _res_opcodes[op], dname, p_class(cl),
-               p_type(type));
-#endif
+    LOG(DEBUG) << ";; res_nmkquery(" << _res_opcodes[op] << ", " << dname << ", " << p_class(cl)
+               << ", " << p_type(type) << ")";
+
     /*
      * Initialize header fields.
      */
@@ -206,9 +201,7 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
     u_char *cp, *ep;
     u_int16_t flags = 0;
 
-#ifdef DEBUG
-    if ((statp->options & RES_DEBUG) != 0U) printf(";; res_nopt()\n");
-#endif
+    LOG(DEBUG) << ";; " << __func__;
 
     hp = (HEADER*) (void*) buf;
     cp = buf + n0;
@@ -227,9 +220,7 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
     *cp++ = NOERROR; /* extended RCODE */
     *cp++ = 0;       /* EDNS version */
     if (statp->options & RES_USE_DNSSEC) {
-#ifdef DEBUG
-        if (statp->options & RES_DEBUG) printf(";; res_opt()... ENDS0 DNSSEC\n");
-#endif
+        LOG(DEBUG) << ";; " << __func__ << "... ENDS0 DNSSEC";
         flags |= NS_OPT_DNSSEC_OK;
     }
     ns_put16(flags, cp);
