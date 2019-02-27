@@ -69,7 +69,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -79,6 +78,7 @@
 #include <arpa/nameser.h>
 #include <netinet/in.h>
 
+#include <android-base/logging.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -92,10 +92,6 @@
 #include "res_state_ext.h"
 #include "resolv_private.h"
 
-/* Options.  Should all be left alone. */
-#ifndef DEBUG
-#define DEBUG
-#endif
 
 static void res_setoptions(res_state, const char*, const char*);
 
@@ -191,13 +187,9 @@ int res_vinit(res_state statp, int preinit) {
             dots--;
         }
         *pp = NULL;
-#ifdef DEBUG
-        if (statp->options & RES_DEBUG) {
-            printf(";; res_init()... default dnsrch list:\n");
-            for (pp = statp->dnsrch; *pp; pp++) printf(";;\t%s\n", *pp);
-            printf(";;\t..END..\n");
-        }
-#endif
+        LOG(DEBUG) << ";; res_init()... default dnsrch list:";
+        for (pp = statp->dnsrch; *pp; pp++) LOG(DEBUG) << ";;\t" << *pp;
+        LOG(DEBUG) << ";;\t..END..";
     }
 
     if ((cp = getenv("RES_OPTIONS")) != NULL) res_setoptions(statp, cp, "env");
@@ -213,10 +205,8 @@ static void res_setoptions(res_state statp, const char* options, const char* sou
     int i;
     res_state_ext* ext = statp->_u._ext.ext;
 
-#ifdef DEBUG
-    if (statp->options & RES_DEBUG)
-        printf(";; res_setoptions(\"%s\", \"%s\")...\n", options, source);
-#endif
+    LOG(DEBUG) << ";; res_setoptions(\"" << options << "\", \"" << source << "\")...";
+
     while (*cp) {
         /* skip leading and inner runs of spaces */
         while (*cp == ' ' || *cp == '\t') cp++;
@@ -227,35 +217,34 @@ static void res_setoptions(res_state statp, const char* options, const char* sou
                 statp->ndots = i;
             else
                 statp->ndots = RES_MAXNDOTS;
-#ifdef DEBUG
-            if (statp->options & RES_DEBUG) printf(";;\tndots=%d\n", statp->ndots);
-#endif
+
+            LOG(DEBUG) << ";;\tndots=" << statp->ndots;
+
         } else if (!strncmp(cp, "timeout:", sizeof("timeout:") - 1)) {
             i = atoi(cp + sizeof("timeout:") - 1);
             if (i <= RES_MAXRETRANS)
                 statp->retrans = i;
             else
                 statp->retrans = RES_MAXRETRANS;
-#ifdef DEBUG
-            if (statp->options & RES_DEBUG) printf(";;\ttimeout=%d\n", statp->retrans);
-#endif
+
+            LOG(DEBUG) << ";;\ttimeout=" << statp->retrans;
+
         } else if (!strncmp(cp, "attempts:", sizeof("attempts:") - 1)) {
             i = atoi(cp + sizeof("attempts:") - 1);
             if (i <= RES_MAXRETRY)
                 statp->retry = i;
             else
                 statp->retry = RES_MAXRETRY;
-#ifdef DEBUG
-            if (statp->options & RES_DEBUG) printf(";;\tattempts=%d\n", statp->retry);
-#endif
+
+            LOG(DEBUG) << ";;\tattempts=" << statp->retry;
+
         } else if (!strncmp(cp, "debug", sizeof("debug") - 1)) {
-#ifdef DEBUG
             if (!(statp->options & RES_DEBUG)) {
-                printf(";; res_setoptions(\"%s\", \"%s\")..\n", options, source);
+                LOG(DEBUG) << ";; res_setoptions(\"" << options << "\", \"" << source << "\")..";
                 statp->options |= RES_DEBUG;
             }
-            printf(";;\tdebug\n");
-#endif
+            LOG(DEBUG) << ";;\tdebug";
+
         } else if (!strncmp(cp, "no_tld_query", sizeof("no_tld_query") - 1) ||
                    !strncmp(cp, "no-tld-query", sizeof("no-tld-query") - 1)) {
             statp->options |= RES_NOTLDQUERY;
