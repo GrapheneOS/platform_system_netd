@@ -494,6 +494,20 @@ binder::Status NetdNativeService::getResolverInfo(
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::resolverStartPrefix64Discovery(int32_t netId) {
+    // Locking happens in Dns64Configuration.
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    gCtls->resolverCtrl.startPrefix64Discovery(netId);
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::resolverStopPrefix64Discovery(int32_t netId) {
+    // Locking happens in Dns64Configuration.
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    gCtls->resolverCtrl.stopPrefix64Discovery(netId);
+    return binder::Status::ok();
+}
+
 binder::Status NetdNativeService::tetherApplyDnsInterfaces(bool *ret) {
     NETD_LOCKING_RPC(gCtls->tetherCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     *ret = gCtls->tetherCtrl.applyDnsInterfaces();
