@@ -98,9 +98,9 @@ int ClatdController::startClatd(const char* interface) {
                     nullptr};
     // Specify no flags and no actions, posix_spawn will use vfork and is
     // guaranteed to return only once exec has been called.
-    if (posix_spawn(&pid, kClatdPath, nullptr, nullptr, args, nullptr)) {
-        int res = errno;
-        ALOGE("posix_spawn failed (%s)", strerror(errno));
+    int res = posix_spawn(&pid, kClatdPath, nullptr, nullptr, args, nullptr);
+    if (res) {
+        ALOGE("posix_spawn failed (%s)", strerror(res));
         return -res;
     }
 
