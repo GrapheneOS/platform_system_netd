@@ -494,6 +494,20 @@ binder::Status NetdNativeService::getResolverInfo(
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::resolverStartPrefix64Discovery(int32_t netId) {
+    // Locking happens in Dns64Configuration.
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    gCtls->resolverCtrl.startPrefix64Discovery(netId);
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::resolverStopPrefix64Discovery(int32_t netId) {
+    // Locking happens in Dns64Configuration.
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    gCtls->resolverCtrl.stopPrefix64Discovery(netId);
+    return binder::Status::ok();
+}
+
 binder::Status NetdNativeService::tetherApplyDnsInterfaces(bool *ret) {
     NETD_LOCKING_RPC(gCtls->tetherCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     *ret = gCtls->tetherCtrl.applyDnsInterfaces();
@@ -855,9 +869,10 @@ binder::Status NetdNativeService::strictUidCleartextPenalty(int32_t uid, int32_t
     return statusFromErrcode(res);
 }
 
-binder::Status NetdNativeService::clatdStart(const std::string& ifName) {
+binder::Status NetdNativeService::clatdStart(const std::string& ifName,
+                                             const std::string& nat64Prefix, std::string* v6Addr) {
     NETD_LOCKING_RPC(gCtls->clatdCtrl.mutex, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    int res = gCtls->clatdCtrl.startClatd(ifName.c_str());
+    int res = gCtls->clatdCtrl.startClatd(ifName.c_str(), nat64Prefix, v6Addr);
     return statusFromErrcode(res);
 }
 

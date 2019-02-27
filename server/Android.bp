@@ -72,6 +72,7 @@ cc_library_static {
     ],
     srcs: [
         "BandwidthController.cpp",
+        "ClatdController.cpp",
         "Controllers.cpp",
         "Dns64Configuration.cpp",
         "NetdConstants.cpp",
@@ -158,7 +159,6 @@ cc_binary {
         "libnetd_resolv_headers",
     ],
     srcs: [
-        "ClatdController.cpp",
         "CommandListener.cpp",
         "DummyNetwork.cpp",
         "DumpWriter.cpp",
@@ -202,6 +202,7 @@ cc_test {
     ],
     srcs: [
         "BandwidthControllerTest.cpp",
+        "ClatdControllerTest.cpp",
         "ControllersTest.cpp",
         "FirewallControllerTest.cpp",
         "IdletimerControllerTest.cpp",
