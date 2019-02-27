@@ -79,17 +79,17 @@ const struct afd {
         {0, 0, 0, 0, NULL, NULL, 0},
 };
 
-struct explore {
+struct Explore {
     int e_af;
     int e_socktype;
     int e_protocol;
     int e_wild;
-#define WILD_AF(ex) ((ex)->e_wild & 0x01)
-#define WILD_SOCKTYPE(ex) ((ex)->e_wild & 0x02)
-#define WILD_PROTOCOL(ex) ((ex)->e_wild & 0x04)
+#define WILD_AF(ex) ((ex).e_wild & 0x01)
+#define WILD_SOCKTYPE(ex) ((ex).e_wild & 0x02)
+#define WILD_PROTOCOL(ex) ((ex).e_wild & 0x04)
 };
 
-const struct explore explore_options[] = {
+const Explore explore_options[] = {
         {PF_INET6, SOCK_DGRAM, IPPROTO_UDP, 0x07},
         {PF_INET6, SOCK_STREAM, IPPROTO_TCP, 0x07},
         {PF_INET6, SOCK_RAW, ANY, 0x05},
@@ -99,7 +99,6 @@ const struct explore explore_options[] = {
         {PF_UNSPEC, SOCK_DGRAM, IPPROTO_UDP, 0x07},
         {PF_UNSPEC, SOCK_STREAM, IPPROTO_TCP, 0x07},
         {PF_UNSPEC, SOCK_RAW, ANY, 0x05},
-        {-1, 0, 0, 0},
 };
 
 #define PTON_MAX 16
@@ -273,7 +272,6 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
     int error = 0;
     struct addrinfo ai;
     struct addrinfo ai0;
-    const struct explore* ex;
 
     /* hostname is allowed to be NULL */
     /* servname is allowed to be NULL */
@@ -320,11 +318,11 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
              * are meaningful combination.
              */
             if (ai.ai_socktype != ANY && ai.ai_protocol != ANY) {
-                for (ex = explore_options; ex->e_af >= 0; ex++) {
-                    if (ai.ai_family != ex->e_af) continue;
-                    if (ex->e_socktype == ANY) continue;
-                    if (ex->e_protocol == ANY) continue;
-                    if (ai.ai_socktype == ex->e_socktype && ai.ai_protocol != ex->e_protocol) {
+                for (const Explore& ex : explore_options) {
+                    if (ai.ai_family != ex.e_af) continue;
+                    if (ex.e_socktype == ANY) continue;
+                    if (ex.e_protocol == ANY) continue;
+                    if (ai.ai_socktype == ex.e_socktype && ai.ai_protocol != ex.e_protocol) {
                         error = EAI_BADHINTS;
                         break;
                     }
@@ -352,20 +350,20 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
 
         ai0 = ai;
 
-        /* NULL hostname, or numeric hostname */
-        for (ex = explore_options; ex->e_af >= 0; ex++) {
+        // NULL hostname, or numeric hostname
+        for (const Explore& ex : explore_options) {
             ai = ai0;
 
             /* PF_UNSPEC entries are prepared for DNS queries only */
-            if (ex->e_af == PF_UNSPEC) continue;
+            if (ex.e_af == PF_UNSPEC) continue;
 
-            if (!MATCH_FAMILY(ai.ai_family, ex->e_af, WILD_AF(ex))) continue;
-            if (!MATCH(ai.ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) continue;
-            if (!MATCH(ai.ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) continue;
+            if (!MATCH_FAMILY(ai.ai_family, ex.e_af, WILD_AF(ex))) continue;
+            if (!MATCH(ai.ai_socktype, ex.e_socktype, WILD_SOCKTYPE(ex))) continue;
+            if (!MATCH(ai.ai_protocol, ex.e_protocol, WILD_PROTOCOL(ex))) continue;
 
-            if (ai.ai_family == PF_UNSPEC) ai.ai_family = ex->e_af;
-            if (ai.ai_socktype == ANY && ex->e_socktype != ANY) ai.ai_socktype = ex->e_socktype;
-            if (ai.ai_protocol == ANY && ex->e_protocol != ANY) ai.ai_protocol = ex->e_protocol;
+            if (ai.ai_family == PF_UNSPEC) ai.ai_family = ex.e_af;
+            if (ai.ai_socktype == ANY && ex.e_socktype != ANY) ai.ai_socktype = ex.e_socktype;
+            if (ai.ai_protocol == ANY && ex.e_protocol != ANY) ai.ai_protocol = ex.e_protocol;
 
             if (hostname == NULL)
                 error = explore_null(&ai, servname, &cur->ai_next);
@@ -385,7 +383,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
          */
         if (sentinel.ai_next) break;
 
-        if (hostname == NULL) {
+        if (hostname == nullptr) {
             error = EAI_NODATA;
             break;
         }
@@ -396,24 +394,23 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
 
         /*
          * hostname as alphabetical name.
-         * we would like to prefer AF_INET6 than AF_INET, so we'll make a
-         * outer loop by AFs.
+         * We would like to prefer AF_INET6 over AF_INET, so we'll make a outer loop by AFs.
          */
-        for (ex = explore_options; ex->e_af >= 0; ex++) {
+        for (const Explore& ex : explore_options) {
             ai = ai0;
 
-            /* require exact match for family field */
-            if (ai.ai_family != ex->e_af) continue;
+            // Require exact match for family field
+            if (ai.ai_family != ex.e_af) continue;
 
-            if (!MATCH(ai.ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) {
+            if (!MATCH(ai.ai_socktype, ex.e_socktype, WILD_SOCKTYPE(ex))) {
                 continue;
             }
-            if (!MATCH(ai.ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) {
+            if (!MATCH(ai.ai_protocol, ex.e_protocol, WILD_PROTOCOL(ex))) {
                 continue;
             }
 
-            if (ai.ai_socktype == ANY && ex->e_socktype != ANY) ai.ai_socktype = ex->e_socktype;
-            if (ai.ai_protocol == ANY && ex->e_protocol != ANY) ai.ai_protocol = ex->e_protocol;
+            if (ai.ai_socktype == ANY && ex.e_socktype != ANY) ai.ai_socktype = ex.e_socktype;
+            if (ai.ai_protocol == ANY && ex.e_protocol != ANY) ai.ai_protocol = ex.e_protocol;
 
             error = explore_fqdn(&ai, hostname, servname, &cur->ai_next, netcontext);
 
