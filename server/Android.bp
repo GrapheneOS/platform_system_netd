@@ -135,6 +135,7 @@ cc_binary {
         "libdl",
         "libhidlbase",
         "libhidltransport",
+        "libjsoncpp",
         "liblog",
         "liblogwrap",
         "libmdnssd",
