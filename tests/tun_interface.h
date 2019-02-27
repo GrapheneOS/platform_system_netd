@@ -37,7 +37,9 @@ public:
     const in6_addr& srcAddr() const { return mSrcAddr; }
     const in6_addr& dstAddr() const { return mDstAddr; }
 
-private:
+    int addAddress(const std::string& addr, int prefixlen);
+
+  private:
     int mFd = -1;
     std::string mIfName;
     int mIfIndex;
