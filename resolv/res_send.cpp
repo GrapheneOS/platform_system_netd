@@ -385,6 +385,8 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     cache_status = _resolv_cache_lookup(statp->netid, buf, buflen, ans, anssiz, &anslen, flags);
 
     if (cache_status == RESOLV_CACHE_FOUND) {
+        HEADER* hp = (HEADER*)(void*)ans;
+        *rcode = hp->rcode;
         return anslen;
     } else if (cache_status != RESOLV_CACHE_UNSUPPORTED) {
         // had a cache miss for a known network, so populate the thread private
