@@ -19,6 +19,13 @@
 
 #include <map>
 #include <mutex>
+#include <string>
+
+#include <linux/if.h>
+#include <netinet/in.h>
+
+#include "Fwmark.h"
+#include "NetdConstants.h"
 
 namespace android {
 namespace net {
@@ -30,15 +37,48 @@ class ClatdController {
     explicit ClatdController(NetworkController* controller);
     virtual ~ClatdController();
 
-    int startClatd(const char* interface);
-    int stopClatd(const char* interface);
+    int startClatd(const std::string& interface, const std::string& nat64Prefix,
+                   std::string* v6Addr);
+    int stopClatd(const std::string& interface);
 
     std::mutex mutex;
 
   private:
-    NetworkController* const mNetCtrl;
-    std::map<std::string, pid_t> mClatdPids;
-    pid_t getClatdPid(const char* interface);
+    struct ClatdTracker {
+        const NetworkController* netCtrl = nullptr;
+        pid_t pid = -1;
+        char iface[IFNAMSIZ];
+        Fwmark fwmark;
+        char fwmarkString[UINT32_STRLEN];
+        unsigned netId;
+        char netIdString[UINT32_STRLEN];
+        in_addr v4;
+        char v4Str[INET_ADDRSTRLEN];
+        in6_addr v6;
+        char v6Str[INET6_ADDRSTRLEN];
+        in6_addr dst;
+        char dstString[INET6_ADDRSTRLEN];
+
+        ClatdTracker() = default;
+        explicit ClatdTracker(const NetworkController* netCtrl) : netCtrl(netCtrl) {}
+
+        int init(const std::string& interface, const std::string& nat64Prefix);
+    };
+
+    const NetworkController* mNetCtrl;
+    std::map<std::string, ClatdTracker> mClatdTrackers;
+    ClatdTracker* getClatdTracker(const std::string& interface);
+
+    static in_addr_t selectIpv4Address(const in_addr ip, int16_t prefixlen);
+    static int generateIpv6Address(const char* iface, const in_addr v4, const in6_addr& nat64Prefix,
+                                   in6_addr* v6);
+    static void makeChecksumNeutral(in6_addr* v6, const in_addr v4, const in6_addr& nat64Prefix);
+
+    // For testing.
+    friend class ClatdControllerTest;
+
+    static bool (*isIpv4AddressFreeFunc)(in_addr_t);
+    static bool isIpv4AddressFree(in_addr_t addr);
 };
 
 }  // namespace net

@@ -227,7 +227,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status strictUidCleartextPenalty(int32_t uid, int32_t policyPenalty) override;
 
     // Clatd-related commands
-    binder::Status clatdStart(const std::string& ifName) override;
+    binder::Status clatdStart(const std::string& ifName, const std::string& nat64Prefix,
+                              std::string* v6Address) override;
     binder::Status clatdStop(const std::string& ifName) override;
 
     // Ipfw-related commands
