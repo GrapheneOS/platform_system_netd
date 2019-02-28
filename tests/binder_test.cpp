@@ -1334,7 +1334,7 @@ TEST_F(BinderTest, ClatdStartStop) {
 
     // ... so add a global address.
     const std::string v6 = "2001:db8:1:2:f076:ae99:124e:aa99";
-    EXPECT_EQ(0, ifc_add_address(sTun.name().c_str(), v6.c_str(), 64));
+    EXPECT_EQ(0, sTun.addAddress(v6.c_str(), 64));
 
     // Now expect clatd to start successfully.
     status = mNetd->clatdStart(sTun.name(), nat64Prefix, &clatAddress);
