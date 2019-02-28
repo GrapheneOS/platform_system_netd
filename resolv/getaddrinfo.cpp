@@ -49,8 +49,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
-#include <syslog.h>
 #include <unistd.h>
+
+#include <android-base/logging.h>
 
 #include "netd_resolv/resolv.h"
 #include "resolv_cache.h"
@@ -79,17 +80,17 @@ const struct afd {
         {0, 0, 0, 0, NULL, NULL, 0},
 };
 
-struct explore {
+struct Explore {
     int e_af;
     int e_socktype;
     int e_protocol;
     int e_wild;
-#define WILD_AF(ex) ((ex)->e_wild & 0x01)
-#define WILD_SOCKTYPE(ex) ((ex)->e_wild & 0x02)
-#define WILD_PROTOCOL(ex) ((ex)->e_wild & 0x04)
+#define WILD_AF(ex) ((ex).e_wild & 0x01)
+#define WILD_SOCKTYPE(ex) ((ex).e_wild & 0x02)
+#define WILD_PROTOCOL(ex) ((ex).e_wild & 0x04)
 };
 
-const struct explore explore_options[] = {
+const Explore explore_options[] = {
         {PF_INET6, SOCK_DGRAM, IPPROTO_UDP, 0x07},
         {PF_INET6, SOCK_STREAM, IPPROTO_TCP, 0x07},
         {PF_INET6, SOCK_RAW, ANY, 0x05},
@@ -99,7 +100,6 @@ const struct explore explore_options[] = {
         {PF_UNSPEC, SOCK_DGRAM, IPPROTO_UDP, 0x07},
         {PF_UNSPEC, SOCK_STREAM, IPPROTO_TCP, 0x07},
         {PF_UNSPEC, SOCK_RAW, ANY, 0x05},
-        {-1, 0, 0, 0},
 };
 
 #define PTON_MAX 16
@@ -269,27 +269,25 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
                                      const struct android_net_context* netcontext,
                                      struct addrinfo** res) {
     struct addrinfo sentinel = {};
-    struct addrinfo* cur;
+    struct addrinfo* cur = &sentinel;
     int error = 0;
-    struct addrinfo ai;
-    struct addrinfo ai0;
-    const struct explore* ex;
 
-    /* hostname is allowed to be NULL */
-    /* servname is allowed to be NULL */
-    /* hints is allowed to be NULL */
-    assert(res != NULL);
-    assert(netcontext != NULL);
-    cur = &sentinel;
+    // hostname is allowed to be nullptr
+    // servname is allowed to be nullptr
+    // hints is allowed to be nullptr
+    assert(res != nullptr);
+    assert(netcontext != nullptr);
 
-    ai.ai_flags = 0;
-    ai.ai_family = PF_UNSPEC;
-    ai.ai_socktype = ANY;
-    ai.ai_protocol = ANY;
-    ai.ai_addrlen = 0;
-    ai.ai_canonname = nullptr;
-    ai.ai_addr = nullptr;
-    ai.ai_next = nullptr;
+    struct addrinfo ai = {
+            .ai_flags = 0,
+            .ai_family = PF_UNSPEC,
+            .ai_socktype = ANY,
+            .ai_protocol = ANY,
+            .ai_addrlen = 0,
+            .ai_canonname = nullptr,
+            .ai_addr = nullptr,
+            .ai_next = nullptr,
+    };
 
     do {
         if (hostname == NULL && servname == NULL) {
@@ -320,11 +318,11 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
              * are meaningful combination.
              */
             if (ai.ai_socktype != ANY && ai.ai_protocol != ANY) {
-                for (ex = explore_options; ex->e_af >= 0; ex++) {
-                    if (ai.ai_family != ex->e_af) continue;
-                    if (ex->e_socktype == ANY) continue;
-                    if (ex->e_protocol == ANY) continue;
-                    if (ai.ai_socktype == ex->e_socktype && ai.ai_protocol != ex->e_protocol) {
+                for (const Explore& ex : explore_options) {
+                    if (ai.ai_family != ex.e_af) continue;
+                    if (ex.e_socktype == ANY) continue;
+                    if (ex.e_protocol == ANY) continue;
+                    if (ai.ai_socktype == ex.e_socktype && ai.ai_protocol != ex.e_protocol) {
                         error = EAI_BADHINTS;
                         break;
                     }
@@ -334,43 +332,37 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
         }
 
         /*
-         * check for special cases.  (1) numeric servname is disallowed if
-         * socktype/protocol are left unspecified. (2) servname is disallowed
-         * for raw and other inet{,6} sockets.
+         * Check for special cases:
+         * (1) numeric servname is disallowed if socktype/protocol are left unspecified.
+         * (2) servname is disallowed for raw and other inet{,6} sockets.
          */
         if (MATCH_FAMILY(ai.ai_family, PF_INET, 1) || MATCH_FAMILY(ai.ai_family, PF_INET6, 1)) {
-            ai0 = ai;  // backup ai
-
-            if (ai.ai_family == PF_UNSPEC) {
-                ai.ai_family = PF_INET6;
+            struct addrinfo tmp = ai;
+            if (tmp.ai_family == PF_UNSPEC) {
+                tmp.ai_family = PF_INET6;
             }
-            error = get_portmatch(&ai, servname);
+            error = get_portmatch(&tmp, servname);
             if (error) break;
-
-            ai = ai0;  // restore ai
         }
 
-        ai0 = ai;
-
-        /* NULL hostname, or numeric hostname */
-        for (ex = explore_options; ex->e_af >= 0; ex++) {
-            ai = ai0;
-
+        // NULL hostname, or numeric hostname
+        for (const Explore& ex : explore_options) {
             /* PF_UNSPEC entries are prepared for DNS queries only */
-            if (ex->e_af == PF_UNSPEC) continue;
+            if (ex.e_af == PF_UNSPEC) continue;
 
-            if (!MATCH_FAMILY(ai.ai_family, ex->e_af, WILD_AF(ex))) continue;
-            if (!MATCH(ai.ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) continue;
-            if (!MATCH(ai.ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) continue;
+            if (!MATCH_FAMILY(ai.ai_family, ex.e_af, WILD_AF(ex))) continue;
+            if (!MATCH(ai.ai_socktype, ex.e_socktype, WILD_SOCKTYPE(ex))) continue;
+            if (!MATCH(ai.ai_protocol, ex.e_protocol, WILD_PROTOCOL(ex))) continue;
 
-            if (ai.ai_family == PF_UNSPEC) ai.ai_family = ex->e_af;
-            if (ai.ai_socktype == ANY && ex->e_socktype != ANY) ai.ai_socktype = ex->e_socktype;
-            if (ai.ai_protocol == ANY && ex->e_protocol != ANY) ai.ai_protocol = ex->e_protocol;
+            struct addrinfo tmp = ai;
+            if (tmp.ai_family == PF_UNSPEC) tmp.ai_family = ex.e_af;
+            if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
+            if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
 
-            if (hostname == NULL)
-                error = explore_null(&ai, servname, &cur->ai_next);
+            if (hostname == nullptr)
+                error = explore_null(&tmp, servname, &cur->ai_next);
             else
-                error = explore_numeric_scope(&ai, hostname, servname, &cur->ai_next);
+                error = explore_numeric_scope(&tmp, hostname, servname, &cur->ai_next);
 
             if (error) break;
 
@@ -385,7 +377,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
          */
         if (sentinel.ai_next) break;
 
-        if (hostname == NULL) {
+        if (hostname == nullptr) {
             error = EAI_NODATA;
             break;
         }
@@ -396,26 +388,24 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
 
         /*
          * hostname as alphabetical name.
-         * we would like to prefer AF_INET6 than AF_INET, so we'll make a
-         * outer loop by AFs.
+         * We would like to prefer AF_INET6 over AF_INET, so we'll make a outer loop by AFs.
          */
-        for (ex = explore_options; ex->e_af >= 0; ex++) {
-            ai = ai0;
+        for (const Explore& ex : explore_options) {
+            // Require exact match for family field
+            if (ai.ai_family != ex.e_af) continue;
 
-            /* require exact match for family field */
-            if (ai.ai_family != ex->e_af) continue;
-
-            if (!MATCH(ai.ai_socktype, ex->e_socktype, WILD_SOCKTYPE(ex))) {
+            if (!MATCH(ai.ai_socktype, ex.e_socktype, WILD_SOCKTYPE(ex))) {
                 continue;
             }
-            if (!MATCH(ai.ai_protocol, ex->e_protocol, WILD_PROTOCOL(ex))) {
+            if (!MATCH(ai.ai_protocol, ex.e_protocol, WILD_PROTOCOL(ex))) {
                 continue;
             }
 
-            if (ai.ai_socktype == ANY && ex->e_socktype != ANY) ai.ai_socktype = ex->e_socktype;
-            if (ai.ai_protocol == ANY && ex->e_protocol != ANY) ai.ai_protocol = ex->e_protocol;
+            struct addrinfo tmp = ai;
+            if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
+            if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
 
-            error = explore_fqdn(&ai, hostname, servname, &cur->ai_next, netcontext);
+            error = explore_fqdn(&tmp, hostname, servname, &cur->ai_next, netcontext);
 
             while (cur->ai_next) cur = cur->ai_next;
         }
@@ -809,8 +799,6 @@ trynumeric:
 
 /* code duplicate with gethnamaddr.c */
 
-static const char AskedForGot[] = "gethostby*.getanswer: asked for \"%s\", got \"%s\"";
-
 #define BOUNDED_INCR(x)      \
     do {                     \
         BOUNDS_CHECK(cp, x); \
@@ -942,9 +930,9 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
             }
         } else if (type != qtype) {
             if (type != T_KEY && type != T_SIG)
-                syslog(LOG_NOTICE | LOG_AUTH,
-                       "gethostby*.getanswer: asked for \"%s %s %s\", got type \"%s\"", qname,
-                       p_class(C_IN), p_type(qtype), p_type(type));
+                LOG(DEBUG) << __func__ << "(getanswer): asked for \"" << qname << " "
+                           << p_class(C_IN) << " " << p_type(qtype) << "\", got type \""
+                           << p_type(type) << "\"";
             cp += n;
             continue; /* XXX - had_error++ ? */
         }
@@ -952,7 +940,8 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
             case T_A:
             case T_AAAA:
                 if (strcasecmp(canonname, bp) != 0) {
-                    syslog(LOG_NOTICE | LOG_AUTH, AskedForGot, canonname, bp);
+                    LOG(DEBUG) << __func__ << "(getanswer): asked for \"" << canonname
+                               << "\", got \"" << bp << "\"";
                     cp += n;
                     continue; /* XXX - had_error++ ? */
                 }
@@ -1616,17 +1605,14 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
         int type = t->qtype;
         answer = t->answer;
         anslen = t->anslen;
-#ifdef DEBUG
-        if (res->options & RES_DEBUG) printf(";; res_queryN(%s, %d, %d)\n", name, cl, type);
-#endif
+
+        LOG(DEBUG) << ";; res_queryN(" << name << ", " << cl << " , " << type << ")";
 
         n = res_nmkquery(res, QUERY, name, cl, type, NULL, 0, NULL, buf, sizeof(buf));
         if (n > 0 && (res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 && !retried)
             n = res_nopt(res, n, buf, sizeof(buf), anslen);
         if (n <= 0) {
-#ifdef DEBUG
-            if (res->options & RES_DEBUG) printf(";; res_queryN: mkquery failed\n");
-#endif
+            LOG(DEBUG) << ";; res_queryN: mkquery failed";
             *herrno = NO_RECOVERY;
             return n;
         }
@@ -1639,16 +1625,11 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
             /* if the query choked with EDNS0, retry without EDNS0 */
             if ((res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 &&
                 (res->_flags & RES_F_EDNS0ERR) && !retried) {
-#ifdef DEBUG
-                if (res->options & RES_DEBUG) printf(";; res_queryN: retry without EDNS0\n");
-#endif
+                LOG(DEBUG) << ";; res_queryN: retry without EDNS0";
                 retried = true;
                 goto again;
             }
-#ifdef DEBUG
-            if (res->options & RES_DEBUG)
-                printf(";; rcode = %u, ancount=%u\n", hp->rcode, ntohs(hp->ancount));
-#endif
+            LOG(DEBUG) << ";; rcode = " << hp->rcode << ", ancount=" << ntohs(hp->ancount);
             continue;
         }
 
@@ -1826,12 +1807,8 @@ static int res_querydomainN(const char* name, const char* domain, res_target* ta
 
     assert(name != NULL);
     /* XXX: target may be NULL??? */
-
-#ifdef DEBUG
-    if (res->options & RES_DEBUG)
-        printf(";; res_querydomain(%s, %s)\n", name, domain ? domain : "<Nil>");
-#endif
     if (domain == NULL) {
+        LOG(DEBUG) << ";; res_querydomain(" << name << ", <Nil>)";
         /*
          * Check for trailing '.';
          * copy without '.' if present.
@@ -1847,6 +1824,7 @@ static int res_querydomainN(const char* name, const char* domain, res_target* ta
         } else
             longname = name;
     } else {
+        LOG(DEBUG) << ";; res_querydomain(" << name << ", " << domain << ")";
         n = strlen(name);
         d = strlen(domain);
         if (n + 1 + d + 1 > sizeof(nbuf)) {

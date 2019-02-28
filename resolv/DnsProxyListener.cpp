@@ -35,6 +35,8 @@
 #include <list>
 #include <vector>
 
+#include <android-base/logging.h>
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android/multinetwork.h>  // ResNsendFlags
 #include <cutils/misc.h>           // FIRST_APPLICATION_UID
@@ -55,14 +57,21 @@
 #include "Stopwatch.h"
 #include "netd_resolv/stats.h"  // RCODE_TIMEOUT
 #include "netdutils/InternetAddresses.h"
+#include "resolv_private.h"
 #include "thread_util.h"
 
 using aidl::android::net::metrics::INetdEventListener;
-using android::base::StringPrintf;
 
 static android::net::DnsProxyListener gDnsProxyListener;
 
 bool resolv_init(const dnsproxylistener_callbacks& callbacks) {
+    android::base::InitLogging(/*argv=*/nullptr);
+    android::base::SetDefaultTag("libnetd_resolv");
+    ALOGI("Initializing resolver");
+    const std::string logSeverityStr =
+            android::base::GetProperty("persist.sys.nw_dns_resolver_log", "WARNING");
+    android::base::SetMinimumLogSeverity(logSeverityStrToEnum(logSeverityStr));
+
     if (!gDnsProxyListener.setCallbacks(callbacks)) {
         ALOGE("Unable to set callbacks to DnsProxyListener");
         return false;

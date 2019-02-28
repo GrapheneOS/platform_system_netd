@@ -1108,25 +1108,31 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
 CommandListener::ClatdCmd::ClatdCmd() : NetdCommand("clatd") {
 }
 
-int CommandListener::ClatdCmd::runCommand(SocketClient *cli, int argc,
-                                                            char **argv) {
+int CommandListener::ClatdCmd::runCommand(SocketClient* cli, int argc, char** argv) {
     int rc = 0;
     if (argc < 3) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
         return 0;
     }
 
+    std::string v6Addr;
+
     if (!strcmp(argv[1], "stop")) {
         rc = gCtls->clatdCtrl.stopClatd(argv[2]);
     } else if (!strcmp(argv[1], "start")) {
-        rc = gCtls->clatdCtrl.startClatd(argv[2]);
+        if (argc < 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+            return 0;
+        }
+        rc = gCtls->clatdCtrl.startClatd(argv[2], argv[3], &v6Addr);
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown clatd cmd", false);
         return 0;
     }
 
     if (!rc) {
-        cli->sendMsg(ResponseCode::CommandOkay, "Clatd operation succeeded", false);
+        cli->sendMsg(ResponseCode::CommandOkay,
+                     std::string(("Clatd operation succeeded ") + v6Addr).c_str(), false);
     } else {
         cli->sendMsg(ResponseCode::OperationFailed, "Clatd operation failed", false);
     }

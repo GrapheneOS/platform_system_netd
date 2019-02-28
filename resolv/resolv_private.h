@@ -54,9 +54,11 @@
 #ifndef NETD_RESOLV_PRIVATE_H
 #define NETD_RESOLV_PRIVATE_H
 
+#include <android-base/logging.h>
 #include <net/if.h>
 #include <resolv.h>
 #include <time.h>
+#include <string>
 
 #include "netd_resolv/params.h"
 #include "netd_resolv/resolv.h"
@@ -233,7 +235,8 @@ int res_queriesmatch(const u_char*, const u_char*, const u_char*, const u_char*)
 const char* p_section(int, int);
 /* Things involving a resolver context. */
 int res_ninit(res_state);
-void res_pquery(const res_state, const u_char*, int, FILE*);
+void res_pquery(const res_state, const u_char*, int);
+
 int res_nquery(res_state, const char*, int, int, u_char*, int, int*);
 int res_nsearch(res_state, const char*, int, int, u_char*, int, int*);
 int res_nquerydomain(res_state, const char*, const char*, int, int, u_char*, int, int*);
@@ -255,5 +258,8 @@ int getaddrinfo_numeric(const char* hostname, const char* servname, addrinfo hin
 
 // Helper function for converting h_errno to the error codes visible to netd
 int herrnoToAiErrno(int herrno);
+
+// switch resolver log severity
+android::base::LogSeverity logSeverityStrToEnum(const std::string& logSeverityStr);
 
 #endif  // NETD_RESOLV_PRIVATE_H

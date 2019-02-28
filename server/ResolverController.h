@@ -66,6 +66,9 @@ class ResolverController {
 
     void sendNat64PrefixEvent(const net::Dns64Configuration::Nat64PrefixInfo& args);
 
+    void startPrefix64Discovery(int32_t netId);
+    void stopPrefix64Discovery(int32_t netId);
+
     bool initResolver();
 
     void dump(DumpWriter& dw, unsigned netId);

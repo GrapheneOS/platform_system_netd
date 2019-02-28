@@ -39,7 +39,4 @@ cc_defaults {
         + ",'performance-*'"
         + ",'misc-*'"
     ],
-    shared_libs: [
-        "libjsoncpp",
-    ],
 }
