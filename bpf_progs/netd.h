@@ -72,66 +72,66 @@ struct IfaceValue {
 #define RST_OFFSET 2
 
 struct bpf_map_def SEC("maps") cookie_tag_map = {
-    .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(uint64_t),
-    .value_size = sizeof(struct uid_tag),
-    .max_entries = COOKIE_UID_MAP_SIZE,
+        .type = BPF_MAP_TYPE_HASH,
+        .key_size = sizeof(uint64_t),
+        .value_size = sizeof(struct uid_tag),
+        .max_entries = COOKIE_UID_MAP_SIZE,
 };
 
 struct bpf_map_def SEC("maps") uid_counterset_map = {
-    .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(uint32_t),
-    .value_size = sizeof(uint8_t),
-    .max_entries = UID_COUNTERSET_MAP_SIZE,
+        .type = BPF_MAP_TYPE_HASH,
+        .key_size = sizeof(uint32_t),
+        .value_size = sizeof(uint8_t),
+        .max_entries = UID_COUNTERSET_MAP_SIZE,
 };
 
 struct bpf_map_def SEC("maps") app_uid_stats_map = {
-    .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(uint32_t),
-    .value_size = sizeof(struct stats_value),
-    .max_entries = APP_STATS_MAP_SIZE,
+        .type = BPF_MAP_TYPE_HASH,
+        .key_size = sizeof(uint32_t),
+        .value_size = sizeof(struct stats_value),
+        .max_entries = APP_STATS_MAP_SIZE,
 };
 
 struct bpf_map_def SEC("maps") stats_map_A = {
-    .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(struct stats_key),
-    .value_size = sizeof(struct stats_value),
-    .max_entries = STATS_MAP_SIZE,
+        .type = BPF_MAP_TYPE_HASH,
+        .key_size = sizeof(struct stats_key),
+        .value_size = sizeof(struct stats_value),
+        .max_entries = STATS_MAP_SIZE,
 };
 
 struct bpf_map_def SEC("maps") stats_map_B = {
-    .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(struct stats_key),
-    .value_size = sizeof(struct stats_value),
-    .max_entries = STATS_MAP_SIZE,
+        .type = BPF_MAP_TYPE_HASH,
+        .key_size = sizeof(struct stats_key),
+        .value_size = sizeof(struct stats_value),
+        .max_entries = STATS_MAP_SIZE,
 };
 
 struct bpf_map_def SEC("maps") iface_stats_map = {
-    .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(uint32_t),
-    .value_size = sizeof(struct stats_value),
-    .max_entries = IFACE_STATS_MAP_SIZE,
+        .type = BPF_MAP_TYPE_HASH,
+        .key_size = sizeof(uint32_t),
+        .value_size = sizeof(struct stats_value),
+        .max_entries = IFACE_STATS_MAP_SIZE,
 };
 
 struct bpf_map_def SEC("maps") configuration_map = {
-    .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(uint32_t),
-    .value_size = sizeof(uint8_t),
-    .max_entries = CONFIGURATION_MAP_SIZE,
+        .type = BPF_MAP_TYPE_HASH,
+        .key_size = sizeof(uint32_t),
+        .value_size = sizeof(uint8_t),
+        .max_entries = CONFIGURATION_MAP_SIZE,
 };
 
 struct bpf_map_def SEC("maps") uid_owner_map = {
-    .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(uint32_t),
-    .value_size = sizeof(uint8_t),
-    .max_entries = UID_OWNER_MAP_SIZE,
+        .type = BPF_MAP_TYPE_HASH,
+        .key_size = sizeof(uint32_t),
+        .value_size = sizeof(uint8_t),
+        .max_entries = UID_OWNER_MAP_SIZE,
 };
 
 struct bpf_map_def SEC("maps") iface_index_name_map = {
-    .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(uint32_t),
-    .value_size = sizeof(struct IfaceValue),
-    .max_entries = IFACE_INDEX_NAME_MAP_SIZE,
+        .type = BPF_MAP_TYPE_HASH,
+        .key_size = sizeof(uint32_t),
+        .value_size = sizeof(struct IfaceValue),
+        .max_entries = IFACE_INDEX_NAME_MAP_SIZE,
 };
 
 static __always_inline int is_system_uid(uint32_t uid) {

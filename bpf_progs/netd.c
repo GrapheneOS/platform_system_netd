@@ -59,10 +59,10 @@ int xt_bpf_blacklist_prog(struct __sk_buff* skb) {
 }
 
 struct bpf_map_def SEC("maps") uid_permission_map = {
-    .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(uint32_t),
-    .value_size = sizeof(uint8_t),
-    .max_entries = UID_OWNER_MAP_SIZE,
+        .type = BPF_MAP_TYPE_HASH,
+        .key_size = sizeof(uint32_t),
+        .value_size = sizeof(uint8_t),
+        .max_entries = UID_OWNER_MAP_SIZE,
 };
 
 SEC("cgroupsock/inet/creat")
