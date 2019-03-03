@@ -28,8 +28,6 @@
 #include <sys/types.h>
 
 #define LOG_TAG "DnsProxyListener"
-#define DBG 0
-#define VDBG 0
 
 #include <algorithm>
 #include <list>
@@ -103,6 +101,7 @@ constexpr int MAXPACKET = 8 * 1024;
 android::netdutils::OperationLimiter<uid_t> queryLimiter(MAX_QUERIES_PER_UID);
 
 void logArguments(int argc, char** argv) {
+    if (!WOULD_LOG(DEBUG)) return;
     for (int i = 0; i < argc; i++) {
         ALOGD("argv[%i]=%s", i, argv[i]);
     }
@@ -374,6 +373,7 @@ bool onlyNonSpecialUseIPv4Addresses(const addrinfo* res) {
 }
 
 void logDnsQueryResult(const struct hostent* hp) {
+    if (!WOULD_LOG(DEBUG)) return;
     if (hp == nullptr) return;
 
     ALOGD("DNS records:");
@@ -389,6 +389,7 @@ void logDnsQueryResult(const struct hostent* hp) {
 }
 
 void logDnsQueryResult(const addrinfo* res) {
+    if (!WOULD_LOG(DEBUG)) return;
     if (res == nullptr) return;
 
     int i;
@@ -439,7 +440,7 @@ bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, struct 
         *ia6 = v6prefix->sin6_addr;
         ia6->s6_addr32[3] = iaOriginal.s_addr;
 
-        if (DBG) {
+        if (WOULD_LOG(DEBUG)) {
             char buf[INET6_ADDRSTRLEN];  // big enough for either IPv4 or IPv6
             inet_ntop(AF_INET, &iaOriginal.s_addr, buf, sizeof(buf));
             ALOGD("DNS A record: %s", buf);
@@ -452,7 +453,7 @@ bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, struct 
     hp->h_addrtype = AF_INET6;
     hp->h_length = sizeof(in6_addr);
 
-    if (DBG) logDnsQueryResult(hp);
+    logDnsQueryResult(hp);
     return true;
 }
 
@@ -477,7 +478,7 @@ bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, addrinf
         ai->ai_addrlen = sizeof(struct sockaddr_in6);
         ai->ai_family = AF_INET6;
 
-        if (DBG) {
+        if (WOULD_LOG(DEBUG)) {
             char buf[INET6_ADDRSTRLEN];  // big enough for either IPv4 or IPv6
             inet_ntop(AF_INET, &sinOriginal.sin_addr.s_addr, buf, sizeof(buf));
             ALOGD("DNS A record: %s", buf);
@@ -487,7 +488,7 @@ bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, addrinf
             ALOGD("DNS64 Synthesized AAAA record: %s", buf);
         }
     }
-    if (DBG) logDnsQueryResult(result);
+    logDnsQueryResult(result);
     return true;
 }
 
@@ -652,12 +653,9 @@ void DnsProxyListener::GetAddrInfoHandler::doDns64Synthesis(int32_t* rv, addrinf
 }
 
 void DnsProxyListener::GetAddrInfoHandler::run() {
-    if (DBG) {
-        ALOGD("GetAddrInfoHandler, now for %s / %s / {%u,%u,%u,%u,%u,%u}", mHost, mService,
-                mNetContext.app_netid, mNetContext.app_mark,
-                mNetContext.dns_netid, mNetContext.dns_mark,
-                mNetContext.uid, mNetContext.flags);
-    }
+    ALOGD("GetAddrInfoHandler, now for %s / %s / {%u,%u,%u,%u,%u,%u}", mHost, mService,
+          mNetContext.app_netid, mNetContext.app_mark, mNetContext.dns_netid, mNetContext.dns_mark,
+          mNetContext.uid, mNetContext.flags);
 
     addrinfo* result = nullptr;
     Stopwatch s;
@@ -721,7 +719,7 @@ DnsProxyListener::GetAddrInfoCmd::GetAddrInfoCmd() : FrameworkCommand("getaddrin
 
 int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
                                             int argc, char **argv) {
-    if (DBG) logArguments(argc, argv);
+    logArguments(argc, argv);
 
     if (argc != 8) {
         char* msg = nullptr;
@@ -771,14 +769,9 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
         hints->ai_protocol = ai_protocol;
     }
 
-    if (DBG) {
-        ALOGD("GetAddrInfoHandler for %s / %s / {%u,%u,%u,%u,%u}",
-             name ? name : "[nullhost]",
-             service ? service : "[nullservice]",
-             netcontext.app_netid, netcontext.app_mark,
-             netcontext.dns_netid, netcontext.dns_mark,
-             netcontext.uid);
-    }
+    ALOGD("GetAddrInfoHandler for %s / %s / {%u,%u,%u,%u,%u}", name ? name : "[nullhost]",
+          service ? service : "[nullservice]", netcontext.app_netid, netcontext.app_mark,
+          netcontext.dns_netid, netcontext.dns_mark, netcontext.uid);
 
     DnsProxyListener::GetAddrInfoHandler* handler =
             new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, netcontext);
@@ -787,12 +780,12 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
 }
 
 /*******************************************************
- *                  ResNSendCommand                  *
+ *                  ResNSendCommand                    *
  *******************************************************/
 DnsProxyListener::ResNSendCommand::ResNSendCommand() : FrameworkCommand("resnsend") {}
 
 int DnsProxyListener::ResNSendCommand::runCommand(SocketClient* cli, int argc, char** argv) {
-    if (DBG) logArguments(argc, argv);
+    logArguments(argc, argv);
 
     const uid_t uid = cli->getUid();
     if (argc != 4) {
@@ -836,11 +829,9 @@ DnsProxyListener::ResNSendHandler::~ResNSendHandler() {
 }
 
 void DnsProxyListener::ResNSendHandler::run() {
-    if (DBG) {
-        ALOGD("ResNSendHandler, now for %s %u/ {%u,%u,%u,%u,%u,%u}", mMsg.c_str(), mFlags,
-              mNetContext.app_netid, mNetContext.app_mark, mNetContext.dns_netid,
-              mNetContext.dns_mark, mNetContext.uid, mNetContext.flags);
-    }
+    ALOGD("ResNSendHandler, now for %s %u/ {%u,%u,%u,%u,%u,%u}", mMsg.c_str(), mFlags,
+          mNetContext.app_netid, mNetContext.app_mark, mNetContext.dns_netid, mNetContext.dns_mark,
+          mNetContext.uid, mNetContext.flags);
 
     Stopwatch s;
     maybeFixupNetContext(&mNetContext);
@@ -921,7 +912,7 @@ DnsProxyListener::GetHostByNameCmd::GetHostByNameCmd() : FrameworkCommand("getho
 
 int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
                                             int argc, char **argv) {
-    if (DBG) logArguments(argc, argv);
+    logArguments(argc, argv);
 
     if (argc != 4) {
         char* msg = nullptr;
@@ -1001,9 +992,7 @@ void DnsProxyListener::GetHostByNameHandler::doDns64Synthesis(int32_t* rv, struc
 }
 
 void DnsProxyListener::GetHostByNameHandler::run() {
-    if (DBG) {
-        ALOGD("DnsProxyListener::GetHostByNameHandler::run");
-    }
+    ALOGD("DnsProxyListener::GetHostByNameHandler::run");
 
     Stopwatch s;
     maybeFixupNetContext(&mNetContext);
@@ -1021,12 +1010,9 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     doDns64Synthesis(&rv, &hp);
     const int latencyUs = lround(s.timeTakenUs());
 
-    if (DBG) {
-        ALOGD("GetHostByNameHandler::run gethostbyname errno: %s hp->h_name = %s, name_len = %zu",
-                hp ? "success" : strerror(errno),
-                (hp && hp->h_name) ? hp->h_name : "null",
-                (hp && hp->h_name) ? strlen(hp->h_name) + 1 : 0);
-    }
+    ALOGD("GetHostByNameHandler::run gethostbyname errno: %s hp->h_name = %s, name_len = %zu",
+          hp ? "success" : strerror(errno), (hp && hp->h_name) ? hp->h_name : "null",
+          (hp && hp->h_name) ? strlen(hp->h_name) + 1 : 0);
 
     bool success = true;
     if (hp) {
@@ -1056,7 +1042,7 @@ DnsProxyListener::GetHostByAddrCmd::GetHostByAddrCmd() : FrameworkCommand("getho
 
 int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
                                             int argc, char **argv) {
-    if (DBG) logArguments(argc, argv);
+    logArguments(argc, argv);
 
     if (argc != 5) {
         char* msg = nullptr;
@@ -1158,9 +1144,7 @@ void DnsProxyListener::GetHostByAddrHandler::doDns64ReverseLookup(struct hostent
 }
 
 void DnsProxyListener::GetHostByAddrHandler::run() {
-    if (DBG) {
-        ALOGD("DnsProxyListener::GetHostByAddrHandler::run");
-    }
+    ALOGD("DnsProxyListener::GetHostByAddrHandler::run");
 
     Stopwatch s;
     maybeFixupNetContext(&mNetContext);
@@ -1179,11 +1163,9 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     doDns64ReverseLookup(&hp);
     const int latencyUs = int(s.timeTakenUs());
 
-    if (DBG) {
-        ALOGD("GetHostByAddrHandler::run gethostbyaddr result: %s hp->h_name = %s, name_len = %zu",
-              hp ? "success" : gai_strerror(rv), (hp && hp->h_name) ? hp->h_name : "null",
-              (hp && hp->h_name) ? strlen(hp->h_name) + 1 : 0);
-    }
+    ALOGD("GetHostByAddrHandler::run gethostbyaddr result: %s hp->h_name = %s, name_len = %zu",
+          hp ? "success" : gai_strerror(rv), (hp && hp->h_name) ? hp->h_name : "null",
+          (hp && hp->h_name) ? strlen(hp->h_name) + 1 : 0);
 
     bool success = true;
     if (hp) {

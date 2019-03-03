@@ -15,7 +15,7 @@
  *
  */
 
-#define LOG_TAG "netd_test"
+#define LOG_TAG "resolv_integration_test"
 
 #include <arpa/inet.h>
 #include <arpa/nameser.h>

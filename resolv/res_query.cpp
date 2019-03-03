@@ -70,6 +70,8 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#define LOG_TAG "res_query"
+
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <ctype.h>
