@@ -38,11 +38,6 @@
 #include "bpf/BpfUtils.h"
 #include "netdbpf/BpfNetworkStats.h"
 
-using ::testing::_;
-using ::testing::ByMove;
-using ::testing::Invoke;
-using ::testing::Return;
-using ::testing::StrictMock;
 using ::testing::Test;
 
 namespace android {
