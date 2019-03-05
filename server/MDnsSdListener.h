@@ -17,10 +17,10 @@
 #ifndef _MDNSSDLISTENER_H__
 #define _MDNSSDLISTENER_H__
 
-#include <pthread.h>
-
+#include <android-base/thread_annotations.h>
 #include <dns_sd.h>
 #include <sysutils/FrameworkListener.h>
+#include <mutex>
 
 #include "NetdCommand.h"
 
@@ -93,13 +93,13 @@ private:
             Context *mContext;
             int mReady = 0;
         };
-        Element *mHead;
+        Element* mHead GUARDED_BY(mMutex);
         int mLiveCount;
         struct pollfd *mPollFds;
         DNSServiceRef **mPollRefs;
         int mPollSize;
         int mCtrlSocketPair[2];
-        pthread_mutex_t mHeadMutex;
+        std::mutex mMutex;
     };
 
     class Handler : public NetdCommand {
