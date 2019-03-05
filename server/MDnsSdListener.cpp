@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "MDnsSdListener.h"
+
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
@@ -21,12 +23,12 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <resolv.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <string.h>
-#include <resolv.h>
 
 #define LOG_TAG "MDnsDS"
 #define DBG 1
@@ -36,7 +38,6 @@
 #include <log/log.h>
 #include <sysutils/SocketClient.h>
 
-#include "MDnsSdListener.h"
 #include "ResponseCode.h"
 #include "thread_util.h"
 
@@ -524,7 +525,6 @@ MDnsSdListener::Monitor::Monitor() {
     mPollRefs = nullptr;
     mPollSize = 10;
     socketpair(AF_LOCAL, SOCK_STREAM, 0, mCtrlSocketPair);
-    pthread_mutex_init(&mHeadMutex, nullptr);
 
     const int rval = ::android::net::threadLaunch(this);
     if (rval != 0) {
@@ -554,35 +554,27 @@ static int wait_for_property(const char *name, const char *desired_value, int ma
 }
 
 int MDnsSdListener::Monitor::startService() {
-    int result = 0;
     char property_value[PROPERTY_VALUE_MAX];
-    pthread_mutex_lock(&mHeadMutex);
+    std::lock_guard guard(mMutex);
     property_get(MDNS_SERVICE_STATUS, property_value, "");
     if (strcmp("running", property_value) != 0) {
         ALOGD("Starting MDNSD");
         property_set("ctl.start", MDNS_SERVICE_NAME);
         wait_for_property(MDNS_SERVICE_STATUS, "running", 5);
-        result = -1;
-    } else {
-        result = 0;
+        return -1;
     }
-    pthread_mutex_unlock(&mHeadMutex);
-    return result;
+    return 0;
 }
 
 int MDnsSdListener::Monitor::stopService() {
-    int result = 0;
-    pthread_mutex_lock(&mHeadMutex);
+    std::lock_guard guard(mMutex);
     if (mHead == nullptr) {
         ALOGD("Stopping MDNSD");
         property_set("ctl.stop", MDNS_SERVICE_NAME);
         wait_for_property(MDNS_SERVICE_STATUS, "stopped", 5);
-        result = -1;
-    } else {
-        result = 0;
+        return -1;
     }
-    pthread_mutex_unlock(&mHeadMutex);
-    return result;
+    return 0;
 }
 
 void MDnsSdListener::Monitor::run() {
@@ -612,9 +604,8 @@ void MDnsSdListener::Monitor::run() {
                         ALOGD("Monitor found [%d].revents = %d - calling ProcessResults",
                                 i, mPollFds[i].revents);
                     }
-                    pthread_mutex_lock(&mHeadMutex);
+                    std::lock_guard guard(mMutex);
                     DNSServiceProcessResult(*(mPollRefs[i]));
-                    pthread_mutex_unlock(&mHeadMutex);
                     mPollFds[i].revents = 0;
                 }
             }
@@ -645,7 +636,7 @@ int MDnsSdListener::Monitor::rescan() {
     if (VDBG) {
         ALOGD("MDnsSdListener::Monitor poll rescanning - size=%d, live=%d", mPollSize, mLiveCount);
     }
-    pthread_mutex_lock(&mHeadMutex);
+    std::lock_guard guard(mMutex);
     Element **prevPtr = &mHead;
     int i = 1;
     if (mPollSize <= mLiveCount) {
@@ -690,7 +681,7 @@ int MDnsSdListener::Monitor::rescan() {
             prevPtr = &((*prevPtr)->mNext);
         }
     }
-    pthread_mutex_unlock(&mHeadMutex);
+
     return i;
 }
 
@@ -700,53 +691,45 @@ DNSServiceRef *MDnsSdListener::Monitor::allocateServiceRef(int id, Context *cont
         return nullptr;
     }
     Element *e = new Element(id, context);
-    pthread_mutex_lock(&mHeadMutex);
+    std::lock_guard guard(mMutex);
     e->mNext = mHead;
     mHead = e;
-    pthread_mutex_unlock(&mHeadMutex);
     return &(e->mRef);
 }
 
 DNSServiceRef *MDnsSdListener::Monitor::lookupServiceRef(int id) {
-    pthread_mutex_lock(&mHeadMutex);
+    std::lock_guard guard(mMutex);
     Element *cur = mHead;
     while (cur != nullptr) {
         if (cur->mId == id) {
             DNSServiceRef *result = &(cur->mRef);
-            pthread_mutex_unlock(&mHeadMutex);
             return result;
         }
         cur = cur->mNext;
     }
-    pthread_mutex_unlock(&mHeadMutex);
     return nullptr;
 }
 
 void MDnsSdListener::Monitor::startMonitoring(int id) {
     if (VDBG) ALOGD("startMonitoring %d", id);
-    pthread_mutex_lock(&mHeadMutex);
-    Element *cur = mHead;
-    while (cur != nullptr) {
+    std::lock_guard guard(mMutex);
+    for (Element* cur = mHead; cur != nullptr; cur = cur->mNext) {
         if (cur->mId == id) {
             if (DBG_RESCAN) ALOGD("marking %p as ready to be added", cur);
             mLiveCount++;
             cur->mReady = 1;
-            pthread_mutex_unlock(&mHeadMutex);
             write(mCtrlSocketPair[1], RESCAN, 1);  // trigger a rescan for a fresh poll
             if (VDBG) ALOGD("triggering rescan");
             return;
         }
-        cur = cur->mNext;
     }
-    pthread_mutex_unlock(&mHeadMutex);
 }
 
 void MDnsSdListener::Monitor::freeServiceRef(int id) {
     if (VDBG) ALOGD("freeServiceRef %d", id);
-    pthread_mutex_lock(&mHeadMutex);
-    Element **prevPtr = &mHead;
-    Element *cur;
-    while (*prevPtr != nullptr) {
+    std::lock_guard guard(mMutex);
+    Element* cur;
+    for (Element** prevPtr = &mHead; *prevPtr != nullptr; prevPtr = &(cur->mNext)) {
         cur = *prevPtr;
         if (cur->mId == id) {
             if (DBG_RESCAN) ALOGD("marking %p as ready to be removed", cur);
@@ -760,17 +743,13 @@ void MDnsSdListener::Monitor::freeServiceRef(int id) {
                 *prevPtr = cur->mNext;
                 delete cur;
             }
-            pthread_mutex_unlock(&mHeadMutex);
             return;
         }
-        prevPtr = &(cur->mNext);
     }
-    pthread_mutex_unlock(&mHeadMutex);
 }
 
 void MDnsSdListener::Monitor::deallocateServiceRef(DNSServiceRef* ref) {
-    pthread_mutex_lock(&mHeadMutex);
+    std::lock_guard guard(mMutex);
     DNSServiceRefDeallocate(*ref);
     *ref = nullptr;
-    pthread_mutex_unlock(&mHeadMutex);
 }
