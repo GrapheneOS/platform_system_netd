@@ -82,6 +82,7 @@ cc_test {
         "libnetdutils",
         "netd_aidl_interface-cpp",
         "netd_event_listener_interface-cpp",
+        "oemnetd_aidl_interface-cpp",
     ],
     compile_multilib: "both",
     multilib: {
