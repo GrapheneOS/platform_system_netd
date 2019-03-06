@@ -36,8 +36,9 @@
 #include <vector>
 
 #define LOG_TAG "TetherController"
-#include <android-base/strings.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
+#include <android-base/unique_fd.h>
 #include <cutils/properties.h>
 #include <log/log.h>
 #include <netdutils/StatusOr.h>
@@ -55,7 +56,9 @@ namespace android {
 namespace net {
 
 using android::base::Join;
+using android::base::Pipe;
 using android::base::StringPrintf;
+using android::base::unique_fd;
 using android::netdutils::statusFromErrno;
 using android::netdutils::StatusOr;
 
@@ -212,9 +215,8 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
 
     ALOGD("Starting tethering services");
 
-    int pipefd[2];
-
-    if (pipe2(pipefd, O_CLOEXEC) < 0) {
+    unique_fd pipeRead, pipeWrite;
+    if (!Pipe(&pipeRead, &pipeWrite, O_CLOEXEC)) {
         int res = errno;
         ALOGE("pipe2() failed (%s)", strerror(errno));
         return -res;
@@ -251,7 +253,7 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
                                          dhcp_ranges[addrIndex + 1]));
     }
 
-    auto args = (char**)std::calloc(argVector.size() + 1, sizeof(char*));
+    std::vector<char*> args(argVector.size() + 1);
     for (unsigned i = 0; i < argVector.size(); i++) {
         args[i] = (char*)argVector[i].c_str();
     }
@@ -266,7 +268,7 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
     // dup2 creates fd without CLOEXEC, dnsmasq will receive commands through the
     // duplicated fd.
     posix_spawn_file_actions_t fa;
-    int res = setPosixSpawnFileActionsAddDup2(&fa, pipefd[0], STDIN_FILENO);
+    int res = setPosixSpawnFileActionsAddDup2(&fa, pipeRead.get(), STDIN_FILENO);
     if (res) {
         ALOGE("posix_spawn set fa failed (%s)", strerror(res));
         return -res;
@@ -280,18 +282,15 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
     }
 
     pid_t pid;
-    res = posix_spawn(&pid, args[0], &fa, &attr, args, nullptr);
-    close(pipefd[0]);
-    free(args);
+    res = posix_spawn(&pid, args[0], &fa, &attr, &args[0], nullptr);
     posix_spawnattr_destroy(&attr);
     posix_spawn_file_actions_destroy(&fa);
     if (res) {
         ALOGE("posix_spawn failed (%s)", strerror(res));
-        close(pipefd[1]);
         return -res;
     }
     mDaemonPid = pid;
-    mDaemonFd = pipefd[1];
+    mDaemonFd = pipeWrite.release();
     configureForTethering(true);
     applyDnsInterfaces();
     ALOGD("Tethering services running");
