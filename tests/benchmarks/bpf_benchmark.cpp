@@ -32,7 +32,9 @@ class BpfBenchMark : public ::benchmark::Fixture {
 };
 
 BENCHMARK_DEFINE_F(BpfBenchMark, MapWriteNewEntry)(benchmark::State& state) {
-    for (auto _ : state) mBpfTestMap.writeValue(state.range(0), state.range(0), BPF_NOEXIST);
+    for (auto _ : state) {
+        expectOk(mBpfTestMap.writeValue(state.range(0), state.range(0), BPF_NOEXIST));
+    }
 }
 
 BENCHMARK_DEFINE_F(BpfBenchMark, MapUpdateEntry)(benchmark::State& state) {
