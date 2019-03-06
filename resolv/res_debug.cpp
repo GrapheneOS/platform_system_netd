@@ -147,8 +147,8 @@ static char* dbprint(char* p, char* end, const char* format, ...) {
     return p;
 }
 
-static void do_section(const res_state statp, ns_msg* handle, ns_sect section, int pflag) {
-    int n, sflag, rrnum;
+static void do_section(ns_msg* handle, ns_sect section) {
+    int n, rrnum;
     int buflen = 2048;
     ns_opcode opcode;
     ns_rr rr;
@@ -157,8 +157,6 @@ static void do_section(const res_state statp, ns_msg* handle, ns_sect section, i
     /*
      * Print answer records.
      */
-    sflag = (int) (statp->pfcode & pflag);
-    if (statp->pfcode && !sflag) return;
 
     char* buf = (char*) malloc((size_t) buflen);
     if (buf == NULL) {
@@ -173,12 +171,8 @@ static void do_section(const res_state statp, ns_msg* handle, ns_sect section, i
         if (ns_parserr(handle, section, rrnum, &rr)) {
             if (errno != ENODEV)
                 dbprint(p, end, ";; ns_parserr: %s", strerror(errno));
-            else if (rrnum > 0 && sflag != 0 && (statp->pfcode & RES_PRF_HEAD1))
-                dbprint(p, end, "\n");
             goto cleanup;
         }
-        if (rrnum == 0 && sflag != 0 && (statp->pfcode & RES_PRF_HEAD1))
-            dbprint(p, end, ";; %s SECTION:\n", p_section(section, opcode));
         if (section == ns_s_qd)
             dbprint(p, end, ";;\t%s, type = %s, class = %s\n", ns_rr_name(rr),
                     p_type(ns_rr_type(rr)), p_class(ns_rr_class(rr)));
@@ -261,7 +255,7 @@ cleanup:
  * Print the contents of a query.
  * This is intended to be primarily a debugging routine.
  */
-void res_pquery(const res_state statp, const u_char* msg, int len) {
+void res_pquery(const u_char* msg, int len) {
     if (!WOULD_LOG(VERBOSE)) return;
 
     ns_msg handle;
@@ -284,37 +278,32 @@ void res_pquery(const res_state statp, const u_char* msg, int len) {
     /*
      * Print header fields.
      */
-    if ((!statp->pfcode) || (statp->pfcode & RES_PRF_HEADX) || rcode)
-        dbprint(p, end, ";; ->>HEADER<<- opcode: %s, status: %s, id: %d\n", _res_opcodes[opcode],
-                p_rcode((int)rcode), id);
-    if ((!statp->pfcode) || (statp->pfcode & RES_PRF_HEADX)) p = dbprint(p, end, ";");
-    if ((!statp->pfcode) || (statp->pfcode & RES_PRF_HEAD2)) {
-        p = dbprint(p, end, "; flags:");
-        if (ns_msg_getflag(handle, ns_f_qr)) p = dbprint(p, end, " qr");
-        if (ns_msg_getflag(handle, ns_f_aa)) p = dbprint(p, end, " aa");
-        if (ns_msg_getflag(handle, ns_f_tc)) p = dbprint(p, end, " tc");
-        if (ns_msg_getflag(handle, ns_f_rd)) p = dbprint(p, end, " rd");
-        if (ns_msg_getflag(handle, ns_f_ra)) p = dbprint(p, end, " ra");
-        if (ns_msg_getflag(handle, ns_f_z)) p = dbprint(p, end, " ??");
-        if (ns_msg_getflag(handle, ns_f_ad)) p = dbprint(p, end, " ad");
-        if (ns_msg_getflag(handle, ns_f_cd)) p = dbprint(p, end, " cd");
-    }
-    if ((!statp->pfcode) || (statp->pfcode & RES_PRF_HEAD1)) {
-        p = dbprint(p, end, "; %s: %d", p_section(ns_s_qd, (int)opcode), qdcount);
-        p = dbprint(p, end, ", %s: %d", p_section(ns_s_an, (int)opcode), ancount);
-        p = dbprint(p, end, ", %s: %d", p_section(ns_s_ns, (int)opcode), nscount);
-        p = dbprint(p, end, ", %s: %d", p_section(ns_s_ar, (int)opcode), arcount);
-    }
+    dbprint(p, end, ";; ->>HEADER<<- opcode: %s, status: %s, id: %d\n", _res_opcodes[opcode],
+            p_rcode((int)rcode), id);
+    p = dbprint(p, end, ";");
+    p = dbprint(p, end, "; flags:");
+    if (ns_msg_getflag(handle, ns_f_qr)) p = dbprint(p, end, " qr");
+    if (ns_msg_getflag(handle, ns_f_aa)) p = dbprint(p, end, " aa");
+    if (ns_msg_getflag(handle, ns_f_tc)) p = dbprint(p, end, " tc");
+    if (ns_msg_getflag(handle, ns_f_rd)) p = dbprint(p, end, " rd");
+    if (ns_msg_getflag(handle, ns_f_ra)) p = dbprint(p, end, " ra");
+    if (ns_msg_getflag(handle, ns_f_z)) p = dbprint(p, end, " ??");
+    if (ns_msg_getflag(handle, ns_f_ad)) p = dbprint(p, end, " ad");
+    if (ns_msg_getflag(handle, ns_f_cd)) p = dbprint(p, end, " cd");
+    p = dbprint(p, end, "; %s: %d", p_section(ns_s_qd, (int)opcode), qdcount);
+    p = dbprint(p, end, ", %s: %d", p_section(ns_s_an, (int)opcode), ancount);
+    p = dbprint(p, end, ", %s: %d", p_section(ns_s_ns, (int)opcode), nscount);
+    p = dbprint(p, end, ", %s: %d", p_section(ns_s_ar, (int)opcode), arcount);
 
     LOG(VERBOSE) << temp;
 
     /*
      * Print the various sections.
      */
-    do_section(statp, &handle, ns_s_qd, RES_PRF_QUES);
-    do_section(statp, &handle, ns_s_an, RES_PRF_ANS);
-    do_section(statp, &handle, ns_s_ns, RES_PRF_AUTH);
-    do_section(statp, &handle, ns_s_ar, RES_PRF_ADD);
+    do_section(&handle, ns_s_qd);
+    do_section(&handle, ns_s_an);
+    do_section(&handle, ns_s_ns);
+    do_section(&handle, ns_s_ar);
     if (qdcount == 0 && ancount == 0 && nscount == 0 && arcount == 0) LOG(VERBOSE) << ";;";
 }
 
