@@ -23,6 +23,9 @@ apex {
     },
     key: "com.android.resolv.key",
     certificate: ":com.android.resolv.certificate",
+
+    // Use a custom AndroidManifest.xml used for API targeting.
+    androidManifest: "AndroidManifest.xml",
 }
 
 apex_key {
