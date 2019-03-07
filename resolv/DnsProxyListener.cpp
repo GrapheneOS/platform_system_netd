@@ -50,6 +50,7 @@
 
 // TODO: Considering moving ResponseCode.h Stopwatch.h thread_util.h to libnetdutils.
 #include "DnsProxyListener.h"
+#include "DnsResolverService.h"
 #include "NetdClient.h"  // NETID_USE_LOCAL_NAMESERVERS
 #include "NetdPermissions.h"
 #include "ResolverEventReporter.h"
@@ -78,6 +79,11 @@ bool resolv_init(const dnsproxylistener_callbacks& callbacks) {
     }
     if (gDnsProxyListener.startListener()) {
         ALOGE("Unable to start DnsProxyListener (%s)", strerror(errno));
+        return false;
+    }
+    binder_status_t ret;
+    if ((ret = android::net::DnsResolverService::start(callbacks)) != STATUS_OK) {
+        ALOGE("Unable to start DnsResolverService: %d", ret);
         return false;
     }
     return true;

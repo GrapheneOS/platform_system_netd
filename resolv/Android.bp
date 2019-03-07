@@ -3,6 +3,16 @@ cc_library_headers {
     export_include_dirs: ["include"],
 }
 
+aidl_interface {
+    name: "dnsresolver_aidl_interface",
+    local_include_dir: "binder",
+    srcs: [
+        "binder/android/net/IDnsResolver.aidl",
+    ],
+    api_dir: "binder/api",
+    // Enable gen_log after it is supported in NDK backend. b/126501406
+}
+
 cc_library {
     name: "libnetd_resolv",
     version_script: "libnetd_resolv.map.txt",
@@ -21,6 +31,7 @@ cc_library {
         "res_state.cpp",
         "res_stats.cpp",
         "DnsProxyListener.cpp",
+        "DnsResolverService.cpp",
         "DnsTlsDispatcher.cpp",
         "DnsTlsQueryMap.cpp",
         "DnsTlsTransport.cpp",
@@ -42,6 +53,7 @@ cc_library {
         "libssl",
         "libsysutils",
         "netd_event_listener_interface-ndk_platform",
+        "dnsresolver_aidl_interface-ndk_platform",
     ],
     shared_libs: [
         "libbinder_ndk",
@@ -71,6 +83,7 @@ cc_test {
     srcs: [
         "dns_responder/dns_responder.cpp",
         "resolver_test.cpp",
+        "dnsresolver_binder_test.cpp",
     ],
     include_dirs: [
         "system/netd/resolv/include",
@@ -92,6 +105,7 @@ cc_test {
         "libnetdutils",
         "netd_aidl_interface-cpp",
         "netd_event_listener_interface-cpp",
+        "dnsresolver_aidl_interface-cpp",
     ],
     compile_multilib: "both",
     sanitize: {
