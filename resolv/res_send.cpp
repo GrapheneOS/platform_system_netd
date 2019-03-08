@@ -374,7 +374,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         errno = EINVAL;
         return -EINVAL;
     }
-    LOG(DEBUG) << ";; " << __func__;
+    LOG(DEBUG) << __func__;
     res_pquery(statp, buf, buflen);
 
     v_circuit = (statp->options & RES_USEVC) || buflen > PACKETSZ;
@@ -533,7 +533,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             [[maybe_unused]] char abuf[NI_MAXHOST];
 
             if (getnameinfo(nsap, (socklen_t)nsaplen, abuf, sizeof(abuf), NULL, 0, niflags) == 0)
-                LOG(DEBUG) << ";; Querying server (# " << ns + 1 << ") address = " << abuf;
+                LOG(DEBUG) << "Querying server (# " << ns + 1 << ") address = " << abuf;
 
             if (v_circuit) {
                 /* Use VC; at most one attempt per server. */
@@ -591,7 +591,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                 resplen = n;
             }
 
-            LOG(DEBUG) << ";; got answer:";
+            LOG(DEBUG) << "got answer:";
             res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
 
             if (cache_status == RESOLV_CACHE_NOTFOUND) {
@@ -821,7 +821,7 @@ read_len:
     }
     resplen = ns_get16(ans);
     if (resplen > anssiz) {
-        LOG(DEBUG) << ";; response truncated";
+        LOG(DEBUG) << "response truncated";
         truncating = 1;
         len = anssiz;
     } else
@@ -830,7 +830,7 @@ read_len:
         /*
          * Undersized message.
          */
-        LOG(DEBUG) << ";; undersized: " << len;
+        LOG(DEBUG) << "undersized: " << len;
         *terrno = EMSGSIZE;
         res_nclose(statp);
         return (0);
@@ -871,7 +871,7 @@ read_len:
      * wait for the correct one.
      */
     if (hp->id != anhp->id) {
-        LOG(DEBUG) << ";; old answer (unexpected):";
+        LOG(DEBUG) << "old answer (unexpected):";
         res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
         goto read_len;
     }
@@ -1015,26 +1015,24 @@ static int send_dg(res_state statp, res_params* params, const u_char* buf, int b
             return (0);
         }
 #endif /* !CANNOT_CONNECT_DGRAM */
-        LOG(DEBUG) << ";; new DG socket";
+        LOG(DEBUG) << "new DG socket";
     }
     s = statp->_u._ext.nssocks[ns];
 #ifndef CANNOT_CONNECT_DGRAM
     if (send(s, (const char*) buf, (size_t) buflen, 0) != buflen) {
         Perror(statp, "send", errno);
         res_nclose(statp);
-        return (0);
+        return 0;
     }
 #else  /* !CANNOT_CONNECT_DGRAM */
     if (sendto(s, (const char*) buf, buflen, 0, nsap, nsaplen) != buflen) {
         Aerror(statp, "sendto", errno, nsap, nsaplen);
         res_nclose(statp);
-        return (0);
+        return 0;
     }
 #endif /* !CANNOT_CONNECT_DGRAM */
 
-    /*
-     * Wait for reply.
-     */
+    // Wait for reply.
     timeout = get_timeout(statp, params, ns);
     now = evNowTime();
     finish = evAddTime(now, timeout);
@@ -1043,14 +1041,14 @@ retry:
 
     if (n == 0) {
         *rcode = RCODE_TIMEOUT;
-        LOG(DEBUG) << ";; timeout";
+        LOG(DEBUG) << "timeout";
         *gotsomewhere = 1;
-        return (0);
+        return 0;
     }
     if (n < 0) {
         Perror(statp, "poll", errno);
         res_nclose(statp);
-        return (0);
+        return 0;
     }
     errno = 0;
     fromlen = sizeof(from);
@@ -1059,17 +1057,17 @@ retry:
     if (resplen <= 0) {
         Perror(statp, "recvfrom", errno);
         res_nclose(statp);
-        return (0);
+        return 0;
     }
     *gotsomewhere = 1;
     if (resplen < HFIXEDSZ) {
         /*
          * Undersized message.
          */
-        LOG(DEBUG) << ";; undersized: " << resplen;
+        LOG(DEBUG) << "undersized: " << resplen;
         *terrno = EMSGSIZE;
         res_nclose(statp);
-        return (0);
+        return 0;
     }
     if (hp->id != anhp->id) {
         /*
@@ -1077,7 +1075,7 @@ retry:
          * XXX - potential security hazard could
          *	 be detected here.
          */
-        LOG(DEBUG) << ";; old answer:";
+        LOG(DEBUG) << "old answer:";
         res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
@@ -1088,7 +1086,7 @@ retry:
          * XXX - potential security hazard could
          *	 be detected here.
          */
-        LOG(DEBUG) << ";; not our server:";
+        LOG(DEBUG) << "not our server:";
         res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
@@ -1103,7 +1101,7 @@ retry:
         /* record the error */
         statp->_flags |= RES_F_EDNS0ERR;
         res_nclose(statp);
-        return (0);
+        return 0;
     }
     if (!(statp->options & RES_INSECURE2) &&
         !res_queriesmatch(buf, buf + buflen, ans, ans + anssiz)) {
@@ -1112,10 +1110,9 @@ retry:
          * XXX - potential security hazard could
          *	 be detected here.
          */
-        LOG(DEBUG) << ";; wrong query name:";
+        LOG(DEBUG) << "wrong query name:";
         res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
-        ;
     }
     done = evNowTime();
     *delay = _res_stats_calculate_rtt(&done, &now);
@@ -1126,7 +1123,7 @@ retry:
         /* don't retry if called from dig */
         if (!statp->pfcode) {
             *rcode = anhp->rcode;
-            return (0);
+            return 0;
         }
     }
     if (!(statp->options & RES_IGNTC) && anhp->tc) {
@@ -1134,10 +1131,10 @@ retry:
          * To get the rest of answer,
          * use TCP with same server.
          */
-        LOG(DEBUG) << ";; truncated answer";
+        LOG(DEBUG) << "truncated answer";
         *v_circuit = 1;
         res_nclose(statp);
-        return (1);
+        return 1;
     }
     /*
      * All is well, or the error is fatal.  Signal that the
@@ -1146,7 +1143,7 @@ retry:
     if (resplen > 0) {
         *rcode = anhp->rcode;
     }
-    return (resplen);
+    return resplen;
 }
 
 static void Aerror(const res_state statp, const char* string, int error,

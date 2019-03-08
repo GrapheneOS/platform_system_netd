@@ -69,6 +69,9 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+
+#define LOG_TAG "res_init"
+
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -187,9 +190,8 @@ int res_vinit(res_state statp, int preinit) {
             dots--;
         }
         *pp = NULL;
-        LOG(DEBUG) << ";; res_init()... default dnsrch list:";
-        for (pp = statp->dnsrch; *pp; pp++) LOG(DEBUG) << ";;\t" << *pp;
-        LOG(DEBUG) << ";;\t..END..";
+        LOG(DEBUG) << "res_init(): dnsrch list:";
+        for (pp = statp->dnsrch; *pp; pp++) LOG(DEBUG) << "\t" << *pp;
     }
 
     if ((cp = getenv("RES_OPTIONS")) != NULL) res_setoptions(statp, cp, "env");
