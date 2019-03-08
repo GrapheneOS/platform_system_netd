@@ -70,6 +70,8 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#define LOG_TAG "res_mkquery"
+
 #include <algorithm>  // std::min()
 
 #include <arpa/nameser.h>
@@ -111,7 +113,7 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
     int n;
     u_char *dnptrs[20], **dpp, **lastdnptr;
 
-    LOG(DEBUG) << ";; res_nmkquery(" << _res_opcodes[op] << ", " << dname << ", " << p_class(cl)
+    LOG(DEBUG) << __func__ << "(" << _res_opcodes[op] << ", " << dname << ", " << p_class(cl)
                << ", " << p_type(type) << ")";
 
     /*
@@ -201,7 +203,7 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
     u_char *cp, *ep;
     u_int16_t flags = 0;
 
-    LOG(DEBUG) << ";; " << __func__;
+    LOG(DEBUG) << __func__;
 
     hp = (HEADER*) (void*) buf;
     cp = buf + n0;
@@ -220,7 +222,7 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
     *cp++ = NOERROR; /* extended RCODE */
     *cp++ = 0;       /* EDNS version */
     if (statp->options & RES_USE_DNSSEC) {
-        LOG(DEBUG) << ";; " << __func__ << "... ENDS0 DNSSEC";
+        LOG(DEBUG) << __func__ << ": ENDS0 DNSSEC";
         flags |= NS_OPT_DNSSEC_OK;
     }
     ns_put16(flags, cp);
