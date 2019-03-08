@@ -418,6 +418,13 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
     };
 
     uint16_t flags = (action == RTM_NEWROUTE) ? NETLINK_ROUTE_CREATE_FLAGS : NETLINK_REQUEST_FLAGS;
+
+    // Allow creating multiple link-local routes in the same table, so we can make IPv6
+    // work on all interfaces in the local_network table.
+    if (family == AF_INET6 && IN6_IS_ADDR_LINKLOCAL(reinterpret_cast<in6_addr*>(rawAddress))) {
+        flags &= ~NLM_F_EXCL;
+    }
+
     int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov), nullptr);
     if (ret) {
         ALOGE("Error %s route %s -> %s %s to table %u: %s",
