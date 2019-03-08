@@ -959,7 +959,7 @@ retry:
     }
     if (n < 0) {
         if (errno == EINTR) goto retry;
-        LOG(INFO) << "  " << sock << " retrying_poll got error " << n;
+        PLOG(INFO) << "  " << sock << " retrying_poll failed";
         return n;
     }
     if (fds.revents & (POLLIN | POLLOUT | POLLERR)) {
@@ -967,7 +967,7 @@ retry:
         socklen_t len = sizeof(error);
         if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error) {
             errno = error;
-            LOG(INFO) << "  " << sock << " retrying_poll dot error2 " << errno;
+            PLOG(INFO) << "  " << sock << " retrying_poll getsockopt failed";
             return -1;
         }
     }
@@ -1188,10 +1188,9 @@ static void Aerror(const res_state statp, const char* string, int error,
 }
 
 static void Perror(const res_state statp, const char* string, int error) {
-    const int save = errno;
-    if ((statp->options & RES_DEBUG) != 0U)
+    if ((statp->options & RES_DEBUG) != 0U) {
         LOG(DEBUG) << "res_send: " << string << ": " << strerror(error);
-    errno = save;
+    }
 }
 
 static int sock_eq(struct sockaddr* a, struct sockaddr* b) {
