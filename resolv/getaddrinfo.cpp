@@ -30,6 +30,8 @@
  * SUCH DAMAGE.
  */
 
+#define LOG_TAG "getaddrinfo"
+
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <assert.h>
@@ -359,6 +361,8 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
             if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
             if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
 
+            LOG(DEBUG) << "explore_numeric: ai_family=" << tmp.ai_family
+                       << " ai_socktype=" << tmp.ai_socktype << " ai_protocol=" << tmp.ai_protocol;
             if (hostname == nullptr)
                 error = explore_null(&tmp, servname, &cur->ai_next);
             else
@@ -405,6 +409,8 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
             if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
             if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
 
+            LOG(DEBUG) << "explore_fqdn(): ai_family=" << tmp.ai_family
+                       << " ai_socktype=" << tmp.ai_socktype << " ai_protocol=" << tmp.ai_protocol;
             error = explore_fqdn(&tmp, hostname, servname, &cur->ai_next, netcontext);
 
             while (cur->ai_next) cur = cur->ai_next;
@@ -1606,13 +1612,13 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
         answer = t->answer;
         anslen = t->anslen;
 
-        LOG(DEBUG) << ";; res_queryN(" << name << ", " << cl << " , " << type << ")";
+        LOG(DEBUG) << __func__ << "(" << name << ", " << cl << ", " << type << ")";
 
         n = res_nmkquery(res, QUERY, name, cl, type, NULL, 0, NULL, buf, sizeof(buf));
         if (n > 0 && (res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 && !retried)
             n = res_nopt(res, n, buf, sizeof(buf), anslen);
         if (n <= 0) {
-            LOG(DEBUG) << ";; res_queryN: mkquery failed";
+            LOG(ERROR) << __func__ << ": res_nmkquery failed";
             *herrno = NO_RECOVERY;
             return n;
         }
@@ -1625,11 +1631,11 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
             /* if the query choked with EDNS0, retry without EDNS0 */
             if ((res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 &&
                 (res->_flags & RES_F_EDNS0ERR) && !retried) {
-                LOG(DEBUG) << ";; res_queryN: retry without EDNS0";
+                LOG(DEBUG) << __func__ << ": retry without EDNS0";
                 retried = true;
                 goto again;
             }
-            LOG(DEBUG) << ";; rcode = " << hp->rcode << ", ancount=" << ntohs(hp->ancount);
+            LOG(DEBUG) << __func__ << ": rcode=" << hp->rcode << ", ancount=" << ntohs(hp->ancount);
             continue;
         }
 
@@ -1806,13 +1812,11 @@ static int res_querydomainN(const char* name, const char* domain, res_target* ta
     size_t n, d;
 
     assert(name != NULL);
-    /* XXX: target may be NULL??? */
+
+    LOG(DEBUG) << __func__ << "(\"" << name << "\", " << (domain ? domain : "<null>") << ")";
+
     if (domain == NULL) {
-        LOG(DEBUG) << ";; res_querydomain(" << name << ", <Nil>)";
-        /*
-         * Check for trailing '.';
-         * copy without '.' if present.
-         */
+        // Check for trailing '.'; copy without '.' if present.
         n = strlen(name);
         if (n + 1 > sizeof(nbuf)) {
             *herrno = NO_RECOVERY;
@@ -1824,7 +1828,6 @@ static int res_querydomainN(const char* name, const char* domain, res_target* ta
         } else
             longname = name;
     } else {
-        LOG(DEBUG) << ";; res_querydomain(" << name << ", " << domain << ")";
         n = strlen(name);
         d = strlen(domain);
         if (n + 1 + d + 1 > sizeof(nbuf)) {

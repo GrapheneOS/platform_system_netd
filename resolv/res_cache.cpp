@@ -26,9 +26,6 @@
  * SUCH DAMAGE.
  */
 
-// NOTE: verbose logging MUST NOT be left enabled in production binaries.
-// It floods logs at high rate, and can leak privacy-sensitive information.
-constexpr bool kDumpData = false;
 #define LOG_TAG "res_cache"
 
 #include "resolv_cache.h"
@@ -54,6 +51,10 @@ constexpr bool kDumpData = false;
 
 #include "res_state_ext.h"
 #include "resolv_private.h"
+
+// NOTE: verbose logging MUST NOT be left enabled in production binaries.
+// It floods logs at high rate, and can leak privacy-sensitive information.
+constexpr bool kDumpData = false;
 
 /* This code implements a small and *simple* DNS resolver cache.
  *
@@ -1689,7 +1690,7 @@ int resolv_set_nameservers_for_net(unsigned netid, const char** servers, const i
     struct addrinfo* nsaddrinfo[MAXNS];
 
     if (numservers > MAXNS) {
-        LOG(INFO) << __func__ << ": numservers=" << numservers << ", MAXNS=" << MAXNS;
+        LOG(ERROR) << __func__ << ": numservers=" << numservers << ", MAXNS=" << MAXNS;
         return E2BIG;
     }
 
@@ -1761,11 +1762,11 @@ int resolv_set_nameservers_for_net(unsigned netid, const char** servers, const i
 
         // Always update the search paths, since determining whether they actually changed is
         // complex due to the zero-padding, and probably not worth the effort. Cache-flushing
-        // however is not // necessary, since the stored cache entries do contain the domain, not
+        // however is not necessary, since the stored cache entries do contain the domain, not
         // just the host name.
-        // code moved from res_init.c, load_domain_search_list
         strlcpy(cache_info->defdname, domains, sizeof(cache_info->defdname));
         if ((cp = strchr(cache_info->defdname, '\n')) != NULL) *cp = '\0';
+        LOG(INFO) << __func__ << ": domains=\"" << cache_info->defdname << "\"";
 
         cp = cache_info->defdname;
         offset = cache_info->dnsrch_offset;
@@ -1835,13 +1836,13 @@ void _resolv_populate_res_for_net(res_state statp) {
     if (statp == NULL) {
         return;
     }
+    LOG(INFO) << __func__ << "(netid=" << statp->netid << ")";
 
     std::lock_guard guard(cache_mutex);
     resolv_cache_info* info = find_cache_info_locked(statp->netid);
     if (info != NULL) {
         int nserv;
         struct addrinfo* ai;
-        LOG(INFO) << __func__ << ": " << statp->netid;
         for (nserv = 0; nserv < MAXNS; nserv++) {
             ai = info->nsaddrinfo[nserv];
             if (ai == NULL) {
