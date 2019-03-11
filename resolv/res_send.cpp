@@ -487,6 +487,11 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     res_stats stats[MAXNS];
     res_params params;
     int revision_id = resolv_cache_get_resolver_stats(statp->netid, &params, stats);
+    if (revision_id < 0) {
+        // TODO: Remove errno once callers stop using it
+        errno = ESRCH;
+        return -ESRCH;
+    }
     bool usable_servers[MAXNS];
     android_net_res_stats_get_usable_servers(&params, stats, statp->nscount, usable_servers);
     if (params.retry_count != 0) statp->retry = params.retry_count;
