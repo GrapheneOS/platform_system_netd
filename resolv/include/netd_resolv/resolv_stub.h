@@ -47,8 +47,8 @@ extern struct ResolvStub {
                                                   res_params* params, res_stats stats[MAXNS],
                                                   int* wait_for_pending_req_timeout_count);
 
-    void (*android_net_res_stats_get_usable_servers)(const res_params* params, res_stats stats[],
-                                                     int nscount, bool valid_servers[]);
+    int (*android_net_res_stats_get_usable_servers)(const res_params* params, res_stats stats[],
+                                                    int nscount, bool valid_servers[]);
 
     void (*resolv_delete_cache_for_net)(unsigned netid);
 

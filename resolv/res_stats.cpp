@@ -144,8 +144,8 @@ static bool res_stats_usable_server(const res_params* params, res_stats* stats) 
     return 1;
 }
 
-void android_net_res_stats_get_usable_servers(const res_params* params, res_stats stats[],
-                                              int nscount, bool usable_servers[]) {
+int android_net_res_stats_get_usable_servers(const res_params* params, res_stats stats[],
+                                             int nscount, bool usable_servers[]) {
     unsigned usable_servers_found = 0;
     for (int ns = 0; ns < nscount; ns++) {
         bool usable = res_stats_usable_server(params, &stats[ns]);
@@ -161,4 +161,5 @@ void android_net_res_stats_get_usable_servers(const res_params* params, res_stat
             usable_servers[ns] = true;
         }
     }
+    return (usable_servers_found == 0) ? nscount : usable_servers_found;
 }
