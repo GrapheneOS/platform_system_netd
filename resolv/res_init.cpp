@@ -154,7 +154,6 @@ int res_vinit(res_state statp, int preinit) {
     nserv++;
     statp->nscount = 0;
     statp->ndots = 1;
-    statp->pfcode = 0;
     statp->_vcsock = -1;
     statp->_flags = 0;
     statp->_u._ext.nscount = 0;

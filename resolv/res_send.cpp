@@ -375,7 +375,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         return -EINVAL;
     }
     LOG(DEBUG) << __func__;
-    res_pquery(statp, buf, buflen);
+    res_pquery(buf, buflen);
 
     v_circuit = (statp->options & RES_USEVC) || buflen > PACKETSZ;
     gotsomewhere = 0;
@@ -597,7 +597,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             }
 
             LOG(DEBUG) << "got answer:";
-            res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+            res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
 
             if (cache_status == RESOLV_CACHE_NOTFOUND) {
                 _resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
@@ -877,7 +877,7 @@ read_len:
      */
     if (hp->id != anhp->id) {
         LOG(DEBUG) << "old answer (unexpected):";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         goto read_len;
     }
 
@@ -1081,7 +1081,7 @@ retry:
          *	 be detected here.
          */
         LOG(DEBUG) << "old answer:";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
     if (!(statp->options & RES_INSECURE1) &&
@@ -1092,7 +1092,7 @@ retry:
          *	 be detected here.
          */
         LOG(DEBUG) << "not our server:";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
     if (anhp->rcode == FORMERR && (statp->options & RES_USE_EDNS0) != 0U) {
@@ -1102,7 +1102,7 @@ retry:
          * carry query section, hence res_queriesmatch() returns 0.
          */
         LOG(DEBUG) << "server rejected query with EDNS0:";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         /* record the error */
         statp->_flags |= RES_F_EDNS0ERR;
         res_nclose(statp);
@@ -1116,20 +1116,17 @@ retry:
          *	 be detected here.
          */
         LOG(DEBUG) << "wrong query name:";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
     done = evNowTime();
     *delay = _res_stats_calculate_rtt(&done, &now);
     if (anhp->rcode == SERVFAIL || anhp->rcode == NOTIMP || anhp->rcode == REFUSED) {
         LOG(DEBUG) << "server rejected query:";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         res_nclose(statp);
-        /* don't retry if called from dig */
-        if (!statp->pfcode) {
-            *rcode = anhp->rcode;
-            return 0;
-        }
+        *rcode = anhp->rcode;
+        return 0;
     }
     if (!(statp->options & RES_IGNTC) && anhp->tc) {
         /*
