@@ -1016,13 +1016,12 @@ static u_long answer_getTTL(const void* answer, int answerlen) {
                         result = ttl;
                     }
                 } else {
-                    LOG(INFO) << "ns_parserr failed ancount no = " << n
-                              << ". errno = " << strerror(errno);
+                    PLOG(INFO) << "ns_parserr failed ancount no = " << n;
                 }
             }
         }
     } else {
-        LOG(INFO) << "ns_initparse failed: " << strerror(errno);
+        PLOG(INFO) << "ns_initparse failed";
     }
 
     LOG(INFO) << "TTL = " << result;
