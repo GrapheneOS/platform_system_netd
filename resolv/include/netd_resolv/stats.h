@@ -55,8 +55,8 @@ LIBNETD_RESOLV_PUBLIC int android_net_res_stats_get_info_for_net(
         int* wait_for_pending_req_timeout_count);
 
 // Returns an array of bools indicating which servers are considered good
-LIBNETD_RESOLV_PUBLIC void android_net_res_stats_get_usable_servers(const res_params* params,
-                                                                    res_stats stats[], int nscount,
-                                                                    bool valid_servers[]);
+LIBNETD_RESOLV_PUBLIC int android_net_res_stats_get_usable_servers(const res_params* params,
+                                                                   res_stats stats[], int nscount,
+                                                                   bool valid_servers[]);
 
 #endif  // NETD_RES_STATS_H
