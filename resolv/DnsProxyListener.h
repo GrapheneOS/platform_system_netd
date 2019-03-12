@@ -17,6 +17,8 @@
 #ifndef _DNSPROXYLISTENER_H__
 #define _DNSPROXYLISTENER_H__
 
+#include <string>
+
 #include <netd_resolv/resolv.h>  // android_net_context
 #include <sysutils/FrameworkCommand.h>
 #include <sysutils/FrameworkListener.h>
@@ -29,12 +31,7 @@ class DnsProxyListener : public FrameworkListener {
     DnsProxyListener();
     virtual ~DnsProxyListener() {}
 
-    bool setCallbacks(const dnsproxylistener_callbacks& callbacks);
-
     static constexpr const char* SOCKET_NAME = "dnsproxyd";
-
-    // TODO: Considering putting this callbacks structure in its own file.
-    dnsproxylistener_callbacks mCallbacks{};
 
   private:
     class GetAddrInfoCmd : public FrameworkCommand {

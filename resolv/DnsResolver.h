@@ -14,34 +14,32 @@
  * limitations under the License.
  */
 
-#ifndef _DNS_RESOLVER_SERVICE_H_
-#define _DNS_RESOLVER_SERVICE_H_
+#ifndef _DNS_RESOLVER_H_
+#define _DNS_RESOLVER_H_
 
-#include <vector>
-
-#include <aidl/android/net/BnDnsResolver.h>
-#include <android/binder_ibinder.h>
-
-#include "netd_resolv/resolv.h"
+#include <resolv.h>
+#include "DnsProxyListener.h"
 
 namespace android {
 namespace net {
 
-class DnsResolverService : public aidl::android::net::BnDnsResolver {
+class DnsResolver {
   public:
-    static binder_status_t start();
-    static char const* getServiceName() { return "dnsresolver"; }
-    // TODO: Add dump() after libbinder_ndk support it.
+    static DnsResolver* getInstance();
+    bool start();
 
-    ::ndk::ScopedAStatus isAlive(bool* alive) override;
+    DnsResolver(DnsResolver const&) = delete;
+    void operator=(DnsResolver const&) = delete;
 
   private:
-    DnsResolverService() {}
-    // TODO: Remove below items after libbiner_ndk supports check_permission.
-    ::ndk::ScopedAStatus checkAnyPermission(const std::vector<const char*>& permissions);
+    DnsResolver() {}
+    DnsProxyListener mDnsProxyListener;
 };
+
+extern DnsResolver* gDnsResolv;
+extern ResolverNetdCallbacks gResNetdCallbacks;
 
 }  // namespace net
 }  // namespace android
 
-#endif  // _DNS_RESOLVER_SERVICE_H_
+#endif  // _DNS_RESOLVER_H_
