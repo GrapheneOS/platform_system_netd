@@ -106,6 +106,7 @@
 #include <netinet/in.h>
 
 #include <android-base/logging.h>
+#include <android-base/stringprintf.h>
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
@@ -125,73 +126,41 @@
 #define RESOLV_ALLOW_VERBOSE_LOGGING 0
 #endif
 
+using android::base::StringAppendF;
+
 struct res_sym {
     int number;            /* Identifying number, like T_MX */
     const char* name;      /* Its symbolic name, like "MX" */
     const char* humanname; /* Its fun name, like "mail exchanger" */
 };
 
-// add a formatted string to a bounded buffer
-// TODO: convert to std::string
-static char* dbprint(char* p, char* end, const char* format, ...) {
-    int avail, n;
-    va_list args;
-
-    avail = end - p;
-
-    if (avail <= 0) return p;
-
-    va_start(args, format);
-    n = vsnprintf(p, avail, format, args);
-    va_end(args);
-
-    /* certain C libraries return -1 in case of truncation */
-    if (n < 0 || n > avail) n = avail;
-
-    p += n;
-    /* certain C libraries do not zero-terminate in case of truncation */
-    if (p == end) p[-1] = 0;
-
-    return p;
-}
-
 static void do_section(ns_msg* handle, ns_sect section) {
-    int n, rrnum;
+    int n, rrnum = 0;
     int buflen = 2048;
-    ns_opcode opcode;
     ns_rr rr;
-    char temp[2048], *p = temp, *end = p + sizeof(temp);
+    std::string s;
 
     /*
      * Print answer records.
      */
-
-    char* buf = (char*) malloc((size_t) buflen);
-    if (buf == NULL) {
-        dbprint(p, end, ";; memory allocation failure\n");
-        LOG(VERBOSE) << __func__ << ": " << temp;
-        return;
-    }
-
-    opcode = (ns_opcode) ns_msg_getflag(*handle, ns_f_opcode);
-    rrnum = 0;
+    auto buf = std::make_unique<char[]>(buflen);
     for (;;) {
         if (ns_parserr(handle, section, rrnum, &rr)) {
-            if (errno != ENODEV)
-                dbprint(p, end, ";; ns_parserr: %s", strerror(errno));
-            goto cleanup;
+            if (errno != ENODEV) StringAppendF(&s, "ns_parserr: %s", strerror(errno));
+            LOG(VERBOSE) << s;
+            return;
         }
         if (section == ns_s_qd)
-            dbprint(p, end, ";;\t%s, type = %s, class = %s\n", ns_rr_name(rr),
-                    p_type(ns_rr_type(rr)), p_class(ns_rr_class(rr)));
+            StringAppendF(&s, ";;\t%s, type = %s, class = %s\n", ns_rr_name(rr),
+                          p_type(ns_rr_type(rr)), p_class(ns_rr_class(rr)));
         else if (section == ns_s_ar && ns_rr_type(rr) == ns_t_opt) {
             size_t rdatalen, ttl;
             uint16_t optcode, optlen;
 
             rdatalen = ns_rr_rdlen(rr);
             ttl = ns_rr_ttl(rr);
-            dbprint(p, end, "; EDNS: version: %zu, udp=%u, flags=%04zx\n", (ttl >> 16) & 0xff,
-                    ns_rr_class(rr), ttl & 0xffff);
+            StringAppendF(&s, "; EDNS: version: %zu, udp=%u, flags=%04zx\n", (ttl >> 16) & 0xff,
+                          ns_rr_class(rr), ttl & 0xffff);
             const u_char* cp = ns_rr_rdata(rr);
             while (rdatalen <= ns_rr_rdlen(rr) && rdatalen >= 4) {
                 int i;
@@ -200,64 +169,56 @@ static void do_section(ns_msg* handle, ns_sect section) {
                 GETSHORT(optlen, cp);
 
                 if (optcode == NS_OPT_NSID) {
-                    p = dbprint(p, end, "; NSID: ");
+                    StringAppendF(&s, "; NSID: ");
                     if (optlen == 0) {
-                        p = dbprint(p, end, "; NSID\n");
+                        StringAppendF(&s, "; NSID\n");
                     } else {
-                        p = dbprint(p, end, "; NSID: ");
+                        StringAppendF(&s, "; NSID: ");
                         for (i = 0; i < optlen; i++) {
-                            p = dbprint(p, end, "%02x ", cp[i]);
+                            StringAppendF(&s, "%02x ", cp[i]);
                         }
-                        p = dbprint(p, end, " (");
+                        StringAppendF(&s, " (");
                         for (i = 0; i < optlen; i++) {
-                            p = dbprint(p, end, "%c", isprint(cp[i]) ? cp[i] : '.');
+                            StringAppendF(&s, "%c", isprint(cp[i]) ? cp[i] : '.');
                         }
-                        p = dbprint(p, end, ")\n");
+                        StringAppendF(&s, ")\n");
                     }
                 } else {
                     if (optlen == 0) {
-                        p = dbprint(p, end, "; OPT=%u\n", optcode);
+                        StringAppendF(&s, "; OPT=%u\n", optcode);
                     } else {
-                        p = dbprint(p, end, "; OPT=%u: ", optcode);
+                        StringAppendF(&s, "; OPT=%u: ", optcode);
                         for (i = 0; i < optlen; i++) {
-                            p = dbprint(p, end, "%02x ", cp[i]);
+                            StringAppendF(&s, "%02x ", cp[i]);
                         }
-                        p = dbprint(p, end, " (");
+                        StringAppendF(&s, " (");
                         for (i = 0; i < optlen; i++) {
-                            p = dbprint(p, end, "%c", isprint(cp[i]) ? cp[i] : '.');
+                            StringAppendF(&s, "%c", isprint(cp[i]) ? cp[i] : '.');
                         }
-                        p = dbprint(p, end, ")\n");
+                        StringAppendF(&s, ")\n");
                     }
                 }
                 rdatalen -= 4 + optlen;
                 cp += optlen;
             }
         } else {
-            n = ns_sprintrr(handle, &rr, NULL, NULL, buf, (u_int) buflen);
+            n = ns_sprintrr(handle, &rr, NULL, NULL, buf.get(), (u_int)buflen);
             if (n < 0) {
                 if (errno == ENOSPC) {
-                    free(buf);
-                    buf = NULL;
                     if (buflen < 131072) {
-                        buf = (char*) malloc((size_t)(buflen += 1024));
-                    }
-                    if (buf == NULL) {
-                        p = dbprint(p, end, ";; memory allocation failure\n");
-                        LOG(VERBOSE) << __func__ << ": " << temp;
-                        return;
+                        buf = std::make_unique<char[]>(buflen += 1024);
                     }
                     continue;
                 }
-                p = dbprint(p, end, ";; ns_sprintrr: %s\n", strerror(errno));
-                goto cleanup;
+                StringAppendF(&s, "ns_sprintrr failed");
+                PLOG(VERBOSE) << s;
+                return;
             }
-            p = dbprint(p, end, ";; %s\n", buf);
+            StringAppendF(&s, ";; %s\n", buf.get());
         }
         rrnum++;
     }
-cleanup:
-    free(buf);
-    LOG(VERBOSE) << temp;
+    LOG(VERBOSE) << s;
 }
 
 /*
@@ -270,10 +231,9 @@ void res_pquery(const u_char* msg, int len) {
     ns_msg handle;
     int qdcount, ancount, nscount, arcount;
     u_int opcode, rcode, id;
-    char temp[2048], *p = temp, *end = p + sizeof(temp);
 
     if (ns_initparse(msg, len, &handle) < 0) {
-        dbprint(p, end, ";; ns_initparse: %s\n", strerror(errno));
+        PLOG(VERBOSE) << "ns_initparse failed";
         return;
     }
     opcode = ns_msg_getflag(handle, ns_f_opcode);
@@ -287,24 +247,24 @@ void res_pquery(const u_char* msg, int len) {
     /*
      * Print header fields.
      */
-    dbprint(p, end, ";; ->>HEADER<<- opcode: %s, status: %s, id: %d\n", _res_opcodes[opcode],
-            p_rcode((int)rcode), id);
-    p = dbprint(p, end, ";");
-    p = dbprint(p, end, "; flags:");
-    if (ns_msg_getflag(handle, ns_f_qr)) p = dbprint(p, end, " qr");
-    if (ns_msg_getflag(handle, ns_f_aa)) p = dbprint(p, end, " aa");
-    if (ns_msg_getflag(handle, ns_f_tc)) p = dbprint(p, end, " tc");
-    if (ns_msg_getflag(handle, ns_f_rd)) p = dbprint(p, end, " rd");
-    if (ns_msg_getflag(handle, ns_f_ra)) p = dbprint(p, end, " ra");
-    if (ns_msg_getflag(handle, ns_f_z)) p = dbprint(p, end, " ??");
-    if (ns_msg_getflag(handle, ns_f_ad)) p = dbprint(p, end, " ad");
-    if (ns_msg_getflag(handle, ns_f_cd)) p = dbprint(p, end, " cd");
-    p = dbprint(p, end, "; %s: %d", p_section(ns_s_qd, (int)opcode), qdcount);
-    p = dbprint(p, end, ", %s: %d", p_section(ns_s_an, (int)opcode), ancount);
-    p = dbprint(p, end, ", %s: %d", p_section(ns_s_ns, (int)opcode), nscount);
-    p = dbprint(p, end, ", %s: %d", p_section(ns_s_ar, (int)opcode), arcount);
+    std::string s;
+    StringAppendF(&s, ";; ->>HEADER<<- opcode: %s, status: %s, id: %d\n", _res_opcodes[opcode],
+                  p_rcode((int)rcode), id);
+    StringAppendF(&s, ";; flags:");
+    if (ns_msg_getflag(handle, ns_f_qr)) StringAppendF(&s, " qr");
+    if (ns_msg_getflag(handle, ns_f_aa)) StringAppendF(&s, " aa");
+    if (ns_msg_getflag(handle, ns_f_tc)) StringAppendF(&s, " tc");
+    if (ns_msg_getflag(handle, ns_f_rd)) StringAppendF(&s, " rd");
+    if (ns_msg_getflag(handle, ns_f_ra)) StringAppendF(&s, " ra");
+    if (ns_msg_getflag(handle, ns_f_z)) StringAppendF(&s, " ??");
+    if (ns_msg_getflag(handle, ns_f_ad)) StringAppendF(&s, " ad");
+    if (ns_msg_getflag(handle, ns_f_cd)) StringAppendF(&s, " cd");
+    StringAppendF(&s, "; %s: %d", p_section(ns_s_qd, (int)opcode), qdcount);
+    StringAppendF(&s, ", %s: %d", p_section(ns_s_an, (int)opcode), ancount);
+    StringAppendF(&s, ", %s: %d", p_section(ns_s_ns, (int)opcode), nscount);
+    StringAppendF(&s, ", %s: %d", p_section(ns_s_ar, (int)opcode), arcount);
 
-    LOG(VERBOSE) << temp;
+    LOG(VERBOSE) << s;
 
     /*
      * Print the various sections.
@@ -313,7 +273,6 @@ void res_pquery(const u_char* msg, int len) {
     do_section(&handle, ns_s_an);
     do_section(&handle, ns_s_ns);
     do_section(&handle, ns_s_ar);
-    if (qdcount == 0 && ancount == 0 && nscount == 0 && arcount == 0) LOG(VERBOSE) << ";;";
 }
 
 /*
@@ -523,6 +482,7 @@ android::base::LogSeverity logSeverityStrToEnum(const std::string& logSeveritySt
         logSeverityEnum = android::base::ERROR;
     } else {
         // Invalid parameter is treated as WARNING (default setting)
+        LOG(ERROR) << "Invalid parameter is treated as WARNING by default.";
         logSeverityEnum = android::base::WARNING;
     }
     LOG(INFO) << __func__ << ": " << logSeverityEnum;
