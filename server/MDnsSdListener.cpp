@@ -36,9 +36,9 @@
 
 #include <cutils/properties.h>
 #include <log/log.h>
+#include <netdutils/ResponseCode.h>
 #include <sysutils/SocketClient.h>
 
-#include "ResponseCode.h"
 #include "thread_util.h"
 
 #define MDNS_SERVICE_NAME "mdnsd"
@@ -47,6 +47,8 @@
 #define CEIL(x, y) (((x) + (y) - 1) / (y))
 
 constexpr char RESCAN[] = "1";
+
+using android::netdutils::ResponseCode;
 
 MDnsSdListener::MDnsSdListener() : FrameworkListener(SOCKET_NAME, true) {
     Monitor *m = new Monitor();
