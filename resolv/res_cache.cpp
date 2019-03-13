@@ -46,8 +46,11 @@
 #include <netdb.h>
 
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/thread_annotations.h>
 #include <android/multinetwork.h>  // ResNsendFlags
+
+#include <server_configurable_flags/get_flags.h>
 
 #include "res_state_ext.h"
 #include "resolv_private.h"
@@ -1674,6 +1677,22 @@ static void resolv_set_default_params(res_params* params) {
     params->retry_count = 0;
 }
 
+static void resolv_set_experiment_params(res_params* params) {
+    using android::base::ParseInt;
+    using server_configurable_flags::GetServerConfigurableFlag;
+
+    if (params->retry_count == 0) {
+        params->retry_count = RES_DFLRETRY;
+        ParseInt(GetServerConfigurableFlag("netd_native", "retry_count", ""), &params->retry_count);
+    }
+
+    if (params->base_timeout_msec == 0) {
+        params->base_timeout_msec = RES_TIMEOUT;
+        ParseInt(GetServerConfigurableFlag("netd_native", "retransmission_time_interval", ""),
+                 &params->base_timeout_msec);
+    }
+}
+
 int resolv_set_nameservers_for_net(unsigned netid, const char** servers, const int numservers,
                                    const char* domains, const res_params* params) {
     char* cp;
@@ -1717,7 +1736,7 @@ int resolv_set_nameservers_for_net(unsigned netid, const char** servers, const i
         } else {
             resolv_set_default_params(&cache_info->params);
         }
-
+        resolv_set_experiment_params(&cache_info->params);
         if (!resolv_is_nameservers_equal_locked(cache_info, servers, numservers)) {
             // free current before adding new
             free_nameservers_locked(cache_info);

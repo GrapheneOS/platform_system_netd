@@ -54,6 +54,7 @@ cc_library {
         "libsysutils",
         "netd_event_listener_interface-ndk_platform",
         "dnsresolver_aidl_interface-ndk_platform",
+        "server_configurable_flags",
     ],
     shared_libs: [
         "libbinder_ndk",
@@ -131,5 +132,6 @@ cc_test {
         "libnetd_resolv",
         "libnetd_test_dnsresponder",
         "libnetdutils",
+        "server_configurable_flags",
     ],
 }
