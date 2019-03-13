@@ -295,14 +295,25 @@ bool simpleStrtoul(const char* input, IntegralType* output, int base = 10) {
     return true;
 }
 
-bool parseQuery(const uint8_t* msg, size_t msgLen, int* rr_type, std::string* rr_name) {
+bool setQueryId(uint8_t* msg, size_t msgLen, uint16_t query_id) {
+    if (msgLen < sizeof(HEADER)) {
+        errno = EINVAL;
+        return false;
+    }
+    auto hp = reinterpret_cast<HEADER*>(msg);
+    hp->id = htons(query_id);
+    return true;
+}
+
+bool parseQuery(const uint8_t* msg, size_t msgLen, uint16_t* query_id, int* rr_type,
+                std::string* rr_name) {
     ns_msg handle;
     ns_rr rr;
-    if (ns_initparse((const uint8_t*) msg, msgLen, &handle) < 0 ||
+    if (ns_initparse((const uint8_t*)msg, msgLen, &handle) < 0 ||
         ns_parserr(&handle, ns_s_qd, 0, &rr) < 0) {
         return false;
     }
-
+    *query_id = ns_msg_id(handle);
     *rr_name = ns_rr_name(rr);
     *rr_type = ns_rr_type(rr);
     return true;
@@ -850,10 +861,11 @@ void DnsProxyListener::ResNSendHandler::run() {
     const uid_t uid = mClient->getUid();
     int rr_type = 0;
     std::string rr_name;
+    uint16_t original_query_id = 0;
 
     // TODO: Handle the case which is msg contains more than one query
-    // Parse and store query type/name
-    if (!parseQuery(msg.data(), msgLen, &rr_type, &rr_name)) {
+    if (!parseQuery(msg.data(), msgLen, &original_query_id, &rr_type, &rr_name) ||
+        !setQueryId(msg.data(), msgLen, arc4random_uniform(65536))) {
         // If the query couldn't be parsed, block the request.
         ALOGW("resnsend: from UID %d, invalid query", uid);
         sendBE32(mClient, -EINVAL);
@@ -890,8 +902,9 @@ void DnsProxyListener::ResNSendHandler::run() {
         return;
     }
 
-    // Send answer
-    if (!sendLenAndData(mClient, nsendAns, ansBuf.data())) {
+    // Restore query id and send answer
+    if (!setQueryId(ansBuf.data(), nsendAns, original_query_id) ||
+        !sendLenAndData(mClient, nsendAns, ansBuf.data())) {
         ALOGW("resnsend: failed to send answer to uid %d: %s", uid, strerror(errno));
         return;
     }

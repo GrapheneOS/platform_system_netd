@@ -246,6 +246,15 @@ static int random_bind(int s, int family) {
 }
 /* BIONIC-END */
 
+// Disables all nameservers other than selectedServer
+static void res_set_usable_server(int selectedServer, int nscount, bool usable_servers[]) {
+    int usableIndex = 0;
+    for (int ns = 0; ns < nscount; ns++) {
+        if (usable_servers[ns]) ++usableIndex;
+        if (usableIndex != selectedServer) usable_servers[ns] = false;
+    }
+}
+
 /* int
  * res_isourserver(ina)
  *	looks up "ina" in _res.ns_addr_list[]
@@ -375,7 +384,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         return -EINVAL;
     }
     LOG(DEBUG) << __func__;
-    res_pquery(statp, buf, buflen);
+    res_pquery(buf, buflen);
 
     v_circuit = (statp->options & RES_USEVC) || buflen > PACKETSZ;
     gotsomewhere = 0;
@@ -493,7 +502,16 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         return -ESRCH;
     }
     bool usable_servers[MAXNS];
-    android_net_res_stats_get_usable_servers(&params, stats, statp->nscount, usable_servers);
+    int usableServersCount = android_net_res_stats_get_usable_servers(
+            &params, stats, statp->nscount, usable_servers);
+
+    if ((flags & ANDROID_RESOLV_NO_RETRY) && usableServersCount > 1) {
+        auto hp = reinterpret_cast<const HEADER*>(buf);
+
+        // Select a random server based on the query id
+        int selectedServer = (hp->id % usableServersCount) + 1;
+        res_set_usable_server(selectedServer, statp->nscount, usable_servers);
+    }
     if (params.retry_count != 0) statp->retry = params.retry_count;
 
     /*
@@ -597,7 +615,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             }
 
             LOG(DEBUG) << "got answer:";
-            res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+            res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
 
             if (cache_status == RESOLV_CACHE_NOTFOUND) {
                 _resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
@@ -877,7 +895,7 @@ read_len:
      */
     if (hp->id != anhp->id) {
         LOG(DEBUG) << "old answer (unexpected):";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         goto read_len;
     }
 
@@ -941,7 +959,7 @@ retry:
     }
     if (n < 0) {
         if (errno == EINTR) goto retry;
-        LOG(INFO) << "  " << sock << " retrying_poll got error " << n;
+        PLOG(INFO) << "  " << sock << " retrying_poll failed";
         return n;
     }
     if (fds.revents & (POLLIN | POLLOUT | POLLERR)) {
@@ -949,7 +967,7 @@ retry:
         socklen_t len = sizeof(error);
         if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error) {
             errno = error;
-            LOG(INFO) << "  " << sock << " retrying_poll dot error2 " << errno;
+            PLOG(INFO) << "  " << sock << " retrying_poll getsockopt failed";
             return -1;
         }
     }
@@ -1081,7 +1099,7 @@ retry:
          *	 be detected here.
          */
         LOG(DEBUG) << "old answer:";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
     if (!(statp->options & RES_INSECURE1) &&
@@ -1092,7 +1110,7 @@ retry:
          *	 be detected here.
          */
         LOG(DEBUG) << "not our server:";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
     if (anhp->rcode == FORMERR && (statp->options & RES_USE_EDNS0) != 0U) {
@@ -1102,7 +1120,7 @@ retry:
          * carry query section, hence res_queriesmatch() returns 0.
          */
         LOG(DEBUG) << "server rejected query with EDNS0:";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         /* record the error */
         statp->_flags |= RES_F_EDNS0ERR;
         res_nclose(statp);
@@ -1116,20 +1134,17 @@ retry:
          *	 be detected here.
          */
         LOG(DEBUG) << "wrong query name:";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
     done = evNowTime();
     *delay = _res_stats_calculate_rtt(&done, &now);
     if (anhp->rcode == SERVFAIL || anhp->rcode == NOTIMP || anhp->rcode == REFUSED) {
         LOG(DEBUG) << "server rejected query:";
-        res_pquery(statp, ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         res_nclose(statp);
-        /* don't retry if called from dig */
-        if (!statp->pfcode) {
-            *rcode = anhp->rcode;
-            return 0;
-        }
+        *rcode = anhp->rcode;
+        return 0;
     }
     if (!(statp->options & RES_IGNTC) && anhp->tc) {
         /*
@@ -1173,10 +1188,9 @@ static void Aerror(const res_state statp, const char* string, int error,
 }
 
 static void Perror(const res_state statp, const char* string, int error) {
-    const int save = errno;
-    if ((statp->options & RES_DEBUG) != 0U)
+    if ((statp->options & RES_DEBUG) != 0U) {
         LOG(DEBUG) << "res_send: " << string << ": " << strerror(error);
-    errno = save;
+    }
 }
 
 static int sock_eq(struct sockaddr* a, struct sockaddr* b) {

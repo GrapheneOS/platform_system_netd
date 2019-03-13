@@ -1016,13 +1016,12 @@ static u_long answer_getTTL(const void* answer, int answerlen) {
                         result = ttl;
                     }
                 } else {
-                    LOG(INFO) << "ns_parserr failed ancount no = " << n
-                              << ". errno = " << strerror(errno);
+                    PLOG(INFO) << "ns_parserr failed ancount no = " << n;
                 }
             }
         }
     } else {
-        LOG(INFO) << "ns_initparse failed: " << strerror(errno);
+        PLOG(INFO) << "ns_initparse failed";
     }
 
     LOG(INFO) << "TTL = " << result;
@@ -1304,14 +1303,6 @@ static void cache_dump_mru(Cache* cache) {
     LOG(INFO) << temp;
 }
 
-// TODO: Rewrite to avoid creating a file in /data as temporary buffer (WAT).
-static void dump_answer(const u_char* answer, int answerlen) {
-    res_state statep;
-
-    statep = res_get_state();
-    res_pquery(statep, answer, answerlen);
-}
-
 /* This function tries to find a key within the hash table
  * In case of success, it will return a *pointer* to the hashed key.
  * In case of failure, it will return a *pointer* to NULL
@@ -1536,11 +1527,11 @@ void _resolv_cache_add(unsigned netid, const void* query, int querylen, const vo
     }
 
     LOG(INFO) << __func__ << ": query:";
-    dump_query((u_char*) query, querylen);
-    dump_answer((u_char*) answer, answerlen);
+    dump_query((u_char*)query, querylen);
+    res_pquery((u_char*)answer, answerlen);
     if (kDumpData) {
         LOG(INFO) << "answer:";
-        dump_bytes((u_char*) answer, answerlen);
+        dump_bytes((u_char*)answer, answerlen);
     }
 
     lookup = _cache_lookup_p(cache, key);

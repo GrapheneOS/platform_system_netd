@@ -1282,18 +1282,37 @@ TEST_F(BinderTest, StrictSetUidCleartextPenalty) {
 
 namespace {
 
-std::vector<std::string> findProcesses(const std::string& processName) {
-    // Output looks like:
+std::vector<std::string> tryToFindProcesses(const std::string& processName, uint32_t maxTries = 1,
+                                            uint32_t intervalMs = 0) {
+    // Output looks like:(clatd)
     // clat          4963   850 1 12:16:51 ?     00:00:00 clatd-netd10a88 -i netd10a88 ...
     // ...
     // root          5221  5219 0 12:18:12 ?     00:00:00 sh -c ps -Af | grep ' clatd-netdcc1a0'
 
+    // (dnsmasq)
+    // dns_tether    4620   792 0 16:51:28 ?     00:00:00 dnsmasq --keep-in-foreground ...
+
+    if (maxTries == 0) return {};
+
     std::string cmd = StringPrintf("ps -Af | grep '[0-9] %s'", processName.c_str());
-    return runCommand(cmd.c_str());
+    std::vector<std::string> result;
+    for (uint32_t run = 1;;) {
+        result = runCommand(cmd.c_str());
+        if (result.size() || ++run > maxTries) {
+            break;
+        }
+
+        usleep(intervalMs);
+    }
+    return result;
 }
 
-bool processExists(const std::string& processName) {
-    return (findProcesses(processName).size()) ? true : false;
+void expectProcessExists(const std::string& processName) {
+    EXPECT_EQ(1U, tryToFindProcesses(processName, 5 /*maxTries*/, 50 /*intervalMs*/).size());
+}
+
+void expectProcessDoesNotExists(const std::string& processName) {
+    EXPECT_FALSE(tryToFindProcesses(processName).size());
 }
 
 }  // namespace
@@ -1346,19 +1365,18 @@ TEST_F(BinderTest, ClatdStartStop) {
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(EBUSY, status.serviceSpecificErrorCode());
 
-    std::vector<std::string> processes = findProcesses(clatdName);
-    EXPECT_EQ(1U, processes.size());
+    expectProcessExists(clatdName);
 
     // Expect clatd to stop successfully.
     status = mNetd->clatdStop(sTun.name());
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    EXPECT_FALSE(processExists(clatdName));
+    expectProcessDoesNotExists(clatdName);
 
     // Stopping a clatd that doesn't exist returns ENODEV.
     status = mNetd->clatdStop(sTun.name());
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(ENODEV, status.serviceSpecificErrorCode());
-    EXPECT_FALSE(processExists(clatdName));
+    expectProcessDoesNotExists(clatdName);
 
     // Clean up.
     EXPECT_TRUE(mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
@@ -2061,7 +2079,7 @@ TEST_F(BinderTest, TetherStartStopStatus) {
 
     binder::Status status = mNetd->tetherStart(noDhcpRange);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    EXPECT_TRUE(processExists(dnsdName));
+    expectProcessExists(dnsdName);
 
     bool tetherEnabled;
     status = mNetd->tetherIsEnabled(&tetherEnabled);
@@ -2070,7 +2088,7 @@ TEST_F(BinderTest, TetherStartStopStatus) {
 
     status = mNetd->tetherStop();
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    EXPECT_FALSE(processExists(dnsdName));
+    expectProcessDoesNotExists(dnsdName);
 
     status = mNetd->tetherIsEnabled(&tetherEnabled);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
