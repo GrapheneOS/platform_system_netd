@@ -512,12 +512,11 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
         int selectedServer = (hp->id % usableServersCount) + 1;
         res_set_usable_server(selectedServer, statp->nscount, usable_servers);
     }
-    if (params.retry_count != 0) statp->retry = params.retry_count;
 
     /*
      * Send request, RETRY times, or until successful.
      */
-    int retryTimes = (flags & ANDROID_RESOLV_NO_RETRY) ? 1 : statp->retry;
+    int retryTimes = (flags & ANDROID_RESOLV_NO_RETRY) ? 1 : params.retry_count;
 
     for (int attempt = 0; attempt < retryTimes; ++attempt) {
 
@@ -685,20 +684,16 @@ static struct sockaddr* get_nsaddr(res_state statp, size_t n) {
 
 static struct timespec get_timeout(const res_state statp, const res_params* params, const int ns) {
     int msec;
-    if (params->base_timeout_msec != 0) {
-        // TODO: scale the timeout by retry attempt and maybe number of servers
-        msec = params->base_timeout_msec;
-    } else {
-        // Legacy algorithm which scales the timeout by nameserver number.
-        // For instance, with 4 nameservers: 5s, 2.5s, 5s, 10s
-        // This has no effect with 1 or 2 nameservers
-        msec = (statp->retrans * 1000) << ns;
-        if (ns > 0) {
-            msec /= statp->nscount;
-        }
-        if (msec < 1000) {
-            msec = 1000;  // Use at least 100ms
-        }
+    // Legacy algorithm which scales the timeout by nameserver number.
+    // For instance, with 4 nameservers: 5s, 2.5s, 5s, 10s
+    // This has no effect with 1 or 2 nameservers
+    msec = params->base_timeout_msec << ns;
+    if (ns > 0) {
+        msec /= statp->nscount;
+    }
+    // For safety, don't allow OEMs and experiments to configure a timeout shorter than 1s.
+    if (msec < 1000) {
+        msec = 1000;  // Use at least 1000ms
     }
     LOG(INFO) << "using timeout of " << msec << " msec";
 
