@@ -115,7 +115,7 @@ static void addrsort(char**, int, res_state);
 
 static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
                             const android_net_context* netcontext, getnamaddr* info);
-static int _dns_gethtbyname(const char* name, int af, getnamaddr* info);
+static int dns_gethtbyname(const char* name, int af, getnamaddr* info);
 
 static int gethostbyname_internal(const char* name, int af, res_state res, hostent* hp, char* hbuf,
                                   size_t hbuflen, const android_net_context* netcontext);
@@ -467,7 +467,7 @@ static int gethostbyname_internal_real(const char* name, int af, res_state res, 
     info.buf = buf;
     info.buflen = buflen;
     if (_hf_gethtbyname2(name, af, &info)) {
-        int error = _dns_gethtbyname(name, af, &info);
+        int error = dns_gethtbyname(name, af, &info);
         if (error != 0) {
             return error;
         }
@@ -760,11 +760,8 @@ static void addrsort(char** ap, int num, res_state res) {
     }
 }
 
-static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
+static int dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
     int n, type;
-    struct hostent* hp;
-    res_state res;
-
     info->hp->h_addrtype = addr_type;
 
     switch (info->hp->h_addrtype) {
@@ -779,26 +776,20 @@ static int _dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
         default:
             return EAI_FAMILY;
     }
-    querybuf* buf = (querybuf*) malloc(sizeof(querybuf));
-    if (buf == NULL) {
-        return EAI_MEMORY;
-    }
-    res = res_get_state();
-    if (res == NULL) {
-        free(buf);
-        return EAI_MEMORY;
-    }
+    auto buf = std::make_unique<querybuf>();
+
+    res_state res = res_get_state();
+    if (!res) return EAI_MEMORY;
 
     int herrno = NETDB_INTERNAL;
     n = res_nsearch(res, name, C_IN, type, buf->buf, (int) sizeof(buf->buf), &herrno);
     if (n < 0) {
-        free(buf);
         LOG(DEBUG) << "res_nsearch failed (" << n << ")";
         // Pass herrno to catch more detailed errors rather than EAI_NODATA.
         return herrnoToAiErrno(herrno);
     }
-    hp = getanswer(buf, n, name, type, res, info->hp, info->buf, info->buflen, &herrno);
-    free(buf);
+    hostent* hp =
+            getanswer(buf.get(), n, name, type, res, info->hp, info->buf, info->buflen, &herrno);
     if (hp == NULL) {
         return herrnoToAiErrno(herrno);
     }
