@@ -24,14 +24,14 @@
 #include <gtest/gtest.h>
 
 #define LOG_TAG "IptablesRestoreControllerTest"
-#include <log/log.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <log/log.h>
 #include <netdutils/MockSyscalls.h>
+#include <netdutils/Stopwatch.h>
 
 #include "IptablesRestoreController.h"
 #include "NetdConstants.h"
-#include "Stopwatch.h"
 #include "bpf/BpfUtils.h"
 
 #define XT_LOCK_NAME "/system/etc/xtables.lock"
@@ -41,6 +41,7 @@
 using android::base::Join;
 using android::base::StringPrintf;
 using android::netdutils::ScopedMockSyscalls;
+using android::netdutils::Stopwatch;
 using testing::Return;
 using testing::StrictMock;
 

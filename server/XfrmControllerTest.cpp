@@ -47,7 +47,6 @@
 #include "NetdConstants.h"
 #include "NetlinkCommands.h"
 #include "Permission.h"
-#include "Stopwatch.h"
 #include "XfrmController.h"
 #include "android/net/INetd.h"
 #include "binder/IServiceManager.h"
