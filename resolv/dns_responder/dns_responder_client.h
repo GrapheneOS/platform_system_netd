@@ -35,11 +35,11 @@
 inline const std::vector<std::string> kDefaultServers = {"127.0.0.3"};
 inline const std::vector<std::string> kDefaultSearchDomains = {"example.com"};
 inline const std::vector<int> kDefaultParams = {
-        300,     // sample validity in seconds
-        25,      // success threshod in percent
-        8,   8,  // {MIN,MAX}_SAMPLES
-        100,     // BASE_TIMEOUT_MSEC
-        2,       // retry count
+        300,      // sample validity in seconds
+        25,       // success threshod in percent
+        8,    8,  // {MIN,MAX}_SAMPLES
+        1000,     // BASE_TIMEOUT_MSEC
+        2,        // retry count
 };
 
 class DnsResponderClient {

@@ -405,10 +405,10 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
         if (params.sample_validity != 0) {
             dw.println(
                     "DNS parameters: sample validity = %us, success threshold = %u%%, "
-                    "samples (min, max) = (%u, %u), base_timeout = %dmsec",
-                    params.sample_validity, static_cast<unsigned>(params.success_threshold),
-                    static_cast<unsigned>(params.min_samples),
-                    static_cast<unsigned>(params.max_samples), params.base_timeout_msec);
+                    "samples (min, max) = (%u, %u), base_timeout = %dmsec, retry count = "
+                    "%dtimes",
+                    params.sample_validity, params.success_threshold, params.min_samples,
+                    params.max_samples, params.base_timeout_msec, params.retry_count);
         }
 
         mDns64Configuration.dump(dw, netId);
