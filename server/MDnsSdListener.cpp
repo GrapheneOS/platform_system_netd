@@ -37,9 +37,8 @@
 #include <cutils/properties.h>
 #include <log/log.h>
 #include <netdutils/ResponseCode.h>
+#include <netdutils/ThreadUtil.h>
 #include <sysutils/SocketClient.h>
-
-#include "thread_util.h"
 
 #define MDNS_SERVICE_NAME "mdnsd"
 #define MDNS_SERVICE_STATUS "init.svc.mdnsd"
@@ -528,7 +527,7 @@ MDnsSdListener::Monitor::Monitor() {
     mPollSize = 10;
     socketpair(AF_LOCAL, SOCK_STREAM, 0, mCtrlSocketPair);
 
-    const int rval = ::android::net::threadLaunch(this);
+    const int rval = ::android::netdutils::threadLaunch(this);
     if (rval != 0) {
         ALOGW("Error spawning monitor thread: %s (%d)", strerror(-rval), -rval);
     }
