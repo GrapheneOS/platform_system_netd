@@ -1144,7 +1144,7 @@ void DnsProxyListener::GetHostByAddrHandler::doDns64ReverseLookup(struct hostent
         queryLimiter.finish(uid);
         if (*hpp) {
             // Replace IPv4 address with original queried IPv6 address in place. The space has
-            // reserved by _dns_gethtbyaddr() and netbsd_gethostent_r() in
+            // reserved by dns_gethtbyaddr() and netbsd_gethostent_r() in
             // system/netd/resolv/gethnamaddr.cpp.
             // Note that android_gethostbyaddrfornetcontext returns only one entry in result.
             memcpy((*hpp)->h_addr_list[0], &v6addr, sizeof(v6addr));
