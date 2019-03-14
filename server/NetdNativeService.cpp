@@ -886,7 +886,15 @@ binder::Status NetdNativeService::clatdStop(const std::string& ifName) {
 
 binder::Status NetdNativeService::ipfwdEnabled(bool* status) {
     NETD_LOCKING_RPC(gCtls->tetherCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    *status = (gCtls->tetherCtrl.forwardingRequestCount() > 0) ? true : false;
+    *status = (gCtls->tetherCtrl.getIpfwdRequesterList().size() > 0) ? true : false;
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::ipfwdGetRequesterList(std::vector<std::string>* requesterList) {
+    NETD_LOCKING_RPC(gCtls->tetherCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
+    for (const auto& requester : gCtls->tetherCtrl.getIpfwdRequesterList()) {
+        requesterList->push_back(requester);
+    }
     return binder::Status::ok();
 }
 
