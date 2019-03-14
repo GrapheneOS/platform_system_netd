@@ -242,5 +242,12 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
     return ::ndk::ScopedAStatus(AStatus_newOk());
 }
 
+::ndk::ScopedAStatus DnsResolverService::clearResolverConfiguration(int netId) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    gDnsResolv->resolverCtrl.clearDnsServers(netId);
+    return ::ndk::ScopedAStatus(AStatus_newOk());
+}
+
 }  // namespace net
 }  // namespace android

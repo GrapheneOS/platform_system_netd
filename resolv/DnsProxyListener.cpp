@@ -476,17 +476,8 @@ bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, addrinf
     return true;
 }
 
-// TODO: Make it call internal resolver to getPrefix64
-// after resolver related commands migration done
 bool getDns64Prefix(unsigned netId, netdutils::IPPrefix* prefix) {
-    in6_addr v6addr{};
-    uint8_t prefixLen = 0;
-    if (!gResNetdCallbacks.get_dns64_prefix(netId, &v6addr, &prefixLen)) {
-        return false;
-    }
-    const netdutils::IPAddress ipv6(v6addr);
-    *prefix = netdutils::IPPrefix(ipv6, static_cast<int>(prefixLen));
-    return true;
+    return !gDnsResolv->resolverCtrl.getPrefix64(netId, prefix);
 }
 
 }  // namespace
