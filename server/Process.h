@@ -17,7 +17,7 @@
 #ifndef NETD_SERVER_PROCESS_H_
 #define NETD_SERVER_PROCESS_H_
 
-#include "DumpWriter.h"
+#include "netdutils/DumpWriter.h"
 
 #include <string>
 
@@ -51,7 +51,7 @@ class ScopedPidFile {
     const std::string pidFile;
 };
 
-void dump(DumpWriter& dw);
+void dump(netdutils::DumpWriter& dw);
 
 }  // namespace process
 }  // namespace net

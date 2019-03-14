@@ -47,10 +47,10 @@
 #include "TrafficController.h"
 #include "bpf/BpfMap.h"
 
-#include "DumpWriter.h"
 #include "FirewallController.h"
 #include "InterfaceController.h"
 #include "NetlinkListener.h"
+#include "netdutils/DumpWriter.h"
 #include "qtaguid/qtaguid.h"
 
 using namespace android::bpf;  // NOLINT(google-build-using-namespace): grandfathered
@@ -60,7 +60,9 @@ namespace net {
 
 using base::StringPrintf;
 using base::unique_fd;
+using netdutils::DumpWriter;
 using netdutils::extract;
+using netdutils::ScopedIndent;
 using netdutils::Slice;
 using netdutils::sSyscalls;
 using netdutils::Status;
