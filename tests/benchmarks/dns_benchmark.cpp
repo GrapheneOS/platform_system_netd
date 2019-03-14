@@ -69,7 +69,7 @@ public:
 
             dns.SetupDNSServers(MAXNS, mappings, &mDns, &servers);
 
-            const std::vector<int> mDefaultParams_Binder = {300, 25, 8, 8, 100};
+            const std::vector<int> mDefaultParams_Binder = {300, 25, 8, 8, 1000};
             dns.SetResolversForNetwork(servers, domains, mDefaultParams_Binder);
         }
     }

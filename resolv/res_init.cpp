@@ -140,8 +140,6 @@ int res_vinit(res_state statp, int preinit) {
 
     if (!preinit) {
         statp->netid = NETID_UNSET;
-        statp->retrans = RES_TIMEOUT;
-        statp->retry = RES_DFLRETRY;
         statp->options = RES_DEFAULT;
         statp->id = arc4random_uniform(65536);
         statp->_mark = MARK_UNSET;
@@ -218,26 +216,7 @@ static void res_setoptions(res_state statp, const char* options, const char* sou
                 statp->ndots = i;
             else
                 statp->ndots = RES_MAXNDOTS;
-
             LOG(DEBUG) << ";;\tndots=" << statp->ndots;
-
-        } else if (!strncmp(cp, "timeout:", sizeof("timeout:") - 1)) {
-            i = atoi(cp + sizeof("timeout:") - 1);
-            if (i <= RES_MAXRETRANS)
-                statp->retrans = i;
-            else
-                statp->retrans = RES_MAXRETRANS;
-
-            LOG(DEBUG) << ";;\ttimeout=" << statp->retrans;
-
-        } else if (!strncmp(cp, "attempts:", sizeof("attempts:") - 1)) {
-            i = atoi(cp + sizeof("attempts:") - 1);
-            if (i <= RES_MAXRETRY)
-                statp->retry = i;
-            else
-                statp->retry = RES_MAXRETRY;
-
-            LOG(DEBUG) << ";;\tattempts=" << statp->retry;
 
         } else if (!strncmp(cp, "debug", sizeof("debug") - 1)) {
             if (!(statp->options & RES_DEBUG)) {

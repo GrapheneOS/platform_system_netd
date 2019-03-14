@@ -84,7 +84,8 @@ class TestBase : public ::testing::Test {
             .success_threshold = 25,
             .min_samples = 8,
             .max_samples = 8,
-            .base_timeout_msec = 100,
+            .base_timeout_msec = 1000,
+            .retry_count = 2,
     };
     const android_net_context mNetcontext = {
             .app_netid = TEST_NETID,
