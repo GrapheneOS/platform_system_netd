@@ -113,8 +113,8 @@ static void map_v4v6_hostent(struct hostent*, char**, char*);
 static void pad_v4v6_hostent(struct hostent* hp, char** bpp, char* ep);
 static void addrsort(char**, int, res_state);
 
-static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
-                            const android_net_context* netcontext, getnamaddr* info);
+static int dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
+                           const android_net_context* netcontext, getnamaddr* info);
 static int dns_gethtbyname(const char* name, int af, getnamaddr* info);
 
 static int gethostbyname_internal(const char* name, int af, res_state res, hostent* hp, char* hbuf,
@@ -545,7 +545,7 @@ static int android_gethostbyaddrfornetcontext_real(const void* addr, socklen_t l
     info.buf = buf;
     info.buflen = buflen;
     if (_hf_gethtbyaddr(uaddr, len, af, &info)) {
-        int error = _dns_gethtbyaddr(uaddr, len, af, netcontext, &info);
+        int error = dns_gethtbyaddr(uaddr, len, af, netcontext, &info);
         if (error != 0) {
             return error;
         }
@@ -796,13 +796,11 @@ static int dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
     return 0;
 }
 
-static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
-                            const android_net_context* netcontext, getnamaddr* info) {
+static int dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
+                           const android_net_context* netcontext, getnamaddr* info) {
     char qbuf[MAXDNAME + 1], *qp, *ep;
     int n;
-    struct hostent* hp;
     int advance;
-    res_state res;
 
     info->hp->h_length = len;
     info->hp->h_addrtype = af;
@@ -835,25 +833,20 @@ static int _dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
             return EAI_FAMILY;
     }
 
-    querybuf* buf = (querybuf*) malloc(sizeof(querybuf));
-    if (buf == NULL) {
-        return EAI_MEMORY;
-    }
-    res = res_get_state();
-    if (res == NULL) {
-        free(buf);
-        return EAI_MEMORY;
-    }
+    auto buf = std::make_unique<querybuf>();
+
+    res_state res = res_get_state();
+    if (!res) return EAI_MEMORY;
+
     res_setnetcontext(res, netcontext);
     int herrno = NETDB_INTERNAL;
     n = res_nquery(res, qbuf, C_IN, T_PTR, buf->buf, (int) sizeof(buf->buf), &herrno);
     if (n < 0) {
-        free(buf);
         LOG(DEBUG) << "res_nquery failed (" << n << ")";
         return herrnoToAiErrno(herrno);
     }
-    hp = getanswer(buf, n, qbuf, T_PTR, res, info->hp, info->buf, info->buflen, &herrno);
-    free(buf);
+    hostent* hp =
+            getanswer(buf.get(), n, qbuf, T_PTR, res, info->hp, info->buf, info->buflen, &herrno);
     if (hp == NULL) {
         return herrnoToAiErrno(herrno);
     }
