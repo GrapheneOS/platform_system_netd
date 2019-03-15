@@ -37,7 +37,6 @@
 #include <openssl/base64.h>
 
 #include "Controllers.h"
-#include "DumpWriter.h"
 #include "InterfaceController.h"
 #include "NetdConstants.h"  // SHA256_SIZE
 #include "NetdNativeService.h"
@@ -48,12 +47,15 @@
 #include "SockDiag.h"
 #include "UidRanges.h"
 #include "android/net/BnNetd.h"
+#include "netdutils/DumpWriter.h"
 #include "netid_client.h"  // NETID_UNSET
 
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 using android::net::TetherStatsParcel;
 using android::net::UidRangeParcel;
+using android::netdutils::DumpWriter;
+using android::netdutils::ScopedIndent;
 using android::os::ParcelFileDescriptor;
 
 namespace android {

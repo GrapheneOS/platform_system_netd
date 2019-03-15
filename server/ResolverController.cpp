@@ -39,7 +39,6 @@
 #include <android/net/metrics/INetdEventListener.h>
 
 #include "Controllers.h"
-#include "DumpWriter.h"
 #include "EventReporter.h"
 #include "Fwmark.h"
 #include "NetdConstants.h"
@@ -50,8 +49,12 @@
 #include "netd_resolv/resolv.h"
 #include "netd_resolv/resolv_stub.h"
 #include "netd_resolv/stats.h"
+#include "netdutils/DumpWriter.h"
 
 namespace android {
+
+using netdutils::DumpWriter;
+
 namespace net {
 
 namespace {

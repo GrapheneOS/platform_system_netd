@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-#ifndef NETD_SERVER_DUMPWRITER_H_
-#define NETD_SERVER_DUMPWRITER_H_
+#ifndef NETDUTILS_DUMPWRITER_H_
+#define NETDUTILS_DUMPWRITER_H_
 
 #include <string>
 
 namespace android {
-namespace net {
+namespace netdutils {
 
 class DumpWriter {
   public:
@@ -31,7 +31,9 @@ class DumpWriter {
 
     void println(const std::string& line);
     template <size_t n>
-    void println(const char line[n]) { println(std::string(line)); }
+    void println(const char line[n]) {
+        println(std::string(line));
+    }
     // Hint to the compiler that it should apply printf validation of
     // arguments (beginning at position 3) of the format (specified in
     // position 2). Note that position 1 is the implicit "this" argument.
@@ -60,7 +62,7 @@ class ScopedIndent {
     DumpWriter& mDw;
 };
 
-}  // namespace net
+}  // namespace netdutils
 }  // namespace android
 
-#endif  // NETD_SERVER_DUMPWRITER_H_
+#endif  // NETDUTILS_DUMPWRITER_H_
