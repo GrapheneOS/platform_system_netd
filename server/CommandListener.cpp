@@ -364,7 +364,8 @@ int CommandListener::IpFwdCmd::runCommand(SocketClient *cli, int argc, char **ar
             char *tmp = nullptr;
 
             asprintf(&tmp, "Forwarding %s",
-                     ((gCtls->tetherCtrl.forwardingRequestCount() > 0) ? "enabled" : "disabled"));
+                     ((gCtls->tetherCtrl.getIpfwdRequesterList().size() > 0) ? "enabled"
+                                                                             : "disabled"));
             cli->sendMsg(ResponseCode::IpFwdStatusResult, tmp, false);
             free(tmp);
             return 0;
