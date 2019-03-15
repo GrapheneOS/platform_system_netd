@@ -161,7 +161,6 @@ cc_binary {
     srcs: [
         "CommandListener.cpp",
         "DummyNetwork.cpp",
-        "DumpWriter.cpp",
         "EventReporter.cpp",
         "FwmarkServer.cpp",
         "LocalNetwork.cpp",

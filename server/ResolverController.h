@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "Dns64Configuration.h"
+#include "netdutils/DumpWriter.h"
 #include "netdutils/InternetAddresses.h"
 
 struct res_params;
@@ -28,7 +29,6 @@ struct res_params;
 namespace android {
 namespace net {
 
-class DumpWriter;
 struct ResolverStats;
 
 class ResolverController {
@@ -71,7 +71,7 @@ class ResolverController {
 
     bool initResolver();
 
-    void dump(DumpWriter& dw, unsigned netId);
+    void dump(netdutils::DumpWriter& dw, unsigned netId);
 
   private:
     Dns64Configuration mDns64Configuration;

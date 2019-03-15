@@ -24,6 +24,7 @@
 #include <unordered_map>
 
 #include <android-base/thread_annotations.h>
+#include "netdutils/DumpWriter.h"
 #include "netdutils/InternetAddresses.h"
 
 struct android_net_context;
@@ -31,7 +32,6 @@ struct android_net_context;
 namespace android {
 namespace net {
 
-class DumpWriter;
 class NetworkController;
 
 /**
@@ -80,7 +80,7 @@ class Dns64Configuration {
     void stopPrefixDiscovery(unsigned netId);
     netdutils::IPPrefix getPrefix64(unsigned netId) const;
 
-    void dump(DumpWriter& dw, unsigned netId);
+    void dump(netdutils::DumpWriter& dw, unsigned netId);
 
   private:
     struct Dns64Config {

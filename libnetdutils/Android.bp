@@ -1,6 +1,7 @@
 cc_library {
     name: "libnetdutils",
     srcs: [
+        "DumpWriter.cpp",
         "Fd.cpp",
         "InternetAddresses.cpp",
         "Log.cpp",

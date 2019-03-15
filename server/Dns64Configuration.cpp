@@ -29,13 +29,14 @@
 #include <netd_resolv/resolv.h>
 #include <netd_resolv/resolv_stub.h>
 
-#include "DumpWriter.h"
 #include "NetworkController.h"
 #include "netdutils/BackoffSequence.h"
+#include "netdutils/DumpWriter.h"
 #include "netid_client.h"
 
 namespace android {
 
+using netdutils::DumpWriter;
 using netdutils::IPAddress;
 using netdutils::IPPrefix;
 
