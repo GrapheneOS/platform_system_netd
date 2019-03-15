@@ -36,15 +36,17 @@
 
 #include "Controllers.h"
 #include "DummyNetwork.h"
-#include "DumpWriter.h"
 #include "Fwmark.h"
 #include "LocalNetwork.h"
 #include "PhysicalNetwork.h"
 #include "RouteController.h"
 #include "VirtualNetwork.h"
+#include "netdutils/DumpWriter.h"
 #include "netid_client.h"
 
 #define DBG 0
+
+using android::netdutils::DumpWriter;
 
 namespace android {
 namespace net {

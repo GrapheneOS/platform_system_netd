@@ -24,6 +24,7 @@
 #include <unordered_map>
 
 #include <android-base/thread_annotations.h>
+#include "netdutils/DumpWriter.h"
 #include "utils/String16.h"
 
 #include "Fwmark.h"
@@ -35,8 +36,6 @@ namespace android {
 namespace net {
 
 using std::chrono::milliseconds;
-
-class DumpWriter;
 
 class TcpSocketMonitor {
   public:
@@ -78,7 +77,7 @@ class TcpSocketMonitor {
     TcpSocketMonitor();
     ~TcpSocketMonitor();
 
-    void dump(DumpWriter& dw);
+    void dump(netdutils::DumpWriter& dw);
     void setPollingInterval(milliseconds duration);
     void resumePolling();
     void suspendPolling();

@@ -23,6 +23,7 @@
 
 #include "NetdConstants.h"
 #include "Permission.h"
+#include "netdutils/DumpWriter.h"
 
 #include <sys/types.h>
 #include <list>
@@ -70,7 +71,6 @@ static inline net_handle_t netIdToNetHandle(unsigned fromNetId) {
     return (((net_handle_t)fromNetId << 32) | kHandleMagic);
 }
 
-class DumpWriter;
 class Network;
 class UidRanges;
 class VirtualNetwork;
@@ -140,9 +140,9 @@ public:
     void allowProtect(const std::vector<uid_t>& uids);
     void denyProtect(const std::vector<uid_t>& uids);
 
-    void dump(DumpWriter& dw);
+    void dump(netdutils::DumpWriter& dw);
 
-private:
+  private:
     bool isValidNetworkLocked(unsigned netId) const;
     Network* getNetworkLocked(unsigned netId) const;
     uint32_t getNetworkForDnsLocked(unsigned* netId, uid_t uid) const;

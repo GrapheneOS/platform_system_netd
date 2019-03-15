@@ -32,6 +32,7 @@
 
 #include "NetdConstants.h"
 #include "android-base/unique_fd.h"
+#include "netdutils/DumpWriter.h"
 #include "netdutils/Slice.h"
 #include "netdutils/Status.h"
 #include "sysutils/SocketClient.h"
@@ -51,7 +52,6 @@ extern const uint8_t REPLAY_WINDOW_SIZE;
 // Suggest we avoid the smallest and largest ints
 class XfrmMessage;
 class TransportModeSecurityAssociation;
-class DumpWriter;
 
 class XfrmSocket {
 public:
@@ -259,7 +259,7 @@ public:
 
     static netdutils::Status ipSecRemoveTunnelInterface(const std::string& deviceName);
 
-    void dump(DumpWriter& dw);
+    void dump(netdutils::DumpWriter& dw);
 
     // Some XFRM netlink attributes comprise a header, a struct, and some data
     // after the struct. We wrap all of those in one struct for easier

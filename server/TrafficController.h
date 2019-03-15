@@ -27,6 +27,7 @@
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
 #include "netdbpf/bpf_shared.h"
+#include "netdutils/DumpWriter.h"
 #include "netdutils/StatusOr.h"
 #include "utils/String16.h"
 
@@ -38,8 +39,6 @@ using android::bpf::UidTag;
 
 namespace android {
 namespace net {
-
-class DumpWriter;
 
 class TrafficController {
   public:
@@ -103,7 +102,7 @@ class TrafficController {
     netdutils::Status updateOwnerMapEntry(UidOwnerMatchType match, uid_t uid, FirewallRule rule,
                                           FirewallType type);
 
-    void dump(DumpWriter& dw, bool verbose);
+    void dump(netdutils::DumpWriter& dw, bool verbose);
 
     netdutils::Status replaceUidsInMap(UidOwnerMatchType match, const std::vector<int32_t>& uids);
 
