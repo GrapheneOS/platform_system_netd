@@ -653,6 +653,13 @@ interface INetd {
     boolean ipfwdEnabled();
 
    /**
+    * Get requester list of IP forwarding
+    *
+    * @return An array of strings containing requester list of IP forwarding
+    */
+    @utf8InCpp String[] ipfwdGetRequesterList();
+
+   /**
     * Enable IP forwarding for specific requester
     *
     * @param requester requester name to enable IP forwarding. It is a unique name which will be
