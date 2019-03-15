@@ -202,8 +202,8 @@ bool TetherController::disableForwarding(const char* requester) {
     return setIpFwdEnabled();
 }
 
-size_t TetherController::forwardingRequestCount() {
-    return mForwardingRequests.size();
+const std::set<std::string>& TetherController::getIpfwdRequesterList() const {
+    return mForwardingRequests;
 }
 
 int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {

@@ -1283,7 +1283,7 @@ TEST_F(BinderTest, StrictSetUidCleartextPenalty) {
 namespace {
 
 std::vector<std::string> tryToFindProcesses(const std::string& processName, uint32_t maxTries = 1,
-                                            uint32_t intervalMs = 0) {
+                                            uint32_t intervalMs = 50) {
     // Output looks like:(clatd)
     // clat          4963   850 1 12:16:51 ?     00:00:00 clatd-netd10a88 -i netd10a88 ...
     // ...
@@ -1302,16 +1302,16 @@ std::vector<std::string> tryToFindProcesses(const std::string& processName, uint
             break;
         }
 
-        usleep(intervalMs);
+        usleep(intervalMs * 1000);
     }
     return result;
 }
 
 void expectProcessExists(const std::string& processName) {
-    EXPECT_EQ(1U, tryToFindProcesses(processName, 5 /*maxTries*/, 50 /*intervalMs*/).size());
+    EXPECT_EQ(1U, tryToFindProcesses(processName, 5 /*maxTries*/).size());
 }
 
-void expectProcessDoesNotExists(const std::string& processName) {
+void expectProcessDoesNotExist(const std::string& processName) {
     EXPECT_FALSE(tryToFindProcesses(processName).size());
 }
 
@@ -1370,13 +1370,13 @@ TEST_F(BinderTest, ClatdStartStop) {
     // Expect clatd to stop successfully.
     status = mNetd->clatdStop(sTun.name());
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    expectProcessDoesNotExists(clatdName);
+    expectProcessDoesNotExist(clatdName);
 
     // Stopping a clatd that doesn't exist returns ENODEV.
     status = mNetd->clatdStop(sTun.name());
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(ENODEV, status.serviceSpecificErrorCode());
-    expectProcessDoesNotExists(clatdName);
+    expectProcessDoesNotExist(clatdName);
 
     // Clean up.
     EXPECT_TRUE(mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
@@ -1438,25 +1438,56 @@ void expectIpfwdRuleNotExists(const char* fromIf, const char* toIf) {
 }  // namespace
 
 TEST_F(BinderTest, TestIpfwdEnableDisableStatusForwarding) {
-    // Netd default enable Ipfwd with requester NetdHwService
-    const std::string defaultRequester = "NetdHwService";
-
-    binder::Status status = mNetd->ipfwdDisableForwarding(defaultRequester);
+    // Get ipfwd requester list from Netd
+    std::vector<std::string> requesterList;
+    binder::Status status = mNetd->ipfwdGetRequesterList(&requesterList);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    expectIpfwdEnable(false);
 
     bool ipfwdEnabled;
-    status = mNetd->ipfwdEnabled(&ipfwdEnabled);
-    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    EXPECT_FALSE(ipfwdEnabled);
+    if (requesterList.size() == 0) {
+        // No requester in Netd, ipfwd should be disabled
+        // So add one test requester and verify
+        status = mNetd->ipfwdEnableForwarding("TestRequester");
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 
-    status = mNetd->ipfwdEnableForwarding(defaultRequester);
-    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    expectIpfwdEnable(true);
+        expectIpfwdEnable(true);
+        status = mNetd->ipfwdEnabled(&ipfwdEnabled);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        EXPECT_TRUE(ipfwdEnabled);
 
-    status = mNetd->ipfwdEnabled(&ipfwdEnabled);
-    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    EXPECT_TRUE(ipfwdEnabled);
+        // Remove test one, verify again
+        status = mNetd->ipfwdDisableForwarding("TestRequester");
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+        expectIpfwdEnable(false);
+        status = mNetd->ipfwdEnabled(&ipfwdEnabled);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        EXPECT_FALSE(ipfwdEnabled);
+    } else {
+        // Disable all requesters
+        for (const auto& requester : requesterList) {
+            status = mNetd->ipfwdDisableForwarding(requester);
+            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        }
+
+        // After disable all requester, ipfwd should be disabled
+        expectIpfwdEnable(false);
+        status = mNetd->ipfwdEnabled(&ipfwdEnabled);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        EXPECT_FALSE(ipfwdEnabled);
+
+        // Enable them back
+        for (const auto& requester : requesterList) {
+            status = mNetd->ipfwdEnableForwarding(requester);
+            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        }
+
+        // ipfwd should be enabled
+        expectIpfwdEnable(true);
+        status = mNetd->ipfwdEnabled(&ipfwdEnabled);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        EXPECT_TRUE(ipfwdEnabled);
+    }
 }
 
 TEST_F(BinderTest, TestIpfwdAddRemoveInterfaceForward) {
@@ -2088,7 +2119,7 @@ TEST_F(BinderTest, TetherStartStopStatus) {
 
     status = mNetd->tetherStop();
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    expectProcessDoesNotExists(dnsdName);
+    expectProcessDoesNotExist(dnsdName);
 
     status = mNetd->tetherIsEnabled(&tetherEnabled);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();

@@ -71,7 +71,7 @@ class TetherController {
 
     bool enableForwarding(const char* requester);
     bool disableForwarding(const char* requester);
-    size_t forwardingRequestCount();
+    const std::set<std::string>& getIpfwdRequesterList() const;
 
     int startTethering(int num_addrs, char **dhcp_ranges);
     int startTethering(const std::vector<std::string>& dhcpRanges);
