@@ -235,6 +235,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     // Ipfw-related commands
     binder::Status ipfwdEnabled(bool* status) override;
+    binder::Status ipfwdGetRequesterList(std::vector<std::string>* requesterList) override;
     binder::Status ipfwdEnableForwarding(const std::string& requester) override;
     binder::Status ipfwdDisableForwarding(const std::string& requester) override;
     binder::Status ipfwdAddInterfaceForward(const std::string& fromIface,

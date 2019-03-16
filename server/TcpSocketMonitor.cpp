@@ -26,9 +26,12 @@
 #include <linux/tcp.h>
 
 #include "Controllers.h"
-#include "DumpWriter.h"
 #include "SockDiag.h"
 #include "TcpSocketMonitor.h"
+#include "netdutils/DumpWriter.h"
+
+using android::netdutils::DumpWriter;
+using android::netdutils::ScopedIndent;
 
 namespace android {
 namespace net {

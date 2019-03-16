@@ -47,10 +47,10 @@
 #include "TrafficController.h"
 #include "bpf/BpfMap.h"
 
-#include "DumpWriter.h"
 #include "FirewallController.h"
 #include "InterfaceController.h"
 #include "NetlinkListener.h"
+#include "netdutils/DumpWriter.h"
 #include "qtaguid/qtaguid.h"
 
 using namespace android::bpf;  // NOLINT(google-build-using-namespace): grandfathered
@@ -60,7 +60,9 @@ namespace net {
 
 using base::StringPrintf;
 using base::unique_fd;
+using netdutils::DumpWriter;
 using netdutils::extract;
+using netdutils::ScopedIndent;
 using netdutils::Slice;
 using netdutils::sSyscalls;
 using netdutils::Status;
@@ -93,7 +95,8 @@ const std::string uidMatchTypeToString(uint8_t match) {
 }
 
 bool TrafficController::hasUpdateDeviceStatsPermission(uid_t uid) {
-    return ((uid == AID_ROOT) || mPrivilegedUser.find(uid) != mPrivilegedUser.end());
+    return ((uid == AID_ROOT) || (uid == AID_SYSTEM) ||
+            mPrivilegedUser.find(uid) != mPrivilegedUser.end());
 }
 
 const std::string UidPermissionTypeToString(uint8_t permission) {

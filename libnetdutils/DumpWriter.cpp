@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "DumpWriter.h"
+#include "netdutils/DumpWriter.h"
 
 #include <unistd.h>
 #include <limits>
@@ -25,7 +25,7 @@
 using android::base::StringAppendV;
 
 namespace android {
-namespace net {
+namespace netdutils {
 
 namespace {
 
@@ -33,7 +33,6 @@ const char kIndentString[] = "  ";
 const size_t kIndentStringLen = strlen(kIndentString);
 
 }  // namespace
-
 
 DumpWriter::DumpWriter(int fd) : mIndentLevel(0), mFd(fd) {}
 
@@ -69,5 +68,5 @@ void DumpWriter::println(const char* fmt, ...) {
     println(line);
 }
 
-}  // namespace net
+}  // namespace netdutils
 }  // namespace android
