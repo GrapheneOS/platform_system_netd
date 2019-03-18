@@ -352,7 +352,7 @@ void ResolverController::sendNat64PrefixEvent(const Dns64Configuration::Nat64Pre
 }
 
 bool ResolverController::initResolver() {
-    dnsproxylistener_callbacks callbacks = {
+    ResolverNetdCallbacks callbacks = {
             .get_network_context = &getNetworkContextCallback,
             .get_dns64_prefix = &getDns64PrefixCallback,
             .check_calling_permission = &checkCallingPermissionCallback,
