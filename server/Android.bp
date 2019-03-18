@@ -34,13 +34,9 @@ aidl_interface {
         "binder/android/net/UidRangeParcel.aidl",
     ],
     api_dir: "binder/api",
-    // NDK doesn't support array now.
     backend: {
         cpp: {
             gen_log: true,
-        },
-        ndk: {
-            enabled: false,
         },
     },
     versions: ["1"],
