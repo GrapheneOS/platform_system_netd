@@ -110,7 +110,7 @@ typedef bool (*check_calling_permission_callback)(const char* permission);
 // TODO: Remove the callback after moving NAT64 prefix discovery out of netd to libnetd_resolv.
 typedef bool (*get_dns64_prefix_callback)(unsigned netid, in6_addr* prefix, uint8_t* prefix_len);
 
-struct dnsproxylistener_callbacks {
+struct ResolverNetdCallbacks {
     check_calling_permission_callback check_calling_permission;
     get_network_context_callback get_network_context;
     get_dns64_prefix_callback get_dns64_prefix;
@@ -150,7 +150,7 @@ LIBNETD_RESOLV_PUBLIC void resolv_get_private_dns_status_for_net(unsigned netid,
 // Delete the cache associated with a certain network
 LIBNETD_RESOLV_PUBLIC void resolv_delete_cache_for_net(unsigned netid);
 
-// Set callbacks to DnsProxyListener, and bring it up.
-LIBNETD_RESOLV_PUBLIC bool resolv_init(const dnsproxylistener_callbacks& callbacks);
+// Set callbacks and bring DnsResolver up.
+LIBNETD_RESOLV_PUBLIC bool resolv_init(const ResolverNetdCallbacks& callbacks);
 
 #endif  // NETD_RESOLV_RESOLV_H
