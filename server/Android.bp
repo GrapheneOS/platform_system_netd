@@ -56,6 +56,9 @@ aidl_interface {
     api_dir: "binder/api",
     // NDK doesn't support array now.
     backend: {
+        java: {
+            sdk_version: "28",
+        },
         ndk: {
             enabled: false,
         },
