@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,42 +14,37 @@
  * limitations under the License.
  */
 
-// #define LOG_NDEBUG 0
+#include "NdcDispatcher.h"
 
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
-#include <string.h>
 #include <linux/if.h>
+#include <netinet/in.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
-#define __STDC_FORMAT_MACROS 1
-#include <inttypes.h>
+#include <cinttypes>
+#include <string>
+#include <vector>
 
-#define LOG_TAG "CommandListener"
-
+#include <android-base/logging.h>
 #include <android-base/parseint.h>
+#include <android-base/stringprintf.h>
 #include <android-base/strings.h>
-#include <log/log.h>
-#include <netd_resolv/params.h>
+#include <android/multinetwork.h>
 #include <netdutils/ResponseCode.h>
 #include <netdutils/Status.h>
 #include <netdutils/StatusOr.h>
 #include <netutils/ifc.h>
-#include <sysutils/SocketClient.h>
 
-#include "CommandListener.h"
-#include "Controllers.h"
 #include "NetdConstants.h"
-
+#include "NetworkController.h"
+#include "Permission.h"
 #include "UidRanges.h"
 #include "netid_client.h"
-
-#include <string>
-#include <vector>
 
 using android::base::Join;
 using android::base::StringPrintf;
@@ -120,15 +115,18 @@ int stringToINetdPermission(const char* arg) {
 
 }  // namespace
 
-sp<INetd> CommandListener::mNetd;
+sp<INetd> NdcDispatcher::mNetd;
+sp<IDnsResolver> NdcDispatcher::mDnsResolver;
 
-CommandListener::CommandListener() : FrameworkListener(SOCKET_NAME, true) {
+NdcDispatcher::NdcDispatcher() {
     sp<IServiceManager> sm = defaultServiceManager();
-    sp<IBinder> binder = sm->getService(String16("netd"));
-    if (binder != nullptr) {
-        CommandListener::mNetd = interface_cast<INetd>(binder);
+    sp<IBinder> binderNetd = sm->getService(String16("netd"));
+    sp<IBinder> binderDnsResolver = sm->getService(String16("dnsresolver"));
+    if ((binderNetd != nullptr) && (binderDnsResolver != nullptr)) {
+        NdcDispatcher::mNetd = interface_cast<INetd>(binderNetd);
+        NdcDispatcher::mDnsResolver = interface_cast<IDnsResolver>(binderDnsResolver);
     } else {
-        ALOGE("Unable to get INetd service");
+        LOG(LOGLEVEL) << "Unable to get binder service";
         exit(1);
     }
     registerCmd(new InterfaceCmd());
@@ -143,12 +141,30 @@ CommandListener::CommandListener() : FrameworkListener(SOCKET_NAME, true) {
     registerCmd(new StrictCmd());
 }
 
-CommandListener::InterfaceCmd::InterfaceCmd() :
-                 NetdCommand("interface") {
+void NdcDispatcher::registerCmd(NdcNetdCommand* cmd) {
+    mCommands.push_back(cmd);
 }
 
-int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
-                                                      int argc, char **argv) {
+int NdcDispatcher::dispatchCommand(int argc, char** argv) {
+    if (argc >= CMD_ARGS_MAX) {
+        mNdc.sendMsg(500, "Command too long", false);
+    }
+
+    for (const auto* c : mCommands) {
+        if (c->getCommand() == argv[0]) {
+            if (c->runCommand(&mNdc, argc, argv)) {
+                mNdc.sendMsg(500, "Handler error", true);
+            }
+            return 0;
+        }
+    }
+    mNdc.sendMsg(500, "Command not recognized", false);
+    return 0;
+}
+
+NdcDispatcher::InterfaceCmd::InterfaceCmd() : NdcNetdCommand("interface") {}
+
+int NdcDispatcher::InterfaceCmd::runCommand(NdcClient* cli, int argc, char** argv) const {
     if (argc < 2) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
         return 0;
@@ -203,7 +219,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                 return 0;
             }
-            ALOGD("Setting iface cfg");
+            LOG(LOGLEVEL) << "Setting iface cfg";
 
             struct in_addr addr;
             int index = 5;
@@ -232,26 +248,27 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
 
             /* Process flags */
             for (int i = index; i < argc; i++) {
-                char *flag = argv[i];
+                char* flag = argv[i];
                 if (!strcmp(flag, "up")) {
-                    ALOGD("Trying to bring up %s", argv[2]);
+                    LOG(LOGLEVEL) << "Trying to bring up " << argv[2];
                     interfaceCfg.flags.push_back(toStdString(INetd::IF_STATE_UP()));
                     Status status = mNetd->interfaceSetCfg(interfaceCfg);
                     if (!status.isOk()) {
-                        ALOGE("Error upping interface");
+                        LOG(LOGLEVEL) << "Error upping interface";
                         errno = status.serviceSpecificErrorCode();
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to up interface", true);
                         ifc_close();
                         return 0;
                     }
                 } else if (!strcmp(flag, "down")) {
-                    ALOGD("Trying to bring down %s", argv[2]);
+                    LOG(LOGLEVEL) << "Trying to bring down " << argv[2];
                     interfaceCfg.flags.push_back(toStdString(INetd::IF_STATE_DOWN()));
                     Status status = mNetd->interfaceSetCfg(interfaceCfg);
                     if (!status.isOk()) {
-                        ALOGE("Error downing interface");
+                        LOG(LOGLEVEL) << "Error downing interface";
                         errno = status.serviceSpecificErrorCode();
-                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to down interface", true);
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to down interface",
+                                     true);
                         return 0;
                     }
                 } else if (!strcmp(flag, "broadcast")) {
@@ -274,7 +291,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             return 0;
         } else if (!strcmp(argv[1], "clearaddrs")) {
             // arglist: iface
-            ALOGD("Clearing all IP addresses on %s", argv[2]);
+            LOG(LOGLEVEL) << "Clearing all IP addresses on " << argv[2];
 
             mNetd->interfaceClearAddrs(std::string(argv[2]));
 
@@ -283,8 +300,8 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
         } else if (!strcmp(argv[1], "ipv6privacyextensions")) {
             if (argc != 4) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError,
-                        "Usage: interface ipv6privacyextensions <interface> <enable|disable>",
-                        false);
+                             "Usage: interface ipv6privacyextensions <interface> <enable|disable>",
+                             false);
                 return 0;
             }
             int enable = !strncmp(argv[3], "enable", 7);
@@ -293,15 +310,14 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 cli->sendMsg(ResponseCode::CommandOkay, "IPv6 privacy extensions changed", false);
             } else {
                 errno = status.serviceSpecificErrorCode();
-                cli->sendMsg(ResponseCode::OperationFailed,
-                        "Failed to set ipv6 privacy extensions", true);
+                cli->sendMsg(ResponseCode::OperationFailed, "Failed to set ipv6 privacy extensions",
+                             true);
             }
             return 0;
         } else if (!strcmp(argv[1], "ipv6")) {
             if (argc != 4) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError,
-                        "Usage: interface ipv6 <interface> <enable|disable>",
-                        false);
+                             "Usage: interface ipv6 <interface> <enable|disable>", false);
                 return 0;
             }
 
@@ -311,14 +327,13 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 cli->sendMsg(ResponseCode::CommandOkay, "IPv6 state changed", false);
             } else {
                 errno = status.serviceSpecificErrorCode();
-                cli->sendMsg(ResponseCode::OperationFailed,
-                        "Failed to change IPv6 state", true);
+                cli->sendMsg(ResponseCode::OperationFailed, "Failed to change IPv6 state", true);
             }
             return 0;
         } else if (!strcmp(argv[1], "setmtu")) {
             if (argc != 4) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError,
-                        "Usage: interface setmtu <interface> <val>", false);
+                             "Usage: interface setmtu <interface> <val>", false);
                 return 0;
             }
 
@@ -329,8 +344,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 cli->sendMsg(ResponseCode::CommandOkay, "MTU changed", false);
             } else {
                 errno = status.serviceSpecificErrorCode();
-                cli->sendMsg(ResponseCode::OperationFailed,
-                        "Failed to set MTU", true);
+                cli->sendMsg(ResponseCode::OperationFailed, "Failed to set MTU", true);
             }
             return 0;
         } else {
@@ -341,11 +355,9 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
     return 0;
 }
 
-CommandListener::IpFwdCmd::IpFwdCmd() :
-                 NetdCommand("ipfwd") {
-}
+NdcDispatcher::IpFwdCmd::IpFwdCmd() : NdcNetdCommand("ipfwd") {}
 
-int CommandListener::IpFwdCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+int NdcDispatcher::IpFwdCmd::runCommand(NdcClient* cli, int argc, char** argv) const {
     bool matched = false;
     Status status;
 
@@ -397,12 +409,9 @@ int CommandListener::IpFwdCmd::runCommand(SocketClient *cli, int argc, char **ar
     return 0;
 }
 
-CommandListener::TetherCmd::TetherCmd() :
-                 NetdCommand("tether") {
-}
+NdcDispatcher::TetherCmd::TetherCmd() : NdcNetdCommand("tether") {}
 
-int CommandListener::TetherCmd::runCommand(SocketClient *cli,
-                                                      int argc, char **argv) {
+int NdcDispatcher::TetherCmd::runCommand(NdcClient* cli, int argc, char** argv) const {
     Status status;
 
     if (argc < 2) {
@@ -425,18 +434,6 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
             mNetd->tetherInterfaceList(&ifList);
             for (const auto& ifname : ifList) {
                 cli->sendMsg(ResponseCode::TetherInterfaceListResult, ifname.c_str(), false);
-            }
-        } else if (!strcmp(argv[1], "dns") && !strcmp(argv[2], "list")) {
-            // It is not supported in binder currently since NMS doesn't need DnsNetId.
-            // TODO: Fix it after migrate to ndc.
-            char netIdStr[UINT32_STRLEN];
-            snprintf(netIdStr, sizeof(netIdStr), "%u", gCtls->tetherCtrl.getDnsNetId());
-            cli->sendMsg(ResponseCode::TetherDnsFwdNetIdResult, netIdStr, false);
-
-            std::vector<std::string> dnsList;
-            mNetd->tetherDnsList(&dnsList);
-            for (const auto& fwdr : dnsList) {
-                cli->sendMsg(ResponseCode::TetherDnsFwdTgtListResult, fwdr.c_str(), false);
             }
         }
     } else if (!strcmp(argv[1], "start")) {
@@ -506,12 +503,9 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
     return 0;
 }
 
-CommandListener::NatCmd::NatCmd() :
-                 NetdCommand("nat") {
-}
+NdcDispatcher::NatCmd::NatCmd() : NdcNetdCommand("nat") {}
 
-int CommandListener::NatCmd::runCommand(SocketClient *cli,
-                                                      int argc, char **argv) {
+int NdcDispatcher::NatCmd::runCommand(NdcClient* cli, int argc, char** argv) const {
     Status status;
 
     if (argc < 5) {
@@ -541,18 +535,17 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
     return 0;
 }
 
-CommandListener::BandwidthControlCmd::BandwidthControlCmd() :
-    NetdCommand("bandwidth") {
-}
+NdcDispatcher::BandwidthControlCmd::BandwidthControlCmd() : NdcNetdCommand("bandwidth") {}
 
-void CommandListener::BandwidthControlCmd::sendGenericSyntaxError(SocketClient *cli, const char *usageMsg) {
-    char *msg;
+void NdcDispatcher::BandwidthControlCmd::sendGenericSyntaxError(NdcClient* cli,
+                                                                const char* usageMsg) const {
+    char* msg;
     asprintf(&msg, "Usage: bandwidth %s", usageMsg);
     cli->sendMsg(ResponseCode::CommandSyntaxError, msg, false);
     free(msg);
 }
 
-void CommandListener::BandwidthControlCmd::sendGenericOkFail(SocketClient *cli, int cond) {
+void NdcDispatcher::BandwidthControlCmd::sendGenericOkFail(NdcClient* cli, int cond) const {
     if (!cond) {
         cli->sendMsg(ResponseCode::CommandOkay, "Bandwidth command succeeeded", false);
     } else {
@@ -560,17 +553,18 @@ void CommandListener::BandwidthControlCmd::sendGenericOkFail(SocketClient *cli, 
     }
 }
 
-void CommandListener::BandwidthControlCmd::sendGenericOpFailed(SocketClient *cli, const char *errMsg) {
+void NdcDispatcher::BandwidthControlCmd::sendGenericOpFailed(NdcClient* cli,
+                                                             const char* errMsg) const {
     cli->sendMsg(ResponseCode::OperationFailed, errMsg, false);
 }
 
-int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+int NdcDispatcher::BandwidthControlCmd::runCommand(NdcClient* cli, int argc, char** argv) const {
     if (argc < 2) {
         sendGenericSyntaxError(cli, "<cmds> <args...>");
         return 0;
     }
 
-    ALOGV("bwctrlcmd: argc=%d %s %s ...", argc, argv[0], argv[1]);
+    LOG(LOGLEVEL) << StringPrintf("bwctrlcmd: argc=%d %s %s ...", argc, argv[0], argv[1]).c_str();
 
     if (!strcmp(argv[1], "removeiquota") || !strcmp(argv[1], "riq")) {
         if (argc != 3) {
@@ -580,7 +574,6 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         int rc = !mNetd->bandwidthRemoveInterfaceQuota(argv[2]).isOk();
         sendGenericOkFail(cli, rc);
         return 0;
-
     }
     if (!strcmp(argv[1], "setiquota") || !strcmp(argv[1], "siq")) {
         if (argc != 4) {
@@ -592,7 +585,6 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         int rc = !mNetd->bandwidthSetInterfaceQuota(argv[2], bytes).isOk();
         sendGenericOkFail(cli, rc);
         return 0;
-
     }
     if (!strcmp(argv[1], "addnaughtyapps") || !strcmp(argv[1], "ana")) {
         if (argc < 3) {
@@ -675,7 +667,6 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         int rc = !mNetd->bandwidthSetInterfaceAlert(argv[2], bytes).isOk();
         sendGenericOkFail(cli, rc);
         return 0;
-
     }
     if (!strcmp(argv[1], "removeinterfacealert") || !strcmp(argv[1], "ria")) {
         if (argc != 3) {
@@ -685,25 +676,23 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         int rc = !mNetd->bandwidthRemoveInterfaceAlert(argv[2]).isOk();
         sendGenericOkFail(cli, rc);
         return 0;
-
     }
 
     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown bandwidth cmd", false);
     return 0;
 }
 
-CommandListener::IdletimerControlCmd::IdletimerControlCmd() :
-    NetdCommand("idletimer") {
-}
+NdcDispatcher::IdletimerControlCmd::IdletimerControlCmd() : NdcNetdCommand("idletimer") {}
 
-int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc, char **argv) {
-  // TODO(ashish): Change the error statements
+int NdcDispatcher::IdletimerControlCmd::runCommand(NdcClient* cli, int argc, char** argv) const {
+    // TODO(ashish): Change the error statements
     if (argc < 2) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
         return 0;
     }
 
-    ALOGV("idletimerctrlcmd: argc=%d %s %s ...", argc, argv[0], argv[1]);
+    LOG(LOGLEVEL)
+            << StringPrintf("idletimerctrlcmd: argc=%d %s %s ...", argc, argv[0], argv[1]).c_str();
 
     if (!strcmp(argv[1], "add")) {
         if (argc != 5) {
@@ -717,7 +706,7 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
         if (!status.isOk()) {
             cli->sendMsg(ResponseCode::OperationFailed, "Failed to add interface", false);
         } else {
-          cli->sendMsg(ResponseCode::CommandOkay,  "Add success", false);
+            cli->sendMsg(ResponseCode::CommandOkay, "Add success", false);
         }
         return 0;
     }
@@ -732,7 +721,7 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
         if (!status.isOk()) {
             cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove interface", false);
         } else {
-          cli->sendMsg(ResponseCode::CommandOkay, "Remove success", false);
+            cli->sendMsg(ResponseCode::CommandOkay, "Remove success", false);
         }
         return 0;
     }
@@ -741,11 +730,9 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
     return 0;
 }
 
-CommandListener::FirewallCmd::FirewallCmd() :
-    NetdCommand("firewall") {
-}
+NdcDispatcher::FirewallCmd::FirewallCmd() : NdcNetdCommand("firewall") {}
 
-int CommandListener::FirewallCmd::sendGenericOkFail(SocketClient *cli, int cond) {
+int NdcDispatcher::FirewallCmd::sendGenericOkFail(NdcClient* cli, int cond) const {
     if (!cond) {
         cli->sendMsg(ResponseCode::CommandOkay, "Firewall command succeeded", false);
     } else {
@@ -754,29 +741,29 @@ int CommandListener::FirewallCmd::sendGenericOkFail(SocketClient *cli, int cond)
     return 0;
 }
 
-int CommandListener::FirewallCmd::parseRule(const char* arg) {
+int NdcDispatcher::FirewallCmd::parseRule(const char* arg) {
     if (!strcmp(arg, "allow")) {
         return INetd::FIREWALL_RULE_ALLOW;
     } else if (!strcmp(arg, "deny")) {
         return INetd::FIREWALL_RULE_DENY;
     } else {
-        ALOGE("failed to parse uid rule (%s)", arg);
+        LOG(LOGLEVEL) << "failed to parse uid rule " << arg;
         return INetd::FIREWALL_RULE_ALLOW;
     }
 }
 
-int CommandListener::FirewallCmd::parseFirewallType(const char* arg) {
+int NdcDispatcher::FirewallCmd::parseFirewallType(const char* arg) {
     if (!strcmp(arg, "whitelist")) {
         return INetd::FIREWALL_WHITELIST;
     } else if (!strcmp(arg, "blacklist")) {
         return INetd::FIREWALL_BLACKLIST;
     } else {
-        ALOGE("failed to parse firewall type (%s)", arg);
+        LOG(LOGLEVEL) << "failed to parse firewall type " << arg;
         return INetd::FIREWALL_BLACKLIST;
     }
 }
 
-int CommandListener::FirewallCmd::parseChildChain(const char* arg) {
+int NdcDispatcher::FirewallCmd::parseChildChain(const char* arg) {
     if (!strcmp(arg, "dozable")) {
         return INetd::FIREWALL_CHAIN_DOZABLE;
     } else if (!strcmp(arg, "standby")) {
@@ -786,13 +773,12 @@ int CommandListener::FirewallCmd::parseChildChain(const char* arg) {
     } else if (!strcmp(arg, "none")) {
         return INetd::FIREWALL_CHAIN_NONE;
     } else {
-        ALOGE("failed to parse child firewall chain (%s)", arg);
+        LOG(LOGLEVEL) << "failed to parse child firewall chain " << arg;
         return -1;
     }
 }
 
-int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
-        char **argv) {
+int NdcDispatcher::FirewallCmd::runCommand(NdcClient* cli, int argc, char** argv) const {
     if (argc < 2) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing command", false);
         return 0;
@@ -801,7 +787,7 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
     if (!strcmp(argv[1], "enable")) {
         if (argc != 3) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
-                        "Usage: firewall enable <whitelist|blacklist>", false);
+                         "Usage: firewall enable <whitelist|blacklist>", false);
             return 0;
         }
         int res = !mNetd->firewallSetFirewallType(parseFirewallType(argv[2])).isOk();
@@ -829,8 +815,7 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
         int childChain = parseChildChain(argv[2]);
         if (childChain == -1) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
-                         "Invalid chain name. Valid names are: <dozable|standby|none>",
-                         false);
+                         "Invalid chain name. Valid names are: <dozable|standby|none>", false);
             return 0;
         }
         uid_t uid = 0;
@@ -842,8 +827,7 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
     if (!strcmp(argv[1], "enable_chain")) {
         if (argc != 3) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
-                         "Usage: firewall enable_chain <dozable|standby>",
-                         false);
+                         "Usage: firewall enable_chain <dozable|standby>", false);
             return 0;
         }
         int res = !mNetd->firewallEnableChildChain(parseChildChain(argv[2]), true).isOk();
@@ -853,8 +837,7 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
     if (!strcmp(argv[1], "disable_chain")) {
         if (argc != 3) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
-                         "Usage: firewall disable_chain <dozable|standby>",
-                         false);
+                         "Usage: firewall disable_chain <dozable|standby>", false);
             return 0;
         }
         int res = !mNetd->firewallEnableChildChain(parseChildChain(argv[2]), false).isOk();
@@ -865,10 +848,9 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
     return 0;
 }
 
-CommandListener::ClatdCmd::ClatdCmd() : NetdCommand("clatd") {
-}
+NdcDispatcher::ClatdCmd::ClatdCmd() : NdcNetdCommand("clatd") {}
 
-int CommandListener::ClatdCmd::runCommand(SocketClient* cli, int argc, char** argv) {
+int NdcDispatcher::ClatdCmd::runCommand(NdcClient* cli, int argc, char** argv) const {
     int rc = 0;
     if (argc < 3) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
@@ -900,11 +882,9 @@ int CommandListener::ClatdCmd::runCommand(SocketClient* cli, int argc, char** ar
     return 0;
 }
 
-CommandListener::StrictCmd::StrictCmd() :
-    NetdCommand("strict") {
-}
+NdcDispatcher::StrictCmd::StrictCmd() : NdcNetdCommand("strict") {}
 
-int CommandListener::StrictCmd::sendGenericOkFail(SocketClient *cli, int cond) {
+int NdcDispatcher::StrictCmd::sendGenericOkFail(NdcClient* cli, int cond) const {
     if (!cond) {
         cli->sendMsg(ResponseCode::CommandOkay, "Strict command succeeded", false);
     } else {
@@ -913,7 +893,7 @@ int CommandListener::StrictCmd::sendGenericOkFail(SocketClient *cli, int cond) {
     return 0;
 }
 
-int CommandListener::StrictCmd::parsePenalty(const char* arg) {
+int NdcDispatcher::StrictCmd::parsePenalty(const char* arg) {
     if (!strcmp(arg, "reject")) {
         return INetd::PENALTY_POLICY_REJECT;
     } else if (!strcmp(arg, "log")) {
@@ -925,8 +905,7 @@ int CommandListener::StrictCmd::parsePenalty(const char* arg) {
     }
 }
 
-int CommandListener::StrictCmd::runCommand(SocketClient *cli, int argc,
-        char **argv) {
+int NdcDispatcher::StrictCmd::runCommand(NdcClient* cli, int argc, char** argv) const {
     if (argc < 2) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing command", false);
         return 0;
@@ -935,8 +914,7 @@ int CommandListener::StrictCmd::runCommand(SocketClient *cli, int argc,
     if (!strcmp(argv[1], "set_uid_cleartext_policy")) {
         if (argc != 4) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
-                         "Usage: strict set_uid_cleartext_policy <uid> <accept|log|reject>",
-                         false);
+                         "Usage: strict set_uid_cleartext_policy <uid> <accept|log|reject>", false);
             return 0;
         }
 
@@ -962,29 +940,28 @@ int CommandListener::StrictCmd::runCommand(SocketClient *cli, int argc,
     return 0;
 }
 
-CommandListener::NetworkCommand::NetworkCommand() : NetdCommand("network") {
-}
+NdcDispatcher::NetworkCommand::NetworkCommand() : NdcNetdCommand("network") {}
 
-int CommandListener::NetworkCommand::syntaxError(SocketClient* client, const char* message) {
-    client->sendMsg(ResponseCode::CommandSyntaxError, message, false);
+int NdcDispatcher::NetworkCommand::syntaxError(NdcClient* cli, const char* message) const {
+    cli->sendMsg(ResponseCode::CommandSyntaxError, message, false);
     return 0;
 }
 
-int CommandListener::NetworkCommand::operationError(SocketClient* client, const char* message,
-                                                    int ret) {
+int NdcDispatcher::NetworkCommand::operationError(NdcClient* cli, const char* message,
+                                                  int ret) const {
     errno = ret;
-    client->sendMsg(ResponseCode::OperationFailed, message, true);
+    cli->sendMsg(ResponseCode::OperationFailed, message, true);
     return 0;
 }
 
-int CommandListener::NetworkCommand::success(SocketClient* client) {
-    client->sendMsg(ResponseCode::CommandOkay, "success", false);
+int NdcDispatcher::NetworkCommand::success(NdcClient* cli) const {
+    cli->sendMsg(ResponseCode::CommandOkay, "success", false);
     return 0;
 }
 
-int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, char** argv) {
+int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** argv) const {
     if (argc < 2) {
-        return syntaxError(client, "Missing argument");
+        return syntaxError(cli, "Missing argument");
     }
 
     //    0      1      2      3      4       5         6            7           8
@@ -994,7 +971,7 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     // nexthop may be either an IPv4/IPv6 address or one of "unreachable" or "throw".
     if (!strcmp(argv[1], "route")) {
         if (argc < 6 || argc > 9) {
-            return syntaxError(client, "Incorrect number of arguments");
+            return syntaxError(cli, "Incorrect number of arguments");
         }
 
         int nextArg = 2;
@@ -1003,19 +980,19 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (!strcmp(argv[nextArg], "legacy")) {
             ++nextArg;
             legacy = true;
-            PARSE_UINT_RETURN_IF_FAIL(client, argv[nextArg++], uid, "Unknown argument", false);
+            PARSE_UINT_RETURN_IF_FAIL(cli, argv[nextArg++], uid, "Unknown argument", false);
         }
 
         bool add = false;
         if (!strcmp(argv[nextArg], "add")) {
             add = true;
         } else if (strcmp(argv[nextArg], "remove")) {
-            return syntaxError(client, "Unknown argument");
+            return syntaxError(cli, "Unknown argument");
         }
         ++nextArg;
 
         if (argc < nextArg + 3 || argc > nextArg + 4) {
-            return syntaxError(client, "Incorrect number of arguments");
+            return syntaxError(cli, "Incorrect number of arguments");
         }
 
         unsigned netId = stringToNetId(argv[nextArg++]);
@@ -1035,11 +1012,11 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
 
         if (!status.isOk()) {
-            return operationError(client, add ? "addRoute() failed" : "removeRoute() failed",
+            return operationError(cli, add ? "addRoute() failed" : "removeRoute() failed",
                                   status.serviceSpecificErrorCode());
         }
 
-        return success(client);
+        return success(cli);
     }
 
     //    0        1       2       3         4
@@ -1047,23 +1024,23 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     // network interface remove <netId> <interface>
     if (!strcmp(argv[1], "interface")) {
         if (argc != 5) {
-            return syntaxError(client, "Missing argument");
+            return syntaxError(cli, "Missing argument");
         }
         unsigned netId = stringToNetId(argv[3]);
         if (!strcmp(argv[2], "add")) {
             if (Status status = mNetd->networkAddInterface(netId, argv[4]); !status.isOk()) {
-                return operationError(client, "addInterfaceToNetwork() failed",
+                return operationError(cli, "addInterfaceToNetwork() failed",
                                       status.serviceSpecificErrorCode());
             }
         } else if (!strcmp(argv[2], "remove")) {
             if (Status status = mNetd->networkRemoveInterface(netId, argv[4]); !status.isOk()) {
-                return operationError(client, "removeInterfaceFromNetwork() failed",
+                return operationError(cli, "removeInterfaceFromNetwork() failed",
                                       status.serviceSpecificErrorCode());
             }
         } else {
-            return syntaxError(client, "Unknown argument");
+            return syntaxError(cli, "Unknown argument");
         }
-        return success(client);
+        return success(cli);
     }
 
     //    0      1       2         3
@@ -1073,47 +1050,47 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     // network create <netId> vpn <secure>
     if (!strcmp(argv[1], "create")) {
         if (argc < 3) {
-            return syntaxError(client, "Missing argument");
+            return syntaxError(cli, "Missing argument");
         }
         unsigned netId = stringToNetId(argv[2]);
         if (argc == 6 && !strcmp(argv[3], "vpn")) {
             bool secure = strtol(argv[4], nullptr, 2);
             if (Status status = mNetd->networkCreateVpn(netId, secure); !status.isOk()) {
-                return operationError(client, "createVirtualNetwork() failed",
+                return operationError(cli, "createVirtualNetwork() failed",
                                       status.serviceSpecificErrorCode());
             }
         } else if (argc > 4) {
-            return syntaxError(client, "Unknown trailing argument(s)");
+            return syntaxError(cli, "Unknown trailing argument(s)");
         } else {
             int permission = INetd::PERMISSION_NONE;
             if (argc == 4) {
                 permission = stringToINetdPermission(argv[3]);
                 if (permission == INetd::PERMISSION_NONE) {
-                    return syntaxError(client, "Unknown permission");
+                    return syntaxError(cli, "Unknown permission");
                 }
             }
             if (Status status = mNetd->networkCreatePhysical(netId, permission); !status.isOk()) {
-                return operationError(client, "createPhysicalNetwork() failed",
+                return operationError(cli, "createPhysicalNetwork() failed",
                                       status.serviceSpecificErrorCode());
             }
         }
-        return success(client);
+        return success(cli);
     }
 
     //    0       1       2
     // network destroy <netId>
     if (!strcmp(argv[1], "destroy")) {
         if (argc != 3) {
-            return syntaxError(client, "Incorrect number of arguments");
+            return syntaxError(cli, "Incorrect number of arguments");
         }
         unsigned netId = stringToNetId(argv[2]);
         // Both of these functions manage their own locking internally.
         if (Status status = mNetd->networkDestroy(netId); !status.isOk()) {
-            return operationError(client, "destroyNetwork() failed",
+            return operationError(cli, "destroyNetwork() failed",
                                   status.serviceSpecificErrorCode());
         }
-        // TODO: add clearing DNS back after NDC migrating to binder ver.
-        return success(client);
+        mDnsResolver->clearResolverConfiguration(netId);
+        return success(cli);
     }
 
     //    0       1      2      3
@@ -1121,22 +1098,22 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     // network default clear
     if (!strcmp(argv[1], "default")) {
         if (argc < 3) {
-            return syntaxError(client, "Missing argument");
+            return syntaxError(cli, "Missing argument");
         }
         unsigned netId = NETID_UNSET;
         if (!strcmp(argv[2], "set")) {
             if (argc < 4) {
-                return syntaxError(client, "Missing netId");
+                return syntaxError(cli, "Missing netId");
             }
             netId = stringToNetId(argv[3]);
         } else if (strcmp(argv[2], "clear")) {
-            return syntaxError(client, "Unknown argument");
+            return syntaxError(cli, "Unknown argument");
         }
         if (Status status = mNetd->networkSetDefault(netId); status.isOk()) {
-            return operationError(client, "setDefaultNetwork() failed",
+            return operationError(cli, "setDefaultNetwork() failed",
                                   status.serviceSpecificErrorCode());
         }
-        return success(client);
+        return success(cli);
     }
 
     //    0        1         2      3        4          5
@@ -1146,27 +1123,27 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     // network permission network clear   <netId> ...
     if (!strcmp(argv[1], "permission")) {
         if (argc < 5) {
-            return syntaxError(client, "Missing argument");
+            return syntaxError(cli, "Missing argument");
         }
         int nextArg = 4;
         int permission = INetd::PERMISSION_NONE;
         if (!strcmp(argv[3], "set")) {
             permission = stringToINetdPermission(argv[4]);
             if (permission == INetd::PERMISSION_NONE) {
-                return syntaxError(client, "Unknown permission");
+                return syntaxError(cli, "Unknown permission");
             }
             nextArg = 5;
         } else if (strcmp(argv[3], "clear")) {
-            return syntaxError(client, "Unknown argument");
+            return syntaxError(cli, "Unknown argument");
         }
         if (nextArg == argc) {
-            return syntaxError(client, "Missing id");
+            return syntaxError(cli, "Missing id");
         }
 
         bool userPermissions = !strcmp(argv[2], "user");
         bool networkPermissions = !strcmp(argv[2], "network");
         if (!userPermissions && !networkPermissions) {
-            return syntaxError(client, "Unknown argument");
+            return syntaxError(cli, "Unknown argument");
         }
 
         std::vector<int32_t> ids;
@@ -1175,7 +1152,7 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
                 char* endPtr;
                 unsigned id = strtoul(argv[nextArg], &endPtr, 0);
                 if (!*argv[nextArg] || *endPtr) {
-                    return syntaxError(client, "Invalid id");
+                    return syntaxError(cli, "Invalid id");
                 }
                 ids.push_back(id);
             } else {
@@ -1190,12 +1167,12 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
             for (auto netId : ids) {
                 Status status = mNetd->networkSetPermissionForNetwork(netId, permission);
                 if (!status.isOk())
-                    return operationError(client, "setPermissionForNetworks() failed",
+                    return operationError(cli, "setPermissionForNetworks() failed",
                                           status.serviceSpecificErrorCode());
             }
         }
 
-        return success(client);
+        return success(cli);
     }
 
     //    0      1     2       3           4
@@ -1203,29 +1180,29 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     // network users remove <netId> [<uid>[-<uid>]] ...
     if (!strcmp(argv[1], "users")) {
         if (argc < 4) {
-            return syntaxError(client, "Missing argument");
+            return syntaxError(cli, "Missing argument");
         }
         unsigned netId = stringToNetId(argv[3]);
         UidRanges uidRanges;
         if (!uidRanges.parseFrom(argc - 4, argv + 4)) {
-            return syntaxError(client, "Invalid UIDs");
+            return syntaxError(cli, "Invalid UIDs");
         }
         if (!strcmp(argv[2], "add")) {
             if (Status status = mNetd->networkAddUidRanges(netId, uidRanges.getRanges());
                 !status.isOk()) {
-                return operationError(client, "addUsersToNetwork() failed",
+                return operationError(cli, "addUsersToNetwork() failed",
                                       status.serviceSpecificErrorCode());
             }
         } else if (!strcmp(argv[2], "remove")) {
             if (Status status = mNetd->networkRemoveUidRanges(netId, uidRanges.getRanges());
                 !status.isOk()) {
-                return operationError(client, "removeUsersFromNetwork() failed",
+                return operationError(cli, "removeUsersFromNetwork() failed",
                                       status.serviceSpecificErrorCode());
             }
         } else {
-            return syntaxError(client, "Unknown argument");
+            return syntaxError(cli, "Unknown argument");
         }
-        return success(client);
+        return success(cli);
     }
 
     //    0       1      2     3
@@ -1233,12 +1210,12 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     // network protect  deny <uid> ...
     if (!strcmp(argv[1], "protect")) {
         if (argc < 4) {
-            return syntaxError(client, "Missing argument");
+            return syntaxError(cli, "Missing argument");
         }
         std::vector<uid_t> uids;
         for (int i = 3; i < argc; ++i) {
             uid_t uid = 0;
-            PARSE_UINT_RETURN_IF_FAIL(client, argv[i], uid, "Unknown argument", false);
+            PARSE_UINT_RETURN_IF_FAIL(cli, argv[i], uid, "Unknown argument", false);
             uids.push_back(uid);
         }
         if (!strcmp(argv[2], "allow")) {
@@ -1250,12 +1227,12 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
                 mNetd->networkSetProtectDeny(uid);
             }
         } else {
-            return syntaxError(client, "Unknown argument");
+            return syntaxError(cli, "Unknown argument");
         }
-        return success(client);
+        return success(cli);
     }
 
-    return syntaxError(client, "Unknown argument");
+    return syntaxError(cli, "Unknown argument");
 }
 
 }  // namespace net
