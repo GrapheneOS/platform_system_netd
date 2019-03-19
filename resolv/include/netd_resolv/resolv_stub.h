@@ -58,7 +58,7 @@ extern struct ResolvStub {
 
     bool (*resolv_has_nameservers)(unsigned netid);
 
-    bool (*resolv_init)(const dnsproxylistener_callbacks& callbacks);
+    bool (*resolv_init)(const ResolverNetdCallbacks& callbacks);
 
     int (*resolv_set_nameservers_for_net)(unsigned netid, const char** servers, unsigned numservers,
                                           const char* domains, const res_params* params);

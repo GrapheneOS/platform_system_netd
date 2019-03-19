@@ -16,6 +16,8 @@
 
 #define LOG_TAG "DnsResolverService"
 
+#include "DnsResolverService.h"
+
 #include <set>
 #include <vector>
 
@@ -26,7 +28,7 @@
 #include <log/log.h>
 #include <private/android_filesystem_config.h>  // AID_SYSTEM
 
-#include "DnsResolverService.h"
+#include "DnsResolver.h"
 #include "NetdPermissions.h"  // PERM_*
 
 using android::base::Join;
@@ -53,10 +55,10 @@ namespace {
 
 }  // namespace
 
-binder_status_t DnsResolverService::start(const dnsproxylistener_callbacks& callbacks) {
+binder_status_t DnsResolverService::start() {
     // TODO: Add disableBackgroundScheduling(true) after libbinder_ndk support it. b/126506010
     // NetdNativeService does call disableBackgroundScheduling currently, so it is fine now.
-    DnsResolverService* resolverService = new DnsResolverService(callbacks);
+    DnsResolverService* resolverService = new DnsResolverService();
     binder_status_t status =
             AServiceManager_addService(resolverService->asBinder().get(), getServiceName());
     if (status != STATUS_OK) {
@@ -82,7 +84,7 @@ binder_status_t DnsResolverService::start(const dnsproxylistener_callbacks& call
         const std::vector<const char*>& permissions) {
     // TODO: Remove callback and move this to unnamed namespace after libbiner_ndk supports
     // check_permission.
-    if (!mCallbacks.check_calling_permission) {
+    if (!gResNetdCallbacks.check_calling_permission) {
         return ::ndk::ScopedAStatus(AStatus_fromExceptionCodeWithMessage(
                 EX_NULL_POINTER, "check_calling_permission is null"));
     }
@@ -103,7 +105,7 @@ binder_status_t DnsResolverService::start(const dnsproxylistener_callbacks& call
     }
 
     for (const char* permission : permissions) {
-        if (mCallbacks.check_calling_permission(permission)) {
+        if (gResNetdCallbacks.check_calling_permission(permission)) {
             return ::ndk::ScopedAStatus(AStatus_newOk());
         }
     }

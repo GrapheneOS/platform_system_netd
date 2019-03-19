@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "DnsProxyListener.h"
+
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
@@ -33,8 +35,6 @@
 #include <list>
 #include <vector>
 
-#include <android-base/logging.h>
-#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android/multinetwork.h>  // ResNsendFlags
 #include <cutils/misc.h>           // FIRST_APPLICATION_UID
@@ -47,8 +47,7 @@
 #include <sysutils/SocketClient.h>
 
 // TODO: Considering moving ResponseCode.h Stopwatch.h thread_util.h to libnetdutils.
-#include "DnsProxyListener.h"
-#include "DnsResolverService.h"
+#include "DnsResolver.h"
 #include "NetdClient.h"  // NETID_USE_LOCAL_NAMESERVERS
 #include "NetdPermissions.h"
 #include "ResolverEventReporter.h"
@@ -60,32 +59,6 @@
 #include "thread_util.h"
 
 using aidl::android::net::metrics::INetdEventListener;
-
-static android::net::DnsProxyListener gDnsProxyListener;
-
-bool resolv_init(const dnsproxylistener_callbacks& callbacks) {
-    android::base::InitLogging(/*argv=*/nullptr);
-    android::base::SetDefaultTag("libnetd_resolv");
-    ALOGI("Initializing resolver");
-    const std::string logSeverityStr =
-            android::base::GetProperty("persist.sys.nw_dns_resolver_log", "WARNING");
-    android::base::SetMinimumLogSeverity(logSeverityStrToEnum(logSeverityStr));
-
-    if (!gDnsProxyListener.setCallbacks(callbacks)) {
-        ALOGE("Unable to set callbacks to DnsProxyListener");
-        return false;
-    }
-    if (gDnsProxyListener.startListener()) {
-        ALOGE("Unable to start DnsProxyListener (%s)", strerror(errno));
-        return false;
-    }
-    binder_status_t ret;
-    if ((ret = android::net::DnsResolverService::start(callbacks)) != STATUS_OK) {
-        ALOGE("Unable to start DnsResolverService: %d", ret);
-        return false;
-    }
-    return true;
-}
 
 namespace android {
 namespace net {
@@ -166,7 +139,7 @@ bool hasPermissionToBypassPrivateDns(uid_t uid) {
     for (const char* const permission :
          {PERM_CONNECTIVITY_USE_RESTRICTED_NETWORKS, PERM_NETWORK_BYPASS_PRIVATE_DNS,
           PERM_MAINLINE_NETWORK_STACK}) {
-        if (gDnsProxyListener.mCallbacks.check_calling_permission(permission)) {
+        if (gResNetdCallbacks.check_calling_permission(permission)) {
             return true;
         }
     }
@@ -506,7 +479,7 @@ bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, addrinf
 bool getDns64Prefix(unsigned netId, netdutils::IPPrefix* prefix) {
     in6_addr v6addr{};
     uint8_t prefixLen = 0;
-    if (!gDnsProxyListener.mCallbacks.get_dns64_prefix(netId, &v6addr, &prefixLen)) {
+    if (!gResNetdCallbacks.get_dns64_prefix(netId, &v6addr, &prefixLen)) {
         return false;
     }
     const netdutils::IPAddress ipv6(v6addr);
@@ -515,12 +488,6 @@ bool getDns64Prefix(unsigned netId, netdutils::IPPrefix* prefix) {
 }
 
 }  // namespace
-
-bool DnsProxyListener::setCallbacks(const dnsproxylistener_callbacks& callbacks) {
-    mCallbacks = callbacks;
-    return mCallbacks.check_calling_permission && mCallbacks.get_network_context &&
-           mCallbacks.get_dns64_prefix;
-}
 
 DnsProxyListener::DnsProxyListener() : FrameworkListener(SOCKET_NAME) {
     registerCmd(new GetAddrInfoCmd());
@@ -765,7 +732,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     const uid_t uid = cli->getUid();
 
     android_net_context netcontext;
-    gDnsProxyListener.mCallbacks.get_network_context(netId, uid, &netcontext);
+    gResNetdCallbacks.get_network_context(netId, uid, &netcontext);
 
     if (useLocalNameservers) {
         netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
@@ -820,7 +787,7 @@ int DnsProxyListener::ResNSendCommand::runCommand(SocketClient* cli, int argc, c
     }
 
     android_net_context netcontext;
-    gDnsProxyListener.mCallbacks.get_network_context(netId, uid, &netcontext);
+    gResNetdCallbacks.get_network_context(netId, uid, &netcontext);
     if (checkAndClearUseLocalNameserversFlag(&netId)) {
         netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
     }
@@ -949,7 +916,7 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
     }
 
     android_net_context netcontext;
-    gDnsProxyListener.mCallbacks.get_network_context(netId, uid, &netcontext);
+    gResNetdCallbacks.get_network_context(netId, uid, &netcontext);
 
     if (useLocalNameservers) {
         netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
@@ -1087,7 +1054,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     }
 
     android_net_context netcontext;
-    gDnsProxyListener.mCallbacks.get_network_context(netId, uid, &netcontext);
+    gResNetdCallbacks.get_network_context(netId, uid, &netcontext);
 
     if (useLocalNameservers) {
         netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
