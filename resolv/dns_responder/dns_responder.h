@@ -113,8 +113,9 @@ class DNSResponder {
     bool handleDNSRequest(const char* buffer, ssize_t buffer_len,
                           char* response, size_t* response_len) const;
 
-    bool addAnswerRecords(const DNSQuestion& question,
-                          std::vector<DNSRecord>* answers) const;
+    bool addAnswerRecords(const DNSQuestion& question, std::vector<DNSRecord>* answers) const;
+
+    bool fillAnswerRdata(const std::string& rdatastr, DNSRecord& record) const;
 
     bool generateErrorResponse(DNSHeader* header, ns_rcode rcode,
                                char* response, size_t* response_len) const;

@@ -334,6 +334,80 @@ TEST_F(ResolverTest, GetHostByName) {
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
 }
 
+TEST_F(ResolverTest, GetHostByName_cnames) {
+    constexpr char host_name[] = "host.example.com.";
+    size_t cnamecount = 0;
+    test::DNSResponder dns;
+
+    const std::vector<DnsRecord> records = {
+            {kHelloExampleCom, ns_type::ns_t_cname, "a.example.com."},
+            {"a.example.com.", ns_type::ns_t_cname, "b.example.com."},
+            {"b.example.com.", ns_type::ns_t_cname, "c.example.com."},
+            {"c.example.com.", ns_type::ns_t_cname, "d.example.com."},
+            {"d.example.com.", ns_type::ns_t_cname, "e.example.com."},
+            {"e.example.com.", ns_type::ns_t_cname, host_name},
+            {host_name, ns_type::ns_t_a, "1.2.3.3"},
+            {host_name, ns_type::ns_t_aaaa, "2001:db8::42"},
+    };
+    StartDns(dns, records);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
+
+    // using gethostbyname2() to resolve ipv4 hello.example.com. to 1.2.3.3
+    // Ensure the v4 address and cnames are correct
+    const hostent* result;
+    result = gethostbyname2("hello", AF_INET);
+    ASSERT_FALSE(result == nullptr);
+
+    for (int i = 0; result != nullptr && result->h_aliases[i] != nullptr; i++) {
+        std::string domain_name = records[i].host_name.substr(0, records[i].host_name.size() - 1);
+        EXPECT_EQ(result->h_aliases[i], domain_name);
+        cnamecount++;
+    }
+    // The size of "Non-cname type" record in DNS records is 2
+    ASSERT_EQ(cnamecount, records.size() - 2);
+    ASSERT_EQ(4, result->h_length);
+    ASSERT_FALSE(result->h_addr_list[0] == nullptr);
+    EXPECT_EQ("1.2.3.3", ToString(result));
+    EXPECT_TRUE(result->h_addr_list[1] == nullptr);
+    EXPECT_EQ(1U, dns.queries().size()) << dns.dumpQueries();
+
+    // using gethostbyname2() to resolve ipv6 hello.example.com. to 2001:db8::42
+    // Ensure the v6 address and cnames are correct
+    cnamecount = 0;
+    dns.clearQueries();
+    result = gethostbyname2("hello", AF_INET6);
+    for (unsigned i = 0; result != nullptr && result->h_aliases[i] != nullptr; i++) {
+        std::string domain_name = records[i].host_name.substr(0, records[i].host_name.size() - 1);
+        EXPECT_EQ(result->h_aliases[i], domain_name);
+        cnamecount++;
+    }
+    // The size of "Non-cname type" DNS record in records is 2
+    ASSERT_EQ(cnamecount, records.size() - 2);
+    ASSERT_FALSE(result == nullptr);
+    ASSERT_EQ(16, result->h_length);
+    ASSERT_FALSE(result->h_addr_list[0] == nullptr);
+    EXPECT_EQ("2001:db8::42", ToString(result));
+    EXPECT_TRUE(result->h_addr_list[1] == nullptr);
+}
+
+TEST_F(ResolverTest, GetHostByName_cnamesInfiniteLoop) {
+    test::DNSResponder dns;
+    const std::vector<DnsRecord> records = {
+            {kHelloExampleCom, ns_type::ns_t_cname, "a.example.com."},
+            {"a.example.com.", ns_type::ns_t_cname, kHelloExampleCom},
+    };
+    StartDns(dns, records);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
+
+    const hostent* result;
+    result = gethostbyname2("hello", AF_INET);
+    ASSERT_TRUE(result == nullptr);
+
+    dns.clearQueries();
+    result = gethostbyname2("hello", AF_INET6);
+    ASSERT_TRUE(result == nullptr);
+}
+
 TEST_F(ResolverTest, GetHostByName_localhost) {
     constexpr char name_camelcase[] = "LocalHost";
     constexpr char name_ip6_dot[] = "ip6-localhost.";
@@ -675,6 +749,70 @@ TEST_F(ResolverTest, GetAddrInfoV4_deferred_resp) {
     t3.join();
     t1.join();
     t2.join();
+}
+
+TEST_F(ResolverTest, GetAddrInfo_cnames) {
+    constexpr char host_name[] = "host.example.com.";
+    test::DNSResponder dns;
+    const std::vector<DnsRecord> records = {
+            {kHelloExampleCom, ns_type::ns_t_cname, "a.example.com."},
+            {"a.example.com.", ns_type::ns_t_cname, "b.example.com."},
+            {"b.example.com.", ns_type::ns_t_cname, "c.example.com."},
+            {"c.example.com.", ns_type::ns_t_cname, "d.example.com."},
+            {"d.example.com.", ns_type::ns_t_cname, "e.example.com."},
+            {"e.example.com.", ns_type::ns_t_cname, host_name},
+            {host_name, ns_type::ns_t_a, "1.2.3.3"},
+            {host_name, ns_type::ns_t_aaaa, "2001:db8::42"},
+    };
+    StartDns(dns, records);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
+
+    addrinfo hints = {.ai_family = AF_INET};
+    ScopedAddrinfo result = safe_getaddrinfo("hello", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_EQ("1.2.3.3", ToString(result));
+
+    dns.clearQueries();
+    hints = {.ai_family = AF_INET6};
+    result = safe_getaddrinfo("hello", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
+    EXPECT_EQ("2001:db8::42", ToString(result));
+}
+
+TEST_F(ResolverTest, GetAddrInfo_cnamesNoIpAddress) {
+    test::DNSResponder dns;
+    const std::vector<DnsRecord> records = {
+            {kHelloExampleCom, ns_type::ns_t_cname, "a.example.com."},
+    };
+    StartDns(dns, records);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
+
+    addrinfo hints = {.ai_family = AF_INET};
+    ScopedAddrinfo result = safe_getaddrinfo("hello", nullptr, &hints);
+    EXPECT_TRUE(result == nullptr);
+
+    dns.clearQueries();
+    hints = {.ai_family = AF_INET6};
+    result = safe_getaddrinfo("hello", nullptr, &hints);
+    EXPECT_TRUE(result == nullptr);
+}
+
+TEST_F(ResolverTest, GetAddrInfo_cnamesIllegalRdata) {
+    test::DNSResponder dns;
+    const std::vector<DnsRecord> records = {
+            {kHelloExampleCom, ns_type::ns_t_cname, ".!#?"},
+    };
+    StartDns(dns, records);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
+
+    addrinfo hints = {.ai_family = AF_INET};
+    ScopedAddrinfo result = safe_getaddrinfo("hello", nullptr, &hints);
+    EXPECT_TRUE(result == nullptr);
+
+    dns.clearQueries();
+    hints = {.ai_family = AF_INET6};
+    result = safe_getaddrinfo("hello", nullptr, &hints);
+    EXPECT_TRUE(result == nullptr);
 }
 
 TEST_F(ResolverTest, MultidomainResolution) {
