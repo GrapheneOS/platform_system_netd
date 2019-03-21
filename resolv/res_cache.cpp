@@ -304,7 +304,7 @@ static void dump_bytes(const uint8_t* base, int len) {
     char *p = buff, *end = p + sizeof(buff);
 
     p = bprint_hexdump(p, end, base, len);
-    LOG(INFO) << buff;
+    LOG(INFO) << __func__ << ": " << buff;
 }
 
 static time_t _time_now(void) {
@@ -486,7 +486,7 @@ static int _dnsPacket_checkQName(DnsPacket* packet) {
          * of the loop here */
     }
     /* malformed data */
-    LOG(INFO) << "malformed QNAME";
+    LOG(INFO) << __func__ << ": malformed QNAME";
     return 0;
 }
 
@@ -502,12 +502,12 @@ static int _dnsPacket_checkQR(DnsPacket* packet) {
         !_dnsPacket_checkBytes(packet, 2, DNS_TYPE_MX) &&
         !_dnsPacket_checkBytes(packet, 2, DNS_TYPE_AAAA) &&
         !_dnsPacket_checkBytes(packet, 2, DNS_TYPE_ALL)) {
-        LOG(INFO) << "unsupported TYPE";
+        LOG(INFO) << __func__ << ": unsupported TYPE";
         return 0;
     }
     /* CLASS must be IN */
     if (!_dnsPacket_checkBytes(packet, 2, DNS_CLASS_IN)) {
-        LOG(INFO) << "unsupported CLASS";
+        LOG(INFO) << __func__ << ": unsupported CLASS";
         return 0;
     }
 
@@ -522,14 +522,14 @@ static int _dnsPacket_checkQuery(DnsPacket* packet) {
     int qdCount, anCount, dnCount, arCount;
 
     if (p + DNS_HEADER_SIZE > packet->end) {
-        LOG(INFO) << "query packet too small";
+        LOG(INFO) << __func__ << ": query packet too small";
         return 0;
     }
 
     /* QR must be set to 0, opcode must be 0 and AA must be 0 */
     /* RA, Z, and RCODE must be 0 */
     if ((p[2] & 0xFC) != 0 || (p[3] & 0xCF) != 0) {
-        LOG(INFO) << "query packet flags unsupported";
+        LOG(INFO) << __func__ << ": query packet flags unsupported";
         return 0;
     }
 
@@ -558,12 +558,12 @@ static int _dnsPacket_checkQuery(DnsPacket* packet) {
     arCount = (p[10] << 8) | p[11];
 
     if (anCount != 0 || dnCount != 0 || arCount > 1) {
-        LOG(INFO) << "query packet contains non-query records";
+        LOG(INFO) << __func__ << ": query packet contains non-query records";
         return 0;
     }
 
     if (qdCount == 0) {
-        LOG(INFO) << "query packet doesn't contain query record";
+        LOG(INFO) << __func__ << ": query packet doesn't contain query record";
         return 0;
     }
 
@@ -820,7 +820,7 @@ static int _dnsPacket_isEqualDomainName(DnsPacket* pack1, DnsPacket* pack2) {
         /* we rely on the bound checks at the start of the loop */
     }
     /* not the same, or one is malformed */
-    LOG(INFO) << "different DN";
+    LOG(INFO) << __func__ << ": different DN";
     return 0;
 }
 
@@ -868,12 +868,12 @@ static int _dnsPacket_isEqualQuery(DnsPacket* pack1, DnsPacket* pack2) {
 
     /* compare RD, ignore TC, see comment in _dnsPacket_checkQuery */
     if ((pack1->base[2] & 1) != (pack2->base[2] & 1)) {
-        LOG(INFO) << "different RD";
+        LOG(INFO) << __func__ << ": different RD";
         return 0;
     }
 
     if (pack1->base[3] != pack2->base[3]) {
-        LOG(INFO) << "different CD or AD";
+        LOG(INFO) << __func__ << ": different CD or AD";
         return 0;
     }
 
@@ -885,7 +885,7 @@ static int _dnsPacket_isEqualQuery(DnsPacket* pack1, DnsPacket* pack2) {
     count1 = _dnsPacket_readInt16(pack1);
     count2 = _dnsPacket_readInt16(pack2);
     if (count1 != count2 || count1 < 0) {
-        LOG(INFO) << "different QDCOUNT";
+        LOG(INFO) << __func__ << ": different QDCOUNT";
         return 0;
     }
 
@@ -897,14 +897,14 @@ static int _dnsPacket_isEqualQuery(DnsPacket* pack1, DnsPacket* pack2) {
     arcount1 = _dnsPacket_readInt16(pack1);
     arcount2 = _dnsPacket_readInt16(pack2);
     if (arcount1 != arcount2 || arcount1 < 0) {
-        LOG(INFO) << "different ARCOUNT";
+        LOG(INFO) << __func__ << ": different ARCOUNT";
         return 0;
     }
 
     /* compare the QDCOUNT QRs */
     for (; count1 > 0; count1--) {
         if (!_dnsPacket_isEqualQR(pack1, pack2)) {
-            LOG(INFO) << "different QR";
+            LOG(INFO) << __func__ << ": different QR";
             return 0;
         }
     }
@@ -912,7 +912,7 @@ static int _dnsPacket_isEqualQuery(DnsPacket* pack1, DnsPacket* pack2) {
     /* compare the ARCOUNT RRs */
     for (; arcount1 > 0; arcount1--) {
         if (!_dnsPacket_isEqualRR(pack1, pack2)) {
-            LOG(INFO) << "different additional RR";
+            LOG(INFO) << __func__ << ": different additional RR";
             return 0;
         }
     }
@@ -1019,15 +1019,15 @@ static u_long answer_getTTL(const void* answer, int answerlen) {
                         result = ttl;
                     }
                 } else {
-                    PLOG(INFO) << "ns_parserr failed ancount no = " << n;
+                    PLOG(INFO) << __func__ << ": ns_parserr failed ancount no = " << n;
                 }
             }
         }
     } else {
-        PLOG(INFO) << "ns_initparse failed";
+        PLOG(INFO) << __func__ << ": ns_initparse failed";
     }
 
-    LOG(INFO) << "TTL = " << result;
+    LOG(INFO) << __func__ << ": TTL = " << result;
     return result;
 }
 
@@ -1265,7 +1265,7 @@ static void cache_flush_locked(Cache* cache) {
     cache->num_entries = 0;
     cache->last_id = 0;
 
-    LOG(INFO) << "*** DNS CACHE FLUSHED ***";
+    LOG(INFO) << __func__ << ": *** DNS CACHE FLUSHED ***";
 }
 
 static resolv_cache* resolv_cache_create() {
@@ -1287,12 +1287,14 @@ static resolv_cache* resolv_cache_create() {
 }
 
 static void dump_query(const uint8_t* query, int querylen) {
+    if (!WOULD_LOG(VERBOSE)) return;
+
     char temp[256], *p = temp, *end = p + sizeof(temp);
     DnsPacket pack[1];
 
     _dnsPacket_init(pack, query, querylen);
     p = dnsPacket_bprintQuery(pack, p, end);
-    LOG(INFO) << temp;
+    LOG(VERBOSE) << __func__ << ": " << temp;
 }
 
 static void cache_dump_mru(Cache* cache) {
@@ -1303,7 +1305,7 @@ static void cache_dump_mru(Cache* cache) {
     for (e = cache->mru_list.mru_next; e != &cache->mru_list; e = e->mru_next)
         p = bprint(p, end, " %d", e->id);
 
-    LOG(INFO) << temp;
+    LOG(INFO) << __func__ << ": " << temp;
 }
 
 /* This function tries to find a key within the hash table
@@ -1376,7 +1378,7 @@ static void _cache_remove_oldest(Cache* cache) {
         LOG(INFO) << __func__ << ": OLDEST NOT IN HTABLE ?";
         return;
     }
-    LOG(INFO) << "Cache full - removing oldest";
+    LOG(INFO) << __func__ << ": Cache full - removing oldest";
     dump_query(oldest->query, oldest->querylen);
     _cache_remove_p(cache, lookup);
 }
@@ -1441,7 +1443,7 @@ ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int qu
     e = *lookup;
 
     if (e == NULL) {
-        LOG(INFO) << "NOT IN CACHE";
+        LOG(INFO) << __func__ << ": NOT IN CACHE";
         // If it is no-cache-store mode, we won't wait for possible query.
         if (flags & ANDROID_RESOLV_NO_CACHE_STORE) {
             return RESOLV_CACHE_SKIP;
@@ -1451,7 +1453,7 @@ ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int qu
             return RESOLV_CACHE_NOTFOUND;
 
         } else {
-            LOG(INFO) << "Waiting for previous request";
+            LOG(INFO) << __func__ << ": Waiting for previous request";
             // wait until (1) timeout OR
             //            (2) cv is notified AND no pending request matching the |key|
             // (cv notifier should delete pending request before sending notification.)
@@ -1482,7 +1484,7 @@ ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int qu
 
     /* remove stale entries here */
     if (now >= e->expires) {
-        LOG(INFO) << " NOT IN CACHE (STALE ENTRY " << *lookup << "DISCARDED)";
+        LOG(INFO) << __func__ << ": NOT IN CACHE (STALE ENTRY " << *lookup << "DISCARDED)";
         dump_query(e->query, e->querylen);
         _cache_remove_p(cache, lookup);
         return RESOLV_CACHE_NOTFOUND;
@@ -1491,7 +1493,7 @@ ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int qu
     *answerlen = e->answerlen;
     if (e->answerlen > answersize) {
         /* NOTE: we return UNSUPPORTED if the answer buffer is too short */
-        LOG(INFO) << " ANSWER TOO LONG";
+        LOG(INFO) << __func__ << ": ANSWER TOO LONG";
         return RESOLV_CACHE_UNSUPPORTED;
     }
 
@@ -1503,7 +1505,7 @@ ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int qu
         entry_mru_add(e, &cache->mru_list);
     }
 
-    LOG(INFO) << " FOUND IN CACHE entry=" << e;
+    LOG(INFO) << __func__ << ": FOUND IN CACHE entry=" << e;
     return RESOLV_CACHE_FOUND;
 }
 
@@ -1533,7 +1535,7 @@ void _resolv_cache_add(unsigned netid, const void* query, int querylen, const vo
     dump_query((u_char*)query, querylen);
     res_pquery((u_char*)answer, answerlen);
     if (kDumpData) {
-        LOG(INFO) << "answer:";
+        LOG(INFO) << __func__ << ": answer:";
         dump_bytes((u_char*)answer, answerlen);
     }
 
@@ -1846,7 +1848,7 @@ void _resolv_populate_res_for_net(res_state statp) {
     if (statp == NULL) {
         return;
     }
-    LOG(INFO) << __func__ << "(netid=" << statp->netid << ")";
+    LOG(INFO) << __func__ << ": netid=" << statp->netid;
 
     std::lock_guard guard(cache_mutex);
     resolv_cache_info* info = find_cache_info_locked(statp->netid);
@@ -1893,8 +1895,8 @@ static void _res_cache_add_stats_sample_locked(res_stats* stats, const res_sampl
                                                int max_samples) {
     // Note: This function expects max_samples > 0, otherwise a (harmless) modification of the
     // allocated but supposedly unused memory for samples[0] will happen
-    LOG(INFO) << __func__ << ": adding sample to stats, next = " << stats->sample_next
-              << ", count = " << stats->sample_count;
+    LOG(INFO) << __func__ << ": adding sample to stats, next = " << unsigned(stats->sample_next)
+              << ", count = " << unsigned(stats->sample_count);
     stats->samples[stats->sample_next] = *sample;
     if (stats->sample_count < max_samples) {
         ++stats->sample_count;
