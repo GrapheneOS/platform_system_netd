@@ -34,6 +34,7 @@
 #include <binder/IServiceManager.h>
 
 #include <json/value.h>
+#include <json/writer.h>
 #include <openssl/base64.h>
 
 #include "Controllers.h"
@@ -170,8 +171,10 @@ status_t NetdNativeService::start() {
         output.append(logTransaction["method_name"].asString().c_str() + std::string("("));
 
         // input args
+        Json::FastWriter fastWriter;
+        fastWriter.omitEndingLineFeed();
         for (Json::Value::Members::iterator iter = member.begin(); iter != member.end(); ++iter) {
-            std::string value = inputArgs[(*iter).c_str()].asString();
+            std::string value = fastWriter.write(inputArgs[(*iter).c_str()]);
             if (value.empty()) value = std::string("null");
             output.append(value);
             if (iter != member.end() - 1) {
@@ -181,7 +184,7 @@ status_t NetdNativeService::start() {
         output.append(std::string(")"));
         // return args
         if (hasReturnArgs) {
-            output.append(StringPrintf(" -> (%s)", returnArgs.asString().c_str()));
+            output.append(StringPrintf(" -> (%s)", fastWriter.write(returnArgs).c_str()));
         }
         // duration time
         output.append(StringPrintf(" <%sms>", logTransaction["duration_ms"].asString().c_str()));
