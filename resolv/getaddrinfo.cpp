@@ -361,7 +361,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
             if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
             if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
 
-            LOG(DEBUG) << "explore_numeric: ai_family=" << tmp.ai_family
+            LOG(DEBUG) << __func__ << ": explore_numeric: ai_family=" << tmp.ai_family
                        << " ai_socktype=" << tmp.ai_socktype << " ai_protocol=" << tmp.ai_protocol;
             if (hostname == nullptr)
                 error = explore_null(&tmp, servname, &cur->ai_next);
@@ -409,7 +409,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
             if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
             if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
 
-            LOG(DEBUG) << "explore_fqdn(): ai_family=" << tmp.ai_family
+            LOG(DEBUG) << __func__ << ": explore_fqdn(): ai_family=" << tmp.ai_family
                        << " ai_socktype=" << tmp.ai_socktype << " ai_protocol=" << tmp.ai_protocol;
             error = explore_fqdn(&tmp, hostname, servname, &cur->ai_next, netcontext);
 
@@ -477,6 +477,8 @@ static int explore_null(const struct addrinfo* pai, const char* servname, struct
     struct addrinfo* cur;
     struct addrinfo sentinel;
     int error;
+
+    LOG(DEBUG) << __func__;
 
     assert(pai != NULL);
     /* servname may be NULL */
@@ -588,6 +590,8 @@ static int explore_numeric_scope(const struct addrinfo* pai, const char* hostnam
     int error;
     const char *cp, *scope, *addr;
     struct sockaddr_in6* sin6;
+
+    LOG(DEBUG) << __func__;
 
     assert(pai != NULL);
     /* hostname may be NULL */
@@ -936,9 +940,8 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
             }
         } else if (type != qtype) {
             if (type != T_KEY && type != T_SIG)
-                LOG(DEBUG) << __func__ << "(getanswer): asked for \"" << qname << " "
-                           << p_class(C_IN) << " " << p_type(qtype) << "\", got type \""
-                           << p_type(type) << "\"";
+                LOG(DEBUG) << __func__ << ": asked for \"" << qname << " " << p_class(C_IN) << " "
+                           << p_type(qtype) << "\", got type \"" << p_type(type) << "\"";
             cp += n;
             continue; /* XXX - had_error++ ? */
         }
@@ -946,8 +949,8 @@ static struct addrinfo* getanswer(const querybuf* answer, int anslen, const char
             case T_A:
             case T_AAAA:
                 if (strcasecmp(canonname, bp) != 0) {
-                    LOG(DEBUG) << __func__ << "(getanswer): asked for \"" << canonname
-                               << "\", got \"" << bp << "\"";
+                    LOG(DEBUG) << __func__ << ": asked for \"" << canonname << "\", got \"" << bp
+                               << "\"";
                     cp += n;
                     continue; /* XXX - had_error++ ? */
                 }
@@ -1589,7 +1592,7 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
         answer = t->answer;
         anslen = t->anslen;
 
-        LOG(DEBUG) << __func__ << "(" << name << ", " << cl << ", " << type << ")";
+        LOG(DEBUG) << __func__ << ": (" << cl << ", " << type << ")";
 
         n = res_nmkquery(res, QUERY, name, cl, type, NULL, 0, NULL, buf, sizeof(buf));
         if (n > 0 && (res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 && !retried)
@@ -1789,8 +1792,6 @@ static int res_querydomainN(const char* name, const char* domain, res_target* ta
     size_t n, d;
 
     assert(name != NULL);
-
-    LOG(DEBUG) << __func__ << "(\"" << name << "\", " << (domain ? domain : "<null>") << ")";
 
     if (domain == NULL) {
         // Check for trailing '.'; copy without '.' if present.

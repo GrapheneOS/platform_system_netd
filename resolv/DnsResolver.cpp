@@ -27,7 +27,7 @@
 bool resolv_init(const ResolverNetdCallbacks& callbacks) {
     android::base::InitLogging(/*argv=*/nullptr);
     android::base::SetDefaultTag("libnetd_resolv");
-    LOG(INFO) << "Initializing resolver";
+    LOG(INFO) << __func__ << "Initializing resolver";
     const std::string logSeverityStr =
             android::base::GetProperty("persist.sys.nw_dns_resolver_log", "WARNING");
     android::base::SetMinimumLogSeverity(logSeverityStrToEnum(logSeverityStr));
@@ -60,16 +60,16 @@ DnsResolver* DnsResolver::getInstance() {
 
 bool DnsResolver::start() {
     if (!verifyCallbacks()) {
-        LOG(ERROR) << "Callback verification failed";
+        LOG(ERROR) << __func__ << "Callback verification failed";
         return false;
     }
     if (mDnsProxyListener.startListener()) {
-        PLOG(ERROR) << "Unable to start DnsProxyListener";
+        PLOG(ERROR) << __func__ << "Unable to start DnsProxyListener";
         return false;
     }
     binder_status_t ret;
     if ((ret = DnsResolverService::start()) != STATUS_OK) {
-        LOG(ERROR) << "Unable to start DnsResolverService: " << ret;
+        LOG(ERROR) << __func__ << "Unable to start DnsResolverService: " << ret;
         return false;
     }
     return true;
