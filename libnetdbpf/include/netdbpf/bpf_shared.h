@@ -108,6 +108,8 @@ const BpfConfig DEFAULT_CONFIG = 0;
 #define UID_RULES_CONFIGURATION_KEY 1
 #define CURRENT_STATS_MAP_CONFIGURATION_KEY 2
 
+#define CLAT_MAP_PATH BPF_PATH "/map_clatd_clat_map"
+
 struct ClatKey {
     uint32_t iif;          // The input interface index
     struct in6_addr src6;  // The source /96 nat64 prefix, bottom 32 bits must be 0

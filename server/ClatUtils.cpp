@@ -27,6 +27,8 @@
 #include <log/log.h>
 
 #include "android-base/unique_fd.h"
+#include "bpf/BpfUtils.h"
+#include "netdbpf/bpf_shared.h"
 
 namespace android {
 namespace net {
@@ -52,6 +54,11 @@ int hardwareAddressType(const std::string& interface) {
     if (ioctl(ufd, SIOCGIFHWADDR, &ifr, sizeof(ifr))) return -errno;
 
     return ifr.ifr_hwaddr.sa_family;
+}
+
+int getClatMapFd(void) {
+    const int fd = bpf::bpfFdGet(CLAT_MAP_PATH, 0);
+    return (fd == -1) ? -errno : fd;
 }
 
 }  // namespace net

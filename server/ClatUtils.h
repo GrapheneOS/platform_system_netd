@@ -24,6 +24,8 @@ namespace net {
 
 int hardwareAddressType(const std::string& interface);
 
+int getClatMapFd(void);
+
 }  // namespace net
 }  // namespace android
 
