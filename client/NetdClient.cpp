@@ -42,7 +42,7 @@ using android::base::unique_fd;
 namespace {
 
 // Keep this in sync with CMD_BUF_SIZE in FrameworkListener.cpp.
-constexpr size_t MAX_CMD_SIZE = 1024;
+constexpr size_t MAX_CMD_SIZE = 4096;
 
 std::atomic_uint netIdForProcess(NETID_UNSET);
 std::atomic_uint netIdForResolv(NETID_UNSET);
