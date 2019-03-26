@@ -143,14 +143,14 @@ TEST_F(DnsResolverBinderTest, EventListener_onDnsEvent) {
     dns.clearQueries();
 
     // Register event listener.
-    TestOnDnsEvent* testOnDnsEvent = new TestOnDnsEvent(expectedResults);
+    android::sp<TestOnDnsEvent> testOnDnsEvent = new TestOnDnsEvent(expectedResults);
     android::binder::Status status = mDnsResolver->registerEventListener(
             android::interface_cast<INetdEventListener>(testOnDnsEvent));
     ASSERT_TRUE(status.isOk()) << status.exceptionMessage();
 
     // DNS queries.
-    // Once all expected events of expectedResults are received by the listener. The unit test will
-    // be notified and the verified flag Event::onDnsEvent of class TestOnDnsEvent will be set.
+    // Once all expected events of expectedResults are received by the listener, the unit test will
+    // be notified. Otherwise, notified with a timeout expired failure.
     auto& cv = testOnDnsEvent->getCv();
     auto& cvMutex = testOnDnsEvent->getCvMutex();
     {
