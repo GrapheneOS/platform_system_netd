@@ -20,17 +20,8 @@
 
 LIBNETD_RESOLV {
   global:
-    android_getaddrinfofornetcontext;
-    android_net_res_stats_aggregate;
-    android_net_res_stats_get_info_for_net;
-    android_net_res_stats_get_usable_servers;
-    resolv_delete_cache_for_net;
-    resolv_delete_private_dns_for_net;
-    resolv_get_private_dns_status_for_net;
     resolv_has_nameservers;
     resolv_init;
-    resolv_set_nameservers_for_net;
-    resolv_set_private_dns_for_net;
   local:
     *;
 };
