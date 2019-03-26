@@ -30,6 +30,7 @@
 
 #include "DnsResolver.h"
 #include "NetdPermissions.h"  // PERM_*
+#include "ResolverEventReporter.h"
 
 using android::base::Join;
 using android::base::StringPrintf;
@@ -52,6 +53,14 @@ namespace {
 
 #define ENFORCE_NETWORK_STACK_PERMISSIONS() \
     ENFORCE_ANY_PERMISSION(PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK)
+
+inline ::ndk::ScopedAStatus statusFromErrcode(int ret) {
+    if (ret) {
+        return ::ndk::ScopedAStatus(
+                AStatus_fromServiceSpecificErrorWithMessage(-ret, strerror(-ret)));
+    }
+    return ::ndk::ScopedAStatus(AStatus_newOk());
+}
 
 }  // namespace
 
@@ -78,6 +87,15 @@ binder_status_t DnsResolverService::start() {
     *alive = true;
 
     return ::ndk::ScopedAStatus(AStatus_newOk());
+}
+
+::ndk::ScopedAStatus DnsResolverService::registerEventListener(
+        const std::shared_ptr<aidl::android::net::metrics::INetdEventListener>& listener) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    int res = ResolverEventReporter::getInstance().addListener(listener);
+
+    return statusFromErrcode(res);
 }
 
 ::ndk::ScopedAStatus DnsResolverService::checkAnyPermission(
