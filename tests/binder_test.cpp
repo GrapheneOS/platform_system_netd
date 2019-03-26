@@ -1222,8 +1222,8 @@ void expectStrictSetUidAccept(const int uid) {
     std::string uidRule = StringPrintf("owner UID match %u", uid);
     std::string perUidChain = StringPrintf("st_clear_caught_%u", uid);
     for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
-        EXPECT_FALSE(iptablesRuleExists(binary, STRICT_OUTPUT, uidRule.c_str()));
-        EXPECT_FALSE(iptablesRuleExists(binary, STRICT_CLEAR_CAUGHT, uidRule.c_str()));
+        EXPECT_FALSE(iptablesRuleExists(binary, STRICT_OUTPUT, uidRule));
+        EXPECT_FALSE(iptablesRuleExists(binary, STRICT_CLEAR_CAUGHT, uidRule));
         EXPECT_EQ(0, iptablesRuleLineLength(binary, perUidChain.c_str()));
     }
 }
@@ -1233,8 +1233,8 @@ void expectStrictSetUidLog(const int uid) {
     std::string uidRule = StringPrintf("owner UID match %u", uid);
     std::string perUidChain = StringPrintf("st_clear_caught_%u", uid);
     for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
-        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_OUTPUT, uidRule.c_str()));
-        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_CLEAR_CAUGHT, uidRule.c_str()));
+        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_OUTPUT, uidRule));
+        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_CLEAR_CAUGHT, uidRule));
         EXPECT_TRUE(iptablesRuleExists(binary, perUidChain.c_str(), logRule));
     }
 }
@@ -1244,8 +1244,8 @@ void expectStrictSetUidReject(const int uid) {
     std::string uidRule = StringPrintf("owner UID match %u", uid);
     std::string perUidChain = StringPrintf("st_clear_caught_%u", uid);
     for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
-        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_OUTPUT, uidRule.c_str()));
-        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_CLEAR_CAUGHT, uidRule.c_str()));
+        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_OUTPUT, uidRule));
+        EXPECT_TRUE(iptablesRuleExists(binary, STRICT_CLEAR_CAUGHT, uidRule));
         EXPECT_TRUE(iptablesRuleExists(binary, perUidChain.c_str(), rejectRule));
     }
 }
@@ -1297,7 +1297,7 @@ std::vector<std::string> tryToFindProcesses(const std::string& processName, uint
     std::string cmd = StringPrintf("ps -Af | grep '[0-9] %s'", processName.c_str());
     std::vector<std::string> result;
     for (uint32_t run = 1;;) {
-        result = runCommand(cmd.c_str());
+        result = runCommand(cmd);
         if (result.size() || ++run > maxTries) {
             break;
         }
