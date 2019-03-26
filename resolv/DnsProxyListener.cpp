@@ -297,15 +297,17 @@ void reportDnsEvent(int eventType, const android_net_context& netContext, int la
     android::util::stats_write(android::util::NETWORK_DNS_EVENT_REPORTED, eventType, returnCode,
                                latencyUs);
 
-    const std::shared_ptr<INetdEventListener> listener = ResolverEventReporter::getListener();
-    if (!listener) {
+    const auto& listeners = ResolverEventReporter::getInstance().getListeners();
+    if (listeners.size() == 0) {
         LOG(ERROR) << __func__
-                   << ": DNS event not sent since NetdEventListenerService is unavailable.";
+                   << ": DNS event not sent since no INetdEventListener receiver is available.";
         return;
     }
     const int latencyMs = latencyUs / 1000;
-    listener->onDnsEvent(netContext.dns_netid, eventType, returnCode, latencyMs, query_name,
-                         ip_addrs, total_ip_addr_count, netContext.uid);
+    for (const auto& it : listeners) {
+        it->onDnsEvent(netContext.dns_netid, eventType, returnCode, latencyMs, query_name, ip_addrs,
+                       total_ip_addr_count, netContext.uid);
+    }
 }
 
 bool onlyIPv4Answers(const addrinfo* res) {

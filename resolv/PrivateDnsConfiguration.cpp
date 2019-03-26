@@ -307,17 +307,18 @@ bool PrivateDnsConfiguration::recordPrivateDnsValidation(const DnsTlsServer& ser
     }
 
     // Send a validation event to NetdEventListenerService.
-    const std::shared_ptr<INetdEventListener> listener = ResolverEventReporter::getListener();
-    if (listener != nullptr) {
-        listener->onPrivateDnsValidationEvent(netId, addrToString(&server.ss), server.name,
-                                              success);
+    const auto& listeners = ResolverEventReporter::getInstance().getListeners();
+    if (listeners.size() != 0) {
+        for (const auto& it : listeners) {
+            it->onPrivateDnsValidationEvent(netId, addrToString(&server.ss), server.name, success);
+        }
         if (DBG) {
             ALOGD("Sent validation %s event on netId %u for %s with hostname %s",
                   success ? "success" : "failure", netId, addrToString(&server.ss).c_str(),
                   server.name.c_str());
         }
     } else {
-        ALOGE("Validation event not sent since NetdEventListenerService is unavailable.");
+        ALOGE("Validation event not sent since no INetdEventListener receiver is available.");
     }
 
     if (success) {
