@@ -56,6 +56,7 @@ cc_library_static {
     srcs: [
         "BandwidthController.cpp",
         "ClatdController.cpp",
+        "ClatUtils.cpp",
         "Controllers.cpp",
         "Dns64Configuration.cpp",
         "NetdConstants.cpp",
@@ -185,6 +186,7 @@ cc_test {
     srcs: [
         "BandwidthControllerTest.cpp",
         "ClatdControllerTest.cpp",
+        "ClatUtilsTest.cpp",
         "ControllersTest.cpp",
         "FirewallControllerTest.cpp",
         "IdletimerControllerTest.cpp",
