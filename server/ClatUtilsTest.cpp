@@ -34,11 +34,11 @@ class ClatUtilsTest : public ::testing::Test {
 };
 
 TEST_F(ClatUtilsTest, HardwareAddressTypeOfNonExistingIf) {
-    EXPECT_EQ(-ENODEV, hardwareAddressType("not_existing_if"));
+    ASSERT_EQ(-ENODEV, hardwareAddressType("not_existing_if"));
 }
 
 TEST_F(ClatUtilsTest, HardwareAddressTypeOfLoopback) {
-    EXPECT_EQ(ARPHRD_LOOPBACK, hardwareAddressType("lo"));
+    ASSERT_EQ(ARPHRD_LOOPBACK, hardwareAddressType("lo"));
 }
 
 // If wireless 'wlan0' interface exists it should be Ethernet.
@@ -46,7 +46,7 @@ TEST_F(ClatUtilsTest, HardwareAddressTypeOfWireless) {
     int type = hardwareAddressType("wlan0");
     if (type == -ENODEV) return;
 
-    EXPECT_EQ(ARPHRD_ETHER, type);
+    ASSERT_EQ(ARPHRD_ETHER, type);
 }
 
 // If cellular 'rmnet_data0' interface exists it should
@@ -55,33 +55,36 @@ TEST_F(ClatUtilsTest, HardwareAddressTypeOfCellular) {
     int type = hardwareAddressType("rmnet_data0");
     if (type == -ENODEV) return;
 
-    EXPECT_NE(ARPHRD_ETHER, type);
+    ASSERT_NE(ARPHRD_ETHER, type);
 
     // ARPHRD_RAWIP is 530 on some pre-4.14 Qualcomm devices.
     if (type == 530) return;
 
-    EXPECT_EQ(ARPHRD_RAWIP, type);
+    ASSERT_EQ(ARPHRD_RAWIP, type);
 }
 
 TEST_F(ClatUtilsTest, GetClatMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    base::unique_fd ufd(getClatMapFd());
-    EXPECT_LE(3, ufd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    int fd = getClatMapFd();
+    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    close(fd);
 }
 
 TEST_F(ClatUtilsTest, GetClatRawIpProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    base::unique_fd ufd(getClatProgFd(false));
-    EXPECT_LE(3, ufd);
+    int fd = getClatProgFd(false);
+    ASSERT_LE(3, fd);
+    close(fd);
 }
 
 TEST_F(ClatUtilsTest, GetClatEtherProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    base::unique_fd ufd(getClatProgFd(true));
-    EXPECT_LE(3, ufd);
+    int fd = getClatProgFd(true);
+    ASSERT_LE(3, fd);
+    close(fd);
 }
 
 }  // namespace net
