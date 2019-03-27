@@ -16,10 +16,24 @@
 
 package android.net;
 
+import android.net.metrics.INetdEventListener;
+
 /** {@hide} */
 interface IDnsResolver {
     /**
      * Returns true if the service is responding.
      */
     boolean isAlive();
+
+   /**
+    * Register event listener
+    * DnsResolver supports multiple event listeners, but only one per unique address of the
+    * binder interface. A newer listener won't be registered if DnsResolver has an old one on
+    * the same address of the binder interface.
+    *
+    * @param listener event listener to register.
+    * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+    *         unix errno.
+    */
+    void registerEventListener(INetdEventListener listener);
 }
