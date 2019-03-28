@@ -972,7 +972,7 @@ static u_long answer_getNegativeTTL(ns_msg handle) {
             // skip: serial number + refresh interval + retry interval + expiry
             rdata += NS_INT32SZ * 4;
             // finally read the MINIMUM TTL
-            ttl = ns_get32(rdata);
+            ttl = ntohl(*reinterpret_cast<const uint32_t*>(rdata));
             if (ttl < rec_result) {
                 rec_result = ttl;
             }
