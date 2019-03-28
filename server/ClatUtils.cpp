@@ -18,6 +18,7 @@
 
 #include <errno.h>
 #include <linux/if.h>
+#include <linux/netlink.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -26,6 +27,7 @@
 #define LOG_TAG "ClatUtils"
 #include <log/log.h>
 
+#include "NetlinkCommands.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfUtils.h"
 #include "netdbpf/bpf_shared.h"
@@ -65,6 +67,40 @@ int getClatProgFd(bool with_ethernet_header) {
     const int fd =
             bpf::bpfFdGet(with_ethernet_header ? CLAT_PROG_ETHER_PATH : CLAT_PROG_RAWIP_PATH, 0);
     return (fd == -1) ? -errno : fd;
+}
+
+// TODO: use //system/netd/server/NetlinkCommands.cpp:openNetlinkSocket(protocol)
+int openNetlinkSocket(void) {
+    base::unique_fd fd(socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE));
+    if (fd == -1) {
+        const int err = errno;
+        ALOGE("socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE)");
+        return -err;
+    }
+
+    int rv;
+
+    const int on = 1;
+    rv = setsockopt(fd, SOL_NETLINK, NETLINK_CAP_ACK, &on, sizeof(on));
+    if (rv) ALOGE("setsockopt(fd, SOL_NETLINK, NETLINK_CAP_ACK, %d)", on);
+
+    // this is needed to get sane strace netlink parsing, it allocates the pid
+    rv = bind(fd, (const struct sockaddr*)&KERNEL_NLADDR, sizeof(KERNEL_NLADDR));
+    if (rv) {
+        const int err = errno;
+        ALOGE("bind(fd, {AF_NETLINK, 0, 0})");
+        return -err;
+    }
+
+    // we do not want to receive messages from anyone besides the kernel
+    rv = connect(fd, (const struct sockaddr*)&KERNEL_NLADDR, sizeof(KERNEL_NLADDR));
+    if (rv) {
+        const int err = errno;
+        ALOGE("connect(fd, {AF_NETLINK, 0, 0})");
+        return -err;
+    }
+
+    return fd.release();
 }
 
 }  // namespace net
