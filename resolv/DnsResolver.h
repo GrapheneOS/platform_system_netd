@@ -20,6 +20,7 @@
 #include "DnsProxyListener.h"
 #include "ResolverController.h"
 #include "netd_resolv/resolv.h"
+#include "netdutils/Log.h"
 
 namespace android {
 namespace net {
@@ -41,6 +42,7 @@ class DnsResolver {
 
 extern DnsResolver* gDnsResolv;
 extern ResolverNetdCallbacks gResNetdCallbacks;
+extern netdutils::Log gDnsResolverLog;
 
 }  // namespace net
 }  // namespace android

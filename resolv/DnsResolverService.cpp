@@ -34,6 +34,7 @@
 #include "NetdPermissions.h"  // PERM_*
 #include "ResolverEventReporter.h"
 #include "netdutils/DumpWriter.h"
+#include "resolv_cache.h"
 
 using android::base::Join;
 using android::base::StringPrintf;
@@ -85,9 +86,21 @@ binder_status_t DnsResolverService::start() {
     return STATUS_OK;
 }
 
-binder_status_t DnsResolverService::dump(int, const char**, uint32_t) {
-    // TODO: Implement it. Netd binder dump resolver related log based on all stored network.
-    //       However, resolver doesn't know that informations.
+binder_status_t DnsResolverService::dump(int fd, const char**, uint32_t) {
+    auto dump_permission = checkAnyPermission({PERM_DUMP});
+    if (!dump_permission.isOk()) {
+        return STATUS_PERMISSION_DENIED;
+    }
+
+    // This method does not grab any locks. If individual classes need locking
+    // their dump() methods MUST handle locking appropriately.
+    DumpWriter dw(fd);
+    for (auto netId : resolv_list_caches()) {
+        dw.println("NetId: %u", netId);
+        gDnsResolv->resolverCtrl.dump(dw, netId);
+        dw.blankline();
+    }
+
     return STATUS_OK;
 }
 
@@ -102,9 +115,11 @@ binder_status_t DnsResolverService::dump(int, const char**, uint32_t) {
 ::ndk::ScopedAStatus DnsResolverService::registerEventListener(
         const std::shared_ptr<aidl::android::net::metrics::INetdEventListener>& listener) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
+    auto entry = gDnsResolverLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
 
     int res = ResolverEventReporter::getInstance().addListener(listener);
 
+    gResNetdCallbacks.log(entry.returns(res).withAutomaticDuration().toString().c_str());
     return statusFromErrcode(res);
 }
 
@@ -177,6 +192,10 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
         const std::vector<std::string>& tlsFingerprints) {
     // Locking happens in PrivateDnsConfiguration and res_* functions.
     ENFORCE_INTERNAL_PERMISSIONS();
+    auto entry =
+            gDnsResolverLog.newEntry()
+                    .prettyFunction(__PRETTY_FUNCTION__)
+                    .args(netId, servers, domains, params, tlsName, tlsServers, tlsFingerprints);
 
     std::set<std::vector<uint8_t>> decoded_fingerprints;
     for (const std::string& fingerprint : tlsFingerprints) {
@@ -190,6 +209,8 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
 
     int err = gDnsResolv->resolverCtrl.setResolverConfiguration(
             netId, servers, domains, params, tlsName, tlsServers, decoded_fingerprints);
+
+    gResNetdCallbacks.log(entry.returns(err).withAutomaticDuration().toString().c_str());
     if (err != 0) {
         return ::ndk::ScopedAStatus(AStatus_fromServiceSpecificErrorWithMessage(
                 -err, StringPrintf("ResolverController error: %s", strerror(-err)).c_str()));
@@ -203,9 +224,12 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
         std::vector<int32_t>* stats, std::vector<int32_t>* wait_for_pending_req_timeout_count) {
     // Locking happens in PrivateDnsConfiguration and res_* functions.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
+    auto entry = gDnsResolverLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(netId);
 
     int err = gDnsResolv->resolverCtrl.getResolverInfo(netId, servers, domains, tlsServers, params,
                                                        stats, wait_for_pending_req_timeout_count);
+
+    gResNetdCallbacks.log(entry.returns(err).withAutomaticDuration().toString().c_str());
     if (err != 0) {
         return ::ndk::ScopedAStatus(AStatus_fromServiceSpecificErrorWithMessage(
                 -err, StringPrintf("ResolverController error: %s", strerror(-err)).c_str()));
@@ -216,23 +240,33 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
 ::ndk::ScopedAStatus DnsResolverService::startPrefix64Discovery(int32_t netId) {
     // Locking happens in Dns64Configuration.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
+    auto entry = gDnsResolverLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(netId);
+
     gDnsResolv->resolverCtrl.startPrefix64Discovery(netId);
 
+    gResNetdCallbacks.log(entry.withAutomaticDuration().toString().c_str());
     return ::ndk::ScopedAStatus(AStatus_newOk());
 }
 
 ::ndk::ScopedAStatus DnsResolverService::stopPrefix64Discovery(int32_t netId) {
     // Locking happens in Dns64Configuration.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
+    auto entry = gDnsResolverLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(netId);
+
     gDnsResolv->resolverCtrl.stopPrefix64Discovery(netId);
 
+    gResNetdCallbacks.log(entry.withAutomaticDuration().toString().c_str());
     return ::ndk::ScopedAStatus(AStatus_newOk());
 }
 
 ::ndk::ScopedAStatus DnsResolverService::getPrefix64(int netId, std::string* stringPrefix) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
+    auto entry = gDnsResolverLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(netId);
+
     netdutils::IPPrefix prefix{};
     int err = gDnsResolv->resolverCtrl.getPrefix64(netId, &prefix);
+
+    gResNetdCallbacks.log(entry.returns(err).withAutomaticDuration().toString().c_str());
     if (err != 0) {
         return ::ndk::ScopedAStatus(AStatus_fromServiceSpecificErrorWithMessage(
                 -err, StringPrintf("ResolverController error: %s", strerror(-err)).c_str()));
@@ -244,8 +278,11 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
 
 ::ndk::ScopedAStatus DnsResolverService::clearResolverConfiguration(int netId) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
+    auto entry = gDnsResolverLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(netId);
 
     gDnsResolv->resolverCtrl.clearDnsServers(netId);
+
+    gResNetdCallbacks.log(entry.withAutomaticDuration().toString().c_str());
     return ::ndk::ScopedAStatus(AStatus_newOk());
 }
 
