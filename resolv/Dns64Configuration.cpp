@@ -26,10 +26,9 @@
 
 #include <arpa/inet.h>
 
-#include <netd_resolv/resolv.h>
-#include <netd_resolv/resolv_stub.h>
-
-#include "NetworkController.h"
+#include "DnsResolver.h"
+#include "NetdConstants.h"  // ScopedAddrinfo
+#include "netd_resolv/resolv.h"
 #include "netdutils/BackoffSequence.h"
 #include "netdutils/DumpWriter.h"
 #include "netid_client.h"
@@ -66,15 +65,16 @@ void Dns64Configuration::startPrefixDiscovery(unsigned netId) {
         Dns64Config evalCfg(cfg);
 
         auto backoff = netdutils::BackoffSequence<>::Builder()
-                .withInitialRetransmissionTime(std::chrono::seconds(1))
-                .withMaximumRetransmissionTime(std::chrono::seconds(3600))
-                .build();
+                               .withInitialRetransmissionTime(std::chrono::seconds(1))
+                               .withMaximumRetransmissionTime(std::chrono::seconds(3600))
+                               .build();
 
         while (true) {
             if (!this->shouldContinueDiscovery(evalCfg)) break;
 
             android_net_context netcontext{};
-            mNetCtrl.getNetworkContext(evalCfg.netId, 0, &netcontext);
+            mGetNetworkContextCallback(evalCfg.netId, 0, &netcontext);
+
             // Prefix discovery must bypass private DNS because in strict mode
             // the server generally won't know the NAT64 prefix.
             netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
@@ -151,12 +151,12 @@ bool Dns64Configuration::doRfc7050PrefixDiscovery(const android_net_context& net
     // ourselves, which means we also bypass all the special netcontext flag
     // handling and the resolver event logging.
     struct addrinfo* res = nullptr;
-    const int status = RESOLV_STUB.android_getaddrinfofornetcontext(kIPv4OnlyHost, nullptr, &hints,
-                                                                    &netcontext, &res);
+    const int status =
+            android_getaddrinfofornetcontext(kIPv4OnlyHost, nullptr, &hints, &netcontext, &res);
     ScopedAddrinfo result(res);
     if (status != 0) {
-        ALOGW("(%u, %u) plat_prefix/dns(%s) status = %d/%s",
-              cfg->netId, cfg->discoveryId, kIPv4OnlyHost, status, gai_strerror(status));
+        ALOGW("(%u, %u) plat_prefix/dns(%s) status = %d/%s", cfg->netId, cfg->discoveryId,
+              kIPv4OnlyHost, status, gai_strerror(status));
         return false;
     }
 
@@ -169,16 +169,16 @@ bool Dns64Configuration::doRfc7050PrefixDiscovery(const android_net_context& net
     //
     // TODO: Consider remedying this.
     if (result->ai_family != AF_INET6) {
-        ALOGW("(%u, %u) plat_prefix/unexpected address family: %d",
-              cfg->netId, cfg->discoveryId, result->ai_family);
+        ALOGW("(%u, %u) plat_prefix/unexpected address family: %d", cfg->netId, cfg->discoveryId,
+              result->ai_family);
         return false;
     }
     const IPAddress ipv6(reinterpret_cast<sockaddr_in6*>(result->ai_addr)->sin6_addr);
     // Only /96 DNS64 prefixes are supported at this time.
     cfg->prefix64 = IPPrefix(ipv6, 96);
 
-    ALOGW("(%u, %u) Detected NAT64 prefix %s",
-          cfg->netId, cfg->discoveryId, cfg->prefix64.toString().c_str());
+    ALOGW("(%u, %u) Detected NAT64 prefix %s", cfg->netId, cfg->discoveryId,
+          cfg->prefix64.toString().c_str());
 
     return true;
 }
@@ -197,7 +197,7 @@ bool Dns64Configuration::reportNat64PrefixStatus(unsigned netId, bool added, con
               netId, added, pfx.toString().c_str());
         return false;
     }
-    struct Nat64PrefixInfo args = {netId, added, pfx.ip().toString(), (uint8_t) pfx.length()};
+    Nat64PrefixInfo args = {netId, added, pfx.ip().toString(), (uint8_t)pfx.length()};
     mPrefixCallback(args);
     return true;
 }
