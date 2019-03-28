@@ -185,8 +185,8 @@ static void do_section(ns_msg* handle, ns_sect section) {
             ttl = ns_rr_ttl(rr);
             dbprint(p, end, "; EDNS: version: %zu, udp=%u, flags=%04zx\n", (ttl >> 16) & 0xff,
                     ns_rr_class(rr), ttl & 0xffff);
-            while (rdatalen >= 4) {
-                const u_char* cp = ns_rr_rdata(rr);
+            const u_char* cp = ns_rr_rdata(rr);
+            while (rdatalen <= ns_rr_rdlen(rr) && rdatalen >= 4) {
                 int i;
 
                 GETSHORT(optcode, cp);
@@ -223,6 +223,7 @@ static void do_section(ns_msg* handle, ns_sect section) {
                     }
                 }
                 rdatalen -= 4 + optlen;
+                cp += optlen;
             }
         } else {
             n = ns_sprintrr(handle, &rr, NULL, NULL, buf, (u_int) buflen);
