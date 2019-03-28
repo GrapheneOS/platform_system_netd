@@ -17,6 +17,8 @@
 #ifndef NETDBPF_BPF_SHARED_H
 #define NETDBPF_BPF_SHARED_H
 
+#include <linux/in.h>
+#include <linux/in6.h>
 #include <netdutils/UidConstants.h>
 // const values shared by bpf kernel program bpfloader and netd
 
@@ -105,5 +107,24 @@ const BpfConfig DEFAULT_CONFIG = 0;
 
 #define UID_RULES_CONFIGURATION_KEY 1
 #define CURRENT_STATS_MAP_CONFIGURATION_KEY 2
+
+#define CLAT_PROG_RAWIP_NAME "prog_clatd_schedcls_ingress_clat_rawip"
+#define CLAT_PROG_ETHER_NAME "prog_clatd_schedcls_ingress_clat_ether"
+
+#define CLAT_PROG_RAWIP_PATH BPF_PATH "/" CLAT_PROG_RAWIP_NAME
+#define CLAT_PROG_ETHER_PATH BPF_PATH "/" CLAT_PROG_ETHER_NAME
+
+#define CLAT_MAP_PATH BPF_PATH "/map_clatd_clat_map"
+
+struct ClatKey {
+    uint32_t iif;          // The input interface index
+    struct in6_addr src6;  // The source /96 nat64 prefix, bottom 32 bits must be 0
+    struct in6_addr dst6;  // The full 128-bits of the destination IPv6 address
+};
+
+struct ClatValue {
+    uint32_t oif;         // The output interface to redirect to (0 means don't redirect)
+    struct in_addr dst4;  // The destination IPv4 address
+};
 
 #endif  // NETDBPF_BPF_SHARED_H

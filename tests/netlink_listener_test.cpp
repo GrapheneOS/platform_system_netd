@@ -148,7 +148,6 @@ TEST_F(NetlinkListenerTest, TestAllSocketUntagged) {
 
     checkMassiveSocketDestroy(10, false);
     checkMassiveSocketDestroy(100, false);
-    checkMassiveSocketDestroy(1000, false);
 }
 
 TEST_F(NetlinkListenerTest, TestSkDestroyError) {

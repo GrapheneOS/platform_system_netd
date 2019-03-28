@@ -18,6 +18,19 @@
 // bpf kernel programs
 //
 bpf {
+    name: "clatd.o",
+    srcs: ["clatd.c"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    include_dirs: [
+        "system/netd/libnetdbpf/include",
+        "system/netd/libnetdutils/include",
+    ],
+}
+
+bpf {
     name: "netd.o",
     srcs: ["netd.c"],
     cflags: [
