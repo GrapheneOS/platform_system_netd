@@ -28,6 +28,8 @@ int getClatMapFd(void);
 
 int getClatProgFd(bool with_ethernet_header);
 
+int openNetlinkSocket(void);
+
 }  // namespace net
 }  // namespace android
 
