@@ -87,5 +87,11 @@ TEST_F(ClatUtilsTest, GetClatEtherProgFd) {
     close(fd);
 }
 
+TEST_F(ClatUtilsTest, TryOpeningNetlinkSocket) {
+    int fd = openNetlinkSocket();
+    ASSERT_LE(3, fd);
+    close(fd);
+}
+
 }  // namespace net
 }  // namespace android
