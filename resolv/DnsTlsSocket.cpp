@@ -449,16 +449,18 @@ bool DnsTlsSocket::query(uint16_t id, const Slice query) {
 }
 
 void DnsTlsSocket::requestLoopShutdown() {
-    // Write a negative number to the eventfd.  This triggers an immediate shutdown.
-    incrementEventFd(INT64_MIN);
+    if (mEventFd != -1) {
+        // Write a negative number to the eventfd.  This triggers an immediate shutdown.
+        incrementEventFd(INT64_MIN);
+    }
 }
 
 bool DnsTlsSocket::incrementEventFd(const int64_t count) {
-    if (!mEventFd) {
-        ALOGV("eventfd is not initialized");
+    if (mEventFd == -1) {
+        ALOGE("eventfd is not initialized");
         return false;
     }
-    int written = write(mEventFd.get(), &count, sizeof(count));
+    ssize_t written = write(mEventFd.get(), &count, sizeof(count));
     if (written != sizeof(count)) {
         ALOGE("Failed to increment eventfd by %" PRId64, count);
         return false;
