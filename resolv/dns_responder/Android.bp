@@ -8,15 +8,10 @@ cc_library_static {
         "libnetd_client",
         "libnetdutils",
         "libssl",
+        "dnsresolver_aidl_interface-cpp",
         "netd_aidl_interface-cpp",
     ],
     static_libs: ["libutils"],
-    aidl: {
-        include_dirs: [
-            "frameworks/native/aidl/binder",
-            "system/netd/server/binder",
-        ],
-    },
     include_dirs: [
         "system/netd/server",
     ],

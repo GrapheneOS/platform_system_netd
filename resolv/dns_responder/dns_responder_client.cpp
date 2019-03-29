@@ -48,8 +48,8 @@ void DnsResponderClient::SetupMappings(unsigned num_hosts, const std::vector<std
 
 bool DnsResponderClient::SetResolversForNetwork(const std::vector<std::string>& servers,
         const std::vector<std::string>& domains, const std::vector<int>& params) {
-    const auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
-            "", {}, {});
+    const auto rv = mDnsResolvSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
+                                                            "", {}, {});
     return rv.isOk();
 }
 
@@ -57,8 +57,8 @@ bool DnsResponderClient::SetResolversWithTls(const std::vector<std::string>& ser
         const std::vector<std::string>& domains, const std::vector<int>& params,
         const std::vector<std::string>& tlsServers,
         const std::string& name, const std::vector<std::string>& fingerprints) {
-    const auto rv = mNetdSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
-            name, tlsServers, fingerprints);
+    const auto rv = mDnsResolvSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
+                                                            name, tlsServers, fingerprints);
     if (!rv.isOk()) ALOGI("SetResolversWithTls() -> %s", rv.toString8().c_str());
     return rv.isOk();
 }
@@ -91,6 +91,7 @@ void DnsResponderClient::ShutdownDNSServers(std::vector<std::unique_ptr<test::DN
 
 int DnsResponderClient::SetupOemNetwork() {
     mNetdSrv->networkDestroy(TEST_NETID);
+    mDnsResolvSrv->clearResolverConfiguration(TEST_NETID);
     auto ret = mNetdSrv->networkCreatePhysical(TEST_NETID, INetd::PERMISSION_NONE);
     if (!ret.isOk()) {
         fprintf(stderr, "Creating physical network %d failed, %s\n", TEST_NETID,
@@ -108,6 +109,7 @@ int DnsResponderClient::SetupOemNetwork() {
 void DnsResponderClient::TearDownOemNetwork(int oemNetId) {
     if (oemNetId != -1) {
         mNetdSrv->networkDestroy(oemNetId);
+        mDnsResolvSrv->clearResolverConfiguration(oemNetId);
     }
 }
 
@@ -115,6 +117,10 @@ void DnsResponderClient::SetUp() {
     // binder setup
     auto binder = android::defaultServiceManager()->getService(android::String16("netd"));
     mNetdSrv = android::interface_cast<android::net::INetd>(binder);
+
+    auto resolvBinder =
+            android::defaultServiceManager()->getService(android::String16("dnsresolver"));
+    mDnsResolvSrv = android::interface_cast<android::net::IDnsResolver>(resolvBinder);
 
     // Ensure resolutions go via proxy.
     setenv(ANDROID_DNS_MODE, "", 1);

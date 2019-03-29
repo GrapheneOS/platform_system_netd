@@ -359,9 +359,7 @@ binder::Status NetdNativeService::networkCreateVpn(int32_t netId, bool secure) {
 
 binder::Status NetdNativeService::networkDestroy(int32_t netId) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // Both of these functions manage their own locking internally.
-    // Clear DNS servers before deleting the cache to avoid the cache being created again.
-    gCtls->resolverCtrl.clearDnsServers(netId);
+    // NetworkController::destroyNetwork is thread-safe.
     const int ret = gCtls->netCtrl.destroyNetwork(netId);
     return statusFromErrcode(ret);
 }
