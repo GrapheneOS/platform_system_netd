@@ -701,7 +701,6 @@ void NetworkController::dump(DumpWriter& dw) {
             dw.println("Required permission: %s", permissionToName(permission));
             dw.decIndent();
         }
-        android::net::gCtls->resolverCtrl.dump(dw, i.first);
         dw.blankline();
     }
     dw.decIndent();

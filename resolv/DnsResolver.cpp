@@ -44,7 +44,7 @@ namespace {
 
 bool verifyCallbacks() {
     return gResNetdCallbacks.check_calling_permission && gResNetdCallbacks.get_network_context &&
-           gResNetdCallbacks.get_dns64_prefix;
+           gResNetdCallbacks.log;
 }
 
 }  // namespace
