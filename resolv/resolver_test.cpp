@@ -55,7 +55,7 @@
 #include "NetdConstants.h"
 #include "ResolverStats.h"
 
-#include "android/net/INetd.h"
+#include "android/net/IDnsResolver.h"
 #include "binder/IServiceManager.h"
 #include "netdutils/SocketOption.h"
 
@@ -117,7 +117,7 @@ class ResolverTest : public ::testing::Test {
 
     void SetUp() { mDnsClient.SetUp(); }
     void TearDown() {
-        mDnsClient.netdService()->resolverStopPrefix64Discovery(TEST_NETID);
+        mDnsClient.resolvService()->stopPrefix64Discovery(TEST_NETID);
         mDnsClient.TearDown();
     }
 
@@ -125,26 +125,29 @@ class ResolverTest : public ::testing::Test {
                          std::vector<std::string>* tlsServers, res_params* params,
                          std::vector<ResolverStats>* stats,
                          int* wait_for_pending_req_timeout_count) {
-        using android::net::INetd;
+        using android::net::IDnsResolver;
         std::vector<int32_t> params32;
         std::vector<int32_t> stats32;
         std::vector<int32_t> wait_for_pending_req_timeout_count32{0};
-        auto rv = mDnsClient.netdService()->getResolverInfo(TEST_NETID, servers, domains,
-                                                            tlsServers, &params32, &stats32,
-                                                            &wait_for_pending_req_timeout_count32);
+        auto rv = mDnsClient.resolvService()->getResolverInfo(
+                TEST_NETID, servers, domains, tlsServers, &params32, &stats32,
+                &wait_for_pending_req_timeout_count32);
 
-        if (!rv.isOk() || params32.size() != static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT)) {
+        if (!rv.isOk() ||
+            params32.size() != static_cast<size_t>(IDnsResolver::RESOLVER_PARAMS_COUNT)) {
             return false;
         }
         *params = res_params{
-                .sample_validity =
-                        static_cast<uint16_t>(params32[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY]),
-                .success_threshold =
-                        static_cast<uint8_t>(params32[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD]),
-                .min_samples = static_cast<uint8_t>(params32[INetd::RESOLVER_PARAMS_MIN_SAMPLES]),
-                .max_samples = static_cast<uint8_t>(params32[INetd::RESOLVER_PARAMS_MAX_SAMPLES]),
-                .base_timeout_msec = params32[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
-                .retry_count = params32[INetd::RESOLVER_PARAMS_RETRY_COUNT],
+                .sample_validity = static_cast<uint16_t>(
+                        params32[IDnsResolver::RESOLVER_PARAMS_SAMPLE_VALIDITY]),
+                .success_threshold = static_cast<uint8_t>(
+                        params32[IDnsResolver::RESOLVER_PARAMS_SUCCESS_THRESHOLD]),
+                .min_samples =
+                        static_cast<uint8_t>(params32[IDnsResolver::RESOLVER_PARAMS_MIN_SAMPLES]),
+                .max_samples =
+                        static_cast<uint8_t>(params32[IDnsResolver::RESOLVER_PARAMS_MAX_SAMPLES]),
+                .base_timeout_msec = params32[IDnsResolver::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+                .retry_count = params32[IDnsResolver::RESOLVER_PARAMS_RETRY_COUNT],
         };
         *wait_for_pending_req_timeout_count = wait_for_pending_req_timeout_count32[0];
         return ResolverStats::decodeAll(stats32, stats);
@@ -229,7 +232,7 @@ class ResolverTest : public ::testing::Test {
         const int limit = timeoutMs / intervalMs;
         for (int count = 0; count <= limit; ++count) {
             std::string prefix;
-            auto rv = mDnsClient.netdService()->getPrefix64(netId, &prefix);
+            auto rv = mDnsClient.resolvService()->getPrefix64(netId, &prefix);
             if (rv.isOk()) {
                 return true;
             }
@@ -507,14 +510,17 @@ TEST_F(ResolverTest, GetHostByName_numeric) {
 }
 
 TEST_F(ResolverTest, BinderSerialization) {
-    using android::net::INetd;
+    using android::net::IDnsResolver;
     std::vector<int> params_offsets = {
-            INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY,   INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD,
-            INetd::RESOLVER_PARAMS_MIN_SAMPLES,       INetd::RESOLVER_PARAMS_MAX_SAMPLES,
-            INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC, INetd::RESOLVER_PARAMS_RETRY_COUNT,
+            IDnsResolver::RESOLVER_PARAMS_SAMPLE_VALIDITY,
+            IDnsResolver::RESOLVER_PARAMS_SUCCESS_THRESHOLD,
+            IDnsResolver::RESOLVER_PARAMS_MIN_SAMPLES,
+            IDnsResolver::RESOLVER_PARAMS_MAX_SAMPLES,
+            IDnsResolver::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC,
+            IDnsResolver::RESOLVER_PARAMS_RETRY_COUNT,
     };
     const int size = static_cast<int>(params_offsets.size());
-    EXPECT_EQ(size, INetd::RESOLVER_PARAMS_COUNT);
+    EXPECT_EQ(size, IDnsResolver::RESOLVER_PARAMS_COUNT);
     std::sort(params_offsets.begin(), params_offsets.end());
     for (int i = 0; i < size; ++i) {
         EXPECT_EQ(params_offsets[i], i);
@@ -522,7 +528,7 @@ TEST_F(ResolverTest, BinderSerialization) {
 }
 
 TEST_F(ResolverTest, GetHostByName_Binder) {
-    using android::net::INetd;
+    using android::net::IDnsResolver;
 
     std::vector<std::string> domains = { "example.com" };
     std::vector<std::unique_ptr<test::DNSResponder>> dns;
@@ -559,13 +565,14 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
     EXPECT_EQ(servers.size(), res_servers.size());
     EXPECT_EQ(domains.size(), res_domains.size());
     EXPECT_EQ(0U, res_tls_servers.size());
-    ASSERT_EQ(static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT), kDefaultParams.size());
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY], res_params.sample_validity);
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
+    ASSERT_EQ(static_cast<size_t>(IDnsResolver::RESOLVER_PARAMS_COUNT), kDefaultParams.size());
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_SAMPLE_VALIDITY],
+              res_params.sample_validity);
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
               res_params.success_threshold);
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
               res_params.base_timeout_msec);
     EXPECT_EQ(servers.size(), res_stats.size());
 
@@ -1003,7 +1010,7 @@ TEST_F(ResolverTest, GetAddrInfoStressTest_Binder_100000) {
 }
 
 TEST_F(ResolverTest, EmptySetup) {
-    using android::net::INetd;
+    using android::net::IDnsResolver;
     std::vector<std::string> servers;
     std::vector<std::string> domains;
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, domains));
@@ -1018,15 +1025,16 @@ TEST_F(ResolverTest, EmptySetup) {
     EXPECT_EQ(0U, res_servers.size());
     EXPECT_EQ(0U, res_domains.size());
     EXPECT_EQ(0U, res_tls_servers.size());
-    ASSERT_EQ(static_cast<size_t>(INetd::RESOLVER_PARAMS_COUNT), kDefaultParams.size());
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY], res_params.sample_validity);
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
+    ASSERT_EQ(static_cast<size_t>(IDnsResolver::RESOLVER_PARAMS_COUNT), kDefaultParams.size());
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_SAMPLE_VALIDITY],
+              res_params.sample_validity);
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
               res_params.success_threshold);
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
               res_params.base_timeout_msec);
-    EXPECT_EQ(kDefaultParams[INetd::RESOLVER_PARAMS_RETRY_COUNT], res_params.retry_count);
+    EXPECT_EQ(kDefaultParams[IDnsResolver::RESOLVER_PARAMS_RETRY_COUNT], res_params.retry_count);
 }
 
 TEST_F(ResolverTest, SearchPathChange) {
@@ -1097,8 +1105,6 @@ static void shutdownTlsServers(std::vector<std::unique_ptr<test::DnsTlsFrontend>
 }
 
 TEST_F(ResolverTest, MaxServerPrune_Binder) {
-    using android::net::INetd;
-
     std::vector<std::string> domains;
     std::vector<std::unique_ptr<test::DNSResponder>> dns;
     std::vector<std::unique_ptr<test::DnsTlsFrontend>> tls;
@@ -2506,7 +2512,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // hints are necessary in order to let netd know which type of addresses the caller is
@@ -2522,7 +2528,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
     EXPECT_EQ(result_str, "64:ff9b::102:304");
 
     // Stopping NAT64 prefix discovery disables synthesis.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStopPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->stopPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_FALSE(WaitForPrefix64Detected(TEST_NETID, 300));
 
     dns.clearQueries();
@@ -2552,7 +2558,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecified) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Ensure to synthesize AAAA if AF_INET6 is specified, and not to synthesize AAAA
@@ -2589,7 +2595,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedV6) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     const addrinfo hints = {.ai_family = AF_UNSPEC};
@@ -2620,7 +2626,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedNoV6) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     const addrinfo hints = {.ai_family = AF_UNSPEC};
@@ -2655,7 +2661,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecialUseIPv4Addresses) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     static const struct TestConfig {
@@ -2718,7 +2724,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryWithNullArgumentHints) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Assign argument hints of getaddrinfo() as null is equivalent to set ai_family AF_UNSPEC.
@@ -2759,7 +2765,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryNullArgumentNode) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // If node is null, return address is listed by libc/getaddrinfo.c as follows.
@@ -2839,7 +2845,7 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDnsQueryWithHavingNat64Prefix) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Reverse IPv4 DNS query. Prefix should have no effect on it.
@@ -2883,7 +2889,7 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDns64Query) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Synthesized PTR record doesn't exist on DNS server
@@ -2929,7 +2935,7 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDns64QueryFromHostFile) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Using synthesized "localhost" address to be a trick for resolving host name
@@ -2971,7 +2977,7 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDnsQueryWithHavingNat64Prefix) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     static const struct TestConfig {
@@ -3050,7 +3056,7 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64Query) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     static const struct TestConfig {
@@ -3120,7 +3126,7 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64QueryFromHostFile) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Using synthesized "localhost" address to be a trick for resolving host name
@@ -3154,7 +3160,7 @@ TEST_F(ResolverTest, GetHostByName2_Dns64Synthesize) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // Query an IPv4-only hostname. Expect that gets a synthesized address.
@@ -3181,7 +3187,7 @@ TEST_F(ResolverTest, GetHostByName2_DnsQueryWithHavingNat64Prefix) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     // IPv4 DNS query. Prefix should have no effect on it.
@@ -3222,7 +3228,7 @@ TEST_F(ResolverTest, GetHostByName2_Dns64QuerySpecialUseIPv4Addresses) {
     ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
 
     // Start NAT64 prefix discovery and wait for it to complete.
-    EXPECT_TRUE(mDnsClient.netdService()->resolverStartPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
     EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
 
     static const struct TestConfig {

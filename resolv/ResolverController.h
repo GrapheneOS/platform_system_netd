@@ -37,7 +37,6 @@ class ResolverController {
     ResolverController();
     ~ResolverController() = default;
 
-    // TODO: Check if we really need it.
     int clearDnsServers(unsigned netid);
 
     int getPrefix64(unsigned netId, netdutils::IPPrefix* prefix);
