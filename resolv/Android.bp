@@ -50,6 +50,7 @@ cc_library {
         "res_send.cpp",
         "res_state.cpp",
         "res_stats.cpp",
+        "Dns64Configuration.cpp",
         "DnsProxyListener.cpp",
         "DnsResolver.cpp",
         "DnsResolverService.cpp",
@@ -60,6 +61,7 @@ cc_library {
         "DnsTlsSessionCache.cpp",
         "DnsTlsSocket.cpp",
         "PrivateDnsConfiguration.cpp",
+        "ResolverController.cpp",
         "ResolverEventReporter.cpp",
     ],
     // Link everything statically (except for libc) to minimize our dependence
@@ -121,6 +123,7 @@ cc_test {
         "libutils",
     ],
     static_libs: [
+        "libgmock",
         "libnetd_test_dnsresponder",
         "libnetd_test_metrics_listener",
         "libnetd_test_tun_interface",

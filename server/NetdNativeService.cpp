@@ -35,7 +35,6 @@
 
 #include <json/value.h>
 #include <json/writer.h>
-#include <openssl/base64.h>
 
 #include "Controllers.h"
 #include "InterfaceController.h"
@@ -359,9 +358,7 @@ binder::Status NetdNativeService::networkCreateVpn(int32_t netId, bool secure) {
 
 binder::Status NetdNativeService::networkDestroy(int32_t netId) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // Both of these functions manage their own locking internally.
-    // Clear DNS servers before deleting the cache to avoid the cache being created again.
-    gCtls->resolverCtrl.clearDnsServers(netId);
+    // NetworkController::destroyNetwork is thread-safe.
     const int ret = gCtls->netCtrl.destroyNetwork(netId);
     return statusFromErrcode(ret);
 }
@@ -430,86 +427,6 @@ binder::Status NetdNativeService::socketDestroy(const std::vector<UidRangeParcel
         return binder::Status::fromServiceSpecificError(-err,
                 String8::format("destroySockets: %s", strerror(-err)));
     }
-    return binder::Status::ok();
-}
-
-// Parse a base64 encoded string into a vector of bytes.
-// On failure, return an empty vector.
-static std::vector<uint8_t> parseBase64(const std::string& input) {
-    std::vector<uint8_t> decoded;
-    size_t out_len;
-    if (EVP_DecodedLength(&out_len, input.size()) != 1) {
-        return decoded;
-    }
-    // out_len is now an upper bound on the output length.
-    decoded.resize(out_len);
-    if (EVP_DecodeBase64(decoded.data(), &out_len, decoded.size(),
-            reinterpret_cast<const uint8_t*>(input.data()), input.size()) == 1) {
-        // Possibly shrink the vector if the actual output was smaller than the bound.
-        decoded.resize(out_len);
-    } else {
-        decoded.clear();
-    }
-    if (out_len != SHA256_SIZE) {
-        decoded.clear();
-    }
-    return decoded;
-}
-
-binder::Status NetdNativeService::setResolverConfiguration(int32_t netId,
-        const std::vector<std::string>& servers, const std::vector<std::string>& domains,
-        const std::vector<int32_t>& params, const std::string& tlsName,
-        const std::vector<std::string>& tlsServers,
-        const std::vector<std::string>& tlsFingerprints) {
-    // This function intentionally does not lock within Netd, as Bionic is thread-safe.
-    ENFORCE_INTERNAL_PERMISSIONS();
-
-    std::set<std::vector<uint8_t>> decoded_fingerprints;
-    for (const std::string& fingerprint : tlsFingerprints) {
-        std::vector<uint8_t> decoded = parseBase64(fingerprint);
-        if (decoded.empty()) {
-            return binder::Status::fromServiceSpecificError(EINVAL,
-                    String8::format("ResolverController error: bad fingerprint"));
-        }
-        decoded_fingerprints.emplace(decoded);
-    }
-
-    int err = gCtls->resolverCtrl.setResolverConfiguration(netId, servers, domains, params,
-            tlsName, tlsServers, decoded_fingerprints);
-    if (err != 0) {
-        return binder::Status::fromServiceSpecificError(-err,
-                String8::format("ResolverController error: %s", strerror(-err)));
-    }
-    return binder::Status::ok();
-}
-
-binder::Status NetdNativeService::getResolverInfo(
-        int32_t netId, std::vector<std::string>* servers, std::vector<std::string>* domains,
-        std::vector<std::string>* tlsServers, std::vector<int32_t>* params,
-        std::vector<int32_t>* stats, std::vector<int32_t>* wait_for_pending_req_timeout_count) {
-    // This function intentionally does not lock within Netd, as Bionic is thread-safe.
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-
-    int err = gCtls->resolverCtrl.getResolverInfo(netId, servers, domains, tlsServers, params,
-                                                  stats, wait_for_pending_req_timeout_count);
-    if (err != 0) {
-        return binder::Status::fromServiceSpecificError(-err,
-                String8::format("ResolverController error: %s", strerror(-err)));
-    }
-    return binder::Status::ok();
-}
-
-binder::Status NetdNativeService::resolverStartPrefix64Discovery(int32_t netId) {
-    // Locking happens in Dns64Configuration.
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-    gCtls->resolverCtrl.startPrefix64Discovery(netId);
-    return binder::Status::ok();
-}
-
-binder::Status NetdNativeService::resolverStopPrefix64Discovery(int32_t netId) {
-    // Locking happens in Dns64Configuration.
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-    gCtls->resolverCtrl.stopPrefix64Discovery(netId);
     return binder::Status::ok();
 }
 
@@ -1264,18 +1181,6 @@ binder::Status NetdNativeService::setTcpRWmemorySize(const std::string& rmemValu
         int ret = -errno;
         return statusFromErrcode(ret);
     }
-    return binder::Status::ok();
-}
-
-binder::Status NetdNativeService::getPrefix64(int netId, std::string* _aidl_return) {
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-    netdutils::IPPrefix prefix{};
-    int err = gCtls->resolverCtrl.getPrefix64(netId, &prefix);
-    if (err != 0) {
-        return binder::Status::fromServiceSpecificError(
-                -err, String8::format("ResolverController error: %s", strerror(-err)));
-    }
-    *_aidl_return = prefix.toString();
     return binder::Status::ok();
 }
 

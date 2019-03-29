@@ -18,26 +18,35 @@
 
 #include <vector>
 
+#include <openssl/base64.h>
+
 #include <android-base/strings.h>
 #include <android/net/IDnsResolver.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
+#include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
 #include <netdb.h>
 
 #include "tests/BaseTestMetricsListener.h"
 #include "tests/TestMetrics.h"
 
+#include "NetdConstants.h"  // SHA256_SIZE
+#include "ResolverStats.h"
 #include "Stopwatch.h"
 #include "dns_responder.h"
 #include "dns_responder_client.h"
+
+namespace binder = android::binder;
 
 using android::IBinder;
 using android::IServiceManager;
 using android::ProcessState;
 using android::sp;
 using android::String16;
+using android::String8;
 using android::net::IDnsResolver;
+using android::net::ResolverStats;
 using android::net::metrics::INetdEventListener;
 using android::net::metrics::TestOnDnsEvent;
 
@@ -69,6 +78,19 @@ class TimedOperation : public Stopwatch {
   private:
     std::string mName;
 };
+
+namespace {
+
+std::string base64Encode(const std::vector<uint8_t>& input) {
+    size_t out_len;
+    EXPECT_EQ(1, EVP_EncodedLength(&out_len, input.size()));
+    // out_len includes the trailing NULL.
+    uint8_t output_bytes[out_len];
+    EXPECT_EQ(out_len - 1, EVP_EncodeBlock(output_bytes, input.data(), input.size()));
+    return std::string(reinterpret_cast<char*>(output_bytes));
+}  // namespace
+
+}  // namespace
 
 TEST_F(DnsResolverBinderTest, IsAlive) {
     TimedOperation t("isAlive RPC");
@@ -153,4 +175,107 @@ TEST_F(DnsResolverBinderTest, EventListener_onDnsEvent) {
     EXPECT_TRUE(testOnDnsEvent->isVerified());
 
     dnsClient.TearDown();
+}
+
+TEST_F(DnsResolverBinderTest, SetResolverConfiguration_Tls) {
+    const std::vector<std::string> LOCALLY_ASSIGNED_DNS{"8.8.8.8", "2001:4860:4860::8888"};
+    std::vector<uint8_t> fp(SHA256_SIZE);
+    std::vector<uint8_t> short_fp(1);
+    std::vector<uint8_t> long_fp(SHA256_SIZE + 1);
+    std::vector<std::string> test_domains;
+    std::vector<int> test_params = {300, 25, 8, 8};
+    unsigned test_netid = 0;
+    static const struct TestData {
+        const std::vector<std::string> servers;
+        const std::string tlsName;
+        const std::vector<std::vector<uint8_t>> tlsFingerprints;
+        const int expectedReturnCode;
+    } kTlsTestData[] = {
+            {{"192.0.2.1"}, "", {}, 0},
+            {{"2001:db8::2"}, "host.name", {}, 0},
+            {{"192.0.2.3"}, "@@@@", {fp}, 0},
+            {{"2001:db8::4"}, "", {fp}, 0},
+            {{}, "", {}, 0},
+            {{""}, "", {}, EINVAL},
+            {{"192.0.*.5"}, "", {}, EINVAL},
+            {{"2001:dg8::6"}, "", {}, EINVAL},
+            {{"2001:db8::c"}, "", {short_fp}, EINVAL},
+            {{"192.0.2.12"}, "", {long_fp}, EINVAL},
+            {{"2001:db8::e"}, "", {fp, fp, fp}, 0},
+            {{"192.0.2.14"}, "", {fp, short_fp}, EINVAL},
+    };
+
+    for (size_t i = 0; i < std::size(kTlsTestData); i++) {
+        const auto& td = kTlsTestData[i];
+
+        std::vector<std::string> fingerprints;
+        for (const auto& fingerprint : td.tlsFingerprints) {
+            fingerprints.push_back(base64Encode(fingerprint));
+        }
+        binder::Status status = mDnsResolver->setResolverConfiguration(
+                test_netid, LOCALLY_ASSIGNED_DNS, test_domains, test_params, td.tlsName, td.servers,
+                fingerprints);
+
+        if (td.expectedReturnCode == 0) {
+            SCOPED_TRACE(String8::format("test case %zu should have passed", i));
+            SCOPED_TRACE(status.toString8());
+            EXPECT_EQ(0, status.exceptionCode());
+        } else {
+            SCOPED_TRACE(String8::format("test case %zu should have failed", i));
+            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
+        }
+    }
+    // Ensure TLS is disabled before the start of the next test.
+    mDnsResolver->setResolverConfiguration(test_netid, kTlsTestData[0].servers, test_domains,
+                                           test_params, "", {}, {});
+}
+
+TEST_F(DnsResolverBinderTest, GetResolverInfo) {
+    std::vector<std::string> servers = {"127.0.0.1", "127.0.0.2"};
+    std::vector<std::string> domains = {"example.com"};
+    std::vector<int> testParams = {
+            300,     // sample validity in seconds
+            25,      // success threshod in percent
+            8,   8,  // {MIN,MAX}_SAMPLES
+            100,     // BASE_TIMEOUT_MSEC
+            2,       // retry count
+    };
+    binder::Status status = mDnsResolver->setResolverConfiguration(TEST_NETID, servers, domains,
+                                                                   testParams, "", {}, {});
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    std::vector<std::string> res_servers;
+    std::vector<std::string> res_domains;
+    std::vector<std::string> res_tls_servers;
+    std::vector<int32_t> params32;
+    std::vector<int32_t> stats32;
+    std::vector<int32_t> wait_for_pending_req_timeout_count32{0};
+    status = mDnsResolver->getResolverInfo(TEST_NETID, &res_servers, &res_domains, &res_tls_servers,
+                                           &params32, &stats32,
+                                           &wait_for_pending_req_timeout_count32);
+
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    EXPECT_EQ(servers.size(), res_servers.size());
+    EXPECT_EQ(domains.size(), res_domains.size());
+    EXPECT_EQ(0U, res_tls_servers.size());
+    ASSERT_EQ(static_cast<size_t>(IDnsResolver::RESOLVER_PARAMS_COUNT), testParams.size());
+    EXPECT_EQ(testParams[IDnsResolver::RESOLVER_PARAMS_SAMPLE_VALIDITY],
+              params32[IDnsResolver::RESOLVER_PARAMS_SAMPLE_VALIDITY]);
+    EXPECT_EQ(testParams[IDnsResolver::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
+              params32[IDnsResolver::RESOLVER_PARAMS_SUCCESS_THRESHOLD]);
+    EXPECT_EQ(testParams[IDnsResolver::RESOLVER_PARAMS_MIN_SAMPLES],
+              params32[IDnsResolver::RESOLVER_PARAMS_MIN_SAMPLES]);
+    EXPECT_EQ(testParams[IDnsResolver::RESOLVER_PARAMS_MAX_SAMPLES],
+              params32[IDnsResolver::RESOLVER_PARAMS_MAX_SAMPLES]);
+    EXPECT_EQ(testParams[IDnsResolver::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC],
+              params32[IDnsResolver::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC]);
+
+    std::vector<ResolverStats> stats;
+    ResolverStats::decodeAll(stats32, &stats);
+
+    EXPECT_EQ(servers.size(), stats.size());
+
+    EXPECT_THAT(res_servers, testing::UnorderedElementsAreArray(servers));
+    EXPECT_THAT(res_domains, testing::UnorderedElementsAreArray(domains));
 }

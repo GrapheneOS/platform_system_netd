@@ -625,7 +625,8 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         }
     } else if (!strcmp(argv[1], "clearnetdns")) { // "resolver clearnetdns <netId>"
         if (argc == 3) {
-            rc = gCtls->resolverCtrl.clearDnsServers(netId);
+            // TODO: add resolver command back after NDC migrating to binder ver.
+            rc = -1;
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver clearnetdns", false);
@@ -645,8 +646,10 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
     return 0;
 }
 
-bool CommandListener::ResolverCmd::parseAndExecuteSetNetDns(int netId, int argc,
-        const char** argv) {
+bool CommandListener::ResolverCmd::parseAndExecuteSetNetDns(int, int argc, const char** argv) {
+    // TODO: add resolver command back after NDC migrating to binder ver.
+    return false;
+
     // "resolver setnetdns <netId> <domains> <dns1> [<dns2> ...] [--params <params>]"
     // TODO: This code has to be replaced by a Binder call ASAP
     if (argc < 5) {
@@ -664,7 +667,7 @@ bool CommandListener::ResolverCmd::parseAndExecuteSetNetDns(int netId, int argc,
         }
         paramsPtr = &params;
     }
-    return gCtls->resolverCtrl.setDnsServers(netId, argv[3], &argv[4], end - 4, paramsPtr) == 0;
+    return false;
 }
 
 CommandListener::BandwidthControlCmd::BandwidthControlCmd() :
@@ -1341,7 +1344,7 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (int ret = gCtls->netCtrl.destroyNetwork(netId)) {
             return operationError(client, "destroyNetwork() failed", ret);
         }
-        gCtls->resolverCtrl.clearDnsServers(netId);
+        // TODO: add clearing DNS back after NDC migrating to binder ver.
         return success(client);
     }
 

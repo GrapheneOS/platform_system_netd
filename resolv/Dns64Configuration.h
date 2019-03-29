@@ -32,8 +32,6 @@ struct android_net_context;
 namespace android {
 namespace net {
 
-class NetworkController;
-
 /**
  * This class handles RFC 7050 -style DNS64 prefix discovery.
  *
@@ -63,14 +61,18 @@ class Dns64Configuration {
     // Callback that is triggered for every NAT64 prefix event.
     using Nat64PrefixCallback = std::function<void(const Nat64PrefixInfo&)>;
 
+    using GetNetworkContextCallback = std::function<void(uint32_t, uint32_t, android_net_context*)>;
+
     // Parameters from RFC 7050 section 8.
     static const char kIPv4OnlyHost[];  // "ipv4only.arpa."
     static const char kIPv4Literal1[];  // 192.0.0.170
     static const char kIPv4Literal2[];  // 192.0.0.171
 
     Dns64Configuration() = delete;
-    Dns64Configuration(const NetworkController& netCtrl, Nat64PrefixCallback callback)
-        : mNetCtrl(netCtrl), mPrefixCallback(std::move(callback)) {}
+    Dns64Configuration(GetNetworkContextCallback getNetworkCallback,
+                       Nat64PrefixCallback prefixCallback)
+        : mGetNetworkContextCallback(std::move(getNetworkCallback)),
+          mPrefixCallback(std::move(prefixCallback)) {}
     Dns64Configuration(const Dns64Configuration&) = delete;
     Dns64Configuration(Dns64Configuration&&) = delete;
     Dns64Configuration& operator=(const Dns64Configuration&) = delete;
@@ -106,12 +108,11 @@ class Dns64Configuration {
     void recordDns64Config(const Dns64Config& cfg);
     void removeDns64Config(unsigned netId) REQUIRES(mMutex);
 
-    const NetworkController& mNetCtrl;
-
     mutable std::mutex mMutex;
     std::condition_variable mCv;
     unsigned int mNextId GUARDED_BY(mMutex);
     std::unordered_map<unsigned, Dns64Config> mDns64Configs GUARDED_BY(mMutex);
+    const GetNetworkContextCallback mGetNetworkContextCallback;
     const Nat64PrefixCallback mPrefixCallback;
 };
 

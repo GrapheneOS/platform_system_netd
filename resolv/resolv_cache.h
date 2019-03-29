@@ -32,12 +32,16 @@
 
 #include <stddef.h>
 
+#include <vector>
+
 struct __res_state;
 
 /* sets the name server addresses to the provided res_state structure. The
  * name servers are retrieved from the cache which is associated
  * with the network to which the res_state structure is associated */
 void _resolv_populate_res_for_net(struct __res_state* statp);
+
+std::vector<unsigned> resolv_list_caches();
 
 typedef enum {
     RESOLV_CACHE_UNSUPPORTED, /* the cache can't handle that kind of queries */
