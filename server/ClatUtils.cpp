@@ -16,9 +16,11 @@
 
 #include "ClatUtils.h"
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <linux/if.h>
 #include <linux/netlink.h>
+#include <linux/pkt_cls.h>
 #include <linux/pkt_sched.h>
 #include <linux/rtnetlink.h>
 #include <sys/ioctl.h>
@@ -202,6 +204,153 @@ int tcQdiscReplaceDevClsact(int fd, int ifIndex) {
 
 int tcQdiscDelDevClsact(int fd, int ifIndex) {
     return doTcQdiscClsact(fd, ifIndex, RTM_DELQDISC, 0);
+}
+
+// tc filter add dev ... egress prio 1 protocol ipv6 bpf object-pinned /sys/fs/bpf/... direct-action
+int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
+    // The priority doesn't matter until we actually start attaching multiple
+    // things to the same interface's egress point.
+    const int prio = 1;
+
+    // This is the name of the filter we're attaching (ie. this is the 'bpf'
+    // packet classifier enabled by kernel config option CONFIG_NET_CLS_BPF.
+    //
+    // We go through some hoops in order to make this compile time constants
+    // so that we can define the struct further down the function with the
+    // field for this sized correctly already during the build.
+#define BPF "bpf"
+    const char bpf[] = BPF;
+    // sizeof() includes the terminating NULL
+#define ASCIIZ_LEN_BPF sizeof(bpf)
+
+    // This is to replicate program name suffix used by 'tc' Linux cli
+    // when it attaches programs.
+#define FSOBJ_SUFFIX ":[*fsobj]"
+
+    // This macro expands (from header files) to:
+    //   prog_clatd_schedcls_ingress_clat_rawip:[*fsobj]
+    // and is the name of the pinned ebpf program for ARPHRD_RAWIP interfaces.
+    // (also compatible with anything that has 0 size L2 header)
+#define NAME_RAWIP CLAT_PROG_RAWIP_NAME FSOBJ_SUFFIX
+    const char name_rawip[] = NAME_RAWIP;
+
+    // This macro expands (from header files) to:
+    //   prog_clatd_schedcls_ingress_clat_ether:[*fsobj]
+    // and is the name of the pinned ebpf program for ARPHRD_ETHER interfaces.
+    // (also compatible with anything that has standard ethernet header)
+#define NAME_ETHER CLAT_PROG_ETHER_NAME FSOBJ_SUFFIX
+    const char name_ether[] = NAME_ETHER;
+
+    // The actual name we'll use is determined at run time via 'ethernet'
+    // boolean.  We need to compile time allocate enough space in the struct
+    // hence this macro magic to make sure we have enough space for either
+    // possibility.  In practice both are actually the same size.
+#define ASCIIZ_MAXLEN_NAME \
+    ((sizeof(name_rawip) > sizeof(name_ether)) ? sizeof(name_rawip) : sizeof(name_ether))
+
+    // This is not a compile time constant and is used in strcpy below
+#define NAME (ethernet ? NAME_ETHER : NAME_RAWIP)
+
+    struct {
+        nlmsghdr n;
+        tcmsg t;
+        struct {
+            nlattr attr;
+            char str[NLMSG_ALIGN(ASCIIZ_LEN_BPF)];
+        } kind;
+        struct {
+            nlattr attr;
+            struct {
+                nlattr attr;
+                __u32 u32;
+            } fd;
+            struct {
+                nlattr attr;
+                char str[NLMSG_ALIGN(ASCIIZ_MAXLEN_NAME)];
+            } name;
+            struct {
+                nlattr attr;
+                __u32 u32;
+            } flags;
+        } options;
+    } req = {
+            .n =
+                    {
+                            .nlmsg_len = sizeof(req),
+                            .nlmsg_type = RTM_NEWTFILTER,
+                            .nlmsg_flags = NETLINK_REQUEST_FLAGS | NLM_F_EXCL | NLM_F_CREATE,
+                    },
+            .t =
+                    {
+                            .tcm_family = AF_UNSPEC,
+                            .tcm_ifindex = ifIndex,
+                            .tcm_handle = TC_H_UNSPEC,
+                            .tcm_parent = TC_H_MAKE(TC_H_CLSACT, TC_H_MIN_INGRESS),
+                            .tcm_info = (prio << 16) | htons(ETH_P_IPV6),
+                    },
+            .kind =
+                    {
+                            .attr =
+                                    {
+                                            .nla_len = sizeof(req.kind),
+                                            .nla_type = TCA_KIND,
+                                    },
+                            .str = BPF,
+                    },
+            .options =
+                    {
+                            .attr =
+                                    {
+                                            .nla_len = sizeof(req.options),
+                                            .nla_type = TCA_OPTIONS,
+                                    },
+                            .fd =
+                                    {
+                                            .attr =
+                                                    {
+                                                            .nla_len = sizeof(req.options.fd),
+                                                            .nla_type = TCA_BPF_FD,
+                                                    },
+                                            .u32 = static_cast<__u32>(bpfFd),
+                                    },
+                            .name =
+                                    {
+                                            .attr =
+                                                    {
+                                                            .nla_len = sizeof(req.options.name),
+                                                            .nla_type = TCA_BPF_NAME,
+                                                    },
+                                            // Visible via 'tc filter show', but
+                                            // is overwritten by strcpy below
+                                            .str = "placeholder",
+                                    },
+                            .flags =
+                                    {
+                                            .attr =
+                                                    {
+                                                            .nla_len = sizeof(req.options.flags),
+                                                            .nla_type = TCA_BPF_FLAGS,
+                                                    },
+                                            .u32 = TCA_BPF_FLAG_ACT_DIRECT,
+                                    },
+                    },
+    };
+
+    strncpy(req.options.name.str, NAME, sizeof(req.options.name.str));
+
+#undef NAME
+#undef ASCIIZ_MAXLEN_NAME
+#undef NAME_ETHER
+#undef NAME_RAWIP
+#undef NAME
+#undef ASCIIZ_LEN_BPF
+#undef BPF
+
+    const int rv = send(fd, &req, sizeof(req), 0);
+    if (rv == -1) return -errno;
+    if (rv != sizeof(req)) return -EMSGSIZE;
+
+    return processNetlinkResponse(fd);
 }
 
 }  // namespace net

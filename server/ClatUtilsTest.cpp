@@ -21,6 +21,8 @@
 #include "ClatUtils.h"
 
 #include <linux/if_arp.h>
+#include <stdlib.h>
+#include <sys/wait.h>
 
 #include "bpf/BpfUtils.h"
 #include "netdbpf/bpf_shared.h"
@@ -110,6 +112,64 @@ TEST_F(ClatUtilsTest, AttachReplaceDetachClsactLo) {
     EXPECT_EQ(0, tcQdiscReplaceDevClsact(fd, LOOPBACK_IFINDEX));
     EXPECT_EQ(0, tcQdiscDelDevClsact(fd, LOOPBACK_IFINDEX));
     close(fd);
+}
+
+// The SKIP_IF_BPF_NOT_SUPPORTED macro is effectively a check for 4.9+ kernel
+// combined with a launched on P device.  Ie. it's a test for 4.9-P or better.
+// NET_CLS_BPF is only enabled starting with 4.9-Q and as such we need
+// a separate way to test for this...
+int doKernelSupportsNetClsBpf(void) {
+    return system("zcat /proc/config.gz | egrep -q '^CONFIG_NET_CLS_BPF=[my]$'");
+}
+
+// Make sure the above function actually executes correctly rather than failing
+// due to missing binary or execution failure...
+TEST_F(ClatUtilsTest, KernelSupportsNetClsBpf) {
+    // Make sure the file is present and readable and decompressable.
+    ASSERT_EQ(W_EXITCODE(0, 0), system("zcat /proc/config.gz > /dev/null"));
+
+    int v = doKernelSupportsNetClsBpf();
+
+    // It should always either return 0 (match) or 1 (no match),
+    // anything else is some sort of exec/environment/etc failure.
+    if (v != W_EXITCODE(1, 0)) ASSERT_EQ(v, W_EXITCODE(0, 0));
+}
+
+// True iff CONFIG_NET_CLS_BPF is enabled in /proc/config.gz
+bool kernelSupportsNetClsBpf(void) {
+    return doKernelSupportsNetClsBpf() == W_EXITCODE(0, 0);
+}
+
+void checkAttachBpfFilterClsactLo(const bool ethernet) {
+    // This test requires kernel 4.9-Q or better
+    SKIP_IF_BPF_NOT_SUPPORTED;
+    if (!kernelSupportsNetClsBpf()) return;
+
+    int bpf_fd = getClatProgFd(false);
+    ASSERT_LE(3, bpf_fd);
+
+    int fd = openNetlinkSocket();
+    EXPECT_LE(3, fd);
+    if (fd >= 0) {
+        // This attaches and detaches a clsact plus ebpf program to loopback
+        // interface, but it should not affect traffic by virtue of us not
+        // actually populating the ebpf control map.
+        // Furthermore: it only takes fractions of a second.
+        EXPECT_EQ(0, tcQdiscAddDevClsact(fd, LOOPBACK_IFINDEX));
+        EXPECT_EQ(0, tcFilterAddDevBpf(fd, LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        EXPECT_EQ(0, tcQdiscDelDevClsact(fd, LOOPBACK_IFINDEX));
+        close(fd);
+    }
+
+    close(bpf_fd);
+}
+
+TEST_F(ClatUtilsTest, CheckAttachBpfFilterRawIpClsactLo) {
+    checkAttachBpfFilterClsactLo(false);
+}
+
+TEST_F(ClatUtilsTest, CheckAttachBpfFilterEthernetClsactLo) {
+    checkAttachBpfFilterClsactLo(true);
 }
 
 }  // namespace net
