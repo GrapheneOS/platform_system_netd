@@ -28,23 +28,23 @@ struct ResolverStats {
     // android_net_res_stats_get_info_for_net(), the usability is calculated by applying
     // android_net_res_stats_get_usable_servers() to this data.
     enum ResolverStatsOffsets {
-        STATS_SUCCESSES = 0,    // # successes counted for this server
-        STATS_ERRORS,           // # errors
-        STATS_TIMEOUTS,         // # timeouts
-        STATS_INTERNAL_ERRORS,  // # internal errors
-        STATS_RTT_AVG,          // average round-trip-time
-        STATS_LAST_SAMPLE_TIME, // time in s when the last sample was recorded
-        STATS_USABLE,           // whether the server is considered usable
-        STATS_COUNT             // total count of integers in the per-server data
+        STATS_SUCCESSES = 0,     // # successes counted for this server
+        STATS_ERRORS,            // # errors
+        STATS_TIMEOUTS,          // # timeouts
+        STATS_INTERNAL_ERRORS,   // # internal errors
+        STATS_RTT_AVG,           // average round-trip-time
+        STATS_LAST_SAMPLE_TIME,  // time in s when the last sample was recorded
+        STATS_USABLE,            // whether the server is considered usable
+        STATS_COUNT              // total count of integers in the per-server data
     };
 
-    int successes {-1};
-    int errors {-1};
-    int timeouts {-1};
-    int internal_errors {-1};
-    int rtt_avg {-1};
-    time_t last_sample_time {0};
-    bool usable {false};
+    int successes{-1};
+    int errors{-1};
+    int timeouts{-1};
+    int internal_errors{-1};
+    int rtt_avg{-1};
+    time_t last_sample_time{0};
+    bool usable{false};
 
     // Serialize the resolver stats to the end of |out|.
     void encode(std::vector<int32_t>* out) const;
@@ -61,7 +61,6 @@ struct ResolverStats {
     static bool decodeAll(const std::vector<int32_t>& in, std::vector<ResolverStats>* stats);
 };
 
-
 inline void ResolverStats::encode(std::vector<int32_t>* out) const {
     size_t ofs = out->size();
     out->resize(ofs + STATS_COUNT);
@@ -75,7 +74,7 @@ inline void ResolverStats::encode(std::vector<int32_t>* out) const {
     cur[STATS_USABLE] = usable;
 }
 
-    // Read the serialized resolverstats starting at |in[ofs]|.
+// Read the serialized resolverstats starting at |in[ofs]|.
 inline ssize_t ResolverStats::decode(const std::vector<int32_t>& in, ssize_t ofs) {
     if (ofs < 0 || static_cast<size_t>(ofs) + STATS_COUNT > in.size()) {
         return -1;
@@ -92,7 +91,7 @@ inline ssize_t ResolverStats::decode(const std::vector<int32_t>& in, ssize_t ofs
 }
 
 inline void ResolverStats::encodeAll(const std::vector<ResolverStats>& stats,
-        std::vector<int32_t>* out) {
+                                     std::vector<int32_t>* out) {
     for (const auto& s : stats) {
         s.encode(out);
     }
@@ -100,7 +99,7 @@ inline void ResolverStats::encodeAll(const std::vector<ResolverStats>& stats,
 
 // TODO: Replace with a better representation, e.g. a Parcelable.
 inline bool ResolverStats::decodeAll(const std::vector<int32_t>& in,
-        std::vector<ResolverStats>* stats) {
+                                     std::vector<ResolverStats>* stats) {
     ssize_t size = in.size();
     if (size % STATS_COUNT) {
         return false;
