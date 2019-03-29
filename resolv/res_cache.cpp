@@ -1643,6 +1643,17 @@ void resolv_delete_cache_for_net(unsigned netid) {
     }
 }
 
+std::vector<unsigned> resolv_list_caches() {
+    std::lock_guard guard(cache_mutex);
+    struct resolv_cache_info* cache_info = res_cache_list.next;
+    std::vector<unsigned> result;
+    while (cache_info) {
+        result.push_back(cache_info->netid);
+        cache_info = cache_info->next;
+    }
+    return result;
+}
+
 static resolv_cache_info* create_cache_info() {
     return (struct resolv_cache_info*) calloc(sizeof(struct resolv_cache_info), 1);
 }
