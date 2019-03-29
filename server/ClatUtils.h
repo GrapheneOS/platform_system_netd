@@ -30,6 +30,8 @@ int getClatProgFd(bool with_ethernet_header);
 
 int openNetlinkSocket(void);
 
+int processNetlinkResponse(int fd);
+
 }  // namespace net
 }  // namespace android
 
