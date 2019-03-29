@@ -113,8 +113,8 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
     int n;
     u_char *dnptrs[20], **dpp, **lastdnptr;
 
-    LOG(DEBUG) << __func__ << "(" << _res_opcodes[op] << ", " << dname << ", " << p_class(cl)
-               << ", " << p_type(type) << ")";
+    LOG(DEBUG) << __func__ << ": (" << _res_opcodes[op] << ", " << p_class(cl) << ", "
+               << p_type(type) << ")";
 
     /*
      * Initialize header fields.

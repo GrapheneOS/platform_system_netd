@@ -20,6 +20,8 @@
 #include <pthread.h>
 #include <memory>
 
+#include <android-base/logging.h>
+
 namespace android {
 namespace net {
 
@@ -53,7 +55,7 @@ inline int threadLaunch(T* obj) {
     pthread_t thread;
     rval = pthread_create(&thread, &scoped_attr.attr, &runAndDelete<T>, obj);
     if (rval != 0) {
-        ALOGW("pthread_create failed: %d", rval);
+        LOG(WARNING) << __func__ << ": pthread_create failed: " << rval;
         return -rval;
     }
 

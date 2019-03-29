@@ -96,6 +96,7 @@
  */
 
 #define LOG_TAG "res_debug"
+#define DBG 0
 
 #include <sys/param.h>
 #include <sys/socket.h>
@@ -161,7 +162,7 @@ static void do_section(ns_msg* handle, ns_sect section) {
     char* buf = (char*) malloc((size_t) buflen);
     if (buf == NULL) {
         dbprint(p, end, ";; memory allocation failure\n");
-        LOG(VERBOSE) << temp;
+        LOG(VERBOSE) << __func__ << ": " << temp;
         return;
     }
 
@@ -234,7 +235,7 @@ static void do_section(ns_msg* handle, ns_sect section) {
                     }
                     if (buf == NULL) {
                         p = dbprint(p, end, ";; memory allocation failure\n");
-                        LOG(VERBOSE) << temp;
+                        LOG(VERBOSE) << __func__ << ": " << temp;
                         return;
                     }
                     continue;
@@ -499,24 +500,23 @@ const char* p_rcode(int rcode) {
 
 android::base::LogSeverity logSeverityStrToEnum(const std::string& logSeverityStr) {
     android::base::LogSeverity logSeverityEnum;
-    if (logSeverityStr == "VERBOSE") {
-        logSeverityEnum = android::base::VERBOSE;
-    } else if (logSeverityStr == "DEBUG") {
-        logSeverityEnum = android::base::DEBUG;
+
+    if (logSeverityStr == "DEBUG") {
+        // *** enable verbose logging only when DBG is set. It prints sensitive data ***
+        if (DBG)
+            logSeverityEnum = android::base::VERBOSE;
+        else
+            logSeverityEnum = android::base::DEBUG;
     } else if (logSeverityStr == "INFO") {
         logSeverityEnum = android::base::INFO;
     } else if (logSeverityStr == "WARNING") {
         logSeverityEnum = android::base::WARNING;
     } else if (logSeverityStr == "ERROR") {
         logSeverityEnum = android::base::ERROR;
-    } else if (logSeverityStr == "FATAL_WITHOUT_ABORT") {
-        logSeverityEnum = android::base::FATAL_WITHOUT_ABORT;
-    } else if (logSeverityStr == "FATAL") {
-        logSeverityEnum = android::base::FATAL;
     } else {
         // Invalid parameter is treated as WARNING (default setting)
         logSeverityEnum = android::base::WARNING;
     }
-    LOG(INFO) << "logSeverityEnum " << logSeverityEnum;
+    LOG(INFO) << __func__ << ": " << logSeverityEnum;
     return logSeverityEnum;
 }
