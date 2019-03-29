@@ -21,6 +21,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <spawn.h>
 #include <sys/types.h>
@@ -186,6 +187,7 @@ int ClatdController::ClatdTracker::init(const std::string& interface,
 
     snprintf(fwmarkString, sizeof(fwmarkString), "0x%x", fwmark.intValue);
     snprintf(netIdString, sizeof(netIdString), "%u", netId);
+    ifIndex = if_nametoindex(interface.c_str());
     strlcpy(iface, interface.c_str(), sizeof(iface));
 
     // Pass in everything that clatd needs: interface, a netid to use for DNS lookups, a fwmark for
