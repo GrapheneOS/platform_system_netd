@@ -26,14 +26,18 @@
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
 #include <log/log.h>
+#include <openssl/base64.h>
 #include <private/android_filesystem_config.h>  // AID_SYSTEM
 
 #include "DnsResolver.h"
+#include "NetdConstants.h"    // SHA256_SIZE
 #include "NetdPermissions.h"  // PERM_*
 #include "ResolverEventReporter.h"
+#include "netdutils/DumpWriter.h"
 
 using android::base::Join;
 using android::base::StringPrintf;
+using android::netdutils::DumpWriter;
 
 namespace android {
 namespace net {
@@ -78,6 +82,12 @@ binder_status_t DnsResolverService::start() {
 
     // TODO: register log callback if binder NDK backend support it. b/126501406
 
+    return STATUS_OK;
+}
+
+binder_status_t DnsResolverService::dump(int, const char**, uint32_t) {
+    // TODO: Implement it. Netd binder dump resolver related log based on all stored network.
+    //       However, resolver doesn't know that informations.
     return STATUS_OK;
 }
 
@@ -131,6 +141,105 @@ binder_status_t DnsResolverService::start() {
     auto err = StringPrintf("UID %d / PID %d does not have any of the following permissions: %s",
                             uid, pid, Join(permissions, ',').c_str());
     return ::ndk::ScopedAStatus(AStatus_fromExceptionCodeWithMessage(EX_SECURITY, err.c_str()));
+}
+
+namespace {
+
+// Parse a base64 encoded string into a vector of bytes.
+// On failure, return an empty vector.
+static std::vector<uint8_t> parseBase64(const std::string& input) {
+    std::vector<uint8_t> decoded;
+    size_t out_len;
+    if (EVP_DecodedLength(&out_len, input.size()) != 1) {
+        return decoded;
+    }
+    // out_len is now an upper bound on the output length.
+    decoded.resize(out_len);
+    if (EVP_DecodeBase64(decoded.data(), &out_len, decoded.size(),
+                         reinterpret_cast<const uint8_t*>(input.data()), input.size()) == 1) {
+        // Possibly shrink the vector if the actual output was smaller than the bound.
+        decoded.resize(out_len);
+    } else {
+        decoded.clear();
+    }
+    if (out_len != SHA256_SIZE) {
+        decoded.clear();
+    }
+    return decoded;
+}
+
+}  // namespace
+
+::ndk::ScopedAStatus DnsResolverService::setResolverConfiguration(
+        int32_t netId, const std::vector<std::string>& servers,
+        const std::vector<std::string>& domains, const std::vector<int32_t>& params,
+        const std::string& tlsName, const std::vector<std::string>& tlsServers,
+        const std::vector<std::string>& tlsFingerprints) {
+    // Locking happens in PrivateDnsConfiguration and res_* functions.
+    ENFORCE_INTERNAL_PERMISSIONS();
+
+    std::set<std::vector<uint8_t>> decoded_fingerprints;
+    for (const std::string& fingerprint : tlsFingerprints) {
+        std::vector<uint8_t> decoded = parseBase64(fingerprint);
+        if (decoded.empty()) {
+            return ::ndk::ScopedAStatus(AStatus_fromServiceSpecificErrorWithMessage(
+                    EINVAL, "ResolverController error: bad fingerprint"));
+        }
+        decoded_fingerprints.emplace(decoded);
+    }
+
+    int err = gDnsResolv->resolverCtrl.setResolverConfiguration(
+            netId, servers, domains, params, tlsName, tlsServers, decoded_fingerprints);
+    if (err != 0) {
+        return ::ndk::ScopedAStatus(AStatus_fromServiceSpecificErrorWithMessage(
+                -err, StringPrintf("ResolverController error: %s", strerror(-err)).c_str()));
+    }
+    return ::ndk::ScopedAStatus(AStatus_newOk());
+}
+
+::ndk::ScopedAStatus DnsResolverService::getResolverInfo(
+        int32_t netId, std::vector<std::string>* servers, std::vector<std::string>* domains,
+        std::vector<std::string>* tlsServers, std::vector<int32_t>* params,
+        std::vector<int32_t>* stats, std::vector<int32_t>* wait_for_pending_req_timeout_count) {
+    // Locking happens in PrivateDnsConfiguration and res_* functions.
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    int err = gDnsResolv->resolverCtrl.getResolverInfo(netId, servers, domains, tlsServers, params,
+                                                       stats, wait_for_pending_req_timeout_count);
+    if (err != 0) {
+        return ::ndk::ScopedAStatus(AStatus_fromServiceSpecificErrorWithMessage(
+                -err, StringPrintf("ResolverController error: %s", strerror(-err)).c_str()));
+    }
+    return ::ndk::ScopedAStatus(AStatus_newOk());
+}
+
+::ndk::ScopedAStatus DnsResolverService::startPrefix64Discovery(int32_t netId) {
+    // Locking happens in Dns64Configuration.
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    gDnsResolv->resolverCtrl.startPrefix64Discovery(netId);
+
+    return ::ndk::ScopedAStatus(AStatus_newOk());
+}
+
+::ndk::ScopedAStatus DnsResolverService::stopPrefix64Discovery(int32_t netId) {
+    // Locking happens in Dns64Configuration.
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    gDnsResolv->resolverCtrl.stopPrefix64Discovery(netId);
+
+    return ::ndk::ScopedAStatus(AStatus_newOk());
+}
+
+::ndk::ScopedAStatus DnsResolverService::getPrefix64(int netId, std::string* stringPrefix) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    netdutils::IPPrefix prefix{};
+    int err = gDnsResolv->resolverCtrl.getPrefix64(netId, &prefix);
+    if (err != 0) {
+        return ::ndk::ScopedAStatus(AStatus_fromServiceSpecificErrorWithMessage(
+                -err, StringPrintf("ResolverController error: %s", strerror(-err)).c_str()));
+    }
+    *stringPrefix = prefix.toString();
+
+    return ::ndk::ScopedAStatus(AStatus_newOk());
 }
 
 }  // namespace net
