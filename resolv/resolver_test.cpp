@@ -2116,6 +2116,36 @@ TEST_F(ResolverTest, Async_CacheFlags) {
 
     // Cache hits,  expect still 6 queries
     EXPECT_EQ(6U, GetNumQueries(dns, host_name));
+
+    // Start to verify if ANDROID_RESOLV_NO_CACHE_LOOKUP does write response into cache
+    dns.clearQueries();
+
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_aaaa,
+                          ANDROID_RESOLV_NO_CACHE_LOOKUP);
+    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_aaaa,
+                          ANDROID_RESOLV_NO_CACHE_LOOKUP);
+
+    EXPECT_TRUE(fd1 != -1);
+    EXPECT_TRUE(fd2 != -1);
+
+    expectAnswersValid(fd2, AF_INET6, "::1.2.3.4");
+    expectAnswersValid(fd1, AF_INET6, "::1.2.3.4");
+
+    // Skip cache, expect 2 queries
+    EXPECT_EQ(2U, GetNumQueries(dns, host_name));
+
+    // Re-query without flags
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_aaaa, 0);
+    fd2 = resNetworkQuery(TEST_NETID, "howdy.example.com", ns_c_in, ns_t_aaaa, 0);
+
+    EXPECT_TRUE(fd1 != -1);
+    EXPECT_TRUE(fd2 != -1);
+
+    expectAnswersValid(fd2, AF_INET6, "::1.2.3.4");
+    expectAnswersValid(fd1, AF_INET6, "::1.2.3.4");
+
+    // Cache hits, expect still 2 queries
+    EXPECT_EQ(2U, GetNumQueries(dns, host_name));
 }
 
 TEST_F(ResolverTest, Async_NoRetryFlag) {
