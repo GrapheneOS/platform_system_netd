@@ -103,5 +103,39 @@ int openNetlinkSocket(void) {
     return fd.release();
 }
 
+// TODO: merge with //system/netd/server/SockDiag.cpp:checkError(fd)
+int processNetlinkResponse(int fd) {
+    struct {
+        nlmsghdr h;
+        nlmsgerr e;
+        char buf[256];
+    } resp = {};
+
+    const int rv = recv(fd, &resp, sizeof(resp), MSG_TRUNC);
+
+    if (rv == -1) {
+        const int err = errno;
+        ALOGE("recv() failed");
+        return -err;
+    }
+
+    if (rv < (int)NLMSG_SPACE(sizeof(struct nlmsgerr))) {
+        ALOGE("recv() returned short packet: %d", rv);
+        return -EMSGSIZE;
+    }
+
+    if (resp.h.nlmsg_len != (unsigned)rv) {
+        ALOGE("recv() returned invalid header length: %d != %d", resp.h.nlmsg_len, rv);
+        return -EBADMSG;
+    }
+
+    if (resp.h.nlmsg_type != NLMSG_ERROR) {
+        ALOGE("recv() did not return NLMSG_ERROR message: %d", resp.h.nlmsg_type);
+        return -EBADMSG;
+    }
+
+    return resp.e.error;  // returns 0 on success
+}
+
 }  // namespace net
 }  // namespace android
