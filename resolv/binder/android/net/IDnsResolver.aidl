@@ -138,4 +138,11 @@ interface IDnsResolver {
      * TODO: Remove this once the tests have been updated to listen for onNat64PrefixEvent.
      */
     @utf8InCpp String getPrefix64(int netId);
+
+    /**
+     * Clear DNS servers and resolver configurations for the given network.
+     *
+     * @param netId the network ID of the network to clear.
+     */
+    void clearResolverConfiguration(int netId);
 }

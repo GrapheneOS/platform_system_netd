@@ -181,11 +181,10 @@ ResolverController::ResolverController()
               std::bind(sendNat64PrefixEvent, _1)) {}
 
 int ResolverController::clearDnsServers(unsigned netId) {
-    // It will create the cache if it doesn't exist.
-    resolv_set_nameservers_for_net(netId, nullptr, 0, "", nullptr);
     if (DBG) {
         ALOGD("clearDnsServers netId = %u\n", netId);
     }
+    resolv_delete_cache_for_net(netId);
     mDns64Configuration.stopPrefixDiscovery(netId);
     resolv_delete_private_dns_for_net(netId);
     return 0;
