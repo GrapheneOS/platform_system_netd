@@ -74,17 +74,8 @@ int resolv_stub_init() {
 
 #define STR(x) #x
 #define RESOLV_STUB_LOAD_SYMBOL(x) resolvStubInitFunction(netdResolvHandle, STR(x), &RESOLV_STUB.x)
-    RESOLV_STUB_LOAD_SYMBOL(android_getaddrinfofornetcontext);
-    RESOLV_STUB_LOAD_SYMBOL(android_net_res_stats_aggregate);
-    RESOLV_STUB_LOAD_SYMBOL(android_net_res_stats_get_info_for_net);
-    RESOLV_STUB_LOAD_SYMBOL(android_net_res_stats_get_usable_servers);
-    RESOLV_STUB_LOAD_SYMBOL(resolv_delete_cache_for_net);
-    RESOLV_STUB_LOAD_SYMBOL(resolv_delete_private_dns_for_net);
-    RESOLV_STUB_LOAD_SYMBOL(resolv_get_private_dns_status_for_net);
     RESOLV_STUB_LOAD_SYMBOL(resolv_has_nameservers);
     RESOLV_STUB_LOAD_SYMBOL(resolv_init);
-    RESOLV_STUB_LOAD_SYMBOL(resolv_set_nameservers_for_net);
-    RESOLV_STUB_LOAD_SYMBOL(resolv_set_private_dns_for_net);
 #undef RESOLV_STUB_LOAD_SYMBOL
 #undef STR
 
