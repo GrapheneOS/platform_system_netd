@@ -1411,8 +1411,10 @@ static resolv_cache_info* find_cache_info_locked(unsigned netid) REQUIRES(cache_
 ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int querylen,
                                        void* answer, int answersize, int* answerlen,
                                        uint32_t flags) {
+    // Skip cache lookup, return RESOLV_CACHE_NOTFOUND directly so that it is
+    // possible to cache the answer of this query.
     if (flags & ANDROID_RESOLV_NO_CACHE_LOOKUP) {
-        return RESOLV_CACHE_SKIP;
+        return RESOLV_CACHE_NOTFOUND;
     }
     Entry key;
     Entry** lookup;
@@ -1542,7 +1544,8 @@ void _resolv_cache_add(unsigned netid, const void* query, int querylen, const vo
     lookup = _cache_lookup_p(cache, key);
     e = *lookup;
 
-    if (e != NULL) { /* should not happen */
+    // Should only happen on ANDROID_RESOLV_NO_CACHE_LOOKUP
+    if (e != NULL) {
         LOG(INFO) << __func__ << ": ALREADY IN CACHE (" << e << ") ? IGNORING ADD";
         _cache_notify_waiting_tid_locked(cache, key);
         return;
@@ -1553,7 +1556,7 @@ void _resolv_cache_add(unsigned netid, const void* query, int querylen, const vo
         if (cache->num_entries >= cache->max_entries) {
             _cache_remove_oldest(cache);
         }
-        /* need to lookup again */
+        // TODO: It looks useless, remove below code after having test to prove it.
         lookup = _cache_lookup_p(cache, key);
         e = *lookup;
         if (e != NULL) {
