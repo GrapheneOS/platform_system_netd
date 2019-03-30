@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,12 @@
 #define _RESOLVER_CONTROLLER_H_
 
 #include <list>
+#include <set>
 #include <vector>
 
 #include "Dns64Configuration.h"
+#include "netd_resolv/resolv.h"
 #include "netdutils/DumpWriter.h"
-#include "netdutils/InternetAddresses.h"
 
 struct res_params;
 
@@ -33,43 +34,28 @@ struct ResolverStats;
 
 class ResolverController {
   public:
-    ResolverController(const NetworkController& netCtrl)
-        : mDns64Configuration(netCtrl, std::bind(&ResolverController::sendNat64PrefixEvent, this,
-                                                 std::placeholders::_1)) {}
-
-    ~ResolverController() {}
-
-    // TODO: delete this function
-    int setDnsServers(unsigned netId, const char* searchDomains, const char** servers,
-                      int numservers, const res_params* params);
+    ResolverController();
+    ~ResolverController() = default;
 
     int clearDnsServers(unsigned netid);
-
-    int getDnsInfo(unsigned netId, std::vector<std::string>* servers,
-                   std::vector<std::string>* domains, res_params* params,
-                   std::vector<android::net::ResolverStats>* stats,
-                   std::vector<int32_t>* wait_for_pending_req_timeout_count);
 
     int getPrefix64(unsigned netId, netdutils::IPPrefix* prefix);
 
     // Binder specific functions, which convert between the binder int/string arrays and the
     // actual data structures, and call setDnsServer() / getDnsInfo() for the actual processing.
     int setResolverConfiguration(int32_t netId, const std::vector<std::string>& servers,
-            const std::vector<std::string>& domains, const std::vector<int32_t>& params,
-            const std::string& tlsName, const std::vector<std::string>& tlsServers,
-            const std::set<std::vector<uint8_t>>& tlsFingerprints);
+                                 const std::vector<std::string>& domains,
+                                 const std::vector<int32_t>& params, const std::string& tlsName,
+                                 const std::vector<std::string>& tlsServers,
+                                 const std::set<std::vector<uint8_t>>& tlsFingerprints);
 
     int getResolverInfo(int32_t netId, std::vector<std::string>* servers,
                         std::vector<std::string>* domains, std::vector<std::string>* tlsServers,
                         std::vector<int32_t>* params, std::vector<int32_t>* stats,
                         std::vector<int32_t>* wait_for_pending_req_timeout_count);
 
-    void sendNat64PrefixEvent(const net::Dns64Configuration::Nat64PrefixInfo& args);
-
     void startPrefix64Discovery(int32_t netId);
     void stopPrefix64Discovery(int32_t netId);
-
-    bool initResolver();
 
     void dump(netdutils::DumpWriter& dw, unsigned netId);
 

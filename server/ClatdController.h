@@ -47,6 +47,7 @@ class ClatdController {
     struct ClatdTracker {
         const NetworkController* netCtrl = nullptr;
         pid_t pid = -1;
+        unsigned ifIndex;
         char iface[IFNAMSIZ];
         Fwmark fwmark;
         char fwmarkString[UINT32_STRLEN];
@@ -56,8 +57,8 @@ class ClatdController {
         char v4Str[INET_ADDRSTRLEN];
         in6_addr v6;
         char v6Str[INET6_ADDRSTRLEN];
-        in6_addr dst;
-        char dstString[INET6_ADDRSTRLEN];
+        in6_addr pfx96;
+        char pfx96String[INET6_ADDRSTRLEN];
 
         ClatdTracker() = default;
         explicit ClatdTracker(const NetworkController* netCtrl) : netCtrl(netCtrl) {}

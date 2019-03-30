@@ -27,9 +27,10 @@
 #include <private/android_filesystem_config.h>
 #include <utils/StrongPointer.h>
 
+#include "NetdClient.h"
+#include "android/net/IDnsResolver.h"
 #include "android/net/INetd.h"
 #include "binder/IServiceManager.h"
-#include "NetdClient.h"
 #include "dns_responder.h"
 
 inline const std::vector<std::string> kDefaultServers = {"127.0.0.3"};
@@ -95,10 +96,11 @@ public:
     virtual void SetUp();
     virtual void TearDown();
 
-    android::net::INetd* netdService() const { return mNetdSrv.get(); }
+    android::net::IDnsResolver* resolvService() const { return mDnsResolvSrv.get(); }
 
   private:
     android::sp<android::net::INetd> mNetdSrv = nullptr;
+    android::sp<android::net::IDnsResolver> mDnsResolvSrv = nullptr;
     int mOemNetId = -1;
 };
 

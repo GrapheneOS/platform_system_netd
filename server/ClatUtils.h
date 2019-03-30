@@ -24,9 +24,19 @@ namespace net {
 
 int hardwareAddressType(const std::string& interface);
 
-int getClatMapFd(void);
+int getClatIngressMapFd(void);
 
-int getClatProgFd(bool with_ethernet_header);
+int getClatIngressProgFd(bool with_ethernet_header);
+
+int openNetlinkSocket(void);
+
+int processNetlinkResponse(int fd);
+
+int tcQdiscAddDevClsact(int fd, int ifIndex);
+int tcQdiscReplaceDevClsact(int fd, int ifIndex);
+int tcQdiscDelDevClsact(int fd, int ifIndex);
+
+int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
 
 }  // namespace net
 }  // namespace android

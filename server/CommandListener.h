@@ -21,18 +21,17 @@
 
 #include <sysutils/FrameworkListener.h>
 
+#include "BandwidthController.h"
+#include "ClatdController.h"
+#include "FirewallController.h"
+#include "IdletimerController.h"
+#include "InterfaceController.h"
 #include "NetdCommand.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
-#include "TetherController.h"
 #include "PppController.h"
-#include "BandwidthController.h"
-#include "IdletimerController.h"
-#include "InterfaceController.h"
-#include "ResolverController.h"
-#include "FirewallController.h"
-#include "ClatdController.h"
 #include "StrictController.h"
+#include "TetherController.h"
 
 namespace android {
 namespace net {

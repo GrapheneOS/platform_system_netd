@@ -18,10 +18,10 @@
 #include "bpf_helpers.h"
 #include "netdbpf/bpf_shared.h"
 
-struct bpf_map_def SEC("maps") clat_map = {
+struct bpf_map_def SEC("maps") clat_ingress_map = {
         .type = BPF_MAP_TYPE_HASH,
-        .key_size = sizeof(struct ClatKey),
-        .value_size = sizeof(struct ClatValue),
+        .key_size = sizeof(struct ClatIngressKey),
+        .value_size = sizeof(struct ClatIngressValue),
         .max_entries = 16,
 };
 

@@ -36,7 +36,6 @@ class ResolverEventReporter {
     ResolverEventReporter& operator=(ResolverEventReporter&&) = delete;
 
     using ListenerSet = std::set<std::shared_ptr<aidl::android::net::metrics::INetdEventListener>>;
-    using OnDeathFunc = std::function<void(void)>;
 
     // Get the instance of the singleton ResolverEventReporter.
     static ResolverEventReporter& getInstance();
@@ -49,7 +48,7 @@ class ResolverEventReporter {
             const std::shared_ptr<aidl::android::net::metrics::INetdEventListener>& listener);
 
   private:
-    ResolverEventReporter() : mDeathRecipient(nullptr){};
+    ResolverEventReporter() = default;
     ~ResolverEventReporter() = default;
 
     void addDefaultListener() EXCLUDES(mMutex);
@@ -60,12 +59,10 @@ class ResolverEventReporter {
             const std::shared_ptr<aidl::android::net::metrics::INetdEventListener>& listener)
             REQUIRES(mMutex);
     ListenerSet getListenersImpl() const EXCLUDES(mMutex);
-    void handleBinderDied() EXCLUDES(mMutex);
+    void handleBinderDied(const void* who) EXCLUDES(mMutex);
 
     mutable std::mutex mMutex;
     ListenerSet mListeners GUARDED_BY(mMutex);
-    AIBinder_DeathRecipient* mDeathRecipient GUARDED_BY(mMutex);
-    OnDeathFunc mOnDeath = [&] { handleBinderDied(); };
 };
 
 #endif  // NETD_RESOLV_EVENT_REPORTER_H
