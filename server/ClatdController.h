@@ -57,8 +57,8 @@ class ClatdController {
         char v4Str[INET_ADDRSTRLEN];
         in6_addr v6;
         char v6Str[INET6_ADDRSTRLEN];
-        in6_addr dst;
-        char dstString[INET6_ADDRSTRLEN];
+        in6_addr pfx96;
+        char pfx96String[INET6_ADDRSTRLEN];
 
         ClatdTracker() = default;
         explicit ClatdTracker(const NetworkController* netCtrl) : netCtrl(netCtrl) {}
