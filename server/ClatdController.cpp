@@ -205,7 +205,7 @@ int ClatdController::ClatdTracker::init(const std::string& interface,
     // the address is only actually assigned to an interface once clatd starts up. So we could end
     // up with two clatd instances with the same IPv4 address.
     // Stop doing this and instead pick a free one from the kV4Addr pool.
-    in_addr v4 = {selectIpv4Address(kV4Addr, kV4AddrLen)};
+    v4 = {selectIpv4Address(kV4Addr, kV4AddrLen)};
     if (v4.s_addr == INADDR_NONE) {
         ALOGE("No free IPv4 address in %s/%d", kV4AddrString, kV4AddrLen);
         return -EADDRNOTAVAIL;
