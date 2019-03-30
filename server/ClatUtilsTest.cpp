@@ -68,7 +68,7 @@ TEST_F(ClatUtilsTest, HardwareAddressTypeOfCellular) {
 TEST_F(ClatUtilsTest, GetClatMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    int fd = getClatMapFd();
+    int fd = getClatIngressMapFd();
     ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
     close(fd);
 }
@@ -76,7 +76,7 @@ TEST_F(ClatUtilsTest, GetClatMapFd) {
 TEST_F(ClatUtilsTest, GetClatRawIpProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    int fd = getClatProgFd(false);
+    int fd = getClatIngressProgFd(false);
     ASSERT_LE(3, fd);
     close(fd);
 }
@@ -84,7 +84,7 @@ TEST_F(ClatUtilsTest, GetClatRawIpProgFd) {
 TEST_F(ClatUtilsTest, GetClatEtherProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    int fd = getClatProgFd(true);
+    int fd = getClatIngressProgFd(true);
     ASSERT_LE(3, fd);
     close(fd);
 }
@@ -145,7 +145,7 @@ void checkAttachBpfFilterClsactLo(const bool ethernet) {
     SKIP_IF_BPF_NOT_SUPPORTED;
     if (!kernelSupportsNetClsBpf()) return;
 
-    int bpf_fd = getClatProgFd(false);
+    int bpf_fd = getClatIngressProgFd(false);
     ASSERT_LE(3, bpf_fd);
 
     int fd = openNetlinkSocket();

@@ -62,14 +62,14 @@ int hardwareAddressType(const std::string& interface) {
     return ifr.ifr_hwaddr.sa_family;
 }
 
-int getClatMapFd(void) {
-    const int fd = bpf::bpfFdGet(CLAT_MAP_PATH, 0);
+int getClatIngressMapFd(void) {
+    const int fd = bpf::bpfFdGet(CLAT_INGRESS_MAP_PATH, 0);
     return (fd == -1) ? -errno : fd;
 }
 
-int getClatProgFd(bool with_ethernet_header) {
-    const int fd =
-            bpf::bpfFdGet(with_ethernet_header ? CLAT_PROG_ETHER_PATH : CLAT_PROG_RAWIP_PATH, 0);
+int getClatIngressProgFd(bool with_ethernet_header) {
+    const int fd = bpf::bpfFdGet(
+            with_ethernet_header ? CLAT_INGRESS_PROG_ETHER_PATH : CLAT_INGRESS_PROG_RAWIP_PATH, 0);
     return (fd == -1) ? -errno : fd;
 }
 
@@ -231,14 +231,14 @@ int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
     //   prog_clatd_schedcls_ingress_clat_rawip:[*fsobj]
     // and is the name of the pinned ebpf program for ARPHRD_RAWIP interfaces.
     // (also compatible with anything that has 0 size L2 header)
-#define NAME_RAWIP CLAT_PROG_RAWIP_NAME FSOBJ_SUFFIX
+#define NAME_RAWIP CLAT_INGRESS_PROG_RAWIP_NAME FSOBJ_SUFFIX
     const char name_rawip[] = NAME_RAWIP;
 
     // This macro expands (from header files) to:
     //   prog_clatd_schedcls_ingress_clat_ether:[*fsobj]
     // and is the name of the pinned ebpf program for ARPHRD_ETHER interfaces.
     // (also compatible with anything that has standard ethernet header)
-#define NAME_ETHER CLAT_PROG_ETHER_NAME FSOBJ_SUFFIX
+#define NAME_ETHER CLAT_INGRESS_PROG_ETHER_NAME FSOBJ_SUFFIX
     const char name_ether[] = NAME_ETHER;
 
     // The actual name we'll use is determined at run time via 'ethernet'

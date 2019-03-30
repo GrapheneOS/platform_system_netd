@@ -24,9 +24,9 @@ namespace net {
 
 int hardwareAddressType(const std::string& interface);
 
-int getClatMapFd(void);
+int getClatIngressMapFd(void);
 
-int getClatProgFd(bool with_ethernet_header);
+int getClatIngressProgFd(bool with_ethernet_header);
 
 int openNetlinkSocket(void);
 
