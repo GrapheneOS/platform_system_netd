@@ -195,12 +195,12 @@ int ClatdController::ClatdTracker::init(const std::string& interface,
     // Validate the prefix and strip off the prefix length.
     uint8_t family;
     uint8_t prefixLen;
-    int res = parsePrefix(nat64Prefix.c_str(), &family, &dst, sizeof(dst), &prefixLen);
+    int res = parsePrefix(nat64Prefix.c_str(), &family, &pfx96, sizeof(pfx96), &prefixLen);
     // clatd only supports /96 prefixes.
-    if (res != sizeof(dst)) return res;
+    if (res != sizeof(pfx96)) return res;
     if (family != AF_INET6) return -EAFNOSUPPORT;
     if (prefixLen != 96) return -EINVAL;
-    if (!inet_ntop(AF_INET6, &dst, dstString, sizeof(dstString))) return -errno;
+    if (!inet_ntop(AF_INET6, &pfx96, pfx96String, sizeof(pfx96String))) return -errno;
 
     // Pick an IPv4 address.
     // TODO: this picks the address based on other addresses that are assigned to interfaces, but
@@ -215,13 +215,13 @@ int ClatdController::ClatdTracker::init(const std::string& interface,
     if (!inet_ntop(AF_INET, &v4, v4Str, sizeof(v4Str))) return -errno;
 
     // Generate a checksum-neutral IID.
-    if (generateIpv6Address(iface, v4, dst, &v6)) {
-        ALOGE("Unable to find global source address on %s for %s", iface, dstString);
+    if (generateIpv6Address(iface, v4, pfx96, &v6)) {
+        ALOGE("Unable to find global source address on %s for %s", iface, pfx96String);
         return -EADDRNOTAVAIL;
     }
     if (!inet_ntop(AF_INET6, &v6, v6Str, sizeof(v6Str))) return -errno;
 
-    ALOGD("starting clatd on %s v4=%s v6=%s dst=%s", iface, v4Str, v6Str, dstString);
+    ALOGD("starting clatd on %s v4=%s v6=%s pfx96=%s", iface, v4Str, v6Str, pfx96String);
     return 0;
 }
 
@@ -247,7 +247,7 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
                     (char*) "-i", tracker.iface,
                     (char*) "-n", tracker.netIdString,
                     (char*) "-m", tracker.fwmarkString,
-                    (char*) "-p", tracker.dstString,
+                    (char*) "-p", tracker.pfx96String,
                     (char*) "-4", tracker.v4Str,
                     (char*) "-6", tracker.v6Str,
                     nullptr};
