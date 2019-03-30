@@ -47,6 +47,7 @@ class ClatdController {
     struct ClatdTracker {
         const NetworkController* netCtrl = nullptr;
         pid_t pid = -1;
+        unsigned ifIndex;
         char iface[IFNAMSIZ];
         Fwmark fwmark;
         char fwmarkString[UINT32_STRLEN];
