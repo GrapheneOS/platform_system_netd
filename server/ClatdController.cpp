@@ -312,15 +312,14 @@ void ClatdController::dump(DumpWriter& dw) {
         }
     }
 
-    int fd = getClatIngressMapFd();
-    if (fd < 0) return;  // if unsupported just don't dump anything
-    unique_fd mapFd(fd);
+    int mapFd = getClatIngressMapFd();
+    if (mapFd < 0) return;  // if unsupported just don't dump anything
+    BpfMap<ClatIngressKey, ClatIngressValue> configMap(mapFd);
 
     ScopedIndent bpfIndent(dw);
     dw.println("BPF ingress map: iif(iface) nat64Prefix v6Addr -> v4Addr oif(iface)");
 
     ScopedIndent bpfDetailIndent(dw);
-    BpfMap<ClatIngressKey, ClatIngressValue> configMap(mapFd);
     const auto printClatMap = [&dw](const ClatIngressKey& key, const ClatIngressValue& value,
                                     const BpfMap<ClatIngressKey, ClatIngressValue>&) {
         char iifStr[IFNAMSIZ] = "?";
