@@ -2085,7 +2085,8 @@ TEST_F(BinderTest, TetherInterfaceAddRemoveList) {
 
 TEST_F(BinderTest, TetherDnsSetList) {
     // TODO: verify if dnsmasq update dns successfully
-    std::vector<std::string> testDnsAddrs = {"192.168.1.37", "213.137.100.3"};
+    std::vector<std::string> testDnsAddrs = {"192.168.1.37", "213.137.100.3",
+                                             "fe80::1%" + sTun.name()};
 
     binder::Status status = mNetd->tetherDnsSet(TEST_NETID1, testDnsAddrs);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
