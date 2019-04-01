@@ -24,8 +24,11 @@
 #include <linux/if.h>
 #include <netinet/in.h>
 
+#include <android-base/thread_annotations.h>
+
 #include "Fwmark.h"
 #include "NetdConstants.h"
+#include "netdutils/DumpWriter.h"
 
 namespace android {
 namespace net {
@@ -40,6 +43,8 @@ class ClatdController {
     int startClatd(const std::string& interface, const std::string& nat64Prefix,
                    std::string* v6Addr);
     int stopClatd(const std::string& interface);
+
+    void dump(netdutils::DumpWriter& dw) EXCLUDES(mutex);
 
     std::mutex mutex;
 
