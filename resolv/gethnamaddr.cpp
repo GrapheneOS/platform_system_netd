@@ -216,11 +216,11 @@ static struct hostent* getanswer(const querybuf* answer, int anslen, const char*
         }
         cp += n; /* name */
         BOUNDS_CHECK(cp, 3 * INT16SZ + INT32SZ);
-        int type = ns_get16(cp);
+        int type = ntohs(*reinterpret_cast<const uint16_t*>(cp));
         cp += INT16SZ; /* type */
-        int cl = ns_get16(cp);
+        int cl = ntohs(*reinterpret_cast<const uint16_t*>(cp));
         cp += INT16SZ + INT32SZ; /* class, TTL */
-        n = ns_get16(cp);
+        n = ntohs(*reinterpret_cast<const uint16_t*>(cp));
         cp += INT16SZ; /* len */
         BOUNDS_CHECK(cp, n);
         erdata = cp + n;

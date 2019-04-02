@@ -322,9 +322,9 @@ int res_nameinquery(const char* name, int type, int cl, const u_char* buf, const
         if (n < 0) return (-1);
         cp += n;
         if (cp + 2 * INT16SZ > eom) return (-1);
-        int ttype = ns_get16(cp);
+        int ttype = ntohs(*reinterpret_cast<const uint16_t*>(cp));
         cp += INT16SZ;
-        int tclass = ns_get16(cp);
+        int tclass = ntohs(*reinterpret_cast<const uint16_t*>(cp));
         cp += INT16SZ;
         if (ttype == type && tclass == cl && ns_samename(tname, name) == 1) return (1);
     }
@@ -364,9 +364,9 @@ int res_queriesmatch(const u_char* buf1, const u_char* eom1, const u_char* buf2,
         if (n < 0) return (-1);
         cp += n;
         if (cp + 2 * INT16SZ > eom1) return (-1);
-        int ttype = ns_get16(cp);
+        int ttype = ntohs(*reinterpret_cast<const uint16_t*>(cp));
         cp += INT16SZ;
-        int tclass = ns_get16(cp);
+        int tclass = ntohs(*reinterpret_cast<const uint16_t*>(cp));
         cp += INT16SZ;
         if (!res_nameinquery(tname, ttype, tclass, buf2, eom2)) return (0);
     }
@@ -712,9 +712,8 @@ static int send_vc(res_state statp, res_params* params, const u_char* buf, int b
     HEADER* anhp = (HEADER*) (void*) ans;
     struct sockaddr* nsap;
     int nsaplen;
-    int truncating, connreset, resplen, n;
+    int truncating, connreset, n;
     struct iovec iov[2];
-    u_short len;
     u_char* cp;
 
     LOG(INFO) << __func__ << ": using send_vc";
@@ -798,7 +797,7 @@ same_ns:
     /*
      * Send length & message
      */
-    ns_put16((u_short) buflen, (u_char*) (void*) &len);
+    uint16_t len = htons(static_cast<uint16_t>(buflen));
     iov[0] = evConsIovec(&len, INT16SZ);
     iov[1] = evConsIovec((void*) buf, (size_t) buflen);
     if (writev(statp->_vcsock, iov, 2) != (INT16SZ + buflen)) {
@@ -838,7 +837,7 @@ read_len:
         res_nclose(statp);
         return (0);
     }
-    resplen = ns_get16(ans);
+    uint16_t resplen = ntohs(*reinterpret_cast<const uint16_t*>(ans));
     if (resplen > anssiz) {
         LOG(DEBUG) << __func__ << ": response truncated";
         truncating = 1;
