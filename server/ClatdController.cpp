@@ -32,11 +32,15 @@
 #include <log/log.h>
 
 #include "android-base/unique_fd.h"
+#include "bpf/BpfMap.h"
+#include "netdbpf/bpf_shared.h"
+#include "netdutils/DumpWriter.h"
 
 extern "C" {
 #include "netutils/checksum.h"
 }
 
+#include "ClatUtils.h"
 #include "Fwmark.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
@@ -51,6 +55,9 @@ static const in_addr kV4Addr = {inet_addr(kV4AddrString)};
 static const int kV4AddrLen = 29;
 
 using android::base::unique_fd;
+using android::bpf::BpfMap;
+using android::netdutils::DumpWriter;
+using android::netdutils::ScopedIndent;
 
 namespace android {
 namespace net {
@@ -285,6 +292,56 @@ int ClatdController::stopClatd(const std::string& interface) {
     ALOGD("clatd on %s stopped", interface.c_str());
 
     return 0;
+}
+
+void ClatdController::dump(DumpWriter& dw) {
+    std::lock_guard guard(mutex);
+
+    ScopedIndent clatdIndent(dw);
+    dw.println("ClatdController");
+
+    {
+        ScopedIndent trackerIndent(dw);
+        dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr [netId]");
+
+        ScopedIndent trackerDetailIndent(dw);
+        for (const auto& pair : mClatdTrackers) {
+            const ClatdTracker& tracker = pair.second;
+            dw.println("%u[%s] %s/96 %s -> %s [%u]", tracker.ifIndex, tracker.iface,
+                       tracker.pfx96String, tracker.v6Str, tracker.v4Str, tracker.netId);
+        }
+    }
+
+    int mapFd = getClatIngressMapFd();
+    if (mapFd < 0) return;  // if unsupported just don't dump anything
+    BpfMap<ClatIngressKey, ClatIngressValue> configMap(mapFd);
+
+    ScopedIndent bpfIndent(dw);
+    dw.println("BPF ingress map: iif(iface) nat64Prefix v6Addr -> v4Addr oif(iface)");
+
+    ScopedIndent bpfDetailIndent(dw);
+    const auto printClatMap = [&dw](const ClatIngressKey& key, const ClatIngressValue& value,
+                                    const BpfMap<ClatIngressKey, ClatIngressValue>&) {
+        char iifStr[IFNAMSIZ] = "?";
+        char pfx96Str[INET6_ADDRSTRLEN] = "?";
+        char local6Str[INET6_ADDRSTRLEN] = "?";
+        char local4Str[INET_ADDRSTRLEN] = "?";
+        char oifStr[IFNAMSIZ] = "?";
+
+        if_indextoname(key.iif, iifStr);
+        inet_ntop(AF_INET6, &key.pfx96, pfx96Str, sizeof(pfx96Str));
+        inet_ntop(AF_INET6, &key.local6, local6Str, sizeof(local6Str));
+        inet_ntop(AF_INET, &value.local4, local4Str, sizeof(local4Str));
+        if_indextoname(value.oif, oifStr);
+
+        dw.println("%u(%s) %s/96 %s -> %s %u(%s)", key.iif, iifStr, pfx96Str, local6Str, local4Str,
+                   value.oif, oifStr);
+        return netdutils::status::ok;
+    };
+    auto res = configMap.iterateWithValue(printClatMap);
+    if (!isOk(res)) {
+        dw.println("Error printing BPF map: %s", res.msg().c_str());
+    }
 }
 
 auto ClatdController::isIpv4AddressFreeFunc = isIpv4AddressFree;
