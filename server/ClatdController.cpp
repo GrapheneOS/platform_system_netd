@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-#include "ClatdController.h"
-
 #include <map>
 #include <string>
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <linux/if_arp.h>
 #include <net/if.h>
 #include <netinet/in.h>
 #include <spawn.h>
@@ -31,6 +30,9 @@
 #define LOG_TAG "ClatdController"
 #include <log/log.h>
 
+#include "ClatdController.h"
+
+#include "android-base/properties.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
 #include "netdbpf/bpf_shared.h"
@@ -67,6 +69,66 @@ ClatdController::ClatdController(NetworkController* controller)
 }
 
 ClatdController::~ClatdController() {
+}
+
+void ClatdController::Init(void) {
+    // TODO: should refactor into separate function for testability
+    if (bpf::getBpfSupportLevel() == bpf::BpfLevel::NONE) {
+        ALOGI("Pre-4.9 kernel or pre-P api shipping level - disabling clat ebpf.");
+        mClatEbpfMode = ClatEbpfDisabled;
+        return;
+    }
+
+    // We know the device initially shipped with at least P...,
+    // but did it ship with at least Q?
+
+    uint64_t api_level = base::GetUintProperty<uint64_t>("ro.product.first_api_level", 0);
+    if (api_level == 0) {
+        ALOGE("Cannot determine initial API level of the device.");
+        api_level = base::GetUintProperty<uint64_t>("ro.build.version.sdk", 0);
+    }
+
+    // Note: MINIMUM_API_REQUIRED is for eBPF as a whole and is thus P
+    if (api_level > bpf::MINIMUM_API_REQUIRED) {
+        ALOGI("4.9+ kernel and device shipped with Q+ - clat ebpf should work.");
+        mClatEbpfMode = ClatEbpfEnabled;
+    } else {
+        // We cannot guarantee that 4.9-P kernels will include NET_CLS_BPF support.
+        ALOGI("4.9+ kernel and device shipped with P - clat ebpf might work.");
+        mClatEbpfMode = ClatEbpfMaybe;
+    }
+
+    int rv = openNetlinkSocket();
+    if (rv < 0) {
+        ALOGE("openNetlinkSocket() failure: %s", strerror(-rv));
+        mClatEbpfMode = ClatEbpfDisabled;
+        return;
+    }
+    mNetlinkFd.reset(rv);
+
+    rv = getClatIngressMapFd();
+    if (rv < 0) {
+        ALOGE("getClatIngressMapFd() failure: %s", strerror(-rv));
+        mClatEbpfMode = ClatEbpfDisabled;
+        mNetlinkFd.reset(-1);
+        return;
+    }
+    mClatIngressMap.reset(rv);
+
+    int netlinkFd = mNetlinkFd.get();
+
+    // TODO: perhaps this initial cleanup should be in its own function?
+    const auto del = [&netlinkFd](const ClatIngressKey& key,
+                                  const BpfMap<ClatIngressKey, ClatIngressValue>&) {
+        ALOGW("Removing stale clat config on interface %d.", key.iif);
+        int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
+        if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
+        return netdutils::status::ok;  // keep on going regardless
+    };
+    auto ret = mClatIngressMap.iterate(del);
+    if (!isOk(ret)) ALOGE("mClatIngressMap.iterate() failure: %s", strerror(ret.code()));
+    ret = mClatIngressMap.clear();
+    if (!isOk(ret)) ALOGE("mClatIngressMap.clear() failure: %s", strerror(ret.code()));
 }
 
 bool ClatdController::isIpv4AddressFree(in_addr_t addr) {
@@ -170,6 +232,113 @@ int ClatdController::generateIpv6Address(const char* iface, const in_addr v4,
     return 0;
 }
 
+void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
+    if (mClatEbpfMode == ClatEbpfDisabled) return;
+
+    int rv = hardwareAddressType(tracker.iface);
+    if (rv < 0) {
+        ALOGE("hardwareAddressType(%s[%d]) failure: %s", tracker.iface, tracker.ifIndex,
+              strerror(-rv));
+        return;
+    }
+
+    bool isEthernet;
+    switch (rv) {
+        case ARPHRD_ETHER:
+            isEthernet = true;
+            break;
+        case ARPHRD_RAWIP:  // in Linux 4.14+ rmnet support was upstreamed and this is 519
+        case 530:           // this is ARPHRD_RAWIP on some Android 4.9 kernels with rmnet
+            isEthernet = false;
+            break;
+        default:
+            ALOGE("hardwareAddressType(%s[%d]) returned unknown type %d.", tracker.iface,
+                  tracker.ifIndex, rv);
+            return;
+    }
+
+    rv = getClatIngressProgFd(isEthernet);
+    if (rv < 0) {
+        ALOGE("getClatIngressProgFd(%d) failure: %s", isEthernet, strerror(-rv));
+        return;
+    }
+    unique_fd progFd(rv);
+
+    ClatIngressKey key = {
+            .iif = tracker.ifIndex,
+            .pfx96 = tracker.pfx96,
+            .local6 = tracker.v6,
+    };
+    ClatIngressValue value = {
+            // Redirect the mangled packets to the same interface so we can see them in tcpdump.
+            // TODO: move the tun interface creation to netd, and use that ifindex instead.
+            // TODO: move all the clat code to eBPF and remove the tun interface entirely.
+            .oif = tracker.ifIndex,
+            .local4 = tracker.v4,
+    };
+
+    auto ret = mClatIngressMap.writeValue(key, value, BPF_ANY);
+    if (!isOk(ret)) {
+        ALOGE("mClatIngress.Map.writeValue failure: %s", strerror(ret.code()));
+        return;
+    }
+
+    // We do tc setup *after* populating map, so scanning through map
+    // can always be used to tell us what needs cleanup.
+
+    rv = tcQdiscAddDevClsact(mNetlinkFd, tracker.ifIndex);
+    if (rv) {
+        ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
+              strerror(-rv));
+        ret = mClatIngressMap.deleteValue(key);
+        if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+        return;
+    }
+
+    rv = tcFilterAddDevBpf(mNetlinkFd, tracker.ifIndex, progFd, isEthernet);
+    if (rv) {
+        if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
+            ALOGI("tcFilterAddDevBpf(%d[%s], %d): %s", tracker.ifIndex, tracker.iface, isEthernet,
+                  strerror(-rv));
+        } else {
+            ALOGE("tcFilterAddDevBpf(%d[%s], %d) failure: %s", tracker.ifIndex, tracker.iface,
+                  isEthernet, strerror(-rv));
+        }
+        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
+        if (rv)
+            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
+                  strerror(-rv));
+        ret = mClatIngressMap.deleteValue(key);
+        if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+        return;
+    }
+
+    // success
+}
+
+void ClatdController::maybeStopBpf(const ClatdTracker& tracker) {
+    if (mClatEbpfMode == ClatEbpfDisabled) return;
+
+    // No need to remove filter, since we remove qdisc it is attached to,
+    // which automatically removes everything attached to the qdisc.
+    int rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
+    if (rv < 0)
+        ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
+              strerror(-rv));
+
+    // We cleanup map last, so scanning through map can be used to
+    // determine what still needs cleanup.
+
+    ClatIngressKey key = {
+            .iif = tracker.ifIndex,
+            .pfx96 = tracker.pfx96,
+            .local6 = tracker.v6,
+    };
+
+    auto ret = mClatIngressMap.deleteValue(key);
+    if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+}
+
 // Finds the tracker of the clatd running on interface |interface|, or nullptr if clatd has not been
 // started  on |interface|.
 ClatdController::ClatdTracker* ClatdController::getClatdTracker(const std::string& interface) {
@@ -268,6 +437,8 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
         return -res;
     }
 
+    maybeStartBpf(tracker);
+
     mClatdTrackers[interface] = tracker;
     ALOGD("clatd started on %s", interface.c_str());
 
@@ -284,6 +455,8 @@ int ClatdController::stopClatd(const std::string& interface) {
     }
 
     ALOGD("Stopping clatd pid=%d on %s", tracker->pid, interface.c_str());
+
+    maybeStopBpf(*tracker);
 
     kill(tracker->pid, SIGTERM);
     waitpid(tracker->pid, nullptr, 0);
