@@ -275,6 +275,10 @@ void Controllers::initIptablesRules() {
 void Controllers::init() {
     initIptablesRules();
     Stopwatch s;
+
+    clatdCtrl.Init();
+    gLog.info("Initializing ClatdController: %.1fms", s.getTimeAndReset());
+
     netdutils::Status tcStatus = trafficCtrl.start();
     if (!isOk(tcStatus)) {
         gLog.error("Failed to start trafficcontroller: (%s)", toString(tcStatus).c_str());
