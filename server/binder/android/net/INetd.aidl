@@ -874,20 +874,47 @@ interface INetd {
     */
     void networkClearDefault();
 
-    /**
-     * PERMISSION_NONE is used for regular networks and apps
-     */
+   /**
+    * PERMISSION_NONE is used for regular networks and apps. TODO: use PERMISSION_INTERNET
+    * for this instead, and use PERMISSION_NONE to indicate no network permissions at all.
+    */
     const int PERMISSION_NONE = 0;
-    /**
-     * PERMISSION_NETWORK indicates that the network is only accessible
-     * to apps that have the CHANGE_NETWORK_STATE permission.
-     */
+
+   /**
+    * PERMISSION_NETWORK represents the CHANGE_NETWORK_STATE permission.
+    */
     const int PERMISSION_NETWORK = 1;
-    /**
-     * PERMISSION_SYSTEM is used for system UIDs and apps
-     * that have the CONNECTIVITY_USE_RESTRICTED_NETWORK permission
-     */
+
+   /**
+    * PERMISSION_SYSTEM represents the ability to use restricted networks. This is mostly
+    * equivalent to the the CONNECTIVITY_USE_RESTRICTED_NETWORKS permission.
+    */
     const int PERMISSION_SYSTEM = 2;
+
+   /**
+    * NO_PERMISSIONS indicates that this app is installed and doesn't have either
+    * PERMISSION_INTERNET or PERMISSION_UPDATE_DEVICE_STATS.
+    * TODO: use PERMISSION_NONE to represent this case
+    */
+    const int NO_PERMISSIONS = 0;
+
+   /**
+    * PERMISSION_INTERNET indicates that the app can create AF_INET and AF_INET6 sockets
+    */
+    const int PERMISSION_INTERNET = 4;
+
+   /**
+    * PERMISSION_UPDATE_DEVICE_STATS is used for system UIDs and privileged apps
+    * that have the UPDATE_DEVICE_STATS permission
+    */
+    const int PERMISSION_UPDATE_DEVICE_STATS = 8;
+
+   /**
+    * PERMISSION_UNINSTALLED is used when an app is uninstalled from the device. All internet
+    * related permissions need to be cleaned
+    */
+    const int PERMISSION_UNINSTALLED = -1;
+
 
    /**
     * Sets the permission required to access a specific network.
@@ -915,28 +942,11 @@ interface INetd {
     void networkClearPermissionForUser(in int[] uids);
 
    /**
-    * NO_PERMISSIONS indicate that the app is uninstalled and the permission need to be revoked or
-    * this app doesn't have either PERMISSION_INTERNET or PERMISSION_UPDATE_DEVICE_STATS
-    */
-    const int NO_PERMISSIONS = 0;
-
-   /**
-    * PERMISSION_INTERNET indicates that the app can create AF_INET and AF_INET6 sockets
-    */
-    const int PERMISSION_INTERNET = 1;
-
-   /**
-    * PERMISSION_UPDATE_DEVICE_STATS is used for system UIDs and privileged apps
-    * that have the UPDATE_DEVICE_STATS permission
-    */
-    const int PERMISSION_UPDATE_DEVICE_STATS = 2;
-
-   /**
     * Assigns android.permission.INTERNET and/or android.permission.UPDATE_DEVICE_STATS to the uids
     * specified. Or remove all permissions from the uids.
     *
     * @param permission The permission to grant, it could be either PERMISSION_INTERNET and/or
-    *                   PERMISSION_UPDATE_DEVICE_STATS. If the permission is NO_PERMISSIONS, then
+    *                   PERMISSION_UPDATE_DEVICE_STATS. If the permission is NO_PERMISSION, then
     *                   revoke all permissions for the uids.
     * @param uids uid of users to grant permission
     */

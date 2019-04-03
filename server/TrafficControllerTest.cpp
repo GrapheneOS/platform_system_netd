@@ -678,11 +678,8 @@ TEST_F(TrafficControllerTest, TestGrantInternetPermission) {
     std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
 
     mTc.setPermissionForUids(INetd::PERMISSION_INTERNET, appUids);
-    expectUidPermissionMapValues(appUids, INetd::PERMISSION_INTERNET);
-    expectPrivilegedUserSetEmpty();
-
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
     expectMapEmpty(mFakeUidPermissionMap);
+    expectPrivilegedUserSetEmpty();
 }
 
 TEST_F(TrafficControllerTest, TestRevokeInternetPermission) {
@@ -690,17 +687,29 @@ TEST_F(TrafficControllerTest, TestRevokeInternetPermission) {
 
     std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
 
-    mTc.setPermissionForUids(INetd::PERMISSION_INTERNET, appUids);
-    expectUidPermissionMapValues(appUids, INetd::PERMISSION_INTERNET);
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
+    expectUidPermissionMapValues(appUids, INetd::NO_PERMISSIONS);
+}
+
+TEST_F(TrafficControllerTest, TestPermissionUninstalled) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
+
+    mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, appUids);
+    expectUidPermissionMapValues(appUids, INetd::PERMISSION_UPDATE_DEVICE_STATS);
+    expectPrivilegedUserSet(appUids);
 
     std::vector<uid_t> uidToRemove = {TEST_UID};
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, uidToRemove);
+    mTc.setPermissionForUids(INetd::PERMISSION_UNINSTALLED, uidToRemove);
 
     std::vector<uid_t> uidRemain = {TEST_UID3, TEST_UID2};
-    expectUidPermissionMapValues(uidRemain, INetd::PERMISSION_INTERNET);
+    expectUidPermissionMapValues(uidRemain, INetd::PERMISSION_UPDATE_DEVICE_STATS);
+    expectPrivilegedUserSet(uidRemain);
 
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, uidRemain);
+    mTc.setPermissionForUids(INetd::PERMISSION_UNINSTALLED, uidRemain);
     expectMapEmpty(mFakeUidPermissionMap);
+    expectPrivilegedUserSetEmpty();
 }
 
 TEST_F(TrafficControllerTest, TestGrantUpdateStatsPermission) {
@@ -709,11 +718,12 @@ TEST_F(TrafficControllerTest, TestGrantUpdateStatsPermission) {
     std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
 
     mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, appUids);
-    expectMapEmpty(mFakeUidPermissionMap);
+    expectUidPermissionMapValues(appUids, INetd::PERMISSION_UPDATE_DEVICE_STATS);
     expectPrivilegedUserSet(appUids);
 
     mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
     expectPrivilegedUserSetEmpty();
+    expectUidPermissionMapValues(appUids, INetd::NO_PERMISSIONS);
 }
 
 TEST_F(TrafficControllerTest, TestRevokeUpdateStatsPermission) {
@@ -734,14 +744,14 @@ TEST_F(TrafficControllerTest, TestRevokeUpdateStatsPermission) {
     expectPrivilegedUserSetEmpty();
 }
 
-TEST_F(TrafficControllerTest, TestGrantWrongPermissionSlientlyFail) {
+TEST_F(TrafficControllerTest, TestGrantWrongPermission) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
 
-    mTc.setPermissionForUids(INetd::PERMISSION_NONE, appUids);
+    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
     expectPrivilegedUserSetEmpty();
-    expectMapEmpty(mFakeUidPermissionMap);
+    expectUidPermissionMapValues(appUids, INetd::NO_PERMISSIONS);
 }
 
 TEST_F(TrafficControllerTest, TestGrantDuplicatePermissionSlientlyFail) {
@@ -750,15 +760,15 @@ TEST_F(TrafficControllerTest, TestGrantDuplicatePermissionSlientlyFail) {
     std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
 
     mTc.setPermissionForUids(INetd::PERMISSION_INTERNET, appUids);
-    expectUidPermissionMapValues(appUids, INetd::PERMISSION_INTERNET);
+    expectMapEmpty(mFakeUidPermissionMap);
 
     std::vector<uid_t> uidToAdd = {TEST_UID};
     mTc.setPermissionForUids(INetd::PERMISSION_INTERNET, uidToAdd);
 
-    expectUidPermissionMapValues(appUids, INetd::PERMISSION_INTERNET);
+    expectPrivilegedUserSetEmpty();
 
     mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
-    expectMapEmpty(mFakeUidPermissionMap);
+    expectUidPermissionMapValues(appUids, INetd::NO_PERMISSIONS);
 
     mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, appUids);
     expectPrivilegedUserSet(appUids);
