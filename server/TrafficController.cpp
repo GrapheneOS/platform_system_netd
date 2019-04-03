@@ -111,6 +111,10 @@ const std::string UidPermissionTypeToString(uint8_t permission) {
     if (permission == INetd::NO_PERMISSIONS) {
         return "NO_PERMISSIONS";
     }
+    if (permission == INetd::PERMISSION_UNINSTALLED) {
+        // This should never appear in the map, complain loudly if it does.
+        return "PERMISSION_UNINSTALLED error!";
+    }
     std::string permissionType;
     FLAG_MSG_TRANS(permissionType, BPF_PERMISSION_INTERNET, permission);
     FLAG_MSG_TRANS(permissionType, BPF_PERMISSION_UPDATE_DEVICE_STATS, permission);
@@ -694,21 +698,21 @@ void TrafficController::setPermissionForUids(int permission, const std::vector<u
         return;
     }
 
-    bool internet = (permission & INetd::PERMISSION_INTERNET);
     bool privileged = (permission & INetd::PERMISSION_UPDATE_DEVICE_STATS);
 
     for (uid_t uid : uids) {
-        if (!internet) {
+        // The map stores all the permissions that the UID has, except if the only permission
+        // the UID has is the INTERNET permission, then the UID should not appear in the map.
+        if (permission != INetd::PERMISSION_INTERNET) {
             Status ret = mUidPermissionMap.writeValue(uid, permission, BPF_ANY);
             if (!isOk(ret)) {
-                ALOGE("Failed to block INTERNET permission to uid: %u: %s", uid,
-                      strerror(ret.code()));
+                ALOGE("Failed to set permission: %s of uid(%u) to permission map: %s",
+                      UidPermissionTypeToString(permission).c_str(), uid, strerror(ret.code()));
             }
         } else {
             Status ret = mUidPermissionMap.deleteValue(uid);
             if (!isOk(ret) && ret.code() != ENOENT) {
-                ALOGE("Failed to unlock INTERNET permission for uid: %u: %s", uid,
-                      strerror(ret.code()));
+                ALOGE("Failed to remove uid %u from permission map: %s", uid, strerror(ret.code()));
             }
         }
 
