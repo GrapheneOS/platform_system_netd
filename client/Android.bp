@@ -25,7 +25,7 @@ cc_library {
     export_header_lib_headers: ["libnetd_client_headers"],
     include_dirs: [
         "system/netd/resolv",
-        "system/netd/include",
+        "system/netd/libnetdutils/include",
     ],
     defaults: ["netd_defaults"],
     product_variables: {

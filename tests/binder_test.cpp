@@ -53,11 +53,11 @@
 
 #include "InterfaceController.h"
 #include "NetdConstants.h"
-#include "Stopwatch.h"
 #include "TestUnsolService.h"
 #include "XfrmController.h"
 #include "android/net/INetd.h"
 #include "binder/IServiceManager.h"
+#include "netdutils/Stopwatch.h"
 #include "netdutils/Syscalls.h"
 #include "tun_interface.h"
 
@@ -89,6 +89,7 @@ using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
 using android::netdutils::sSyscalls;
+using android::netdutils::Stopwatch;
 
 static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
