@@ -887,7 +887,7 @@ interface INetd {
 
    /**
     * PERMISSION_SYSTEM represents the ability to use restricted networks. This is mostly
-    * equivalent to the the CONNECTIVITY_USE_RESTRICTED_NETWORKS permission.
+    * equivalent to the CONNECTIVITY_USE_RESTRICTED_NETWORKS permission.
     */
     const int PERMISSION_SYSTEM = 2;
 
@@ -946,7 +946,7 @@ interface INetd {
     * specified. Or remove all permissions from the uids.
     *
     * @param permission The permission to grant, it could be either PERMISSION_INTERNET and/or
-    *                   PERMISSION_UPDATE_DEVICE_STATS. If the permission is NO_PERMISSION, then
+    *                   PERMISSION_UPDATE_DEVICE_STATS. If the permission is NO_PERMISSIONS, then
     *                   revoke all permissions for the uids.
     * @param uids uid of users to grant permission
     */
