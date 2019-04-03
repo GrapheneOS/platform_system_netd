@@ -39,6 +39,7 @@
 #include <android-base/stringprintf.h>
 #include <android/multinetwork.h>  // ResNsendFlags
 #include <cutils/sockets.h>
+#include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
 #include <openssl/base64.h>
 #include <private/android_filesystem_config.h>
@@ -84,28 +85,6 @@ ScopedAddrinfo safe_getaddrinfo(const char* node, const char* service,
     return ScopedAddrinfo(result);
 }
 }  // namespace
-
-// Emulates the behavior of UnorderedElementsAreArray, which currently cannot be used.
-// TODO: Use UnorderedElementsAreArray, which depends on being able to compile libgmock_host,
-// if that is not possible, improve this hacky algorithm, which is O(n**2)
-template <class A, class B>
-bool UnorderedCompareArray(const A& a, const B& b) {
-    if (a.size() != b.size()) return false;
-    for (const auto& a_elem : a) {
-        size_t a_count = 0;
-        for (const auto& a_elem2 : a) {
-            if (a_elem == a_elem2) {
-                ++a_count;
-            }
-        }
-        size_t b_count = 0;
-        for (const auto& b_elem : b) {
-            if (a_elem == b_elem) ++b_count;
-        }
-        if (a_count != b_count) return false;
-    }
-    return true;
-}
 
 class ResolverTest : public ::testing::Test {
   protected:
@@ -576,8 +555,8 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
               res_params.base_timeout_msec);
     EXPECT_EQ(servers.size(), res_stats.size());
 
-    EXPECT_TRUE(UnorderedCompareArray(res_servers, servers));
-    EXPECT_TRUE(UnorderedCompareArray(res_domains, domains));
+    EXPECT_THAT(res_servers, testing::UnorderedElementsAreArray(servers));
+    EXPECT_THAT(res_domains, testing::UnorderedElementsAreArray(domains));
 
     ASSERT_NO_FATAL_FAILURE(mDnsClient.ShutdownDNSServers(&dns));
 }
