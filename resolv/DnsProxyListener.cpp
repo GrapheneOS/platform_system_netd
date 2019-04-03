@@ -42,18 +42,17 @@
 #include <netdutils/OperationLimiter.h>
 #include <netdutils/ResponseCode.h>
 #include <netdutils/Slice.h>
+#include <netdutils/Stopwatch.h>
 #include <netdutils/ThreadUtil.h>
 #include <private/android_filesystem_config.h>  // AID_SYSTEM
 #include <resolv.h>
 #include <statslog.h>
 #include <sysutils/SocketClient.h>
 
-// TODO: Consider moving Stopwatch.h to libnetdutils.
 #include "DnsResolver.h"
 #include "NetdClient.h"  // NETID_USE_LOCAL_NAMESERVERS
 #include "NetdPermissions.h"
 #include "ResolverEventReporter.h"
-#include "Stopwatch.h"
 #include "netd_resolv/stats.h"  // RCODE_TIMEOUT
 #include "resolv_private.h"
 
@@ -62,6 +61,7 @@ using aidl::android::net::metrics::INetdEventListener;
 namespace android {
 
 using netdutils::ResponseCode;
+using netdutils::Stopwatch;
 
 namespace net {
 namespace {

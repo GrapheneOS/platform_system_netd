@@ -27,13 +27,13 @@
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
 #include <netdb.h>
+#include <netdutils/Stopwatch.h>
 
 #include "tests/BaseTestMetricsListener.h"
 #include "tests/TestMetrics.h"
 
 #include "NetdConstants.h"  // SHA256_SIZE
 #include "ResolverStats.h"
-#include "Stopwatch.h"
 #include "dns_responder.h"
 #include "dns_responder_client.h"
 
@@ -49,6 +49,7 @@ using android::net::IDnsResolver;
 using android::net::ResolverStats;
 using android::net::metrics::INetdEventListener;
 using android::net::metrics::TestOnDnsEvent;
+using android::netdutils::Stopwatch;
 
 // TODO: make this dynamic and stop depending on implementation details.
 // Sync from TEST_NETID in dns_responder_client.cpp as resolver_test.cpp does.

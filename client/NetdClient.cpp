@@ -32,12 +32,13 @@
 #include "Fwmark.h"
 #include "FwmarkClient.h"
 #include "FwmarkCommand.h"
-#include "Stopwatch.h"
+#include "netdutils/Stopwatch.h"
 #include "netid_client.h"
 
 #include "android-base/unique_fd.h"
 
 using android::base::unique_fd;
+using android::netdutils::Stopwatch;
 
 namespace {
 
