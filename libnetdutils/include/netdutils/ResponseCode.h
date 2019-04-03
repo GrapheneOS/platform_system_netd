@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
-#ifndef _RESPONSECODE_H
-#define _RESPONSECODE_H
+#ifndef NETDUTILS_RESPONSECODE_H
+#define NETDUTILS_RESPONSECODE_H
+
+namespace android {
+namespace netdutils {
 
 class ResponseCode {
     // Keep in sync with
@@ -80,4 +83,8 @@ public:
     static const int RouteChange                    = 616;
     static const int StrictCleartext                = 617;
 };
-#endif
+
+}  // namespace netdutils
+}  // namespace android
+
+#endif  // NETDUTILS_RESPONSECODE_H

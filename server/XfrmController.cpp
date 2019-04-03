@@ -59,7 +59,6 @@
 #include "NetdConstants.h"
 #include "NetlinkCommands.h"
 #include "Permission.h"
-#include "ResponseCode.h"
 #include "XfrmController.h"
 #include "android-base/stringprintf.h"
 #include "android-base/strings.h"
