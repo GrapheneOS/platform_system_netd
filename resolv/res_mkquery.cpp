@@ -143,9 +143,9 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
             if (ep - cp < QFIXEDSZ) return (-1);
             if ((n = dn_comp(dname, cp, ep - cp - QFIXEDSZ, dnptrs, lastdnptr)) < 0) return (-1);
             cp += n;
-            ns_put16(type, cp);
+            *reinterpret_cast<uint16_t*>(cp) = htons(type);
             cp += INT16SZ;
-            ns_put16(cl, cp);
+            *reinterpret_cast<uint16_t*>(cp) = htons(cl);
             cp += INT16SZ;
             hp->qdcount = htons(1);
             if (op == QUERY || data == NULL) break;
@@ -156,13 +156,13 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
             n = dn_comp((const char*) data, cp, ep - cp - RRFIXEDSZ, dnptrs, lastdnptr);
             if (n < 0) return (-1);
             cp += n;
-            ns_put16(ns_t_null, cp);
+            *reinterpret_cast<uint16_t*>(cp) = htons(ns_t_null);
             cp += INT16SZ;
-            ns_put16(cl, cp);
+            *reinterpret_cast<uint16_t*>(cp) = htons(cl);
             cp += INT16SZ;
-            ns_put32(0, cp);
+            *reinterpret_cast<uint32_t*>(cp) = htonl(0);
             cp += INT32SZ;
-            ns_put16(0, cp);
+            *reinterpret_cast<uint16_t*>(cp) = htons(0);
             cp += INT16SZ;
             hp->arcount = htons(1);
             break;
@@ -173,13 +173,13 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
              */
             if (ep - cp < 1 + RRFIXEDSZ + datalen) return (-1);
             *cp++ = '\0'; /* no domain name */
-            ns_put16(type, cp);
+            *reinterpret_cast<uint16_t*>(cp) = htons(type);
             cp += INT16SZ;
-            ns_put16(cl, cp);
+            *reinterpret_cast<uint16_t*>(cp) = htons(cl);
             cp += INT16SZ;
-            ns_put32(0, cp);
+            *reinterpret_cast<uint32_t*>(cp) = htonl(0);
             cp += INT32SZ;
-            ns_put16(datalen, cp);
+            *reinterpret_cast<uint16_t*>(cp) = htons(datalen);
             cp += INT16SZ;
             if (datalen) {
                 memcpy(cp, data, (size_t) datalen);
@@ -214,10 +214,10 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
     *cp++ = 0; /* "." */
 
     // Attach OPT pseudo-RR, as documented in RFC2671 (EDNS0).
-    ns_put16(ns_t_opt, cp); /* TYPE */
+    *reinterpret_cast<uint16_t*>(cp) = htons(ns_t_opt); /* TYPE */
     cp += INT16SZ;
     if (anslen > 0xffff) anslen = 0xffff;
-    ns_put16(anslen, cp); /* CLASS = UDP payload size */
+    *reinterpret_cast<uint16_t*>(cp) = htons(anslen); /* CLASS = UDP payload size */
     cp += INT16SZ;
     *cp++ = NOERROR; /* extended RCODE */
     *cp++ = 0;       /* EDNS version */
@@ -225,7 +225,7 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
         LOG(DEBUG) << __func__ << ": ENDS0 DNSSEC";
         flags |= NS_OPT_DNSSEC_OK;
     }
-    ns_put16(flags, cp);
+    *reinterpret_cast<uint16_t*>(cp) = htons(flags);
     cp += INT16SZ;
 
     // EDNS0 padding
@@ -236,11 +236,11 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
         return -1;
     }
     padlen = std::min(padlen, static_cast<uint16_t>(buflen - minlen));
-    ns_put16(padlen + 2 * INT16SZ, cp); /* RDLEN */
+    *reinterpret_cast<uint16_t*>(cp) = htons(padlen + 2 * INT16SZ); /* RDLEN */
     cp += INT16SZ;
-    ns_put16(NS_OPT_PADDING, cp); /* OPTION-CODE */
+    *reinterpret_cast<uint16_t*>(cp) = htons(NS_OPT_PADDING); /* OPTION-CODE */
     cp += INT16SZ;
-    ns_put16(padlen, cp); /* OPTION-LENGTH */
+    *reinterpret_cast<uint16_t*>(cp) = htons(padlen); /* OPTION-LENGTH */
     cp += INT16SZ;
     memset(cp, 0, padlen);
     cp += padlen;
