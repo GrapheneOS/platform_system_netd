@@ -421,7 +421,6 @@ static int gethostbyname_internal_real(const char* name, int af, res_state res, 
             size = NS_IN6ADDRSZ;
             break;
         default:
-            errno = EAFNOSUPPORT;
             return EAI_FAMILY;
     }
     if (buflen < size) goto nospc;
@@ -467,13 +466,10 @@ static int gethostbyname_internal_real(const char* name, int af, res_state res, 
     info.buflen = buflen;
     if (_hf_gethtbyname2(name, af, &info)) {
         int error = dns_gethtbyname(name, af, &info);
-        if (error != 0) {
-            return error;
-        }
+        if (error != 0) return error;
     }
     return 0;
 nospc:
-    errno = ENOSPC;
     return EAI_MEMORY;
 fake:
     HENT_ARRAY(hp->h_addr_list, 1, buf, buflen);
@@ -532,22 +528,21 @@ static int android_gethostbyaddrfornetcontext_real(const void* addr, socklen_t l
             size = NS_IN6ADDRSZ;
             break;
         default:
-            errno = EAFNOSUPPORT;
             return EAI_FAMILY;
     }
     if (size != len) {
-        errno = EINVAL;
-        // TODO: Consider to remap error code without relying on errno.
-        return EAI_SYSTEM;
+        // TODO: Consider converting to a private extended EAI_* error code.
+        // Currently, the EAI_* value has no corresponding error code for invalid argument socket
+        // length. In order to not rely on errno, convert the original error code pair, EAI_SYSTEM
+        // and EINVAL, to EAI_FAIL.
+        return EAI_FAIL;
     }
     info.hp = hp;
     info.buf = buf;
     info.buflen = buflen;
     if (_hf_gethtbyaddr(uaddr, len, af, &info)) {
         int error = dns_gethtbyaddr(uaddr, len, af, netcontext, &info);
-        if (error != 0) {
-            return error;
-        }
+        if (error != 0) return error;
     }
     return 0;
 }
@@ -558,6 +553,8 @@ static int android_gethostbyaddrfornetcontext_proxy_internal(
     return android_gethostbyaddrfornetcontext_real(addr, len, af, hp, hbuf, hbuflen, netcontext);
 }
 
+// TODO: Consider leaving function without returning error code as _gethtent() does because
+// the error code of the caller does not currently return to netd.
 struct hostent* netbsd_gethostent_r(FILE* hf, struct hostent* hent, char* buf, size_t buflen,
                                     int* he) {
     const size_t line_buf_size = sizeof(res_get_static()->hostbuf);
@@ -780,18 +777,18 @@ static int dns_gethtbyname(const char* name, int addr_type, getnamaddr* info) {
     res_state res = res_get_state();
     if (!res) return EAI_MEMORY;
 
-    int herrno = NETDB_INTERNAL;
-    n = res_nsearch(res, name, C_IN, type, buf->buf, (int) sizeof(buf->buf), &herrno);
+    int he;
+    n = res_nsearch(res, name, C_IN, type, buf->buf, (int)sizeof(buf->buf), &he);
     if (n < 0) {
         LOG(DEBUG) << __func__ << ": res_nsearch failed (" << n << ")";
-        // Pass herrno to catch more detailed errors rather than EAI_NODATA.
-        return herrnoToAiErrno(herrno);
+        // Return h_errno (he) to catch more detailed errors rather than EAI_NODATA.
+        // Note that res_nsearch() doesn't set the pair NETDB_INTERNAL and errno.
+        // See also herrnoToAiErrno().
+        return herrnoToAiErrno(he);
     }
-    hostent* hp =
-            getanswer(buf.get(), n, name, type, res, info->hp, info->buf, info->buflen, &herrno);
-    if (hp == NULL) {
-        return herrnoToAiErrno(herrno);
-    }
+    hostent* hp = getanswer(buf.get(), n, name, type, res, info->hp, info->buf, info->buflen, &he);
+    if (hp == NULL) return herrnoToAiErrno(he);
+
     return 0;
 }
 
@@ -819,13 +816,19 @@ static int dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
                 if (advance > 0 && qp + advance < ep)
                     qp += advance;
                 else {
-                    // TODO: Consider to remap error code without relying on errno.
-                    return EAI_SYSTEM;
+                    // TODO: Consider converting to a private extended EAI_* error code.
+                    // Currently, the EAI_* value has no corresponding error code for an internal
+                    // out of buffer space. In order to not rely on errno, convert the original
+                    // error code EAI_SYSTEM to EAI_MEMORY.
+                    return EAI_MEMORY;
                 }
             }
             if (strlcat(qbuf, "ip6.arpa", sizeof(qbuf)) >= sizeof(qbuf)) {
-                // TODO: Consider to remap error code without relying on errno.
-                return EAI_SYSTEM;
+                // TODO: Consider converting to a private extended EAI_* error code.
+                // Currently, the EAI_* value has no corresponding error code for an internal
+                // out of buffer space. In order to not rely on errno, convert the original
+                // error code EAI_SYSTEM to EAI_MEMORY.
+                return EAI_MEMORY;
             }
             break;
         default:
@@ -838,17 +841,17 @@ static int dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
     if (!res) return EAI_MEMORY;
 
     res_setnetcontext(res, netcontext);
-    int herrno = NETDB_INTERNAL;
-    n = res_nquery(res, qbuf, C_IN, T_PTR, buf->buf, (int) sizeof(buf->buf), &herrno);
+    int he;
+    n = res_nquery(res, qbuf, C_IN, T_PTR, buf->buf, (int)sizeof(buf->buf), &he);
     if (n < 0) {
         LOG(DEBUG) << __func__ << ": res_nquery failed (" << n << ")";
-        return herrnoToAiErrno(herrno);
+        // Note that res_nquery() doesn't set the pair NETDB_INTERNAL and errno.
+        // Return h_errno (he) to catch more detailed errors rather than EAI_NODATA.
+        // See also herrnoToAiErrno().
+        return herrnoToAiErrno(he);
     }
-    hostent* hp =
-            getanswer(buf.get(), n, qbuf, T_PTR, res, info->hp, info->buf, info->buflen, &herrno);
-    if (hp == NULL) {
-        return herrnoToAiErrno(herrno);
-    }
+    hostent* hp = getanswer(buf.get(), n, qbuf, T_PTR, res, info->hp, info->buf, info->buflen, &he);
+    if (hp == NULL) return herrnoToAiErrno(he);
 
     char* bf = (char*) (hp->h_addr_list + 2);
     size_t blen = (size_t)(bf - info->buf);
@@ -873,7 +876,6 @@ static int dns_gethtbyaddr(const unsigned char* uaddr, int len, int af,
     return 0;
 
 nospc:
-    errno = ENOSPC;
     return EAI_MEMORY;
 }
 
@@ -910,8 +912,8 @@ static int android_gethostbyaddrfornetcontext_proxy(const void* addr, socklen_t 
     return error;
 }
 
-int herrnoToAiErrno(int herrno) {
-    switch (herrno) {
+int herrnoToAiErrno(int he) {
+    switch (he) {
         // extended h_errno
         case NETD_RESOLV_H_ERRNO_EXT_TIMEOUT:
             return NETD_RESOLV_TIMEOUT;
@@ -924,9 +926,17 @@ int herrnoToAiErrno(int herrno) {
         case TRY_AGAIN:
             return EAI_AGAIN;
         case NETDB_INTERNAL:
+            // TODO: Remove ENOSPC and call abort() immediately whenever any allocation fails.
+            if (errno == ENOSPC) return EAI_MEMORY;
+            // Theoretically, this should not happen. Leave this here just in case.
+            // Currently, getanswer() of {gethnamaddr, getaddrinfo}.cpp, res_nsearch() and
+            // res_searchN() use this function to convert error code. Only getanswer()
+            // of gethnamaddr.cpp may return the error code pair, herrno NETDB_INTERNAL and
+            // errno ENOSPC, which has already converted to EAI_MEMORY. The remaining functions
+            // don't set the pair herrno and errno.
             return EAI_SYSTEM;  // see errno for detail
         case NO_RECOVERY:
         default:
-            return EAI_FAIL;
+            return EAI_FAIL;  // TODO: Perhaps convert default to EAI_MAX (unknown error) instead
     }
 }
