@@ -145,7 +145,7 @@ int TunInterface::addAddress(const std::string& addr, int prefixlen) {
         in_addr ip4;
         in6_addr ip6;
     } ip;
-    if (addr.find(":") != std::string::npos) {
+    if (addr.find(':') != std::string::npos) {
         family = AF_INET6;
         inet_pton(AF_INET6, addr.c_str(), &ip.ip6);
         addrlen = sizeof(ip.ip6);
