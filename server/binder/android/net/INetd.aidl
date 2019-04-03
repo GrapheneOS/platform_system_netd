@@ -1133,8 +1133,7 @@ interface INetd {
 
    /**
     * Register unsolicited event listener
-    * Netd supports multiple unsolicited event listeners, but only one per pid
-    * A newer listener won't be registed if netd has an old one on the same pid.
+    * Netd supports multiple unsolicited event listeners.
     *
     * @param listener unsolicited event listener to register
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
