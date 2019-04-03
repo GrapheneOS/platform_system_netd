@@ -38,30 +38,32 @@
 #include <android-base/stringprintf.h>
 #include <android/multinetwork.h>  // ResNsendFlags
 #include <cutils/misc.h>           // FIRST_APPLICATION_UID
+#include <netdutils/InternetAddresses.h>
 #include <netdutils/OperationLimiter.h>
+#include <netdutils/ResponseCode.h>
 #include <netdutils/Slice.h>
+#include <netdutils/ThreadUtil.h>
 #include <private/android_filesystem_config.h>  // AID_SYSTEM
 #include <resolv.h>
 #include <statslog.h>
 #include <sysutils/SocketClient.h>
 
-// TODO: Considering moving ResponseCode.h Stopwatch.h thread_util.h to libnetdutils.
+// TODO: Consider moving Stopwatch.h to libnetdutils.
 #include "DnsResolver.h"
 #include "NetdClient.h"  // NETID_USE_LOCAL_NAMESERVERS
 #include "NetdPermissions.h"
 #include "ResolverEventReporter.h"
-#include "ResponseCode.h"
 #include "Stopwatch.h"
 #include "netd_resolv/stats.h"  // RCODE_TIMEOUT
-#include "netdutils/InternetAddresses.h"
 #include "resolv_private.h"
-#include "thread_util.h"
 
 using aidl::android::net::metrics::INetdEventListener;
 
 namespace android {
-namespace net {
 
+using netdutils::ResponseCode;
+
+namespace net {
 namespace {
 
 // Limits the number of outstanding DNS queries by client UID.
@@ -83,7 +85,7 @@ template<typename T>
 void tryThreadOrError(SocketClient* cli, T* handler) {
     cli->incRef();
 
-    const int rval = threadLaunch(handler);
+    const int rval = netdutils::threadLaunch(handler);
     if (rval == 0) {
         // SocketClient decRef() happens in the handler's run() method.
         return;

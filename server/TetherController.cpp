@@ -45,11 +45,10 @@
 
 #include "Controllers.h"
 #include "Fwmark.h"
-#include "NetdConstants.h"
-#include "Permission.h"
 #include "InterfaceController.h"
+#include "NetdConstants.h"
 #include "NetworkController.h"
-#include "ResponseCode.h"
+#include "Permission.h"
 #include "TetherController.h"
 
 namespace android {
