@@ -51,15 +51,15 @@
         res;                                                                    \
     })
 
-#define LOG_EVENT_FUNC(retry, func, ...)                                                \
-    do {                                                                                \
-        const auto listeners = gCtls->eventReporter.getNetdUnsolicitedEventListeners(); \
-        for (auto& listener : listeners) {                                              \
-            auto entry = gUnsolicitedLog.newEntry().function(#func).args(__VA_ARGS__);  \
-            if (retry(listener->func(__VA_ARGS__))) {                                   \
-                gUnsolicitedLog.log(entry.withAutomaticDuration());                     \
-            }                                                                           \
-        }                                                                               \
+#define LOG_EVENT_FUNC(retry, func, ...)                                                    \
+    do {                                                                                    \
+        const auto listenerMap = gCtls->eventReporter.getNetdUnsolicitedEventListenerMap(); \
+        for (auto& listener : listenerMap) {                                                \
+            auto entry = gUnsolicitedLog.newEntry().function(#func).args(__VA_ARGS__);      \
+            if (retry(listener.first->func(__VA_ARGS__))) {                                 \
+                gUnsolicitedLog.log(entry.withAutomaticDuration());                         \
+            }                                                                               \
+        }                                                                                   \
     } while (0)
 
 namespace android {
