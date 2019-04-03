@@ -141,6 +141,7 @@ cc_test {
 
 cc_test {
     name: "resolv_unit_test",
+    test_suites: ["device-tests"],
     defaults: ["netd_defaults"],
     srcs: [
         "dns_tls_test.cpp",
