@@ -86,12 +86,10 @@ enum UidOwnerMatchType {
     POWERSAVE_MATCH = (1 << 4),
 };
 
-enum UidPermissionType {
-    NO_PERMISSION = 0,
-    ALLOW_SOCK_CREATE = (1 << 0),
-    ALLOW_UPDATE_DEVICE_STATS = (1 << 1),
+enum BpfPemissionMatch {
+    BPF_PERMISSION_INTERNET = 1 << 2,
+    BPF_PERMISSION_UPDATE_DEVICE_STATS = 1 << 3,
 };
-
 // In production we use two identical stats maps to record per uid stats and
 // do swap and clean based on the configuration specified here. The statsMapType
 // value in configuration map specified which map is currently in use.
