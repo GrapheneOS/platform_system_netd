@@ -46,8 +46,8 @@ class DnsResolverService : public aidl::android::net::BnDnsResolver {
             const std::string& tlsName, const std::vector<std::string>& tlsServers,
             const std::vector<std::string>& tlsFingerprints) override;
     ::ndk::ScopedAStatus getResolverInfo(
-            int32_t netId, std::vector<std::string>* servers, std::vector<std::string>* tlsServers,
-            std::vector<std::string>* domains, std::vector<int32_t>* params,
+            int32_t netId, std::vector<std::string>* servers, std::vector<std::string>* domains,
+            std::vector<std::string>* tlsServers, std::vector<int32_t>* params,
             std::vector<int32_t>* stats,
             std::vector<int32_t>* wait_for_pending_req_timeout_count) override;
     ::ndk::ScopedAStatus clearResolverConfiguration(int32_t netId) override;
