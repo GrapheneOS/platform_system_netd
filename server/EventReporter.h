@@ -17,8 +17,8 @@
 #ifndef NETD_SERVER_EVENT_REPORTER_H
 #define NETD_SERVER_EVENT_REPORTER_H
 
+#include <map>
 #include <mutex>
-#include <set>
 
 #include <android-base/thread_annotations.h>
 #include <binder/IServiceManager.h>
@@ -31,25 +31,30 @@
  */
 class EventReporter {
   public:
-    using UnsolListeners = std::set<const android::sp<android::net::INetdUnsolicitedEventListener>>;
+    using UnsolListenerMap =
+            std::map<const android::sp<android::net::INetdUnsolicitedEventListener>,
+                     const android::sp<android::IBinder::DeathRecipient>>;
 
     // Returns the binder reference to the netd events listener service, attempting to fetch it if
     // we do not have it already. This method is threadsafe.
     android::sp<android::net::metrics::INetdEventListener> getNetdEventListener();
 
     // Returns a copy of the registered listeners.
-    UnsolListeners getNetdUnsolicitedEventListeners() EXCLUDES(mUnsolicitedMutex);
+    UnsolListenerMap getNetdUnsolicitedEventListenerMap() const EXCLUDES(mUnsolicitedMutex);
 
     void registerUnsolEventListener(
+            const android::sp<android::net::INetdUnsolicitedEventListener>& listener)
+            EXCLUDES(mUnsolicitedMutex);
+    void unregisterUnsolEventListener(
             const android::sp<android::net::INetdUnsolicitedEventListener>& listener)
             EXCLUDES(mUnsolicitedMutex);
 
   private:
     std::mutex mEventMutex;
-    std::mutex mUnsolicitedMutex;
+    mutable std::mutex mUnsolicitedMutex;
     android::sp<android::net::metrics::INetdEventListener> mNetdEventListener
             GUARDED_BY(mEventMutex);
-    UnsolListeners mUnsolListeners GUARDED_BY(mUnsolicitedMutex);
+    UnsolListenerMap mUnsolListenerMap GUARDED_BY(mUnsolicitedMutex);
 };
 
 #endif  // NETD_SERVER_EVENT_REPORTER_H
