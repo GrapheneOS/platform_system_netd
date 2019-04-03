@@ -33,6 +33,7 @@
 
 #include <log/log.h>
 #include <netd_resolv/params.h>
+#include <netdutils/ResponseCode.h>
 #include <netdutils/Status.h>
 #include <netdutils/StatusOr.h>
 #include <netutils/ifc.h>
@@ -45,7 +46,6 @@
 #include "IdletimerController.h"
 #include "InterfaceController.h"
 #include "NetdConstants.h"
-#include "ResponseCode.h"
 #include "RouteController.h"
 #include "UidRanges.h"
 #include "netid_client.h"
@@ -54,8 +54,10 @@
 #include <vector>
 
 namespace android {
-namespace net {
 
+using netdutils::ResponseCode;
+
+namespace net {
 namespace {
 
 const unsigned NUM_OEM_IDS = NetworkController::MAX_OEM_ID - NetworkController::MIN_OEM_ID + 1;

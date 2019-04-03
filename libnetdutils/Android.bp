@@ -39,6 +39,7 @@ cc_test {
         "SliceTest.cpp",
         "StatusTest.cpp",
         "SyscallsTest.cpp",
+        "ThreadUtilTest.cpp",
     ],
     defaults: ["netd_defaults"],
     test_suites: ["device-tests"],
