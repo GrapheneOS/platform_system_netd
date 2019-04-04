@@ -56,8 +56,8 @@ cc_library_static {
     srcs: [
         "BandwidthController.cpp",
         "ClatdController.cpp",
+        "ClatUtils.cpp",
         "Controllers.cpp",
-        "Dns64Configuration.cpp",
         "NetdConstants.cpp",
         "FirewallController.cpp",
         "IdletimerController.cpp",
@@ -114,7 +114,6 @@ cc_binary {
         "libbase",
         "libbinder",
         "libbpf_android",
-        "libcrypto",
         "libcutils",
         "libdl",
         "libhidlbase",
@@ -158,7 +157,6 @@ cc_binary {
         "PppController.cpp",
         "Process.cpp",
         "ResolvStub.cpp",
-        "ResolverController.cpp",
         "VirtualNetwork.cpp",
         "main.cpp",
         "oem_iptables_hook.cpp",
@@ -185,6 +183,7 @@ cc_test {
     srcs: [
         "BandwidthControllerTest.cpp",
         "ClatdControllerTest.cpp",
+        "ClatUtilsTest.cpp",
         "ControllersTest.cpp",
         "FirewallControllerTest.cpp",
         "IdletimerControllerTest.cpp",

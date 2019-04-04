@@ -38,35 +38,41 @@ android::sp<INetdEventListener> EventReporter::getNetdEventListener() {
     return mNetdEventListener;
 }
 
-EventReporter::UnsolListeners EventReporter::getNetdUnsolicitedEventListeners() {
+EventReporter::UnsolListenerMap EventReporter::getNetdUnsolicitedEventListenerMap() const {
     std::lock_guard lock(mUnsolicitedMutex);
-    return mUnsolListeners;
+    return mUnsolListenerMap;
 }
 
 void EventReporter::registerUnsolEventListener(
         const android::sp<INetdUnsolicitedEventListener>& listener) {
     std::lock_guard lock(mUnsolicitedMutex);
-    mUnsolListeners.insert(listener);
 
     // Create the death listener.
     class DeathRecipient : public android::IBinder::DeathRecipient {
       public:
-        DeathRecipient(UnsolListeners* listeners,
-                       android::sp<INetdUnsolicitedEventListener> listener, std::mutex& unsolMutex)
-            : mMutex(unsolMutex), mUnsolListeners(listeners), mListener(std::move(listener)) {}
+        DeathRecipient(EventReporter* eventReporter,
+                       android::sp<INetdUnsolicitedEventListener> listener)
+            : mEventReporter(eventReporter), mListener(std::move(listener)) {}
         ~DeathRecipient() override = default;
-
-      private:
         void binderDied(const android::wp<android::IBinder>& /* who */) override {
-            std::lock_guard lock(mMutex);
-            mUnsolListeners->erase(mListener);
+            mEventReporter->unregisterUnsolEventListener(mListener);
         }
 
-        std::mutex& mMutex;
-        UnsolListeners* mUnsolListeners GUARDED_BY(mMutex);
+      private:
+        EventReporter* mEventReporter;
         android::sp<INetdUnsolicitedEventListener> mListener;
     };
     android::sp<android::IBinder::DeathRecipient> deathRecipient =
-            new DeathRecipient(&mUnsolListeners, listener, mUnsolicitedMutex);
+            new DeathRecipient(this, listener);
+
     android::IInterface::asBinder(listener)->linkToDeath(deathRecipient);
+
+    // TODO: Consider to use remote binder address as registering key
+    mUnsolListenerMap.insert({listener, deathRecipient});
+}
+
+void EventReporter::unregisterUnsolEventListener(
+        const android::sp<INetdUnsolicitedEventListener>& listener) {
+    std::lock_guard lock(mUnsolicitedMutex);
+    mUnsolListenerMap.erase(listener);
 }

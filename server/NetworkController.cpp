@@ -474,7 +474,6 @@ int NetworkController::destroyNetwork(unsigned netId) {
     }
     mNetworks.erase(netId);
     delete network;
-    RESOLV_STUB.resolv_delete_cache_for_net(netId);
 
     for (auto iter = mIfindexToLastNetId.begin(); iter != mIfindexToLastNetId.end();) {
         if (iter->second == netId) {
@@ -702,7 +701,6 @@ void NetworkController::dump(DumpWriter& dw) {
             dw.println("Required permission: %s", permissionToName(permission));
             dw.decIndent();
         }
-        android::net::gCtls->resolverCtrl.dump(dw, i.first);
         dw.blankline();
     }
     dw.decIndent();

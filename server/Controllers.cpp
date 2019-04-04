@@ -18,8 +18,9 @@
 #include <set>
 #include <string>
 
-#include <android-base/strings.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
+#include <netdutils/Stopwatch.h>
 
 #define LOG_TAG "Netd"
 #include <log/log.h>
@@ -28,15 +29,15 @@
 #include "IdletimerController.h"
 #include "NetworkController.h"
 #include "RouteController.h"
-#include "Stopwatch.h"
-#include "oem_iptables_hook.h"
 #include "XfrmController.h"
+#include "oem_iptables_hook.h"
 
 namespace android {
 namespace net {
 
-using android::base::StringPrintf;
 using android::base::StringAppendF;
+using android::base::StringPrintf;
+using android::netdutils::Stopwatch;
 
 auto Controllers::execIptablesRestore  = ::execIptablesRestore;
 auto Controllers::execIptablesRestoreWithOutput = ::execIptablesRestoreWithOutput;
@@ -189,8 +190,7 @@ void Controllers::createChildChains(IptablesTarget target, const char* table,
 }
 
 Controllers::Controllers()
-    : resolverCtrl(netCtrl),
-      clatdCtrl(&netCtrl),
+    : clatdCtrl(&netCtrl),
       wakeupCtrl(
               [this](const WakeupController::ReportArgs& args) {
                   const auto listener = eventReporter.getNetdEventListener();
@@ -276,6 +276,10 @@ void Controllers::initIptablesRules() {
 void Controllers::init() {
     initIptablesRules();
     Stopwatch s;
+
+    clatdCtrl.Init();
+    gLog.info("Initializing ClatdController: %.1fms", s.getTimeAndReset());
+
     netdutils::Status tcStatus = trafficCtrl.start();
     if (!isOk(tcStatus)) {
         gLog.error("Failed to start trafficcontroller: (%s)", toString(tcStatus).c_str());

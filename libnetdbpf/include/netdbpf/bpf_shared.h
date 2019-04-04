@@ -17,6 +17,8 @@
 #ifndef NETDBPF_BPF_SHARED_H
 #define NETDBPF_BPF_SHARED_H
 
+#include <linux/in.h>
+#include <linux/in6.h>
 #include <netdutils/UidConstants.h>
 // const values shared by bpf kernel program bpfloader and netd
 
@@ -84,12 +86,10 @@ enum UidOwnerMatchType {
     POWERSAVE_MATCH = (1 << 4),
 };
 
-enum UidPermissionType {
-    NO_PERMISSION = 0,
-    ALLOW_SOCK_CREATE = (1 << 0),
-    ALLOW_UPDATE_DEVICE_STATS = (1 << 1),
+enum BpfPemissionMatch {
+    BPF_PERMISSION_INTERNET = 1 << 2,
+    BPF_PERMISSION_UPDATE_DEVICE_STATS = 1 << 3,
 };
-
 // In production we use two identical stats maps to record per uid stats and
 // do swap and clean based on the configuration specified here. The statsMapType
 // value in configuration map specified which map is currently in use.
@@ -105,5 +105,24 @@ const BpfConfig DEFAULT_CONFIG = 0;
 
 #define UID_RULES_CONFIGURATION_KEY 1
 #define CURRENT_STATS_MAP_CONFIGURATION_KEY 2
+
+#define CLAT_INGRESS_PROG_RAWIP_NAME "prog_clatd_schedcls_ingress_clat_rawip"
+#define CLAT_INGRESS_PROG_ETHER_NAME "prog_clatd_schedcls_ingress_clat_ether"
+
+#define CLAT_INGRESS_PROG_RAWIP_PATH BPF_PATH "/" CLAT_INGRESS_PROG_RAWIP_NAME
+#define CLAT_INGRESS_PROG_ETHER_PATH BPF_PATH "/" CLAT_INGRESS_PROG_ETHER_NAME
+
+#define CLAT_INGRESS_MAP_PATH BPF_PATH "/map_clatd_clat_ingress_map"
+
+struct ClatIngressKey {
+    uint32_t iif;            // The input interface index
+    struct in6_addr pfx96;   // The source /96 nat64 prefix, bottom 32 bits must be 0
+    struct in6_addr local6;  // The full 128-bits of the destination IPv6 address
+};
+
+struct ClatIngressValue {
+    uint32_t oif;           // The output interface to redirect to (0 means don't redirect)
+    struct in_addr local4;  // The destination IPv4 address
+};
 
 #endif  // NETDBPF_BPF_SHARED_H

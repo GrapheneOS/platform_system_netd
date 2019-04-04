@@ -70,13 +70,14 @@
 #include <android-base/stringprintf.h>
 #include <benchmark/benchmark.h>
 #include <log/log.h>
+#include <netdutils/Stopwatch.h>
 #include <utils/StrongPointer.h>
 
 #include "FwmarkClient.h"
 #include "SockDiag.h"
-#include "Stopwatch.h"
 
 using android::base::StringPrintf;
+using android::netdutils::Stopwatch;
 
 static int bindAndListen(int s) {
     sockaddr_in6 sin6 = { .sin6_family = AF_INET6 };

@@ -14,53 +14,57 @@
  * limitations under the License.
  */
 
-#ifndef NETD_SERVER_THREAD_UTIL_H
-#define NETD_SERVER_THREAD_UTIL_H
+#ifndef NETDUTILS_THREADUTIL_H
+#define NETDUTILS_THREADUTIL_H
 
 #include <pthread.h>
 #include <memory>
 
+#include <android-base/logging.h>
+
 namespace android {
-namespace net {
+namespace netdutils {
 
 struct scoped_pthread_attr {
     scoped_pthread_attr() { pthread_attr_init(&attr); }
     ~scoped_pthread_attr() { pthread_attr_destroy(&attr); }
 
-    int detach() {
-        return -pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    }
+    int detach() { return -pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED); }
 
     pthread_attr_t attr;
 };
 
-template<typename T>
+template <typename T>
 inline void* runAndDelete(void* obj) {
     std::unique_ptr<T> handler(reinterpret_cast<T*>(obj));
     handler->run();
     return nullptr;
 }
 
-template<typename T>
+template <typename T>
 inline int threadLaunch(T* obj) {
-    if (obj == nullptr) { return -EINVAL;}
+    if (obj == nullptr) {
+        return -EINVAL;
+    }
 
     scoped_pthread_attr scoped_attr;
 
     int rval = scoped_attr.detach();
-    if (rval != 0) { return rval; }
+    if (rval != 0) {
+        return rval;
+    }
 
     pthread_t thread;
     rval = pthread_create(&thread, &scoped_attr.attr, &runAndDelete<T>, obj);
     if (rval != 0) {
-        ALOGW("pthread_create failed: %d", rval);
+        LOG(WARNING) << __func__ << ": pthread_create failed: " << rval;
         return -rval;
     }
 
     return rval;
 }
 
-}  // namespace net
+}  // namespace netdutils
 }  // namespace android
 
-#endif  // NETD_SERVER_THREAD_UTIL_H
+#endif  // NETDUTILS_THREADUTIL_H

@@ -117,6 +117,14 @@
 
 #include "resolv_private.h"
 
+// Default to disabling verbose logging unless overridden by Android.bp
+// for debuggable builds.
+//
+// NOTE: Verbose resolver logs could contain PII -- do NOT enable in production builds
+#ifndef RESOLV_ALLOW_VERBOSE_LOGGING
+#define RESOLV_ALLOW_VERBOSE_LOGGING 0
+#endif
+
 struct res_sym {
     int number;            /* Identifying number, like T_MX */
     const char* name;      /* Its symbolic name, like "MX" */
@@ -161,7 +169,7 @@ static void do_section(ns_msg* handle, ns_sect section) {
     char* buf = (char*) malloc((size_t) buflen);
     if (buf == NULL) {
         dbprint(p, end, ";; memory allocation failure\n");
-        LOG(VERBOSE) << temp;
+        LOG(VERBOSE) << __func__ << ": " << temp;
         return;
     }
 
@@ -184,8 +192,8 @@ static void do_section(ns_msg* handle, ns_sect section) {
             ttl = ns_rr_ttl(rr);
             dbprint(p, end, "; EDNS: version: %zu, udp=%u, flags=%04zx\n", (ttl >> 16) & 0xff,
                     ns_rr_class(rr), ttl & 0xffff);
-            while (rdatalen >= 4) {
-                const u_char* cp = ns_rr_rdata(rr);
+            const u_char* cp = ns_rr_rdata(rr);
+            while (rdatalen <= ns_rr_rdlen(rr) && rdatalen >= 4) {
                 int i;
 
                 GETSHORT(optcode, cp);
@@ -222,6 +230,7 @@ static void do_section(ns_msg* handle, ns_sect section) {
                     }
                 }
                 rdatalen -= 4 + optlen;
+                cp += optlen;
             }
         } else {
             n = ns_sprintrr(handle, &rr, NULL, NULL, buf, (u_int) buflen);
@@ -234,7 +243,7 @@ static void do_section(ns_msg* handle, ns_sect section) {
                     }
                     if (buf == NULL) {
                         p = dbprint(p, end, ";; memory allocation failure\n");
-                        LOG(VERBOSE) << temp;
+                        LOG(VERBOSE) << __func__ << ": " << temp;
                         return;
                     }
                     continue;
@@ -499,8 +508,11 @@ const char* p_rcode(int rcode) {
 
 android::base::LogSeverity logSeverityStrToEnum(const std::string& logSeverityStr) {
     android::base::LogSeverity logSeverityEnum;
+
     if (logSeverityStr == "VERBOSE") {
-        logSeverityEnum = android::base::VERBOSE;
+        // *** enable verbose logging only when DBG is set. It prints sensitive data ***
+        logSeverityEnum =
+                RESOLV_ALLOW_VERBOSE_LOGGING ? android::base::VERBOSE : android::base::DEBUG;
     } else if (logSeverityStr == "DEBUG") {
         logSeverityEnum = android::base::DEBUG;
     } else if (logSeverityStr == "INFO") {
@@ -509,14 +521,10 @@ android::base::LogSeverity logSeverityStrToEnum(const std::string& logSeveritySt
         logSeverityEnum = android::base::WARNING;
     } else if (logSeverityStr == "ERROR") {
         logSeverityEnum = android::base::ERROR;
-    } else if (logSeverityStr == "FATAL_WITHOUT_ABORT") {
-        logSeverityEnum = android::base::FATAL_WITHOUT_ABORT;
-    } else if (logSeverityStr == "FATAL") {
-        logSeverityEnum = android::base::FATAL;
     } else {
         // Invalid parameter is treated as WARNING (default setting)
         logSeverityEnum = android::base::WARNING;
     }
-    LOG(INFO) << "logSeverityEnum " << logSeverityEnum;
+    LOG(INFO) << __func__ << ": " << logSeverityEnum;
     return logSeverityEnum;
 }

@@ -24,8 +24,13 @@
 #include <linux/if.h>
 #include <netinet/in.h>
 
+#include <android-base/thread_annotations.h>
+
 #include "Fwmark.h"
 #include "NetdConstants.h"
+#include "bpf/BpfMap.h"
+#include "netdbpf/bpf_shared.h"
+#include "netdutils/DumpWriter.h"
 
 namespace android {
 namespace net {
@@ -37,9 +42,13 @@ class ClatdController {
     explicit ClatdController(NetworkController* controller);
     virtual ~ClatdController();
 
+    void Init(void);
+
     int startClatd(const std::string& interface, const std::string& nat64Prefix,
                    std::string* v6Addr);
     int stopClatd(const std::string& interface);
+
+    void dump(netdutils::DumpWriter& dw) EXCLUDES(mutex);
 
     std::mutex mutex;
 
@@ -47,6 +56,7 @@ class ClatdController {
     struct ClatdTracker {
         const NetworkController* netCtrl = nullptr;
         pid_t pid = -1;
+        unsigned ifIndex;
         char iface[IFNAMSIZ];
         Fwmark fwmark;
         char fwmarkString[UINT32_STRLEN];
@@ -56,8 +66,8 @@ class ClatdController {
         char v4Str[INET_ADDRSTRLEN];
         in6_addr v6;
         char v6Str[INET6_ADDRSTRLEN];
-        in6_addr dst;
-        char dstString[INET6_ADDRSTRLEN];
+        in6_addr pfx96;
+        char pfx96String[INET6_ADDRSTRLEN];
 
         ClatdTracker() = default;
         explicit ClatdTracker(const NetworkController* netCtrl) : netCtrl(netCtrl) {}
@@ -73,6 +83,18 @@ class ClatdController {
     static int generateIpv6Address(const char* iface, const in_addr v4, const in6_addr& nat64Prefix,
                                    in6_addr* v6);
     static void makeChecksumNeutral(in6_addr* v6, const in_addr v4, const in6_addr& nat64Prefix);
+
+    enum eClatEbpfMode {
+        ClatEbpfDisabled,  //  <4.9 kernel ||  <P api shipping level -- will not work
+        ClatEbpfMaybe,     // >=4.9 kernel &&   P api shipping level -- might work
+        ClatEbpfEnabled,   // >=4.9 kernel && >=Q api shipping level -- must work
+    };
+    eClatEbpfMode mClatEbpfMode;
+    base::unique_fd mNetlinkFd;
+    bpf::BpfMap<ClatIngressKey, ClatIngressValue> mClatIngressMap;
+
+    void maybeStartBpf(const ClatdTracker& tracker);
+    void maybeStopBpf(const ClatdTracker& tracker);
 
     // For testing.
     friend class ClatdControllerTest;

@@ -17,26 +17,52 @@
 #ifndef NETD_RESOLV_EVENT_REPORTER_H
 #define NETD_RESOLV_EVENT_REPORTER_H
 
+#include <set>
+
 #include <android-base/thread_annotations.h>
 
 #include "aidl/android/net/metrics/INetdEventListener.h"
 
 /*
  * This class can be used to get the binder reference to the netd events listener service
- * via stable runtime ABI which is achieved from libbinder_ndk.
+ * via stable runtime ABI which is achieved from libbinder_ndk. It also allows that
+ * register an event listener.
  */
 class ResolverEventReporter {
   public:
-    // Returns the binder from the singleton ResolverEventReporter. This method is threadsafe.
-    static std::shared_ptr<aidl::android::net::metrics::INetdEventListener> getListener();
+    ResolverEventReporter(ResolverEventReporter const&) = delete;
+    ResolverEventReporter(ResolverEventReporter&&) = delete;
+    ResolverEventReporter& operator=(ResolverEventReporter const&) = delete;
+    ResolverEventReporter& operator=(ResolverEventReporter&&) = delete;
+
+    using ListenerSet = std::set<std::shared_ptr<aidl::android::net::metrics::INetdEventListener>>;
+
+    // Get the instance of the singleton ResolverEventReporter.
+    static ResolverEventReporter& getInstance();
+
+    // Return the binder from the singleton ResolverEventReporter. This method is threadsafe.
+    ListenerSet getListeners() const;
+
+    // Add the binder to the singleton ResolverEventReporter. This method is threadsafe.
+    int addListener(
+            const std::shared_ptr<aidl::android::net::metrics::INetdEventListener>& listener);
 
   private:
-    std::mutex mEventMutex;
-    std::shared_ptr<aidl::android::net::metrics::INetdEventListener> mListener
-            GUARDED_BY(mEventMutex);
+    ResolverEventReporter() = default;
+    ~ResolverEventReporter() = default;
 
-    std::shared_ptr<aidl::android::net::metrics::INetdEventListener> getNetdEventListener()
-            EXCLUDES(mEventMutex);
+    void addDefaultListener() EXCLUDES(mMutex);
+    int addListenerImpl(
+            const std::shared_ptr<aidl::android::net::metrics::INetdEventListener>& listener)
+            EXCLUDES(mMutex);
+    int addListenerImplLocked(
+            const std::shared_ptr<aidl::android::net::metrics::INetdEventListener>& listener)
+            REQUIRES(mMutex);
+    ListenerSet getListenersImpl() const EXCLUDES(mMutex);
+    void handleBinderDied(const void* who) EXCLUDES(mMutex);
+
+    mutable std::mutex mMutex;
+    ListenerSet mListeners GUARDED_BY(mMutex);
 };
 
 #endif  // NETD_RESOLV_EVENT_REPORTER_H

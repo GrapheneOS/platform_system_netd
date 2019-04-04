@@ -73,6 +73,11 @@ using netdutils::status::ok;
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
 
+static_assert(BPF_PERMISSION_INTERNET == INetd::PERMISSION_INTERNET,
+              "Mismatch between BPF and AIDL permissions: PERMISSION_INTERNET");
+static_assert(BPF_PERMISSION_UPDATE_DEVICE_STATS == INetd::PERMISSION_UPDATE_DEVICE_STATS,
+              "Mismatch between BPF and AIDL permissions: PERMISSION_UPDATE_DEVICE_STATS");
+
 #define FLAG_MSG_TRANS(result, flag, value)            \
     do {                                               \
         if (value & flag) {                            \
@@ -95,14 +100,24 @@ const std::string uidMatchTypeToString(uint8_t match) {
 }
 
 bool TrafficController::hasUpdateDeviceStatsPermission(uid_t uid) {
-    return ((uid == AID_ROOT) || (uid == AID_SYSTEM) ||
-            mPrivilegedUser.find(uid) != mPrivilegedUser.end());
+    // This implementation is the same logic as method ActivityManager#checkComponentPermission.
+    // It implies that the calling uid can never be the same as PER_USER_RANGE.
+    uint32_t appId = uid % PER_USER_RANGE;
+    return ((appId == AID_ROOT) || (appId == AID_SYSTEM) ||
+            mPrivilegedUser.find(appId) != mPrivilegedUser.end());
 }
 
 const std::string UidPermissionTypeToString(uint8_t permission) {
+    if (permission == INetd::NO_PERMISSIONS) {
+        return "NO_PERMISSIONS";
+    }
+    if (permission == INetd::PERMISSION_UNINSTALLED) {
+        // This should never appear in the map, complain loudly if it does.
+        return "PERMISSION_UNINSTALLED error!";
+    }
     std::string permissionType;
-    FLAG_MSG_TRANS(permissionType, ALLOW_SOCK_CREATE, permission);
-    FLAG_MSG_TRANS(permissionType, ALLOW_UPDATE_DEVICE_STATS, permission);
+    FLAG_MSG_TRANS(permissionType, BPF_PERMISSION_INTERNET, permission);
+    FLAG_MSG_TRANS(permissionType, BPF_PERMISSION_UPDATE_DEVICE_STATS, permission);
     if (permission) {
         return StringPrintf("Unknown permission: %u", permission);
     }
@@ -164,40 +179,33 @@ TrafficController::TrafficController() : mBpfLevel(getBpfSupportLevel()) {}
 
 Status TrafficController::initMaps() {
     std::lock_guard ownerMapGuard(mOwnerMatchMutex);
-    RETURN_IF_NOT_OK(
-        mCookieTagMap.getOrCreate(COOKIE_UID_MAP_SIZE, COOKIE_TAG_MAP_PATH, BPF_MAP_TYPE_HASH));
-
+    RETURN_IF_NOT_OK(mCookieTagMap.init(COOKIE_TAG_MAP_PATH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(COOKIE_TAG_MAP_PATH, AID_NET_BW_ACCT, "CookieTagMap",
                                         false));
 
-    RETURN_IF_NOT_OK(mUidCounterSetMap.getOrCreate(UID_COUNTERSET_MAP_SIZE, UID_COUNTERSET_MAP_PATH,
-                                                   BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mUidCounterSetMap.init(UID_COUNTERSET_MAP_PATH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(UID_COUNTERSET_MAP_PATH, AID_NET_BW_ACCT,
                                         "UidCounterSetMap", false));
 
-    RETURN_IF_NOT_OK(mAppUidStatsMap.getOrCreate(APP_STATS_MAP_SIZE, APP_UID_STATS_MAP_PATH,
-                                                 BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mAppUidStatsMap.init(APP_UID_STATS_MAP_PATH));
     RETURN_IF_NOT_OK(
         changeOwnerAndMode(APP_UID_STATS_MAP_PATH, AID_NET_BW_STATS, "AppUidStatsMap", false));
 
-    RETURN_IF_NOT_OK(mStatsMapA.getOrCreate(STATS_MAP_SIZE, STATS_MAP_A_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mStatsMapA.init(STATS_MAP_A_PATH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(STATS_MAP_A_PATH, AID_NET_BW_STATS, "StatsMapA", false));
 
-    RETURN_IF_NOT_OK(mStatsMapB.getOrCreate(STATS_MAP_SIZE, STATS_MAP_B_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mStatsMapB.init(STATS_MAP_B_PATH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(STATS_MAP_B_PATH, AID_NET_BW_STATS, "StatsMapB", false));
 
-    RETURN_IF_NOT_OK(mIfaceIndexNameMap.getOrCreate(IFACE_INDEX_NAME_MAP_SIZE,
-                                                    IFACE_INDEX_NAME_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mIfaceIndexNameMap.init(IFACE_INDEX_NAME_MAP_PATH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(IFACE_INDEX_NAME_MAP_PATH, AID_NET_BW_STATS,
                                         "IfaceIndexNameMap", false));
 
-    RETURN_IF_NOT_OK(
-        mIfaceStatsMap.getOrCreate(IFACE_STATS_MAP_SIZE, IFACE_STATS_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mIfaceStatsMap.init(IFACE_STATS_MAP_PATH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(IFACE_STATS_MAP_PATH, AID_NET_BW_STATS, "IfaceStatsMap",
                                         false));
 
-    RETURN_IF_NOT_OK(mConfigurationMap.getOrCreate(CONFIGURATION_MAP_SIZE, CONFIGURATION_MAP_PATH,
-                                                   BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mConfigurationMap.init(CONFIGURATION_MAP_PATH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(CONFIGURATION_MAP_PATH, AID_NET_BW_STATS,
                                         "ConfigurationMap", false));
     RETURN_IF_NOT_OK(
@@ -205,12 +213,10 @@ Status TrafficController::initMaps() {
     RETURN_IF_NOT_OK(mConfigurationMap.writeValue(CURRENT_STATS_MAP_CONFIGURATION_KEY, SELECT_MAP_A,
                                                   BPF_ANY));
 
-    RETURN_IF_NOT_OK(
-            mUidOwnerMap.getOrCreate(UID_OWNER_MAP_SIZE, UID_OWNER_MAP_PATH, BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mUidOwnerMap.init(UID_OWNER_MAP_PATH));
     RETURN_IF_NOT_OK(changeOwnerAndMode(UID_OWNER_MAP_PATH, AID_ROOT, "UidOwnerMap", true));
     RETURN_IF_NOT_OK(mUidOwnerMap.clear());
-    RETURN_IF_NOT_OK(mUidPermissionMap.getOrCreate(UID_OWNER_MAP_SIZE, UID_PERMISSION_MAP_PATH,
-                                                   BPF_MAP_TYPE_HASH));
+    RETURN_IF_NOT_OK(mUidPermissionMap.init(UID_PERMISSION_MAP_PATH));
     return netdutils::status::ok;
 }
 
@@ -682,21 +688,31 @@ BpfLevel TrafficController::getBpfLevel() {
 }
 
 void TrafficController::setPermissionForUids(int permission, const std::vector<uid_t>& uids) {
-    bool internet = (permission & INetd::PERMISSION_INTERNET);
+    if (permission == INetd::PERMISSION_UNINSTALLED) {
+        for (uid_t uid : uids) {
+            // Clean up all permission information for the related uid if all the
+            // packages related to it are uninstalled.
+            mPrivilegedUser.erase(uid);
+            Status ret = mUidPermissionMap.deleteValue(uid);
+        }
+        return;
+    }
+
     bool privileged = (permission & INetd::PERMISSION_UPDATE_DEVICE_STATS);
 
     for (uid_t uid : uids) {
-        if (internet) {
-            Status ret = mUidPermissionMap.writeValue(uid, ALLOW_SOCK_CREATE, BPF_ANY);
+        // The map stores all the permissions that the UID has, except if the only permission
+        // the UID has is the INTERNET permission, then the UID should not appear in the map.
+        if (permission != INetd::PERMISSION_INTERNET) {
+            Status ret = mUidPermissionMap.writeValue(uid, permission, BPF_ANY);
             if (!isOk(ret)) {
-                ALOGE("Failed to grant INTERNET permission to uid: %u: %s", uid,
-                      strerror(ret.code()));
+                ALOGE("Failed to set permission: %s of uid(%u) to permission map: %s",
+                      UidPermissionTypeToString(permission).c_str(), uid, strerror(ret.code()));
             }
         } else {
             Status ret = mUidPermissionMap.deleteValue(uid);
             if (!isOk(ret) && ret.code() != ENOENT) {
-                ALOGE("Failed to revoke permission INTERNET from uid: %u: %s", uid,
-                      strerror(ret.code()));
+                ALOGE("Failed to remove uid %u from permission map: %s", uid, strerror(ret.code()));
             }
         }
 

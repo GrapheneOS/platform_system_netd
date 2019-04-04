@@ -30,13 +30,11 @@
 
 #include <android-base/strings.h>
 #include <log/log.h>
+#include <netdutils/Stopwatch.h>
 
 #include "NetdConstants.h"
 #include "Permission.h"
 #include "SockDiag.h"
-#include "Stopwatch.h"
-
-#include <chrono>
 
 #ifndef SOCK_DESTROY
 #define SOCK_DESTROY 21
@@ -45,8 +43,10 @@
 #define INET_DIAG_BC_MARK_COND 10
 
 namespace android {
-namespace net {
 
+using netdutils::Stopwatch;
+
+namespace net {
 namespace {
 
 int checkError(int fd) {

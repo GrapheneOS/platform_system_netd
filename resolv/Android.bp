@@ -9,8 +9,28 @@ aidl_interface {
     srcs: [
         "binder/android/net/IDnsResolver.aidl",
     ],
+    imports: [
+        "netd_event_listener_interface",
+    ],
     api_dir: "binder/api",
     // Enable gen_log after it is supported in NDK backend. b/126501406
+}
+
+cc_test_library {
+    name: "libnetd_test_metrics_listener",
+    defaults: ["netd_defaults"],
+    srcs: [
+        "tests/BaseTestMetricsListener.cpp",
+        "tests/TestMetrics.cpp",
+    ],
+    include_dirs: [
+        "system/netd/include",
+    ],
+    shared_libs: [
+        "libbinder",
+        "libutils",
+        "netd_event_listener_interface-cpp",
+    ],
 }
 
 cc_library {
@@ -30,6 +50,7 @@ cc_library {
         "res_send.cpp",
         "res_state.cpp",
         "res_stats.cpp",
+        "Dns64Configuration.cpp",
         "DnsProxyListener.cpp",
         "DnsResolver.cpp",
         "DnsResolverService.cpp",
@@ -40,6 +61,7 @@ cc_library {
         "DnsTlsSessionCache.cpp",
         "DnsTlsSocket.cpp",
         "PrivateDnsConfiguration.cpp",
+        "ResolverController.cpp",
         "ResolverEventReporter.cpp",
     ],
     // Link everything statically (except for libc) to minimize our dependence
@@ -61,7 +83,6 @@ cc_library {
         "libbinder_ndk",
         "libstatslog",
     ],
-    // TODO: Get rid of these include paths used in DnsProxyListener.
     include_dirs: [
         "system/netd/include",
         "system/netd/server",
@@ -101,7 +122,9 @@ cc_test {
         "libutils",
     ],
     static_libs: [
+        "libgmock",
         "libnetd_test_dnsresponder",
+        "libnetd_test_metrics_listener",
         "libnetd_test_tun_interface",
         "liblogwrap",
         "libnetdutils",

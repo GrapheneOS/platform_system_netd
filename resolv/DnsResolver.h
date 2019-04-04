@@ -17,8 +17,10 @@
 #ifndef _DNS_RESOLVER_H_
 #define _DNS_RESOLVER_H_
 
-#include <resolv.h>
 #include "DnsProxyListener.h"
+#include "ResolverController.h"
+#include "netd_resolv/resolv.h"
+#include "netdutils/Log.h"
 
 namespace android {
 namespace net {
@@ -31,6 +33,8 @@ class DnsResolver {
     DnsResolver(DnsResolver const&) = delete;
     void operator=(DnsResolver const&) = delete;
 
+    ResolverController resolverCtrl;
+
   private:
     DnsResolver() {}
     DnsProxyListener mDnsProxyListener;
@@ -38,6 +42,7 @@ class DnsResolver {
 
 extern DnsResolver* gDnsResolv;
 extern ResolverNetdCallbacks gResNetdCallbacks;
+extern netdutils::Log gDnsResolverLog;
 
 }  // namespace net
 }  // namespace android

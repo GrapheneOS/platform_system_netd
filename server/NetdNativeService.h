@@ -103,20 +103,6 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status socketDestroy(const std::vector<UidRangeParcel>& uids,
                                  const std::vector<int32_t>& skipUids) override;
 
-    // Resolver commands.
-    binder::Status setResolverConfiguration(int32_t netId, const std::vector<std::string>& servers,
-            const std::vector<std::string>& domains, const std::vector<int32_t>& params,
-            const std::string& tlsName,
-            const std::vector<std::string>& tlsServers,
-            const std::vector<std::string>& tlsFingerprints) override;
-    binder::Status getResolverInfo(
-            int32_t netId, std::vector<std::string>* servers, std::vector<std::string>* tlsServers,
-            std::vector<std::string>* domains, std::vector<int32_t>* params,
-            std::vector<int32_t>* stats,
-            std::vector<int32_t>* wait_for_pending_req_timeout_count) override;
-    binder::Status resolverStartPrefix64Discovery(int32_t netId);
-    binder::Status resolverStopPrefix64Discovery(int32_t netId);
-
     binder::Status setIPv6AddrGenMode(const std::string& ifName, int32_t mode) override;
 
     // NFLOG-related commands
@@ -251,9 +237,6 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     // tcp_mem-config command
     binder::Status setTcpRWmemorySize(const std::string& rmemValues,
                                       const std::string& wmemValues) override;
-
-    // DNS64-related commands (internal use only)
-    binder::Status getPrefix64(int netId, std::string* _aidl_return);
 
     binder::Status registerUnsolicitedEventListener(
             const android::sp<android::net::INetdUnsolicitedEventListener>& listener) override;

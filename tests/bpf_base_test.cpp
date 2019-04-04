@@ -50,6 +50,15 @@ constexpr uint32_t TEST_TAG = 42;
 constexpr int TEST_COUNTERSET = 1;
 constexpr int DEFAULT_COUNTERSET = 0;
 
+#define SKIP_IF_EXTENDED_BPF_NOT_SUPPORTED                                            \
+    do {                                                                              \
+        if (android::bpf::getBpfSupportLevel() != android::bpf::BpfLevel::EXTENDED) { \
+            GTEST_LOG_(INFO) << "This test is skipped since extended bpf feature"     \
+                             << "not supported\n";                                    \
+            return;                                                                   \
+        }                                                                             \
+    } while (0)
+
 class BpfBasicTest : public testing::Test {
   protected:
     BpfBasicTest() {}
@@ -79,6 +88,13 @@ TEST_F(BpfBasicTest, TestTrafficControllerSetUp) {
     ASSERT_EQ(0, access(IFACE_STATS_MAP_PATH, R_OK));
     ASSERT_EQ(0, access(CONFIGURATION_MAP_PATH, R_OK));
     ASSERT_EQ(0, access(UID_OWNER_MAP_PATH, R_OK));
+}
+
+TEST_F(BpfBasicTest, TestSocketFilterSetUp) {
+    SKIP_IF_EXTENDED_BPF_NOT_SUPPORTED;
+
+    ASSERT_EQ(0, access(CGROUP_SOCKET_PROG_PATH, R_OK));
+    ASSERT_EQ(0, access(UID_PERMISSION_MAP_PATH, R_OK));
 }
 
 TEST_F(BpfBasicTest, TestTagSocket) {

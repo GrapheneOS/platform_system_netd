@@ -187,7 +187,7 @@ int res_vinit(res_state statp, int preinit) {
             dots--;
         }
         *pp = NULL;
-        LOG(DEBUG) << "res_init(): dnsrch list:";
+        LOG(DEBUG) << __func__ << ": dnsrch list:";
         for (pp = statp->dnsrch; *pp; pp++) LOG(DEBUG) << "\t" << *pp;
     }
 
@@ -204,7 +204,7 @@ static void res_setoptions(res_state statp, const char* options, const char* sou
     int i;
     res_state_ext* ext = statp->_u._ext.ext;
 
-    LOG(DEBUG) << ";; res_setoptions(\"" << options << "\", \"" << source << "\")...";
+    LOG(DEBUG) << "res_setoptions(\"" << options << "\", \"" << source << "\")...";
 
     while (*cp) {
         /* skip leading and inner runs of spaces */
@@ -216,14 +216,14 @@ static void res_setoptions(res_state statp, const char* options, const char* sou
                 statp->ndots = i;
             else
                 statp->ndots = RES_MAXNDOTS;
-            LOG(DEBUG) << ";;\tndots=" << statp->ndots;
+            LOG(DEBUG) << "\tndots=" << statp->ndots;
 
         } else if (!strncmp(cp, "debug", sizeof("debug") - 1)) {
             if (!(statp->options & RES_DEBUG)) {
-                LOG(DEBUG) << ";; res_setoptions(\"" << options << "\", \"" << source << "\")..";
+                LOG(DEBUG) << "res_setoptions(\"" << options << "\", \"" << source << "\")..";
                 statp->options |= RES_DEBUG;
             }
-            LOG(DEBUG) << ";;\tdebug";
+            LOG(DEBUG) << "\tdebug";
 
         } else if (!strncmp(cp, "no_tld_query", sizeof("no_tld_query") - 1) ||
                    !strncmp(cp, "no-tld-query", sizeof("no-tld-query") - 1)) {

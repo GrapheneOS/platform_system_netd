@@ -45,11 +45,10 @@
 
 #include "Controllers.h"
 #include "Fwmark.h"
-#include "NetdConstants.h"
-#include "Permission.h"
 #include "InterfaceController.h"
+#include "NetdConstants.h"
 #include "NetworkController.h"
-#include "ResponseCode.h"
+#include "Permission.h"
 #include "TetherController.h"
 
 namespace android {
@@ -347,7 +346,7 @@ bool TetherController::isTetheringStarted() {
 // dnsmasq reads up to 1023 bytes.
 const size_t MAX_CMD_SIZE = 1023;
 
-// TODO: convert callers to the overload taking a vector<string>
+// TODO: Remove overload function and update this after NDC migration.
 int TetherController::setDnsForwarders(unsigned netId, char **servers, int numServers) {
     Fwmark fwmark;
     fwmark.netId = netId;
@@ -394,14 +393,6 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
 }
 
 int TetherController::setDnsForwarders(unsigned netId, const std::vector<std::string>& servers) {
-    struct in_addr v4_addr;
-    struct in6_addr v6_addr;
-    for (const auto& server : servers) {
-        if (!inet_pton(AF_INET, server.c_str(), &v4_addr) &&
-            !inet_pton(AF_INET6, server.c_str(), &v6_addr)) {
-            return -EINVAL;
-        }
-    }
     auto dnsServers = toCstrVec(servers);
     return setDnsForwarders(netId, dnsServers.data(), dnsServers.size());
 }

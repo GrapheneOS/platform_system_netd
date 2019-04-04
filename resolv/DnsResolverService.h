@@ -31,9 +31,32 @@ class DnsResolverService : public aidl::android::net::BnDnsResolver {
   public:
     static binder_status_t start();
     static char const* getServiceName() { return "dnsresolver"; }
-    // TODO: Add dump() after libbinder_ndk support it.
+
+    binder_status_t dump(int fd, const char** args, uint32_t numArgs) override;
 
     ::ndk::ScopedAStatus isAlive(bool* alive) override;
+    ::ndk::ScopedAStatus registerEventListener(
+            const std::shared_ptr<aidl::android::net::metrics::INetdEventListener>& listener)
+            override;
+
+    // Resolver commands.
+    ::ndk::ScopedAStatus setResolverConfiguration(
+            int32_t netId, const std::vector<std::string>& servers,
+            const std::vector<std::string>& domains, const std::vector<int32_t>& params,
+            const std::string& tlsName, const std::vector<std::string>& tlsServers,
+            const std::vector<std::string>& tlsFingerprints) override;
+    ::ndk::ScopedAStatus getResolverInfo(
+            int32_t netId, std::vector<std::string>* servers, std::vector<std::string>* domains,
+            std::vector<std::string>* tlsServers, std::vector<int32_t>* params,
+            std::vector<int32_t>* stats,
+            std::vector<int32_t>* wait_for_pending_req_timeout_count) override;
+    ::ndk::ScopedAStatus clearResolverConfiguration(int32_t netId) override;
+
+    // DNS64-related commands
+    ::ndk::ScopedAStatus startPrefix64Discovery(int32_t netId) override;
+    ::ndk::ScopedAStatus stopPrefix64Discovery(int32_t netId) override;
+    // (internal use only)
+    ::ndk::ScopedAStatus getPrefix64(int netId, std::string* stringPrefix) override;
 
   private:
     DnsResolverService() {}
