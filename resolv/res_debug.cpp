@@ -96,7 +96,6 @@
  */
 
 #define LOG_TAG "res_debug"
-#define DBG 0
 
 #include <sys/param.h>
 #include <sys/socket.h>
@@ -117,6 +116,14 @@
 #include <time.h>
 
 #include "resolv_private.h"
+
+// Default to disabling verbose logging unless overridden by Android.bp
+// for debuggable builds.
+//
+// NOTE: Verbose resolver logs could contain PII -- do NOT enable in production builds
+#ifndef RESOLV_ALLOW_VERBOSE_LOGGING
+#define RESOLV_ALLOW_VERBOSE_LOGGING 0
+#endif
 
 struct res_sym {
     int number;            /* Identifying number, like T_MX */
@@ -502,12 +509,12 @@ const char* p_rcode(int rcode) {
 android::base::LogSeverity logSeverityStrToEnum(const std::string& logSeverityStr) {
     android::base::LogSeverity logSeverityEnum;
 
-    if (logSeverityStr == "DEBUG") {
+    if (logSeverityStr == "VERBOSE") {
         // *** enable verbose logging only when DBG is set. It prints sensitive data ***
-        if (DBG)
-            logSeverityEnum = android::base::VERBOSE;
-        else
-            logSeverityEnum = android::base::DEBUG;
+        logSeverityEnum =
+                RESOLV_ALLOW_VERBOSE_LOGGING ? android::base::VERBOSE : android::base::DEBUG;
+    } else if (logSeverityStr == "DEBUG") {
+        logSeverityEnum = android::base::DEBUG;
     } else if (logSeverityStr == "INFO") {
         logSeverityEnum = android::base::INFO;
     } else if (logSeverityStr == "WARNING") {

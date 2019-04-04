@@ -53,11 +53,11 @@
 
 #include "InterfaceController.h"
 #include "NetdConstants.h"
-#include "Stopwatch.h"
 #include "TestUnsolService.h"
 #include "XfrmController.h"
 #include "android/net/INetd.h"
 #include "binder/IServiceManager.h"
+#include "netdutils/Stopwatch.h"
 #include "netdutils/Syscalls.h"
 #include "tun_interface.h"
 
@@ -89,6 +89,7 @@ using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
 using android::netdutils::sSyscalls;
+using android::netdutils::Stopwatch;
 
 static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
@@ -2865,14 +2866,14 @@ TEST_F(BinderTest, TcpBufferSet) {
 
 namespace {
 
-void checkUidsExist(std::vector<int32_t>& uids, bool exist) {
+void checkUidsInPermissionMap(std::vector<int32_t>& uids, bool exist) {
     android::bpf::BpfMap<uint32_t, uint8_t> uidPermissionMap(
             android::bpf::mapRetrieve(UID_PERMISSION_MAP_PATH, 0));
     for (int32_t uid : uids) {
         android::netdutils::StatusOr<uint8_t> permission = uidPermissionMap.readValue(uid);
         if (exist) {
             EXPECT_TRUE(isOk(permission));
-            EXPECT_EQ(ALLOW_SOCK_CREATE, permission.value());
+            EXPECT_EQ(INetd::NO_PERMISSIONS, permission.value());
         } else {
             EXPECT_FALSE(isOk(permission));
             EXPECT_EQ(ENOENT, permission.status().code());
@@ -2888,9 +2889,11 @@ TEST_F(BinderTest, TestInternetPermission) {
     std::vector<int32_t> appUids = {TEST_UID1, TEST_UID2};
 
     mNetd->trafficSetNetPermForUids(INetd::PERMISSION_INTERNET, appUids);
-    checkUidsExist(appUids, true);
+    checkUidsInPermissionMap(appUids, false);
     mNetd->trafficSetNetPermForUids(INetd::NO_PERMISSIONS, appUids);
-    checkUidsExist(appUids, false);
+    checkUidsInPermissionMap(appUids, true);
+    mNetd->trafficSetNetPermForUids(INetd::PERMISSION_UNINSTALLED, appUids);
+    checkUidsInPermissionMap(appUids, false);
 }
 
 TEST_F(BinderTest, UnsolEvents) {

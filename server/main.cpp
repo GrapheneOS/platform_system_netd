@@ -35,6 +35,7 @@
 #include <android-base/properties.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
+#include <netdutils/Stopwatch.h>
 
 #include "CommandListener.h"
 #include "Controllers.h"
@@ -46,7 +47,6 @@
 #include "NetdNativeService.h"
 #include "NetlinkManager.h"
 #include "Process.h"
-#include "Stopwatch.h"
 
 #include "netd_resolv/resolv.h"
 #include "netd_resolv/resolv_stub.h"
@@ -63,6 +63,7 @@ using android::net::NetdHwService;
 using android::net::NetdNativeService;
 using android::net::NetlinkManager;
 using android::net::NFLogListener;
+using android::netdutils::Stopwatch;
 
 const char* const PID_FILE_PATH = "/data/misc/net/netd_pid";
 constexpr const char DNSPROXYLISTENER_SOCKET_NAME[] = "dnsproxyd";

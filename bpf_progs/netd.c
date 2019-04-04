@@ -65,7 +65,7 @@ struct bpf_map_def SEC("maps") uid_permission_map = {
         .max_entries = UID_OWNER_MAP_SIZE,
 };
 
-SEC("cgroupsock/inet/creat")
+SEC("cgroupsock/inet/create")
 int inet_socket_create(struct bpf_sock* sk) {
     uint64_t gid_uid = bpf_get_current_uid_gid();
     /*
@@ -75,9 +75,14 @@ int inet_socket_create(struct bpf_sock* sk) {
      * run time. See UserHandle#isSameApp for detail.
      */
     uint32_t appId = (gid_uid & 0xffffffff) % PER_USER_RANGE;
-    uint8_t* internetPermission = bpf_map_lookup_elem(&uid_permission_map, &appId);
-    if (internetPermission) return *internetPermission & ALLOW_SOCK_CREATE;
-    return NO_PERMISSION;
+    uint8_t* permissions = bpf_map_lookup_elem(&uid_permission_map, &appId);
+    if (!permissions) {
+        // UID not in map. Default to just INTERNET permission.
+        return 1;
+    }
+
+    // A return value of 1 means allow, everything else means deny.
+    return (*permissions & BPF_PERMISSION_INTERNET) == BPF_PERMISSION_INTERNET;
 }
 
 char _license[] SEC("license") = "Apache 2.0";

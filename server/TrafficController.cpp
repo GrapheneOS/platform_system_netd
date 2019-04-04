@@ -73,6 +73,11 @@ using netdutils::status::ok;
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
 
+static_assert(BPF_PERMISSION_INTERNET == INetd::PERMISSION_INTERNET,
+              "Mismatch between BPF and AIDL permissions: PERMISSION_INTERNET");
+static_assert(BPF_PERMISSION_UPDATE_DEVICE_STATS == INetd::PERMISSION_UPDATE_DEVICE_STATS,
+              "Mismatch between BPF and AIDL permissions: PERMISSION_UPDATE_DEVICE_STATS");
+
 #define FLAG_MSG_TRANS(result, flag, value)            \
     do {                                               \
         if (value & flag) {                            \
@@ -103,9 +108,16 @@ bool TrafficController::hasUpdateDeviceStatsPermission(uid_t uid) {
 }
 
 const std::string UidPermissionTypeToString(uint8_t permission) {
+    if (permission == INetd::NO_PERMISSIONS) {
+        return "NO_PERMISSIONS";
+    }
+    if (permission == INetd::PERMISSION_UNINSTALLED) {
+        // This should never appear in the map, complain loudly if it does.
+        return "PERMISSION_UNINSTALLED error!";
+    }
     std::string permissionType;
-    FLAG_MSG_TRANS(permissionType, ALLOW_SOCK_CREATE, permission);
-    FLAG_MSG_TRANS(permissionType, ALLOW_UPDATE_DEVICE_STATS, permission);
+    FLAG_MSG_TRANS(permissionType, BPF_PERMISSION_INTERNET, permission);
+    FLAG_MSG_TRANS(permissionType, BPF_PERMISSION_UPDATE_DEVICE_STATS, permission);
     if (permission) {
         return StringPrintf("Unknown permission: %u", permission);
     }
@@ -676,21 +688,31 @@ BpfLevel TrafficController::getBpfLevel() {
 }
 
 void TrafficController::setPermissionForUids(int permission, const std::vector<uid_t>& uids) {
-    bool internet = (permission & INetd::PERMISSION_INTERNET);
+    if (permission == INetd::PERMISSION_UNINSTALLED) {
+        for (uid_t uid : uids) {
+            // Clean up all permission information for the related uid if all the
+            // packages related to it are uninstalled.
+            mPrivilegedUser.erase(uid);
+            Status ret = mUidPermissionMap.deleteValue(uid);
+        }
+        return;
+    }
+
     bool privileged = (permission & INetd::PERMISSION_UPDATE_DEVICE_STATS);
 
     for (uid_t uid : uids) {
-        if (internet) {
-            Status ret = mUidPermissionMap.writeValue(uid, ALLOW_SOCK_CREATE, BPF_ANY);
+        // The map stores all the permissions that the UID has, except if the only permission
+        // the UID has is the INTERNET permission, then the UID should not appear in the map.
+        if (permission != INetd::PERMISSION_INTERNET) {
+            Status ret = mUidPermissionMap.writeValue(uid, permission, BPF_ANY);
             if (!isOk(ret)) {
-                ALOGE("Failed to grant INTERNET permission to uid: %u: %s", uid,
-                      strerror(ret.code()));
+                ALOGE("Failed to set permission: %s of uid(%u) to permission map: %s",
+                      UidPermissionTypeToString(permission).c_str(), uid, strerror(ret.code()));
             }
         } else {
             Status ret = mUidPermissionMap.deleteValue(uid);
             if (!isOk(ret) && ret.code() != ENOENT) {
-                ALOGE("Failed to revoke permission INTERNET from uid: %u: %s", uid,
-                      strerror(ret.code()));
+                ALOGE("Failed to remove uid %u from permission map: %s", uid, strerror(ret.code()));
             }
         }
 

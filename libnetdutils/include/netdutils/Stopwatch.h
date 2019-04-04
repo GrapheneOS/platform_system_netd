@@ -14,16 +14,23 @@
  * limitations under the License.
  */
 
-#ifndef NETD_INCLUDE_STOPWATCH_H
-#define NETD_INCLUDE_STOPWATCH_H
+#ifndef NETDUTILS_STOPWATCH_H
+#define NETDUTILS_STOPWATCH_H
 
 #include <chrono>
 
+namespace android {
+namespace netdutils {
+
 class Stopwatch {
+  private:
+    using clock = std::chrono::steady_clock;
+    using time_point = std::chrono::time_point<clock>;
+
   public:
     Stopwatch() : mStart(clock::now()) {}
 
-    virtual ~Stopwatch() {};
+    virtual ~Stopwatch() = default;
 
     float timeTaken() const { return getElapsed(clock::now()); }
 
@@ -43,8 +50,6 @@ class Stopwatch {
     }
 
   private:
-    typedef std::chrono::steady_clock clock;
-    typedef std::chrono::time_point<clock> time_point;
     time_point mStart;
 
     float getElapsed(const time_point& now) const {
@@ -56,4 +61,7 @@ class Stopwatch {
     }
 };
 
-#endif  // NETD_INCLUDE_STOPWATCH_H
+}  // namespace netdutils
+}  // namespace android
+
+#endif  // NETDUTILS_STOPWATCH_H

@@ -1441,25 +1441,29 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
      */
     res_setnetcontext(res, netcontext);
 
-    int herrno = NETDB_INTERNAL;
-    if (res_searchN(name, &q, res, &herrno) < 0) {
-        // Pass herrno to catch more detailed errors rather than EAI_NODATA.
-        return herrnoToAiErrno(herrno);
+    int he;
+    if (res_searchN(name, &q, res, &he) < 0) {
+        // Return h_errno (he) to catch more detailed errors rather than EAI_NODATA.
+        // Note that res_searchN() doesn't set the pair NETDB_INTERNAL and errno.
+        // See also herrnoToAiErrno().
+        return herrnoToAiErrno(he);
     }
 
     addrinfo sentinel = {};
     addrinfo* cur = &sentinel;
-    addrinfo* ai = getanswer(buf.get(), q.n, q.name, q.qtype, pai, &herrno);
+    addrinfo* ai = getanswer(buf.get(), q.n, q.name, q.qtype, pai, &he);
     if (ai) {
         cur->ai_next = ai;
         while (cur && cur->ai_next) cur = cur->ai_next;
     }
     if (q.next) {
-        ai = getanswer(buf2.get(), q2.n, q2.name, q2.qtype, pai, &herrno);
+        ai = getanswer(buf2.get(), q2.n, q2.name, q2.qtype, pai, &he);
         if (ai) cur->ai_next = ai;
     }
     if (sentinel.ai_next == NULL) {
-        return herrnoToAiErrno(herrno);
+        // Note that getanswer() doesn't set the pair NETDB_INTERNAL and errno.
+        // See also herrnoToAiErrno().
+        return herrnoToAiErrno(he);
     }
 
     _rfc6724_sort(&sentinel, netcontext->app_mark, netcontext->uid);
