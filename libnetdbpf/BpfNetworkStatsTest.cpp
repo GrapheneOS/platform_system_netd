@@ -196,6 +196,20 @@ TEST_F(BpfNetworkStatsHelperTest, TestBpfIterateMap) {
     EXPECT_EQ(1 + 2 + 3 + 4 + 5, totalSum);
 }
 
+TEST_F(BpfNetworkStatsHelperTest, TestUidStatsNoTraffic) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    StatsValue value1 = {
+            .rxBytes = 0,
+            .rxPackets = 0,
+            .txBytes = 0,
+            .txPackets = 0,
+    };
+    Stats result1 = {};
+    ASSERT_EQ(0, bpfGetUidStatsInternal(TEST_UID1, &result1, mFakeAppUidStatsMap));
+    expectStatsEqual(value1, result1);
+}
+
 TEST_F(BpfNetworkStatsHelperTest, TestGetUidStatsTotal) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
