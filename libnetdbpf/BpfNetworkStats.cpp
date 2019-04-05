@@ -53,7 +53,7 @@ int bpfGetUidStatsInternal(uid_t uid, Stats* stats,
         stats->rxBytes = statsEntry.value().rxBytes;
         stats->txBytes = statsEntry.value().txBytes;
     }
-    return -statsEntry.status().code();
+    return statsEntry.status().code() == ENOENT ? 0 : -statsEntry.status().code();
 }
 
 int bpfGetUidStats(uid_t uid, Stats* stats) {
