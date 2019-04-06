@@ -164,7 +164,6 @@ status_t NetdNativeService::start() {
         std::string output;
         const Json::Value& inputArgs = logTransaction["input_args"];
         const Json::Value& returnArgs = logTransaction["_aidl_return"];
-        Json::Value::Members member = inputArgs.getMemberNames();
 
         hasReturnArgs = !returnArgs.empty();
         output.append(logTransaction["method_name"].asString().c_str() + std::string("("));
@@ -172,11 +171,11 @@ status_t NetdNativeService::start() {
         // input args
         Json::FastWriter fastWriter;
         fastWriter.omitEndingLineFeed();
-        for (Json::Value::Members::iterator iter = member.begin(); iter != member.end(); ++iter) {
-            std::string value = fastWriter.write(inputArgs[(*iter).c_str()]);
+        for (Json::Value::ArrayIndex i = 0; i != inputArgs.size(); i++) {
+            std::string value = fastWriter.write(inputArgs[i]["value"]);
             if (value.empty()) value = std::string("null");
             output.append(value);
-            if (iter != member.end() - 1) {
+            if (i != inputArgs.size() - 1) {
                 output.append(", ");
             }
         }
