@@ -139,20 +139,28 @@ const char *familyName(uint8_t family) {
 
 // Caller must hold sInterfaceToTableLock.
 uint32_t RouteController::getRouteTableForInterfaceLocked(const char* interface) {
-    uint32_t index = if_nametoindex(interface);
-    if (index) {
-        index += RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX;
-        sInterfaceToTable[interface] = index;
-        return index;
-    }
-    // If the interface goes away if_nametoindex() will return 0 but we still need to know
-    // the index so we can remove the rules and routes.
+    // If we already know the routing table for this interface name, use it.
+    // This ensures we can remove rules and routes for an interface that has been removed,
+    // or has been removed and re-added with a different interface index.
+    //
+    // The caller is responsible for ensuring that an interface is never added to a network
+    // until it has been removed from any network it was previously in. This ensures that
+    // if the same interface disconnects and then reconnects with a different interface ID
+    // when the reconnect happens the interface will not be in the map, and the code will
+    // determine the new routing table from the interface ID, below.
     auto iter = sInterfaceToTable.find(interface);
-    if (iter == sInterfaceToTable.end()) {
+    if (iter != sInterfaceToTable.end()) {
+        return iter->second;
+    }
+
+    uint32_t index = if_nametoindex(interface);
+    if (index == 0) {
         ALOGE("cannot find interface %s", interface);
         return RT_TABLE_UNSPEC;
     }
-    return iter->second;
+    index += RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX;
+    sInterfaceToTable[interface] = index;
+    return index;
 }
 
 uint32_t RouteController::getIfIndex(const char* interface) {
