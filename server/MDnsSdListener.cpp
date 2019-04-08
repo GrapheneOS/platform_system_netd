@@ -752,4 +752,5 @@ void MDnsSdListener::Monitor::freeServiceRef(int id) {
 void MDnsSdListener::Monitor::deallocateServiceRef(DNSServiceRef* ref) {
     std::lock_guard guard(mMutex);
     DNSServiceRefDeallocate(*ref);
+    *ref = nullptr;
 }
