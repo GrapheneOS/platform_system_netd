@@ -101,11 +101,13 @@ TEST_F(ClatUtilsTest, TryOpeningNetlinkSocket) {
 // NET_SCH_INGRESS is only enabled starting with 4.9-Q and as such we need
 // a separate way to test for this...
 int doKernelSupportsNetSchIngress(void) {
+    // NOLINTNEXTLINE(cert-env33-c)
     return system("zcat /proc/config.gz | egrep -q '^CONFIG_NET_SCH_INGRESS=[my]$'");
 }
 
 // NET_CLS_BPF is only enabled starting with 4.9-Q...
 int doKernelSupportsNetClsBpf(void) {
+    // NOLINTNEXTLINE(cert-env33-c)
     return system("zcat /proc/config.gz | egrep -q '^CONFIG_NET_CLS_BPF=[my]$'");
 }
 
@@ -113,6 +115,7 @@ int doKernelSupportsNetClsBpf(void) {
 // due to missing binary or execution failure...
 TEST_F(ClatUtilsTest, KernelSupportsNetFuncs) {
     // Make sure the file is present and readable and decompressable.
+    // NOLINTNEXTLINE(cert-env33-c)
     ASSERT_EQ(W_EXITCODE(0, 0), system("zcat /proc/config.gz > /dev/null"));
 
     int v = doKernelSupportsNetSchIngress();
