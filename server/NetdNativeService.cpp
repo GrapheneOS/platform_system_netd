@@ -19,6 +19,7 @@
 #include <cinttypes>
 #include <numeric>
 #include <set>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -146,6 +147,40 @@ bool contains(const Vector<String16>& words, const String16& word) {
     return false;
 }
 
+std::string exceptionToString(int32_t exception) {
+    std::string ret = "UnknownException";
+    switch (exception) {
+        case binder::Status::EX_SECURITY:
+            ret = "SecurityException";
+            break;
+        case binder::Status::EX_BAD_PARCELABLE:
+            ret = "BadParcelableException";
+            break;
+        case binder::Status::EX_ILLEGAL_ARGUMENT:
+            ret = "IllegalArgumentException";
+            break;
+        case binder::Status::EX_NETWORK_MAIN_THREAD:
+            ret = "NetworkMainThreadException";
+            break;
+        case binder::Status::EX_UNSUPPORTED_OPERATION:
+            ret = "UnsupportedOperationException";
+            break;
+        case binder::Status::EX_SERVICE_SPECIFIC:
+            ret = "ServiceSpecificException";
+            break;
+        case binder::Status::EX_PARCELABLE:
+            ret = "ParcelableException";
+            break;
+        case binder::Status::EX_HAS_REPLY_HEADER:
+            ret = "HasReplyHeaderException";
+            break;
+        case binder::Status::EX_TRANSACTION_FAILED:
+            ret = "TransactionFailedException";
+            break;
+    }
+    return ret;
+}
+
 }  // namespace
 
 status_t NetdNativeService::start() {
@@ -160,32 +195,49 @@ status_t NetdNativeService::start() {
 
     // register log callback to BnNetd::logFunc
     BnNetd::logFunc = [](const Json::Value& logTransaction) {
+        using namespace std::string_literals;
+
         bool hasReturnArgs;
         std::string output;
-        const Json::Value& inputArgs = logTransaction["input_args"];
         const Json::Value& returnArgs = logTransaction["_aidl_return"];
+        const Json::Value& inputArgsArray = logTransaction["input_args"];
+        const int exceptionCode = logTransaction["binder_status"]["exception_code"].asInt();
 
         hasReturnArgs = !returnArgs.empty();
-        output.append(logTransaction["method_name"].asString().c_str() + std::string("("));
+        output.append(logTransaction["method_name"].asString() + "("s);
 
         // input args
         Json::FastWriter fastWriter;
         fastWriter.omitEndingLineFeed();
-        for (Json::Value::ArrayIndex i = 0; i != inputArgs.size(); i++) {
-            std::string value = fastWriter.write(inputArgs[i]["value"]);
-            if (value.empty()) value = std::string("null");
+        for (Json::Value::ArrayIndex i = 0; i < inputArgsArray.size(); ++i) {
+            std::string value = fastWriter.write(inputArgsArray[i]["value"]);
             output.append(value);
-            if (i != inputArgs.size() - 1) {
-                output.append(", ");
+            if (i != inputArgsArray.size() - 1) {
+                output.append(", "s);
             }
         }
-        output.append(std::string(")"));
+        output.append(")"s);
+        if (hasReturnArgs || exceptionCode != binder::Status::EX_NONE) output.append(" -> "s);
+        // return status
+        if (!binder::Status::fromExceptionCode(exceptionCode).isOk()) {
+            // an exception occurred
+            if (exceptionCode == binder::Status::EX_SERVICE_SPECIFIC) {
+                output.append(StringPrintf(
+                        "%s(%d, \"%s\")", exceptionToString(exceptionCode).c_str(),
+                        logTransaction["binder_status"]["service_specific_error_code"].asInt(),
+                        logTransaction["binder_status"]["exception_message"].asString().c_str()));
+            } else {
+                output.append(StringPrintf(
+                        "%s(%d, \"%s\")", exceptionToString(exceptionCode).c_str(), exceptionCode,
+                        logTransaction["binder_status"]["exception_message"].asString().c_str()));
+            }
+        }
         // return args
         if (hasReturnArgs) {
-            output.append(StringPrintf(" -> (%s)", fastWriter.write(returnArgs).c_str()));
+            output.append(StringPrintf("{%s}", fastWriter.write(returnArgs).c_str()));
         }
         // duration time
-        output.append(StringPrintf(" <%sms>", logTransaction["duration_ms"].asString().c_str()));
+        output.append(StringPrintf(" <%.2fms>", logTransaction["duration_ms"].asFloat()));
         gLog.info("%s", output.c_str());
     };
 
@@ -847,10 +899,6 @@ binder::Status NetdNativeService::ipfwdRemoveInterfaceForward(const std::string&
 }
 
 namespace {
-std::string addSquareBrackets(const std::string& s) {
-    return "[" + s + "]";
-}
-
 std::string addCurlyBrackets(const std::string& s) {
     return "{" + s + "}";
 }
@@ -859,18 +907,13 @@ std::string addCurlyBrackets(const std::string& s) {
 
 binder::Status NetdNativeService::interfaceGetList(std::vector<std::string>* interfaceListResult) {
     NETD_LOCKING_RPC(InterfaceController::mutex, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
-
     const auto& ifaceList = InterfaceController::getIfaceNames();
-    RETURN_BINDER_STATUS_IF_NOT_OK(entry, ifaceList);
 
     interfaceListResult->clear();
     interfaceListResult->reserve(ifaceList.value().size());
     interfaceListResult->insert(end(*interfaceListResult), begin(ifaceList.value()),
                                 end(ifaceList.value()));
 
-    gLog.log(entry.returns(addSquareBrackets(base::Join(*interfaceListResult, ", ")))
-                     .withAutomaticDuration());
     return binder::Status::ok();
 }
 
@@ -1115,9 +1158,7 @@ binder::Status NetdNativeService::networkCanProtect(int32_t uid, bool* ret) {
 binder::Status NetdNativeService::trafficSetNetPermForUids(int32_t permission,
                                                            const std::vector<int32_t>& uids) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(permission).arg(uids);
     gCtls->trafficCtrl.setPermissionForUids(permission, intsToUids(uids));
-    gLog.log(entry.withAutomaticDuration());
     return binder::Status::ok();
 }
 
@@ -1189,9 +1230,7 @@ binder::Status NetdNativeService::setTcpRWmemorySize(const std::string& rmemValu
 binder::Status NetdNativeService::registerUnsolicitedEventListener(
         const android::sp<android::net::INetdUnsolicitedEventListener>& listener) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    auto entry = gLog.newEntry().prettyFunction(__PRETTY_FUNCTION__);
     gCtls->eventReporter.registerUnsolEventListener(listener);
-    gLog.log(entry.withAutomaticDuration());
     return binder::Status::ok();
 }
 
