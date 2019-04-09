@@ -139,6 +139,8 @@ void resolv_get_private_dns_status_for_net(unsigned netid, ExternalPrivateDnsSta
 
 // Delete the cache associated with a certain network
 void resolv_delete_cache_for_net(unsigned netid);
+// Create the cache associated with a certain network
+int resolv_create_cache_for_net(unsigned netid);
 
 LIBNETD_RESOLV_PUBLIC bool resolv_has_nameservers(unsigned netid);
 
