@@ -974,7 +974,7 @@ TEST_F(BinderTest, GetSetProcSysNet) {
 
     std::string value{};
     EXPECT_TRUE(mNetd->getProcSysNet(ipversion, category, tun, parameter, &value).isOk());
-    EXPECT_FALSE(value.empty());
+    ASSERT_FALSE(value.empty());
     const int ival = std::stoi(value);
     EXPECT_GT(ival, 0);
     // Try doubling the parameter value (always best!).
