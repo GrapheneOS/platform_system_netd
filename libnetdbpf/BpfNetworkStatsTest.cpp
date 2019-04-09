@@ -78,6 +78,7 @@ class BpfNetworkStatsHelperTest : public testing::Test {
 
     void SetUp() {
         SKIP_IF_BPF_NOT_SUPPORTED;
+        ASSERT_EQ(0, setrlimitForTest());
 
         mFakeCookieTagMap = BpfMap<uint64_t, UidTag>(createMap(
             BPF_MAP_TYPE_HASH, sizeof(uint64_t), sizeof(struct UidTag), TEST_MAP_SIZE, 0));
