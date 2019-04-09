@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * binder_test.cpp - unit tests for netd binder RPCs.
  */
 
 #include <vector>
@@ -185,7 +183,6 @@ TEST_F(DnsResolverBinderTest, SetResolverConfiguration_Tls) {
     std::vector<uint8_t> long_fp(SHA256_SIZE + 1);
     std::vector<std::string> test_domains;
     std::vector<int> test_params = {300, 25, 8, 8};
-    unsigned test_netid = 0;
     static const struct TestData {
         const std::vector<std::string> servers;
         const std::string tlsName;
@@ -214,7 +211,7 @@ TEST_F(DnsResolverBinderTest, SetResolverConfiguration_Tls) {
             fingerprints.push_back(base64Encode(fingerprint));
         }
         binder::Status status = mDnsResolver->setResolverConfiguration(
-                test_netid, LOCALLY_ASSIGNED_DNS, test_domains, test_params, td.tlsName, td.servers,
+                TEST_NETID, LOCALLY_ASSIGNED_DNS, test_domains, test_params, td.tlsName, td.servers,
                 fingerprints);
 
         if (td.expectedReturnCode == 0) {
@@ -227,9 +224,9 @@ TEST_F(DnsResolverBinderTest, SetResolverConfiguration_Tls) {
             EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
         }
     }
-    // Ensure TLS is disabled before the start of the next test.
-    mDnsResolver->setResolverConfiguration(test_netid, kTlsTestData[0].servers, test_domains,
-                                           test_params, "", {}, {});
+
+    binder::Status status = mDnsResolver->clearResolverConfiguration(TEST_NETID);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 }
 
 TEST_F(DnsResolverBinderTest, GetResolverInfo) {
@@ -279,4 +276,7 @@ TEST_F(DnsResolverBinderTest, GetResolverInfo) {
 
     EXPECT_THAT(res_servers, testing::UnorderedElementsAreArray(servers));
     EXPECT_THAT(res_domains, testing::UnorderedElementsAreArray(domains));
+
+    status = mDnsResolver->clearResolverConfiguration(TEST_NETID);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 }
