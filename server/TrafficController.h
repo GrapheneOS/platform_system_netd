@@ -88,6 +88,11 @@ class TrafficController {
     bpf::BpfLevel getBpfLevel();
 
     /*
+     * Swap the stats map config from current active stats map to the idle one.
+     */
+    netdutils::Status swapActiveStatsMap();
+
+    /*
      * Add the interface name and index pair into the eBPF map.
      */
     int addInterface(const char* name, uint32_t ifaceIndex);
