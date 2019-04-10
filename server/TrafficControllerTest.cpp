@@ -110,6 +110,8 @@ class TrafficControllerTest : public ::testing::Test {
         mTc.mStatsMapA.reset(mFakeUidStatsMap.getMap());
         mTc.mStatsMapB.reset(mFakeTagStatsMap.getMap());
         mTc.mConfigurationMap.reset(mFakeConfigurationMap.getMap());
+        ASSERT_TRUE(isOk(mFakeConfigurationMap.writeValue(CURRENT_STATS_MAP_CONFIGURATION_KEY,
+                                                          SELECT_MAP_A, BPF_ANY)));
         mTc.mUidOwnerMap.reset(mFakeUidOwnerMap.getMap());
         mTc.mUidPermissionMap.reset(mFakeUidPermissionMap.getMap());
         mTc.mPrivilegedUser.clear();
