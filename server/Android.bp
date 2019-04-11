@@ -3,7 +3,7 @@ aidl_interface {
     name: "netd_event_listener_interface",
     local_include_dir: "binder",
     srcs: [
-        "binder/android/net/metrics/INetdEventListener.aidl"
+        "binder/android/net/metrics/INetdEventListener.aidl",
     ],
     api_dir: "binder/api",
 }
@@ -43,6 +43,7 @@ aidl_interface {
             enabled: false,
         },
     },
+    versions: ["1"],
 }
 
 // Modules common to both netd and netd_unit_test
