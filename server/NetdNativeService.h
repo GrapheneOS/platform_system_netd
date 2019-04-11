@@ -45,6 +45,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status firewallSetUidRule(int32_t childChain, int32_t uid,
                                       int32_t firewallRule) override;
     binder::Status firewallEnableChildChain(int32_t childChain, bool enable) override;
+    binder::Status firewallAddUidInterfaceRules(const std::string& ifName,
+                                                const std::vector<int32_t>& uids) override;
+    binder::Status firewallRemoveUidInterfaceRules(const std::vector<int32_t>& uids) override;
 
     // Bandwidth control commands.
     binder::Status bandwidthEnableDataSaver(bool enable, bool *ret) override;
