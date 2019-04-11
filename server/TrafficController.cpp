@@ -490,9 +490,9 @@ Status TrafficController::updateOwnerMapEntry(UidOwnerMatchType match, uid_t uid
                                               FirewallType type) {
     std::lock_guard guard(mOwnerMatchMutex);
     if ((rule == ALLOW && type == WHITELIST) || (rule == DENY && type == BLACKLIST)) {
-        RETURN_IF_NOT_OK(addMatch(mUidOwnerMap, uid, match));
+        RETURN_IF_NOT_OK(addRule(mUidOwnerMap, uid, match));
     } else if ((rule == ALLOW && type == BLACKLIST) || (rule == DENY && type == WHITELIST)) {
-        RETURN_IF_NOT_OK(removeMatch(mUidOwnerMap, uid, match));
+        RETURN_IF_NOT_OK(removeRule(mUidOwnerMap, uid, match));
     } else {
         //Cannot happen.
         return statusFromErrno(EINVAL, "");
@@ -511,8 +511,8 @@ UidOwnerMatchType TrafficController::jumpOpToMatch(BandwidthController::IptJumpO
     }
 }
 
-Status TrafficController::removeMatch(BpfMap<uint32_t, UidOwnerValue>& map, uint32_t uid,
-                                      UidOwnerMatchType match) {
+Status TrafficController::removeRule(BpfMap<uint32_t, UidOwnerValue>& map, uint32_t uid,
+                                     UidOwnerMatchType match) {
     auto oldMatch = map.readValue(uid);
     if (isOk(oldMatch)) {
         UidOwnerValue newMatch = {.rule = static_cast<uint8_t>(oldMatch.value().rule & ~match),
@@ -528,8 +528,8 @@ Status TrafficController::removeMatch(BpfMap<uint32_t, UidOwnerValue>& map, uint
     return netdutils::status::ok;
 }
 
-Status TrafficController::addMatch(BpfMap<uint32_t, UidOwnerValue>& map, uint32_t uid,
-                                   UidOwnerMatchType match, uint32_t iif) {
+Status TrafficController::addRule(BpfMap<uint32_t, UidOwnerValue>& map, uint32_t uid,
+                                  UidOwnerMatchType match, uint32_t iif) {
     // iif should be non-zero if and only if match == MATCH_IIF
     if (match == IIF_MATCH && iif == 0) {
         return statusFromErrno(EINVAL, "Interface match must have nonzero interface index");
@@ -566,9 +566,9 @@ Status TrafficController::updateUidOwnerMap(const std::vector<std::string>& appS
         }
 
         if (op == BandwidthController::IptOpDelete) {
-            RETURN_IF_NOT_OK(removeMatch(mUidOwnerMap, uid, match));
+            RETURN_IF_NOT_OK(removeRule(mUidOwnerMap, uid, match));
         } else if (op == BandwidthController::IptOpInsert) {
-            RETURN_IF_NOT_OK(addMatch(mUidOwnerMap, uid, match));
+            RETURN_IF_NOT_OK(addRule(mUidOwnerMap, uid, match));
         } else {
             // Cannot happen.
             return statusFromErrno(EINVAL, StringPrintf("invalid IptOp: %d, %d", op, match));
@@ -606,8 +606,8 @@ int TrafficController::changeUidOwnerRule(ChildChain chain, uid_t uid, FirewallR
     return 0;
 }
 
-Status TrafficController::replaceUidsInMap(const UidOwnerMatchType match,
-                                           const std::vector<int32_t>& uids) {
+Status TrafficController::replaceRulesInMap(const UidOwnerMatchType match,
+                                            const std::vector<int32_t>& uids) {
     std::lock_guard guard(mOwnerMatchMutex);
     std::set<int32_t> uidSet(uids.begin(), uids.end());
     std::vector<uint32_t> uidsToDelete;
@@ -621,11 +621,11 @@ Status TrafficController::replaceUidsInMap(const UidOwnerMatchType match,
     RETURN_IF_NOT_OK(mUidOwnerMap.iterate(getUidsToDelete));
 
     for(auto uid : uidsToDelete) {
-        RETURN_IF_NOT_OK(removeMatch(mUidOwnerMap, uid, match));
+        RETURN_IF_NOT_OK(removeRule(mUidOwnerMap, uid, match));
     }
 
     for (auto uid : uids) {
-        RETURN_IF_NOT_OK(addMatch(mUidOwnerMap, uid, match));
+        RETURN_IF_NOT_OK(addRule(mUidOwnerMap, uid, match));
     }
     return netdutils::status::ok;
 }
@@ -642,9 +642,9 @@ Status TrafficController::addUidInterfaceRules(const int iif,
     std::lock_guard guard(mOwnerMatchMutex);
 
     for (auto uid : uidsToAdd) {
-        netdutils::Status result = addMatch(mUidOwnerMap, uid, IIF_MATCH, iif);
+        netdutils::Status result = addRule(mUidOwnerMap, uid, IIF_MATCH, iif);
         if (!isOk(result)) {
-            ALOGW("addMatch failed(%d): uid=%d iif=%d", result.code(), uid, iif);
+            ALOGW("addRule failed(%d): uid=%d iif=%d", result.code(), uid, iif);
         }
     }
     return netdutils::status::ok;
@@ -658,9 +658,9 @@ Status TrafficController::removeUidInterfaceRules(const std::vector<int32_t>& ui
     std::lock_guard guard(mOwnerMatchMutex);
 
     for (auto uid : uidsToDelete) {
-        netdutils::Status result = removeMatch(mUidOwnerMap, uid, IIF_MATCH);
+        netdutils::Status result = removeRule(mUidOwnerMap, uid, IIF_MATCH);
         if (!isOk(result)) {
-            ALOGW("removeMatch failed(%d): uid=%d", result.code(), uid);
+            ALOGW("removeRule failed(%d): uid=%d", result.code(), uid);
         }
     }
     return netdutils::status::ok;
@@ -679,11 +679,11 @@ int TrafficController::replaceUidOwnerMap(const std::string& name, bool isWhitel
     }
     Status res;
     if (!name.compare(FirewallController::LOCAL_DOZABLE)) {
-        res = replaceUidsInMap(DOZABLE_MATCH, uids);
+        res = replaceRulesInMap(DOZABLE_MATCH, uids);
     } else if (!name.compare(FirewallController::LOCAL_STANDBY)) {
-        res = replaceUidsInMap(STANDBY_MATCH, uids);
+        res = replaceRulesInMap(STANDBY_MATCH, uids);
     } else if (!name.compare(FirewallController::LOCAL_POWERSAVE)) {
-        res = replaceUidsInMap(POWERSAVE_MATCH, uids);
+        res = replaceRulesInMap(POWERSAVE_MATCH, uids);
     } else {
         ALOGE("unknown chain name: %s", name.c_str());
         return -EINVAL;
