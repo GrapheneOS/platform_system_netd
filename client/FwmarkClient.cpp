@@ -30,7 +30,21 @@
 
 namespace {
 
+// Env flag to control whether FwmarkClient sends sockets to netd for marking.
+// This can only be disabled in debuggable builds and is meant for kernel testing.
+inline constexpr char ANDROID_NO_USE_FWMARK_CLIENT[] = "ANDROID_NO_USE_FWMARK_CLIENT";
+
 const sockaddr_un FWMARK_SERVER_PATH = {AF_UNIX, "/dev/socket/fwmarkd"};
+
+#if defined(NETD_CLIENT_DEBUGGABLE_BUILD)
+constexpr bool isBuildDebuggable = true;
+#else
+constexpr bool isBuildDebuggable = false;
+#endif
+
+bool isOverriddenBy(const char *name) {
+    return isBuildDebuggable && getenv(name);
+}
 
 bool commandHasFd(int cmdId) {
     return (cmdId != FwmarkCommand::QUERY_USER_ACCESS) &&
@@ -41,10 +55,12 @@ bool commandHasFd(int cmdId) {
 }  // namespace
 
 bool FwmarkClient::shouldSetFwmark(int family) {
+    if (isOverriddenBy(ANDROID_NO_USE_FWMARK_CLIENT)) return false;
     return FwmarkCommand::isSupportedFamily(family);
 }
 
 bool FwmarkClient::shouldReportConnectComplete(int family) {
+    if (isOverriddenBy(ANDROID_NO_USE_FWMARK_CLIENT)) return false;
     return shouldSetFwmark(family);
 }
 
