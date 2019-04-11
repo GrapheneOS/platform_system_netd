@@ -1202,6 +1202,21 @@ binder::Status NetdNativeService::firewallEnableChildChain(int32_t childChain, b
     return statusFromErrcode(res);
 }
 
+binder::Status NetdNativeService::firewallAddUidInterfaceRules(const std::string& ifName,
+                                                               const std::vector<int32_t>& uids) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    return asBinderStatus(gCtls->trafficCtrl.addUidInterfaceRules(
+            RouteController::getIfIndex(ifName.c_str()), uids));
+}
+
+binder::Status NetdNativeService::firewallRemoveUidInterfaceRules(
+        const std::vector<int32_t>& uids) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    return asBinderStatus(gCtls->trafficCtrl.removeUidInterfaceRules(uids));
+}
+
 binder::Status NetdNativeService::tetherAddForward(const std::string& intIface,
                                                    const std::string& extIface) {
     NETD_LOCKING_RPC(gCtls->tetherCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);

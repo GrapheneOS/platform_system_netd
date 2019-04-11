@@ -111,6 +111,9 @@ class TrafficController {
 
     netdutils::Status replaceUidsInMap(UidOwnerMatchType match, const std::vector<int32_t>& uids);
 
+    netdutils::Status addUidInterfaceRules(const int ifIndex, const std::vector<int32_t>& uids);
+    netdutils::Status removeUidInterfaceRules(const std::vector<int32_t>& uids);
+
     netdutils::Status updateUidOwnerMap(const std::vector<std::string>& appStrUids,
                                         BandwidthController::IptJumpOp jumpHandling,
                                         BandwidthController::IptOp op);
@@ -193,7 +196,7 @@ class TrafficController {
     /*
      * mUidOwnerMap: Store uids that are used for bandwidth control uid match.
      */
-    BpfMap<uint32_t, uint8_t> mUidOwnerMap GUARDED_BY(mOwnerMatchMutex);
+    BpfMap<uint32_t, UidOwnerValue> mUidOwnerMap GUARDED_BY(mOwnerMatchMutex);
 
     /*
      * mUidOwnerMap: Store uids that are used for INTERNET permission check.
@@ -202,11 +205,12 @@ class TrafficController {
 
     std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
 
-    netdutils::Status removeMatch(BpfMap<uint32_t, uint8_t>& map, uint32_t uid,
+    netdutils::Status removeMatch(BpfMap<uint32_t, UidOwnerValue>& map, uint32_t uid,
                                   UidOwnerMatchType match) REQUIRES(mOwnerMatchMutex);
 
-    netdutils::Status addMatch(BpfMap<uint32_t, uint8_t>& map, uint32_t uid,
-                               UidOwnerMatchType match) REQUIRES(mOwnerMatchMutex);
+    netdutils::Status addMatch(BpfMap<uint32_t, UidOwnerValue>& map, uint32_t uid,
+                               UidOwnerMatchType match, uint32_t iif = 0)
+            REQUIRES(mOwnerMatchMutex);
 
     bpf::BpfLevel mBpfLevel;
 
