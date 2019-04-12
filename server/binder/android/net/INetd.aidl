@@ -1180,4 +1180,11 @@ interface INetd {
      *         cause of the failure.
      */
     void firewallRemoveUidInterfaceRules(in int[] uids);
+
+   /**
+    * Request netd to change the current active network stats map.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the failure.
+    */
+    void trafficSwapActiveStatsMap();
 }
