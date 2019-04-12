@@ -807,6 +807,11 @@ binder::Status NetdNativeService::wakeupDelInterface(const std::string& ifName,
     return asBinderStatus(gCtls->wakeupCtrl.delInterface(ifName, prefix, mark, mask));
 }
 
+binder::Status NetdNativeService::trafficSwapActiveStatsMap() {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    return asBinderStatus(gCtls->trafficCtrl.swapActiveStatsMap());
+}
+
 binder::Status NetdNativeService::idletimerAddInterface(const std::string& ifName, int32_t timeout,
                                                         const std::string& classLabel) {
     NETD_LOCKING_RPC(gCtls->idletimerCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
