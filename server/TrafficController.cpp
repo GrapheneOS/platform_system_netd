@@ -72,6 +72,7 @@ using netdutils::status::ok;
 
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
+constexpr int PER_UID_STATS_ENTRY_LIMIT = 1024;
 
 static_assert(BPF_PERMISSION_INTERNET == INetd::PERMISSION_INTERNET,
               "Mismatch between BPF and AIDL permissions: PERMISSION_INTERNET");
@@ -329,6 +330,7 @@ Status TrafficController::start() {
 }
 
 int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t callingUid) {
+    std::lock_guard guard(mOwnerMatchMutex);
     if (uid != callingUid && !hasUpdateDeviceStatsPermission(callingUid)) {
         return -EPERM;
     }
@@ -342,6 +344,38 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
     if (sock_cookie == NONEXISTENT_COOKIE) return -errno;
     UidTag newKey = {.uid = (uint32_t)uid, .tag = tag};
 
+    uint32_t totalEntryCount = 0;
+    // Now we go through the stats map and count how many entries are associated
+    // with target uid. If the uid entry hit the limit for each uid, we block
+    // the request to prevent the map from overflow. It is safe here to iterate
+    // over the map since when mOwnerMatchMutex is hold, system server cannot toggle
+    // the live stats map and clean it. So nobody can delete entries from the map.
+    const auto countUidStatsEntries = [uid, &totalEntryCount](const StatsKey& key,
+                                                              BpfMap<StatsKey, StatsValue>&) {
+        if (key.uid == uid) {
+            totalEntryCount++;
+        }
+        return netdutils::status::ok;
+    };
+    auto configuration = mConfigurationMap.readValue(CURRENT_STATS_MAP_CONFIGURATION_KEY);
+    if (!isOk(configuration.status())) {
+        ALOGE("Failed to get current configuration: %s, fd: %d",
+              strerror(configuration.status().code()), mConfigurationMap.getMap().get());
+        return -configuration.status().code();
+    }
+    if (configuration.value() == SELECT_MAP_A) {
+        mStatsMapA.iterate(countUidStatsEntries).ignoreError();
+    } else if (configuration.value() == SELECT_MAP_B) {
+        mStatsMapB.iterate(countUidStatsEntries).ignoreError();
+    } else {
+        ALOGE("unknown configuration value: %d", configuration.value());
+        return -EINVAL;
+    }
+    if (totalEntryCount > PER_UID_STATS_ENTRY_LIMIT) {
+        ALOGE("Too many stats entry for this uid: %u, block tag request to prevent map overflow",
+              uid);
+        return -EMFILE;
+    }
     // Update the tag information of a socket to the cookieUidMap. Use BPF_ANY
     // flag so it will insert a new entry to the map if that value doesn't exist
     // yet. And update the tag if there is already a tag stored. Since the eBPF
