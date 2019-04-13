@@ -48,18 +48,22 @@ using netdutils::isOk;
 using netdutils::StatusOr;
 
 constexpr int TEST_MAP_SIZE = 10;
+constexpr int TEST_COOKIE = 1;
 constexpr uid_t TEST_UID = 10086;
 constexpr uid_t TEST_UID2 = 54321;
 constexpr uid_t TEST_UID3 = 98765;
 constexpr uint32_t TEST_TAG = 42;
 constexpr uint32_t TEST_COUNTERSET = 1;
 constexpr uint32_t DEFAULT_COUNTERSET = 0;
+constexpr uint32_t TEST_PER_UID_STATS_ENTRIES_LIMIT = 3;
+constexpr uint32_t TEST_TOTAL_UID_STATS_ENTRIES_LIMIT = 7;
 
 #define ASSERT_VALID(x) ASSERT_TRUE((x).isValid())
 
 class TrafficControllerTest : public ::testing::Test {
   protected:
-    TrafficControllerTest() {}
+    TrafficControllerTest()
+        : mTc(TEST_PER_UID_STATS_ENTRIES_LIMIT, TEST_TOTAL_UID_STATS_ENTRIES_LIMIT) {}
     TrafficController mTc;
     BpfMap<uint64_t, UidTag> mFakeCookieTagMap;
     BpfMap<uint32_t, uint8_t> mFakeUidCounterSetMap;
@@ -294,6 +298,21 @@ class TrafficControllerTest : public ::testing::Test {
         EXPECT_EQ((uint64_t)1, appStatsResult.value().rxPackets);
         EXPECT_EQ((uint64_t)100, appStatsResult.value().rxBytes);
     }
+
+    void expectTagSocketReachLimit(uint32_t tag, uint32_t uid) {
+        int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        EXPECT_LE(0, sock);
+        if (sock < 0) return;
+        uint64_t sockCookie = getSocketCookie(sock);
+        EXPECT_NE(NONEXISTENT_COOKIE, sockCookie);
+        EXPECT_EQ(-EMFILE, mTc.tagSocket(sock, tag, uid, uid));
+        expectNoTag(sockCookie);
+
+        // Delete stats entries then tag socket success
+        EXPECT_EQ(0, mTc.deleteTagData(0, uid, 0));
+        EXPECT_EQ(0, mTc.tagSocket(sock, tag, uid, uid));
+        expectUidTag(sockCookie, uid, tag);
+    }
 };
 
 TEST_F(TrafficControllerTest, TestTagSocketV4) {
@@ -388,6 +407,32 @@ TEST_F(TrafficControllerTest, TestUntagInvalidSocket) {
     int v4socket = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
     ASSERT_GT(0, mTc.untagSocket(v4socket));
     expectMapEmpty(mFakeCookieTagMap);
+}
+
+TEST_F(TrafficControllerTest, TestTagSocketReachLimitFail) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    uid_t uid = TEST_UID;
+    StatsKey tagStatsMapKey[4];
+    for (int i = 0; i < 3; i++) {
+        uint64_t cookie = TEST_COOKIE + i;
+        uint32_t tag = TEST_TAG + i;
+        populateFakeStats(cookie, uid, tag, &tagStatsMapKey[i]);
+    }
+    expectTagSocketReachLimit(TEST_TAG, TEST_UID);
+}
+
+TEST_F(TrafficControllerTest, TestTagSocketReachTotalLimitFail) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    StatsKey tagStatsMapKey[4];
+    for (int i = 0; i < 4; i++) {
+        uint64_t cookie = TEST_COOKIE + i;
+        uint32_t tag = TEST_TAG + i;
+        uid_t uid = TEST_UID + i;
+        populateFakeStats(cookie, uid, tag, &tagStatsMapKey[i]);
+    }
+    expectTagSocketReachLimit(TEST_TAG, TEST_UID);
 }
 
 TEST_F(TrafficControllerTest, TestSetCounterSet) {
