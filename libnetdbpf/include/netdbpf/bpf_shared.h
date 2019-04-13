@@ -84,6 +84,7 @@ enum UidOwnerMatchType {
     DOZABLE_MATCH = (1 << 2),
     STANDBY_MATCH = (1 << 3),
     POWERSAVE_MATCH = (1 << 4),
+    IIF_MATCH = (1 << 5),
 };
 
 enum BpfPemissionMatch {
@@ -102,6 +103,13 @@ enum StatsMapType {
 // semantics, like a struct.
 typedef uint8_t BpfConfig;
 const BpfConfig DEFAULT_CONFIG = 0;
+
+struct UidOwnerValue {
+    // Allowed interface index. Only applicable if IIF_MATCH is set in the rule bitmask above.
+    uint32_t iif;
+    // A bitmask of enum values in UidOwnerMatchType.
+    uint8_t rule;
+};
 
 #define UID_RULES_CONFIGURATION_KEY 1
 #define CURRENT_STATS_MAP_CONFIGURATION_KEY 2

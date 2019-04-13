@@ -807,6 +807,11 @@ binder::Status NetdNativeService::wakeupDelInterface(const std::string& ifName,
     return asBinderStatus(gCtls->wakeupCtrl.delInterface(ifName, prefix, mark, mask));
 }
 
+binder::Status NetdNativeService::trafficSwapActiveStatsMap() {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    return asBinderStatus(gCtls->trafficCtrl.swapActiveStatsMap());
+}
+
 binder::Status NetdNativeService::idletimerAddInterface(const std::string& ifName, int32_t timeout,
                                                         const std::string& classLabel) {
     NETD_LOCKING_RPC(gCtls->idletimerCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
@@ -1195,6 +1200,21 @@ binder::Status NetdNativeService::firewallEnableChildChain(int32_t childChain, b
 
     int res = gCtls->firewallCtrl.enableChildChains(chain, enable);
     return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::firewallAddUidInterfaceRules(const std::string& ifName,
+                                                               const std::vector<int32_t>& uids) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    return asBinderStatus(gCtls->trafficCtrl.addUidInterfaceRules(
+            RouteController::getIfIndex(ifName.c_str()), uids));
+}
+
+binder::Status NetdNativeService::firewallRemoveUidInterfaceRules(
+        const std::vector<int32_t>& uids) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    return asBinderStatus(gCtls->trafficCtrl.removeUidInterfaceRules(uids));
 }
 
 binder::Status NetdNativeService::tetherAddForward(const std::string& intIface,

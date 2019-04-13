@@ -45,6 +45,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status firewallSetUidRule(int32_t childChain, int32_t uid,
                                       int32_t firewallRule) override;
     binder::Status firewallEnableChildChain(int32_t childChain, bool enable) override;
+    binder::Status firewallAddUidInterfaceRules(const std::string& ifName,
+                                                const std::vector<int32_t>& uids) override;
+    binder::Status firewallRemoveUidInterfaceRules(const std::vector<int32_t>& uids) override;
 
     // Bandwidth control commands.
     binder::Status bandwidthEnableDataSaver(bool enable, bool *ret) override;
@@ -192,6 +195,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status ipSecDeleteSecurityPolicy(int32_t transformId, int32_t selAddrFamily,
                                              int32_t direction, int32_t markValue, int32_t markMask,
                                              int32_t interfaceId);
+
+    binder::Status trafficSwapActiveStatsMap() override;
 
     binder::Status ipSecAddTunnelInterface(const std::string& deviceName,
                                            const std::string& localAddress,
