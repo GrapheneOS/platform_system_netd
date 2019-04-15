@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "DnsTlsTransport"
+#define LOG_TAG "resolv"
 //#define LOG_NDEBUG 0
 
 #include "DnsTlsTransport.h"

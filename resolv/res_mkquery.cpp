@@ -70,7 +70,7 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#define LOG_TAG "res_mkquery"
+#define LOG_TAG "resolv"
 
 #include <algorithm>  // std::min()
 
