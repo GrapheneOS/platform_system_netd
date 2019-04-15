@@ -16,7 +16,7 @@
 
 #include "DnsTlsSessionCache.h"
 
-#define LOG_TAG "DnsTlsSessionCache"
+#define LOG_TAG "resolv"
 //#define LOG_NDEBUG 0
 
 #include "log/log.h"

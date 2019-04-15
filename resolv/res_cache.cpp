@@ -26,7 +26,7 @@
  * SUCH DAMAGE.
  */
 
-#define LOG_TAG "res_cache"
+#define LOG_TAG "resolv"
 
 #include "resolv_cache.h"
 

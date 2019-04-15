@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "Dns64Configuration"
+#define LOG_TAG "resolv"
 #define DBG 0
 
 #include "Dns64Configuration.h"
