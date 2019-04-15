@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "dns_tls_test"
+#define LOG_TAG "resolv"
 #define LOG_NDEBUG 1  // Set to 0 to enable verbose debug logging
 
 #include <gtest/gtest.h>

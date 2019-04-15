@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "ResolverController"
+#define LOG_TAG "resolv"
 #define DBG 0
 
 #include "ResolverController.h"
