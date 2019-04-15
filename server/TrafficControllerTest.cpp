@@ -71,6 +71,7 @@ class TrafficControllerTest : public ::testing::Test {
     void SetUp() {
         std::lock_guard ownerGuard(mTc.mOwnerMatchMutex);
         SKIP_IF_BPF_NOT_SUPPORTED;
+        ASSERT_EQ(0, setrlimitForTest());
 
         mFakeCookieTagMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(uint64_t),
                                           sizeof(struct UidTag), TEST_MAP_SIZE, 0));
