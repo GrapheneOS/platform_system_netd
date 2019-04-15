@@ -74,7 +74,7 @@
  * Send query to name server and wait for reply.
  */
 
-#define LOG_TAG "res_send"
+#define LOG_TAG "resolv"
 
 #include <sys/param.h>
 #include <sys/socket.h>

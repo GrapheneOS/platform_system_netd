@@ -70,7 +70,7 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#define LOG_TAG "res_query"
+#define LOG_TAG "resolv"
 
 #include <arpa/inet.h>
 #include <arpa/nameser.h>

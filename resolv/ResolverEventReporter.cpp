@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define LOG_TAG "ResolverEventReporter"
+#define LOG_TAG "resolv"
 
 #include "ResolverEventReporter.h"
 
