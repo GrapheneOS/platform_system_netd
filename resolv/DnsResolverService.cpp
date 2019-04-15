@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "DnsResolverService"
+#define LOG_TAG "resolv"
 
 #include "DnsResolverService.h"
 
