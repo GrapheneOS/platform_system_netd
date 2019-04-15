@@ -186,7 +186,7 @@ void ResolverController::destroyNetworkCache(unsigned netId) {
 
     resolv_delete_cache_for_net(netId);
     mDns64Configuration.stopPrefixDiscovery(netId);
-    resolv_delete_private_dns_for_net(netId);
+    gPrivateDnsConfiguration.clear(netId);
 }
 
 int ResolverController::createNetworkCache(unsigned netId) {
@@ -195,8 +195,6 @@ int ResolverController::createNetworkCache(unsigned netId) {
     return resolv_create_cache_for_net(netId);
 }
 
-// TODO: remove below functions and call into PrivateDnsConfiguration directly.
-//       resolv_delete_private_dns_for_net()
 int ResolverController::setResolverConfiguration(
         const ResolverParamsParcel& resolverParams,
         const std::set<std::vector<uint8_t>>& tlsFingerprints) {
