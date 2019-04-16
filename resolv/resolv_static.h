@@ -2,7 +2,6 @@
 #define NETD_RESOLV_STATIC_H
 
 #include <netdb.h>
-#include <stdio.h>
 
 /* this structure contains all the variables that were declared
  * 'static' in the original NetBSD resolver code.

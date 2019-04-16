@@ -32,7 +32,6 @@
 #define NETD_RESOLV_HOSTENT_H
 
 #include <netdb.h>
-#include <stdio.h>
 
 struct getnamaddr {
     struct hostent* hp;
