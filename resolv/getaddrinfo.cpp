@@ -30,7 +30,7 @@
  * SUCH DAMAGE.
  */
 
-#define LOG_TAG "getaddrinfo"
+#define LOG_TAG "resolv"
 
 #include <arpa/inet.h>
 #include <arpa/nameser.h>

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "libnetd_resolv_test"
+#define LOG_TAG "resolv"
 
 #include <gtest/gtest.h>
 

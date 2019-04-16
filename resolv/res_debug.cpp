@@ -95,7 +95,7 @@
  * IF IBM IS APPRISED OF THE POSSIBILITY OF SUCH DAMAGES.
  */
 
-#define LOG_TAG "res_debug"
+#define LOG_TAG "resolv"
 
 #include <sys/param.h>
 #include <sys/socket.h>

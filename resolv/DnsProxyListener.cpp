@@ -29,7 +29,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#define LOG_TAG "DnsProxyListener"
+#define LOG_TAG "resolv"
 
 #include <algorithm>
 #include <list>
