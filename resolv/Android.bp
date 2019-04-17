@@ -8,6 +8,7 @@ aidl_interface {
     local_include_dir: "binder",
     srcs: [
         "binder/android/net/IDnsResolver.aidl",
+        "binder/android/net/ResolverParamsParcel.aidl",
     ],
     imports: [
         "netd_event_listener_interface",
