@@ -24,7 +24,6 @@
 #include <poll.h> /* poll */
 #include <resolv.h>
 #include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/un.h>
