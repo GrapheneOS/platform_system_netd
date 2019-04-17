@@ -45,16 +45,16 @@ SEC("skfilter/whitelist/xtbpf")
 int xt_bpf_whitelist_prog(struct __sk_buff* skb) {
     uint32_t sock_uid = bpf_get_socket_uid(skb);
     if (is_system_uid(sock_uid)) return BPF_MATCH;
-    uint8_t* whitelistMatch = bpf_map_lookup_elem(&uid_owner_map, &sock_uid);
-    if (whitelistMatch) return *whitelistMatch & HAPPY_BOX_MATCH;
+    struct UidOwnerValue* whitelistMatch = bpf_map_lookup_elem(&uid_owner_map, &sock_uid);
+    if (whitelistMatch) return whitelistMatch->rule & HAPPY_BOX_MATCH;
     return BPF_NOMATCH;
 }
 
 SEC("skfilter/blacklist/xtbpf")
 int xt_bpf_blacklist_prog(struct __sk_buff* skb) {
     uint32_t sock_uid = bpf_get_socket_uid(skb);
-    uint8_t* blacklistMatch = bpf_map_lookup_elem(&uid_owner_map, &sock_uid);
-    if (blacklistMatch) return *blacklistMatch & PENALTY_BOX_MATCH;
+    struct UidOwnerValue* blacklistMatch = bpf_map_lookup_elem(&uid_owner_map, &sock_uid);
+    if (blacklistMatch) return blacklistMatch->rule & PENALTY_BOX_MATCH;
     return BPF_NOMATCH;
 }
 
