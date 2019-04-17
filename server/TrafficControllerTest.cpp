@@ -70,7 +70,7 @@ class TrafficControllerTest : public ::testing::Test {
     BpfMap<uint32_t, uint8_t> mFakeUidPermissionMap;
 
     void SetUp() {
-        std::lock_guard ownerGuard(mTc.mOwnerMatchMutex);
+        std::lock_guard guard(mTc.mMutex);
         SKIP_IF_BPF_NOT_SUPPORTED;
         ASSERT_EQ(0, setrlimitForTest());
 
@@ -249,13 +249,17 @@ class TrafficControllerTest : public ::testing::Test {
     }
 
     void expectPrivilegedUserSet(const std::vector<uid_t>& appUids) {
+        std::lock_guard guard(mTc.mMutex);
         EXPECT_EQ(appUids.size(), mTc.mPrivilegedUser.size());
         for (uid_t uid : appUids) {
             EXPECT_NE(mTc.mPrivilegedUser.end(), mTc.mPrivilegedUser.find(uid));
         }
     }
 
-    void expectPrivilegedUserSetEmpty() { EXPECT_TRUE(mTc.mPrivilegedUser.empty()); }
+    void expectPrivilegedUserSetEmpty() {
+        std::lock_guard guard(mTc.mMutex);
+        EXPECT_TRUE(mTc.mPrivilegedUser.empty());
+    }
 
     void addPrivilegedUid(uid_t uid) {
         std::vector privilegedUid = {uid};
