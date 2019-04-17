@@ -431,6 +431,7 @@ StatusOr<std::vector<std::string>> InterfaceController::getIfaceNames() {
         return statusFromErrno(errno, "Cannot open iface directory");
     }
     while ((de = readdir(d))) {
+        if ((de->d_type != DT_DIR) && (de->d_type != DT_LNK)) continue;
         if (de->d_name[0] == '.') continue;
         ifaceNames.push_back(std::string(de->d_name));
     }
