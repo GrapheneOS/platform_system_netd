@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <aidl/android/net/BnDnsResolver.h>
+#include <aidl/android/net/ResolverParamsParcel.h>
 #include <android/binder_ibinder.h>
 
 #include "netd_resolv/resolv.h"
@@ -41,10 +42,7 @@ class DnsResolverService : public aidl::android::net::BnDnsResolver {
 
     // Resolver commands.
     ::ndk::ScopedAStatus setResolverConfiguration(
-            int32_t netId, const std::vector<std::string>& servers,
-            const std::vector<std::string>& domains, const std::vector<int32_t>& params,
-            const std::string& tlsName, const std::vector<std::string>& tlsServers,
-            const std::vector<std::string>& tlsFingerprints) override;
+            const aidl::android::net::ResolverParamsParcel& resolverParams) override;
     ::ndk::ScopedAStatus getResolverInfo(
             int32_t netId, std::vector<std::string>* servers, std::vector<std::string>* domains,
             std::vector<std::string>* tlsServers, std::vector<int32_t>* params,

@@ -16,6 +16,7 @@
 
 package android.net;
 
+import android.net.ResolverParamsParcel;
 import android.net.metrics.INetdEventListener;
 
 /** {@hide} */
@@ -37,6 +38,7 @@ interface IDnsResolver {
     */
     void registerEventListener(INetdEventListener listener);
 
+    // TODO: Delete these from the public interface
     // Array indices for resolver parameters.
     const int RESOLVER_PARAMS_SAMPLE_VALIDITY = 0;
     const int RESOLVER_PARAMS_SUCCESS_THRESHOLD = 1;
@@ -50,23 +52,11 @@ interface IDnsResolver {
      * Sets the name servers, search domains and resolver params for the given network. Flushes the
      * cache as needed (i.e. when the servers or the number of samples to store changes).
      *
-     * @param netId the network ID of the network for which information should be configured.
-     * @param servers the DNS servers to configure for the network.
-     * @param domains the search domains to configure.
-     * @param params the params to set. This array contains RESOLVER_PARAMS_COUNT integers that
-     *   encode the contents of Bionic's __res_params struct, i.e. sample_validity is stored at
-     *   position RESOLVER_PARAMS_SAMPLE_VALIDITY, etc.
-     * @param tlsName The TLS subject name to require for all servers, or empty if there is none.
-     * @param tlsServers the DNS servers to configure for strict mode Private DNS.
-     * @param tlsFingerprints An array containing TLS public key fingerprints (pins) of which each
-     *   server must match at least one, or empty if there are no pinned keys.
+     * @param resolverParams the resolver parameters to be wrapped into parcel.
      * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
      *         unix errno.
      */
-    void setResolverConfiguration(int netId, in @utf8InCpp String[] servers,
-            in @utf8InCpp String[] domains, in int[] params,
-            in @utf8InCpp String tlsName, in @utf8InCpp String[] tlsServers,
-            in @utf8InCpp String[] tlsFingerprints);
+    void setResolverConfiguration(in ResolverParamsParcel resolverParams);
 
     // Array indices for resolver stats.
     const int RESOLVER_STATS_SUCCESSES = 0;
