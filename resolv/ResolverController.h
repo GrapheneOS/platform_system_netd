@@ -21,6 +21,7 @@
 #include <set>
 #include <vector>
 
+#include <aidl/android/net/ResolverParamsParcel.h>
 #include "Dns64Configuration.h"
 #include "netd_resolv/resolv.h"
 #include "netdutils/DumpWriter.h"
@@ -41,12 +42,9 @@ class ResolverController {
 
     int getPrefix64(unsigned netId, netdutils::IPPrefix* prefix);
 
-    // Binder specific functions, which convert between the binder int/string arrays and the
+    // Binder specific functions, which convert between the ResolverParamsParcel and the
     // actual data structures, and call setDnsServer() / getDnsInfo() for the actual processing.
-    int setResolverConfiguration(int32_t netId, const std::vector<std::string>& servers,
-                                 const std::vector<std::string>& domains,
-                                 const std::vector<int32_t>& params, const std::string& tlsName,
-                                 const std::vector<std::string>& tlsServers,
+    int setResolverConfiguration(const aidl::android::net::ResolverParamsParcel& resolverParams,
                                  const std::set<std::vector<uint8_t>>& tlsFingerprints);
 
     int getResolverInfo(int32_t netId, std::vector<std::string>* servers,
