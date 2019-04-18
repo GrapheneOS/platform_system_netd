@@ -72,7 +72,8 @@ using netdutils::status::ok;
 
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
-constexpr int PER_UID_STATS_ENTRY_LIMIT = 1024;
+constexpr int PER_UID_STATS_ENTRIES_LIMIT = 500;
+constexpr int TOTAL_UID_STATS_ENTRIES_LIMIT = STATS_MAP_SIZE - 500;
 
 static_assert(BPF_PERMISSION_INTERNET == INetd::PERMISSION_INTERNET,
               "Mismatch between BPF and AIDL permissions: PERMISSION_INTERNET");
@@ -177,7 +178,15 @@ Status changeOwnerAndMode(const char* path, gid_t group, const char* debugName, 
     return netdutils::status::ok;
 }
 
-TrafficController::TrafficController() : mBpfLevel(getBpfSupportLevel()) {}
+TrafficController::TrafficController()
+    : mBpfLevel(getBpfSupportLevel()),
+      mPerUidStatsEntriesLimit(PER_UID_STATS_ENTRIES_LIMIT),
+      mTotalUidStatsEntriesLimit(TOTAL_UID_STATS_ENTRIES_LIMIT) {}
+
+TrafficController::TrafficController(uint32_t perUidLimit, uint32_t totalLimit)
+    : mBpfLevel(getBpfSupportLevel()),
+      mPerUidStatsEntriesLimit(perUidLimit),
+      mTotalUidStatsEntriesLimit(totalLimit) {}
 
 Status TrafficController::initMaps() {
     std::lock_guard guard(mMutex);
@@ -345,16 +354,18 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
     UidTag newKey = {.uid = (uint32_t)uid, .tag = tag};
 
     uint32_t totalEntryCount = 0;
+    uint32_t perUidEntryCount = 0;
     // Now we go through the stats map and count how many entries are associated
     // with target uid. If the uid entry hit the limit for each uid, we block
     // the request to prevent the map from overflow. It is safe here to iterate
     // over the map since when mMutex is hold, system server cannot toggle
     // the live stats map and clean it. So nobody can delete entries from the map.
-    const auto countUidStatsEntries = [uid, &totalEntryCount](const StatsKey& key,
-                                                              BpfMap<StatsKey, StatsValue>&) {
+    const auto countUidStatsEntries = [uid, &totalEntryCount, &perUidEntryCount](
+                                              const StatsKey& key, BpfMap<StatsKey, StatsValue>&) {
         if (key.uid == uid) {
-            totalEntryCount++;
+            perUidEntryCount++;
         }
+        totalEntryCount++;
         return netdutils::status::ok;
     };
     auto configuration = mConfigurationMap.readValue(CURRENT_STATS_MAP_CONFIGURATION_KEY);
@@ -371,9 +382,11 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
         ALOGE("unknown configuration value: %d", configuration.value());
         return -EINVAL;
     }
-    if (totalEntryCount > PER_UID_STATS_ENTRY_LIMIT) {
-        ALOGE("Too many stats entry for this uid: %u, block tag request to prevent map overflow",
-              uid);
+    if (totalEntryCount > mTotalUidStatsEntriesLimit ||
+        perUidEntryCount > mPerUidStatsEntriesLimit) {
+        ALOGE("Too many stats entries in the map, total count: %u, uid(%u) count: %u, blocking tag"
+              " request to prevent map overflow",
+              totalEntryCount, uid, perUidEntryCount);
         return -EMFILE;
     }
     // Update the tag information of a socket to the cookieUidMap. Use BPF_ANY
