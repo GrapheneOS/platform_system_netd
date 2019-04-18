@@ -217,6 +217,15 @@ class TrafficController {
 
     std::mutex mMutex;
 
+    // The limit on the number of stats entries a uid can have in the per uid stats map.
+    // TrafficController will block that specific uid from tagging new sockets after the limit is
+    // reached.
+    const uint32_t mPerUidStatsEntriesLimit;
+
+    // The limit on the total number of stats entries in the per uid stats map. TrafficController
+    // will block all tagging requests after the limit is reached.
+    const uint32_t mTotalUidStatsEntriesLimit;
+
     netdutils::Status loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
                                            base::unique_fd& cg_fd);
 
@@ -229,6 +238,10 @@ class TrafficController {
     UidOwnerMatchType jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling);
 
     bool hasUpdateDeviceStatsPermission(uid_t uid) REQUIRES(mMutex);
+
+    // For testing
+    TrafficController(uint32_t perUidLimit, uint32_t totalLimit);
+
     // For testing
     friend class TrafficControllerTest;
 };
