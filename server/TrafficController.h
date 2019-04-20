@@ -57,7 +57,7 @@ class TrafficController {
      * the spinlock initialized with the map. So the behavior of two modules
      * should be the same. No additional lock needed.
      */
-    int tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t callingUid);
+    int tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t callingUid) EXCLUDES(mMutex);
 
     /*
      * The untag process is similiar to tag socket and both old qtaguid module and
@@ -69,7 +69,7 @@ class TrafficController {
     /*
      * Similiar as above, no external lock required.
      */
-    int setCounterSet(int counterSetNum, uid_t uid, uid_t callingUid);
+    int setCounterSet(int counterSetNum, uid_t uid, uid_t callingUid) EXCLUDES(mMutex);
 
     /*
      * When deleting a tag data, the qtaguid module will grab the spinlock of each
@@ -79,7 +79,7 @@ class TrafficController {
      * each map one by one. And deleting processes are also protected by the
      * spinlock of the map. So no additional lock is required.
      */
-    int deleteTagData(uint32_t tag, uid_t uid, uid_t callingUid);
+    int deleteTagData(uint32_t tag, uid_t uid, uid_t callingUid) EXCLUDES(mMutex);
 
     /*
      * Check if the current device have the bpf traffic stats accounting service
@@ -90,7 +90,7 @@ class TrafficController {
     /*
      * Swap the stats map config from current active stats map to the idle one.
      */
-    netdutils::Status swapActiveStatsMap();
+    netdutils::Status swapActiveStatsMap() EXCLUDES(mMutex);
 
     /*
      * Add the interface name and index pair into the eBPF map.
@@ -105,25 +105,27 @@ class TrafficController {
                            const std::vector<int32_t>& uids);
 
     netdutils::Status updateOwnerMapEntry(UidOwnerMatchType match, uid_t uid, FirewallRule rule,
-                                          FirewallType type);
+                                          FirewallType type) EXCLUDES(mMutex);
 
-    void dump(netdutils::DumpWriter& dw, bool verbose);
+    void dump(netdutils::DumpWriter& dw, bool verbose) EXCLUDES(mMutex);
 
-    netdutils::Status replaceRulesInMap(UidOwnerMatchType match, const std::vector<int32_t>& uids);
+    netdutils::Status replaceRulesInMap(UidOwnerMatchType match, const std::vector<int32_t>& uids)
+            EXCLUDES(mMutex);
 
-    netdutils::Status addUidInterfaceRules(const int ifIndex, const std::vector<int32_t>& uids);
-    netdutils::Status removeUidInterfaceRules(const std::vector<int32_t>& uids);
+    netdutils::Status addUidInterfaceRules(const int ifIndex, const std::vector<int32_t>& uids)
+            EXCLUDES(mMutex);
+    netdutils::Status removeUidInterfaceRules(const std::vector<int32_t>& uids) EXCLUDES(mMutex);
 
     netdutils::Status updateUidOwnerMap(const std::vector<std::string>& appStrUids,
                                         BandwidthController::IptJumpOp jumpHandling,
-                                        BandwidthController::IptOp op);
+                                        BandwidthController::IptOp op) EXCLUDES(mMutex);
     static const String16 DUMP_KEYWORD;
 
-    int toggleUidOwnerMap(ChildChain chain, bool enable);
+    int toggleUidOwnerMap(ChildChain chain, bool enable) EXCLUDES(mMutex);
 
     static netdutils::StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener();
 
-    void setPermissionForUids(int permission, const std::vector<uid_t>& uids);
+    void setPermissionForUids(int permission, const std::vector<uid_t>& uids) EXCLUDES(mMutex);
 
   private:
     /*
@@ -162,9 +164,9 @@ class TrafficController {
      * Map Value: struct Stats, contains packet count and byte count of each
      * transport protocol on egress and ingress direction.
      */
-    BpfMap<StatsKey, StatsValue> mStatsMapA;
+    BpfMap<StatsKey, StatsValue> mStatsMapA GUARDED_BY(mMutex);
 
-    BpfMap<StatsKey, StatsValue> mStatsMapB;
+    BpfMap<StatsKey, StatsValue> mStatsMapB GUARDED_BY(mMutex);
 
     /*
      * mIfaceIndexNameMap: Store the index name pair of each interface show up
@@ -191,42 +193,66 @@ class TrafficController {
      *    Userspace can do scraping and cleaning job on the other one depending on the
      *    current configs.
      */
-    BpfMap<uint32_t, uint8_t> mConfigurationMap GUARDED_BY(mOwnerMatchMutex);
+    BpfMap<uint32_t, uint8_t> mConfigurationMap GUARDED_BY(mMutex);
 
     /*
      * mUidOwnerMap: Store uids that are used for bandwidth control uid match.
      */
-    BpfMap<uint32_t, UidOwnerValue> mUidOwnerMap GUARDED_BY(mOwnerMatchMutex);
+    BpfMap<uint32_t, UidOwnerValue> mUidOwnerMap GUARDED_BY(mMutex);
 
     /*
      * mUidOwnerMap: Store uids that are used for INTERNET permission check.
      */
-    BpfMap<uint32_t, uint8_t> mUidPermissionMap;
+    BpfMap<uint32_t, uint8_t> mUidPermissionMap GUARDED_BY(mMutex);
 
     std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
 
     netdutils::Status removeRule(BpfMap<uint32_t, UidOwnerValue>& map, uint32_t uid,
-                                 UidOwnerMatchType match) REQUIRES(mOwnerMatchMutex);
+                                 UidOwnerMatchType match) REQUIRES(mMutex);
 
     netdutils::Status addRule(BpfMap<uint32_t, UidOwnerValue>& map, uint32_t uid,
-                              UidOwnerMatchType match, uint32_t iif = 0) REQUIRES(mOwnerMatchMutex);
+                              UidOwnerMatchType match, uint32_t iif = 0) REQUIRES(mMutex);
 
     bpf::BpfLevel mBpfLevel;
 
-    std::mutex mOwnerMatchMutex;
+    // mMutex guards all accesses to mConfigurationMap, mUidOwnerMap, mUidPermissionMap,
+    // mStatsMapA, mStatsMapB and mPrivilegedUser. It is designed to solve the following
+    // problems:
+    // 1. Prevent concurrent access and modification to mConfigurationMap, mUidOwnerMap,
+    //    mUidPermissionMap, and mPrivilegedUser. These data members are controlled by netd but can
+    //    be modified from different threads.
+    // 2. Coordinate the deletion of uid stats in mStatsMapA and mStatsMapB. The system server
+    //    always call into netd to ask for a live stats map change before it pull and clean up the
+    //    stats from the inactive map. The mMutex will block netd from accessing the stats map when
+    //    the mCongigurationMap is updating the current stats map so netd will not accidentally
+    //    read the map that system_server is cleaning up.
+    std::mutex mMutex;
+
+    // The limit on the number of stats entries a uid can have in the per uid stats map.
+    // TrafficController will block that specific uid from tagging new sockets after the limit is
+    // reached.
+    const uint32_t mPerUidStatsEntriesLimit;
+
+    // The limit on the total number of stats entries in the per uid stats map. TrafficController
+    // will block all tagging requests after the limit is reached.
+    const uint32_t mTotalUidStatsEntriesLimit;
 
     netdutils::Status loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
                                            base::unique_fd& cg_fd);
 
-    netdutils::Status initMaps();
+    netdutils::Status initMaps() EXCLUDES(mMutex);
 
     // Keep track of uids that have permission UPDATE_DEVICE_STATS so we don't
     // need to call back to system server for permission check.
-    std::set<uid_t> mPrivilegedUser;
+    std::set<uid_t> mPrivilegedUser GUARDED_BY(mMutex);
 
     UidOwnerMatchType jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling);
 
-    bool hasUpdateDeviceStatsPermission(uid_t uid);
+    bool hasUpdateDeviceStatsPermission(uid_t uid) REQUIRES(mMutex);
+
+    // For testing
+    TrafficController(uint32_t perUidLimit, uint32_t totalLimit);
+
     // For testing
     friend class TrafficControllerTest;
 };
