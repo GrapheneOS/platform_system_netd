@@ -48,12 +48,7 @@
 #define ntohs(x) htons(x)
 #define ntohl(x) htonl(x)
 
-struct bpf_map_def SEC("maps") clat_ingress_map = {
-        .type = BPF_MAP_TYPE_HASH,
-        .key_size = sizeof(struct ClatIngressKey),
-        .value_size = sizeof(struct ClatIngressValue),
-        .max_entries = 16,
-};
+DEFINE_BPF_MAP(clat_ingress_map, HASH, ClatIngressKey, ClatIngressValue, 16)
 
 static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet) {
     const int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
@@ -92,7 +87,7 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
             return TC_ACT_OK;
     }
 
-    struct ClatIngressKey k = {
+    ClatIngressKey k = {
             .iif = skb->ifindex,
             .pfx96.in6_u.u6_addr32 =
                     {
@@ -103,7 +98,7 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
             .local6 = ip6->daddr,
     };
 
-    struct ClatIngressValue* v = bpf_map_lookup_elem(&clat_ingress_map, &k);
+    ClatIngressValue* v = bpf_clat_ingress_map_lookup_elem(&k);
 
     if (!v) return TC_ACT_OK;
 
