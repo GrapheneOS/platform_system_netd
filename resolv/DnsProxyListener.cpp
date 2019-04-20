@@ -426,14 +426,14 @@ bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, struct 
         *ia6 = v6prefix->sin6_addr;
         ia6->s6_addr32[3] = iaOriginal.s_addr;
 
-        if (WOULD_LOG(DEBUG)) {
+        if (WOULD_LOG(VERBOSE)) {
             char buf[INET6_ADDRSTRLEN];  // big enough for either IPv4 or IPv6
             inet_ntop(AF_INET, &iaOriginal.s_addr, buf, sizeof(buf));
-            LOG(DEBUG) << __func__ << ": DNS A record: " << buf;
+            LOG(VERBOSE) << __func__ << ": DNS A record: " << buf;
             inet_ntop(AF_INET6, &v6prefix->sin6_addr, buf, sizeof(buf));
-            LOG(DEBUG) << __func__ << ": NAT64 prefix: " << buf;
+            LOG(VERBOSE) << __func__ << ": NAT64 prefix: " << buf;
             inet_ntop(AF_INET6, ia6, buf, sizeof(buf));
-            LOG(DEBUG) << __func__ << ": DNS64 Synthesized AAAA record: " << buf;
+            LOG(VERBOSE) << __func__ << ": DNS64 Synthesized AAAA record: " << buf;
         }
     }
     hp->h_addrtype = AF_INET6;
@@ -464,14 +464,14 @@ bool synthesizeNat64PrefixWithARecord(const netdutils::IPPrefix& prefix, addrinf
         ai->ai_addrlen = sizeof(struct sockaddr_in6);
         ai->ai_family = AF_INET6;
 
-        if (WOULD_LOG(DEBUG)) {
+        if (WOULD_LOG(VERBOSE)) {
             char buf[INET6_ADDRSTRLEN];  // big enough for either IPv4 or IPv6
             inet_ntop(AF_INET, &sinOriginal.sin_addr.s_addr, buf, sizeof(buf));
-            LOG(DEBUG) << __func__ << ": DNS A record: " << buf;
+            LOG(VERBOSE) << __func__ << ": DNS A record: " << buf;
             inet_ntop(AF_INET6, &v6prefix->sin6_addr, buf, sizeof(buf));
-            LOG(DEBUG) << __func__ << ": NAT64 prefix: " << buf;
+            LOG(VERBOSE) << __func__ << ": NAT64 prefix: " << buf;
             inet_ntop(AF_INET6, &sin6->sin6_addr, buf, sizeof(buf));
-            LOG(DEBUG) << __func__ << ": DNS64 Synthesized AAAA record: " << buf;
+            LOG(VERBOSE) << __func__ << ": DNS64 Synthesized AAAA record: " << buf;
         }
     }
     logDnsQueryResult(result);
