@@ -215,6 +215,17 @@ class TrafficController {
 
     bpf::BpfLevel mBpfLevel;
 
+    // mMutex guards all accesses to mConfigurationMap, mUidOwnerMap, mUidPermissionMap,
+    // mStatsMapA, mStatsMapB and mPrivilegedUser. It is designed to solve the following
+    // problems:
+    // 1. Prevent concurrent access and modification to mConfigurationMap, mUidOwnerMap,
+    //    mUidPermissionMap, and mPrivilegedUser. These data members are controlled by netd but can
+    //    be modified from different threads.
+    // 2. Coordinate the deletion of uid stats in mStatsMapA and mStatsMapB. The system server
+    //    always call into netd to ask for a live stats map change before it pull and clean up the
+    //    stats from the inactive map. The mMutex will block netd from accessing the stats map when
+    //    the mCongigurationMap is updating the current stats map so netd will not accidentally
+    //    read the map that system_server is cleaning up.
     std::mutex mMutex;
 
     // The limit on the number of stats entries a uid can have in the per uid stats map.
