@@ -104,12 +104,12 @@ enum StatsMapType {
 typedef uint8_t BpfConfig;
 const BpfConfig DEFAULT_CONFIG = 0;
 
-struct UidOwnerValue {
+typedef struct {
     // Allowed interface index. Only applicable if IIF_MATCH is set in the rule bitmask above.
     uint32_t iif;
     // A bitmask of enum values in UidOwnerMatchType.
     uint8_t rule;
-};
+} UidOwnerValue;
 
 #define UID_RULES_CONFIGURATION_KEY 1
 #define CURRENT_STATS_MAP_CONFIGURATION_KEY 2
@@ -122,15 +122,15 @@ struct UidOwnerValue {
 
 #define CLAT_INGRESS_MAP_PATH BPF_PATH "/map_clatd_clat_ingress_map"
 
-struct ClatIngressKey {
+typedef struct {
     uint32_t iif;            // The input interface index
     struct in6_addr pfx96;   // The source /96 nat64 prefix, bottom 32 bits must be 0
     struct in6_addr local6;  // The full 128-bits of the destination IPv6 address
-};
+} ClatIngressKey;
 
-struct ClatIngressValue {
+typedef struct {
     uint32_t oif;           // The output interface to redirect to (0 means don't redirect)
     struct in_addr local4;  // The destination IPv4 address
-};
+} ClatIngressValue;
 
 #endif  // NETDBPF_BPF_SHARED_H
