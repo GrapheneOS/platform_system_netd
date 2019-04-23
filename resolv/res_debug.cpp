@@ -143,7 +143,6 @@ static void do_section(ns_msg* handle, ns_sect section) {
     /*
      * Print answer records.
      */
-    auto buf = std::make_unique<char[]>(buflen);
     for (;;) {
         if (ns_parserr(handle, section, rrnum, &rr)) {
             if (errno != ENODEV) StringAppendF(&s, "ns_parserr: %s", strerror(errno));
@@ -202,13 +201,18 @@ static void do_section(ns_msg* handle, ns_sect section) {
                 cp += optlen;
             }
         } else {
+            auto buf = std::make_unique<char[]>(buflen);
             n = ns_sprintrr(handle, &rr, NULL, NULL, buf.get(), (u_int)buflen);
             if (n < 0) {
                 if (errno == ENOSPC) {
                     if (buflen < 131072) {
-                        buf = std::make_unique<char[]>(buflen += 1024);
+                        buflen += 1024;
+                        continue;
+                    } else {
+                        StringAppendF(&s, "buflen over 131072");
+                        PLOG(VERBOSE) << s;
+                        return;
                     }
-                    continue;
                 }
                 StringAppendF(&s, "ns_sprintrr failed");
                 PLOG(VERBOSE) << s;
@@ -218,7 +222,6 @@ static void do_section(ns_msg* handle, ns_sect section) {
         }
         rrnum++;
     }
-    LOG(VERBOSE) << s;
 }
 
 /*
