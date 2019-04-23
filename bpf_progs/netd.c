@@ -30,14 +30,14 @@ int bpf_cgroup_egress(struct __sk_buff* skb) {
 SEC("skfilter/egress/xtbpf")
 int xt_bpf_egress_prog(struct __sk_buff* skb) {
     uint32_t key = skb->ifindex;
-    bpf_update_stats(skb, &iface_stats_map, BPF_EGRESS, &key);
+    update_iface_stats_map(skb, BPF_EGRESS, &key);
     return BPF_MATCH;
 }
 
 SEC("skfilter/ingress/xtbpf")
 int xt_bpf_ingress_prog(struct __sk_buff* skb) {
     uint32_t key = skb->ifindex;
-    bpf_update_stats(skb, &iface_stats_map, BPF_INGRESS, &key);
+    update_iface_stats_map(skb, BPF_INGRESS, &key);
     return BPF_MATCH;
 }
 
