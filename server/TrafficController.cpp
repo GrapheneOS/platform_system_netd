@@ -374,14 +374,20 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
               strerror(configuration.status().code()), mConfigurationMap.getMap().get());
         return -configuration.status().code();
     }
-    if (configuration.value() == SELECT_MAP_A) {
-        mStatsMapA.iterate(countUidStatsEntries).ignoreError();
-    } else if (configuration.value() == SELECT_MAP_B) {
-        mStatsMapB.iterate(countUidStatsEntries).ignoreError();
-    } else {
+    if (configuration.value() != SELECT_MAP_A && configuration.value() != SELECT_MAP_B) {
         ALOGE("unknown configuration value: %d", configuration.value());
         return -EINVAL;
     }
+
+    BpfMap<StatsKey, StatsValue>& currentMap =
+            (configuration.value() == SELECT_MAP_A) ? mStatsMapA : mStatsMapB;
+    Status res = currentMap.iterate(countUidStatsEntries);
+    if (!isOk(res)) {
+        ALOGE("Failed to count the stats entry in map %d: %s", currentMap.getMap().get(),
+              strerror(res.code()));
+        return -res.code();
+    }
+
     if (totalEntryCount > mTotalUidStatsEntriesLimit ||
         perUidEntryCount > mPerUidStatsEntriesLimit) {
         ALOGE("Too many stats entries in the map, total count: %u, uid(%u) count: %u, blocking tag"
@@ -394,7 +400,7 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
     // yet. And update the tag if there is already a tag stored. Since the eBPF
     // program in kernel only read this map, and is protected by rcu read lock. It
     // should be fine to cocurrently update the map while eBPF program is running.
-    Status res = mCookieTagMap.writeValue(sock_cookie, newKey, BPF_ANY);
+    res = mCookieTagMap.writeValue(sock_cookie, newKey, BPF_ANY);
     if (!isOk(res)) {
         ALOGE("Failed to tag the socket: %s, fd: %d", strerror(res.code()),
               mCookieTagMap.getMap().get());
