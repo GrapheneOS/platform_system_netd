@@ -16,10 +16,10 @@
 
 package android.net;
 
-import android.net.UidRangeParcel;
-import android.net.TetherStatsParcel;
 import android.net.INetdUnsolicitedEventListener;
 import android.net.InterfaceConfigurationParcel;
+import android.net.TetherStatsParcel;
+import android.net.UidRangeParcel;
 
 /** {@hide} */
 interface INetd {
