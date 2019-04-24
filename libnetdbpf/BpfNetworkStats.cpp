@@ -40,7 +40,9 @@ namespace bpf {
 
 using netdutils::Status;
 
-static constexpr char const* STATS_MAP_PATH[] = {STATS_MAP_A_PATH, STATS_MAP_B_PATH};
+// The target map for stats reading should be the inactive map, which is oppsite
+// from the config value.
+static constexpr char const* STATS_MAP_PATH[] = {STATS_MAP_B_PATH, STATS_MAP_A_PATH};
 
 static constexpr uint32_t BPF_OPEN_FLAGS = BPF_F_RDONLY;
 
@@ -209,40 +211,16 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
         return ret;
     }
 
-    // Write to the configuration map to inform the kernel eBPF program to switch
-    // from using one map to the other.
-    uint8_t newConfigure = (configuration.value() == SELECT_MAP_A) ? SELECT_MAP_B : SELECT_MAP_A;
-    Status res = configurationMap.writeValue(CURRENT_STATS_MAP_CONFIGURATION_KEY, newConfigure,
-                                             BPF_EXIST);
-    if (!isOk(res)) {
-        ALOGE("Failed to toggle the stats map: %s", strerror(res.code()));
-        return -res.code();
-    }
-
-    // After changing the config, we need to make sure all the current running
-    // eBPF programs are finished and all the CPUs are aware of this config change
-    // before we modify the old map. So we do a special hack here to wait for
-    // the kernel to do a synchronize_rcu(). Once the kernel called
-    // synchronize_rcu(), the config we just updated will be available to all cores
-    // and the next eBPF programs triggered inside the kernel will use the new
-    // map configuration. So once this function returns we can safely modify the
-    // old stats map without concerning about race between the kernel and
-    // userspace.
-    int ret = synchronizeKernelRCU();
-    if (ret) {
-        ALOGE("map swap synchronize_rcu() ended with failure: %s", strerror(-ret));
-        return ret;
-    }
-
-    // It is safe to read and clear the old map now.
-    ret = parseBpfNetworkStatsDetailInternal(lines, limitIfaces, limitTag, limitUid, statsMap,
-                                             ifaceIndexNameMap);
+    // It is safe to read and clear the old map now since the
+    // networkStatsFactory should call netd to swap the map in advance already.
+    int ret = parseBpfNetworkStatsDetailInternal(lines, limitIfaces, limitTag, limitUid, statsMap,
+                                                 ifaceIndexNameMap);
     if (ret) {
         ALOGE("parse detail network stats failed: %s", strerror(errno));
         return ret;
     }
 
-    res = statsMap.clear();
+    Status res = statsMap.clear();
     if (!isOk(res)) {
         ALOGE("Clean up current stats map failed: %s", strerror(res.code()));
         return -res.code();
