@@ -196,7 +196,8 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
                     .args(resolverParams.netId, resolverParams.servers, resolverParams.domains,
                           resolverParams.sampleValiditySeconds, resolverParams.successThreshold,
                           resolverParams.minSamples, resolverParams.maxSamples,
-                          resolverParams.baseTimeoutMsec, resolverParams.retryCount);
+                          resolverParams.baseTimeoutMsec, resolverParams.retryCount,
+                          resolverParams.tlsServers, resolverParams.tlsFingerprints);
 
     std::set<std::vector<uint8_t>> decoded_fingerprints;
     for (const std::string& fingerprint : resolverParams.tlsFingerprints) {
