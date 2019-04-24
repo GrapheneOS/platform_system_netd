@@ -39,8 +39,9 @@ class NetworkController;
 
 class ClatdController {
   public:
-    explicit ClatdController(NetworkController* controller) EXCLUDES(mutex);
-    virtual ~ClatdController() EXCLUDES(mutex);
+    explicit ClatdController(NetworkController* controller) EXCLUDES(mutex)
+        : mNetCtrl(controller){};
+    virtual ~ClatdController() EXCLUDES(mutex){};
 
     /* First thing init/startClatd/stopClatd/dump do is grab the mutex. */
     void init(void) EXCLUDES(mutex);

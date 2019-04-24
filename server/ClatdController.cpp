@@ -64,13 +64,6 @@ using android::netdutils::ScopedIndent;
 namespace android {
 namespace net {
 
-ClatdController::ClatdController(NetworkController* controller)
-        : mNetCtrl(controller) {
-}
-
-ClatdController::~ClatdController() {
-}
-
 void ClatdController::init(void) {
     std::lock_guard guard(mutex);
 
