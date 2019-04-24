@@ -139,9 +139,9 @@ TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
             ASSERT_EQ(ENOENT, tagResult.status().code());
             return;
         }
-        usleep(50);
+        usleep(5000);  // 5ms
     }
-    FAIL() << "socket tag still exist after 500ms";
+    FAIL() << "socket tag still exist after 50ms";
 }
 
 TEST_F(BpfBasicTest, TestChangeCounterSet) {
