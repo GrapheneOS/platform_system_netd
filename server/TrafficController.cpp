@@ -837,7 +837,13 @@ void TrafficController::setPermissionForUids(int permission, const std::vector<u
             // Clean up all permission information for the related uid if all the
             // packages related to it are uninstalled.
             mPrivilegedUser.erase(uid);
-            Status ret = mUidPermissionMap.deleteValue(uid);
+            if (mBpfLevel > BpfLevel::NONE) {
+                Status ret = mUidPermissionMap.deleteValue(uid);
+                if (!isOk(ret) && ret.code() != ENONET) {
+                    ALOGE("Failed to clean up the permission for %u: %s", uid,
+                          strerror(ret.code()));
+                }
+            }
         }
         return;
     }
@@ -845,6 +851,16 @@ void TrafficController::setPermissionForUids(int permission, const std::vector<u
     bool privileged = (permission & INetd::PERMISSION_UPDATE_DEVICE_STATS);
 
     for (uid_t uid : uids) {
+        if (privileged) {
+            mPrivilegedUser.insert(uid);
+        } else {
+            mPrivilegedUser.erase(uid);
+        }
+
+        // Skip the bpf map operation if not supported.
+        if (mBpfLevel == BpfLevel::NONE) {
+            continue;
+        }
         // The map stores all the permissions that the UID has, except if the only permission
         // the UID has is the INTERNET permission, then the UID should not appear in the map.
         if (permission != INetd::PERMISSION_INTERNET) {
@@ -858,12 +874,6 @@ void TrafficController::setPermissionForUids(int permission, const std::vector<u
             if (!isOk(ret) && ret.code() != ENOENT) {
                 ALOGE("Failed to remove uid %u from permission map: %s", uid, strerror(ret.code()));
             }
-        }
-
-        if (privileged) {
-            mPrivilegedUser.insert(uid);
-        } else {
-            mPrivilegedUser.erase(uid);
         }
     }
 }
