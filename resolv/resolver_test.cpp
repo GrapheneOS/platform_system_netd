@@ -17,6 +17,7 @@
 
 #define LOG_TAG "resolv_integration_test"
 
+#include <android-base/logging.h>
 #include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
@@ -95,17 +96,28 @@ ScopedAddrinfo safe_getaddrinfo(const char* node, const char* service,
 
 class ResolverTest : public ::testing::Test {
   public:
-    ResolverTest() {
-        // Use a shared static DNS listener for all tests to avoid registering lots of listeners
-        // which may be released late until process terminated. Currently, registered DNS listener
-        // is removed by binder death notification which is fired when the process hosting an
-        // IBinder has gone away. If every test in ResolverTest registers its DNS listener, Netd
-        // may temporarily hold lots of dead listeners until the unit test process terminates.
-        // TODO: Perhaps add an unregistering listener binder call or fork a listener process which
-        // could be terminated earlier.
-        static android::sp<DnsMetricsListener> listener =
-                new DnsMetricsListener(TEST_NETID /*monitor specific network*/);
-        mDnsMetricsListener = listener;
+    static void SetUpTestCase() {
+        // Get binder service.
+        // Note that |mDnsClient| is not used for getting binder service in this static function.
+        // The reason is that wants to keep |mDnsClient| as a non-static data member. |mDnsClient|
+        // which sets up device network configuration could be independent from every test.
+        // TODO: Perhaps add a static function in class DnsResponderClient to get binder service.
+        auto resolvBinder =
+                android::defaultServiceManager()->getService(android::String16("dnsresolver"));
+        auto resolvService = android::interface_cast<android::net::IDnsResolver>(resolvBinder);
+        ASSERT_NE(nullptr, resolvService.get());
+
+        // Subscribe the death recipient to the service IDnsResolver for detecting Netd death.
+        sResolvDeathRecipient = new ResolvDeathRecipient();
+        ASSERT_EQ(android::NO_ERROR, resolvBinder->linkToDeath(sResolvDeathRecipient));
+
+        // Subscribe the DNS listener for verifying DNS metrics event contents.
+        sDnsMetricsListener = new DnsMetricsListener(TEST_NETID /*monitor specific network*/);
+        ASSERT_TRUE(resolvService->registerEventListener(sDnsMetricsListener).isOk());
+
+        // Start the binder thread pool for listening DNS metrics events and receiving death
+        // recipient.
+        android::ProcessState::self()->startThreadPool();
     }
 
   protected:
@@ -115,19 +127,22 @@ class ResolverTest : public ::testing::Test {
         std::string addr;       // ipv4/v6 address
     };
 
-    void SetUp() {
-        mDnsClient.SetUp();
+    class ResolvDeathRecipient : public android::IBinder::DeathRecipient {
+      public:
+        ~ResolvDeathRecipient() override = default;
 
-        // Register the shared static DNS listener which may have been registered in previous test
-        // ResolverTest.
-        // TODO: Move the registration to SetUpTestCase which is called once before the first test.
-        auto status = mDnsClient.resolvService()->registerEventListener(mDnsMetricsListener);
-        ASSERT_TRUE(status.isOk() || status.serviceSpecificErrorCode() == EEXIST /*ignore*/);
+        // GTEST assertion macros are not invoked for generating a test failure in the death
+        // recipient because the macros can't indicate failed test if Netd died between tests.
+        // Moreover, continuing testing may have no meaningful after Netd death. Therefore, the
+        // death recipient aborts process by GTEST_LOG_(FATAL) once Netd died.
+        void binderDied(const android::wp<android::IBinder>& /*who*/) override {
+            constexpr char errorMessage[] = "Netd service died";
+            LOG(ERROR) << errorMessage;
+            GTEST_LOG_(FATAL) << errorMessage;
+        }
+    };
 
-        // Start the binder thread pool for listening DNS metrics events.
-        android::ProcessState::self()->startThreadPool();
-    }
-
+    void SetUp() { mDnsClient.SetUp(); }
     void TearDown() { mDnsClient.TearDown(); }
 
     void StartDns(test::DNSResponder& dns, const std::vector<DnsRecord>& records) {
@@ -141,18 +156,35 @@ class ResolverTest : public ::testing::Test {
 
     bool WaitForNat64Prefix(ExpectNat64PrefixStatus status,
                             std::chrono::milliseconds timeout = std::chrono::milliseconds(1000)) {
-        return mDnsMetricsListener->waitForNat64Prefix(status, timeout);
+        return sDnsMetricsListener->waitForNat64Prefix(status, timeout);
     }
 
     DnsResponderClient mDnsClient;
-    android::sp<DnsMetricsListener> mDnsMetricsListener;  // Initialized in constructor.
 
     static constexpr char kLocalHost[] = "localhost";
     static constexpr char kLocalHostAddr[] = "127.0.0.1";
     static constexpr char kIp6LocalHost[] = "ip6-localhost";
     static constexpr char kIp6LocalHostAddr[] = "::1";
     static constexpr char kHelloExampleCom[] = "hello.example.com.";
+
+    // Use a shared static DNS listener for all tests to avoid registering lots of listeners
+    // which may be released late until process terminated. Currently, registered DNS listener
+    // is removed by binder death notification which is fired when the process hosting an
+    // IBinder has gone away. If every test in ResolverTest registers its DNS listener, Netd
+    // may temporarily hold lots of dead listeners until the unit test process terminates.
+    // TODO: Perhaps add an unregistering listener binder call or fork a listener process which
+    // could be terminated earlier.
+    static android::sp<DnsMetricsListener> sDnsMetricsListener;  // Initialized in SetUpTestCase.
+
+    // Use a shared static death recipient to monitor the service death. The static death
+    // recipient could monitor the death not only during the test but also between tests.
+    static android::sp<ResolvDeathRecipient>
+            sResolvDeathRecipient;  // Initialized in SetUpTestCase.
 };
+
+// Initialize static member of class.
+android::sp<DnsMetricsListener> ResolverTest::sDnsMetricsListener;
+android::sp<ResolverTest::ResolvDeathRecipient> ResolverTest::sResolvDeathRecipient;
 
 TEST_F(ResolverTest, GetHostByName) {
     constexpr char nonexistent_host_name[] = "nonexistent.example.com.";
