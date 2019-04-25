@@ -45,7 +45,7 @@ constexpr uid_t TEST_UID = UID_MAX - 2;
 // A test tag arbitrarily selected.
 constexpr uint32_t TEST_TAG = 0xFF0F0F0F;
 
-constexpr uint32_t SOCK_CLOSE_WAIT_US = 10 * 1000;
+constexpr uint32_t SOCK_CLOSE_WAIT_US = 20 * 1000;
 constexpr uint32_t ENOBUFS_POLL_WAIT_US = 10 * 1000;
 
 using android::netdutils::Status;

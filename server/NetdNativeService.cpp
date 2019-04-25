@@ -852,13 +852,13 @@ binder::Status NetdNativeService::strictUidCleartextPenalty(int32_t uid, int32_t
 
 binder::Status NetdNativeService::clatdStart(const std::string& ifName,
                                              const std::string& nat64Prefix, std::string* v6Addr) {
-    NETD_LOCKING_RPC(gCtls->clatdCtrl.mutex, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
+    ENFORCE_ANY_PERMISSION(PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     int res = gCtls->clatdCtrl.startClatd(ifName.c_str(), nat64Prefix, v6Addr);
     return statusFromErrcode(res);
 }
 
 binder::Status NetdNativeService::clatdStop(const std::string& ifName) {
-    NETD_LOCKING_RPC(gCtls->clatdCtrl.mutex, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
+    ENFORCE_ANY_PERMISSION(PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     int res = gCtls->clatdCtrl.stopClatd(ifName.c_str());
     return statusFromErrcode(res);
 }

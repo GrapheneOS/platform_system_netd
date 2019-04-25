@@ -71,7 +71,9 @@ ClatdController::ClatdController(NetworkController* controller)
 ClatdController::~ClatdController() {
 }
 
-void ClatdController::Init(void) {
+void ClatdController::init(void) {
+    std::lock_guard guard(mutex);
+
     // TODO: should refactor into separate function for testability
     if (bpf::getBpfSupportLevel() == bpf::BpfLevel::NONE) {
         ALOGI("Pre-4.9 kernel or pre-P api shipping level - disabling clat ebpf.");
@@ -403,6 +405,7 @@ int ClatdController::ClatdTracker::init(const std::string& interface,
 
 int ClatdController::startClatd(const std::string& interface, const std::string& nat64Prefix,
                                 std::string* v6Str) {
+    std::lock_guard guard(mutex);
     ClatdTracker* existing = getClatdTracker(interface);
     if (existing != nullptr) {
         ALOGE("clatd pid=%d already started on %s", existing->pid, interface.c_str());
@@ -447,6 +450,7 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
 }
 
 int ClatdController::stopClatd(const std::string& interface) {
+    std::lock_guard guard(mutex);
     ClatdTracker* tracker = getClatdTracker(interface);
 
     if (tracker == nullptr) {

@@ -119,7 +119,7 @@ CommandListener::CommandListener() : FrameworkListener(SOCKET_NAME, true) {
     registerLockingCmd(new IdletimerControlCmd(), gCtls->idletimerCtrl.lock);
     registerLockingCmd(new ResolverCmd());
     registerLockingCmd(new FirewallCmd(), gCtls->firewallCtrl.lock);
-    registerLockingCmd(new ClatdCmd(), gCtls->clatdCtrl.mutex);
+    registerCmd(new ClatdCmd());
     registerLockingCmd(new NetworkCommand());
     registerLockingCmd(new StrictCmd(), gCtls->strictCtrl.lock);
 }
