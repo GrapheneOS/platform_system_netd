@@ -342,14 +342,9 @@ ClatdController::ClatdTracker* ClatdController::getClatdTracker(const std::strin
 }
 
 // Initializes a ClatdTracker for the specified interface.
-int ClatdController::ClatdTracker::init(const std::string& interface,
+int ClatdController::ClatdTracker::init(unsigned networkId, const std::string& interface,
                                         const std::string& nat64Prefix) {
-    netId = netCtrl->getNetworkForInterface(interface.c_str());
-    if (netId == NETID_UNSET) {
-        ALOGE("Interface %s not assigned to any netId", interface.c_str());
-        errno = ENODEV;
-        return -errno;
-    }
+    netId = networkId;
 
     fwmark.netId = netId;
     fwmark.explicitlySelected = true;
@@ -406,10 +401,16 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
         return -errno;
     }
 
-    ClatdTracker tracker(mNetCtrl);
-    if (int ret = tracker.init(interface, nat64Prefix)) {
-        return ret;
+    unsigned networkId = mNetCtrl->getNetworkForInterface(interface.c_str());
+    if (networkId == NETID_UNSET) {
+        ALOGE("Interface %s not assigned to any netId", interface.c_str());
+        errno = ENODEV;
+        return -errno;
     }
+
+    ClatdTracker tracker;
+    int ret = tracker.init(networkId, interface, nat64Prefix);
+    if (ret) return ret;
 
     std::string progname("clatd-");
     progname += tracker.iface;
