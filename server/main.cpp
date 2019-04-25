@@ -37,7 +37,6 @@
 #include <binder/IServiceManager.h>
 #include <netdutils/Stopwatch.h>
 
-#include "CommandListener.h"
 #include "Controllers.h"
 #include "FwmarkServer.h"
 #include "MDnsSdListener.h"
@@ -54,7 +53,6 @@
 using android::IPCThreadState;
 using android::status_t;
 using android::String16;
-using android::net::CommandListener;
 using android::net::FwmarkServer;
 using android::net::gCtls;
 using android::net::gLog;
@@ -105,10 +103,8 @@ int main() {
     // Before we do anything that could fork, mark CLOEXEC the UNIX sockets that we get from init.
     // FrameworkListener does this on initialization as well, but we only initialize these
     // components after having initialized other subsystems that can fork.
-    for (const auto& sock : { CommandListener::SOCKET_NAME,
-                              DNSPROXYLISTENER_SOCKET_NAME,
-                              FwmarkServer::SOCKET_NAME,
-                              MDnsSdListener::SOCKET_NAME }) {
+    for (const auto& sock :
+         {DNSPROXYLISTENER_SOCKET_NAME, FwmarkServer::SOCKET_NAME, MDnsSdListener::SOCKET_NAME}) {
         setCloseOnExec(sock);
     }
 
@@ -129,9 +125,6 @@ int main() {
 
     gCtls = new android::net::Controllers();
     gCtls->init();
-
-    CommandListener cl;
-    nm->setBroadcaster((SocketListener *) &cl);
 
     if (nm->start()) {
         ALOGE("Unable to start NetlinkManager (%s)", strerror(errno));
@@ -183,16 +176,6 @@ int main() {
         exit(1);
     }
     gLog.info("Registering NetdNativeService: %.1fms", subTime.getTimeAndReset());
-
-    /*
-     * Now that we're up, we can respond to commands. Starting the listener also tells
-     * NetworkManagementService that we are up and that our binder interface is ready.
-     */
-    if (cl.startListener()) {
-        ALOGE("Unable to start CommandListener (%s)", strerror(errno));
-        exit(1);
-    }
-    gLog.info("Starting CommandListener: %.1fms", subTime.getTimeAndReset());
 
     android::net::process::ScopedPidFile pidFile(PID_FILE_PATH);
 
