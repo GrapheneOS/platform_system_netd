@@ -127,7 +127,8 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
         char* ai_canonname;
         struct sockaddr* ai_addr;
         struct addrinfo* ai_next;
-        int expected_errorno;  // expected result
+
+        int expected_eai_error;
 
         std::string asParameters() const {
             return StringPrintf("0x%x/%u/%s/%p/%p", ai_flags, ai_addrlen,
@@ -163,7 +164,7 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
 
         rv = android_getaddrinfofornetcontext("localhost", nullptr /*servname*/, &hints,
                                               &mNetcontext, &result);
-        EXPECT_EQ(config.expected_errorno, rv);
+        EXPECT_EQ(config.expected_eai_error, rv);
 
         if (result) {
             freeaddrinfo(result);
@@ -252,7 +253,8 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_PortNameAndNumber) {
         int ai_family;
         int ai_socktype;
         const char* servname;
-        int expected_errorno;  // expected result
+
+        int expected_eai_error;
 
         std::string asParameters() const {
             return StringPrintf("0x%x/%d/%d/%s", ai_flags, ai_family, ai_socktype,
@@ -316,7 +318,7 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_PortNameAndNumber) {
         struct addrinfo* result = nullptr;
         int rv = android_getaddrinfofornetcontext("localhost", config.servname, &hints,
                                                   &mNetcontext, &result);
-        EXPECT_EQ(config.expected_errorno, rv);
+        EXPECT_EQ(config.expected_eai_error, rv);
 
         if (result) freeaddrinfo(result);
     }
@@ -394,17 +396,17 @@ TEST_F(GetAddrInfoForNetContextTest, ServerResponseError) {
 
     static const struct TestConfig {
         ns_rcode rcode;
-        int expected_errorno;  // expected result
+        int expected_eai_error;
 
         // Only test failure RCODE [1..5] in RFC 1035 section 4.1.1 and skip successful RCODE 0
         // which means no error.
     } testConfigs[]{
             // clang-format off
-            {ns_rcode::ns_r_formerr, EAI_FAIL},
+            {ns_rcode::ns_r_formerr,  EAI_FAIL},
             {ns_rcode::ns_r_servfail, EAI_AGAIN},
             {ns_rcode::ns_r_nxdomain, EAI_NODATA},
-            {ns_rcode::ns_r_notimpl, EAI_FAIL},
-            {ns_rcode::ns_r_refused, EAI_FAIL},
+            {ns_rcode::ns_r_notimpl,  EAI_FAIL},
+            {ns_rcode::ns_r_refused,  EAI_FAIL},
             // clang-format on
     };
 
@@ -425,7 +427,7 @@ TEST_F(GetAddrInfoForNetContextTest, ServerResponseError) {
         const struct addrinfo hints = {.ai_family = AF_UNSPEC};
         int rv =
                 android_getaddrinfofornetcontext(host_name, nullptr, &hints, &mNetcontext, &result);
-        EXPECT_EQ(config.expected_errorno, rv);
+        EXPECT_EQ(config.expected_eai_error, rv);
 
         if (result) freeaddrinfo(result);
     }
@@ -519,7 +521,7 @@ TEST_F(GetHostByNameForNetContextTest, ServerResponseError) {
 
     static const struct TestConfig {
         ns_rcode rcode;
-        int expected_errorno;  // expected result
+        int expected_eai_error;  // expected result
 
         // Only test failure RCODE [1..5] in RFC 1035 section 4.1.1 and skip successful RCODE 0
         // which means no error. Note that the return error codes aren't mapped by rcode in the
@@ -551,7 +553,7 @@ TEST_F(GetHostByNameForNetContextTest, ServerResponseError) {
         struct hostent* hp = nullptr;
         int rv = android_gethostbynamefornetcontext(host_name, AF_INET, &mNetcontext, &hp);
         EXPECT_TRUE(hp == nullptr);
-        EXPECT_EQ(config.expected_errorno, rv);
+        EXPECT_EQ(config.expected_eai_error, rv);
     }
 }
 
