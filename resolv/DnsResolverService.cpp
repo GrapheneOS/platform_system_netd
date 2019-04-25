@@ -36,6 +36,7 @@
 #include "netdutils/DumpWriter.h"
 #include "resolv_cache.h"
 
+using aidl::android::net::ResolverParamsParcel;
 using android::base::Join;
 using android::base::StringPrintf;
 using android::netdutils::DumpWriter;
@@ -186,19 +187,20 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
 }  // namespace
 
 ::ndk::ScopedAStatus DnsResolverService::setResolverConfiguration(
-        int32_t netId, const std::vector<std::string>& servers,
-        const std::vector<std::string>& domains, const std::vector<int32_t>& params,
-        const std::string& tlsName, const std::vector<std::string>& tlsServers,
-        const std::vector<std::string>& tlsFingerprints) {
+        const ResolverParamsParcel& resolverParams) {
     // Locking happens in PrivateDnsConfiguration and res_* functions.
     ENFORCE_INTERNAL_PERMISSIONS();
     auto entry =
             gDnsResolverLog.newEntry()
                     .prettyFunction(__PRETTY_FUNCTION__)
-                    .args(netId, servers, domains, params, tlsName, tlsServers, tlsFingerprints);
+                    .args(resolverParams.netId, resolverParams.servers, resolverParams.domains,
+                          resolverParams.sampleValiditySeconds, resolverParams.successThreshold,
+                          resolverParams.minSamples, resolverParams.maxSamples,
+                          resolverParams.baseTimeoutMsec, resolverParams.retryCount,
+                          resolverParams.tlsServers, resolverParams.tlsFingerprints);
 
     std::set<std::vector<uint8_t>> decoded_fingerprints;
-    for (const std::string& fingerprint : tlsFingerprints) {
+    for (const std::string& fingerprint : resolverParams.tlsFingerprints) {
         std::vector<uint8_t> decoded = parseBase64(fingerprint);
         if (decoded.empty()) {
             return ::ndk::ScopedAStatus(AStatus_fromServiceSpecificErrorWithMessage(
@@ -207,8 +209,8 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
         decoded_fingerprints.emplace(decoded);
     }
 
-    int err = gDnsResolv->resolverCtrl.setResolverConfiguration(
-            netId, servers, domains, params, tlsName, tlsServers, decoded_fingerprints);
+    int err =
+            gDnsResolv->resolverCtrl.setResolverConfiguration(resolverParams, decoded_fingerprints);
 
     gResNetdCallbacks.log(entry.returns(err).withAutomaticDuration().toString().c_str());
     if (err != 0) {

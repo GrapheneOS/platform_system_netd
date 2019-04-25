@@ -46,6 +46,7 @@ using android::sp;
 using android::String16;
 using android::String8;
 using android::net::IDnsResolver;
+using android::net::ResolverParamsParcel;
 using android::net::ResolverStats;
 using android::net::metrics::INetdEventListener;
 using android::net::metrics::TestOnDnsEvent;
@@ -89,7 +90,41 @@ std::string base64Encode(const std::vector<uint8_t>& input) {
     uint8_t output_bytes[out_len];
     EXPECT_EQ(out_len - 1, EVP_EncodeBlock(output_bytes, input.data(), input.size()));
     return std::string(reinterpret_cast<char*>(output_bytes));
-}  // namespace
+}
+
+// TODO: Convert tests to ResolverParamsParcel and delete this stub.
+ResolverParamsParcel makeResolverParamsParcel(int netId, const std::vector<int>& params,
+                                              const std::vector<std::string>& servers,
+                                              const std::vector<std::string>& domains,
+                                              const std::string& tlsHostname,
+                                              const std::vector<std::string>& tlsServers,
+                                              const std::vector<std::string>& tlsFingerprints) {
+    using android::net::IDnsResolver;
+    ResolverParamsParcel paramsParcel;
+
+    paramsParcel.netId = netId;
+    paramsParcel.sampleValiditySeconds = params[IDnsResolver::RESOLVER_PARAMS_SAMPLE_VALIDITY];
+    paramsParcel.successThreshold = params[IDnsResolver::RESOLVER_PARAMS_SUCCESS_THRESHOLD];
+    paramsParcel.minSamples = params[IDnsResolver::RESOLVER_PARAMS_MIN_SAMPLES];
+    paramsParcel.maxSamples = params[IDnsResolver::RESOLVER_PARAMS_MAX_SAMPLES];
+    if (params.size() > IDnsResolver::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC) {
+        paramsParcel.baseTimeoutMsec = params[IDnsResolver::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC];
+    } else {
+        paramsParcel.baseTimeoutMsec = 0;
+    }
+    if (params.size() > IDnsResolver::RESOLVER_PARAMS_RETRY_COUNT) {
+        paramsParcel.retryCount = params[IDnsResolver::RESOLVER_PARAMS_RETRY_COUNT];
+    } else {
+        paramsParcel.retryCount = 0;
+    }
+    paramsParcel.servers = servers;
+    paramsParcel.domains = domains;
+    paramsParcel.tlsName = tlsHostname;
+    paramsParcel.tlsServers = tlsServers;
+    paramsParcel.tlsFingerprints = tlsFingerprints;
+
+    return paramsParcel;
+}
 
 }  // namespace
 
@@ -185,7 +220,6 @@ TEST_F(DnsResolverBinderTest, SetResolverConfiguration_Tls) {
     std::vector<uint8_t> long_fp(SHA256_SIZE + 1);
     std::vector<std::string> test_domains;
     std::vector<int> test_params = {300, 25, 8, 8};
-    unsigned test_netid = 0;
     static const struct TestData {
         const std::vector<std::string> servers;
         const std::string tlsName;
@@ -213,9 +247,10 @@ TEST_F(DnsResolverBinderTest, SetResolverConfiguration_Tls) {
         for (const auto& fingerprint : td.tlsFingerprints) {
             fingerprints.push_back(base64Encode(fingerprint));
         }
-        binder::Status status = mDnsResolver->setResolverConfiguration(
-                test_netid, LOCALLY_ASSIGNED_DNS, test_domains, test_params, td.tlsName, td.servers,
-                fingerprints);
+        const auto resolverParams =
+                makeResolverParamsParcel(TEST_NETID, test_params, LOCALLY_ASSIGNED_DNS,
+                                         test_domains, td.tlsName, td.servers, fingerprints);
+        binder::Status status = mDnsResolver->setResolverConfiguration(resolverParams);
 
         if (td.expectedReturnCode == 0) {
             SCOPED_TRACE(String8::format("test case %zu should have passed", i));
@@ -227,9 +262,11 @@ TEST_F(DnsResolverBinderTest, SetResolverConfiguration_Tls) {
             EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
         }
     }
+
     // Ensure TLS is disabled before the start of the next test.
-    mDnsResolver->setResolverConfiguration(test_netid, kTlsTestData[0].servers, test_domains,
-                                           test_params, "", {}, {});
+    const auto resolverParams = makeResolverParamsParcel(
+            TEST_NETID, test_params, kTlsTestData[0].servers, test_domains, "", {}, {});
+    mDnsResolver->setResolverConfiguration(resolverParams);
 }
 
 TEST_F(DnsResolverBinderTest, GetResolverInfo) {
@@ -242,8 +279,9 @@ TEST_F(DnsResolverBinderTest, GetResolverInfo) {
             100,     // BASE_TIMEOUT_MSEC
             2,       // retry count
     };
-    binder::Status status = mDnsResolver->setResolverConfiguration(TEST_NETID, servers, domains,
-                                                                   testParams, "", {}, {});
+    const auto resolverParams =
+            makeResolverParamsParcel(TEST_NETID, testParams, servers, domains, "", {}, {});
+    binder::Status status = mDnsResolver->setResolverConfiguration(resolverParams);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 
     std::vector<std::string> res_servers;

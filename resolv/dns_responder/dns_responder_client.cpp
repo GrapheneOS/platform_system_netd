@@ -29,6 +29,7 @@ static const char* ANDROID_DNS_MODE = "ANDROID_DNS_MODE";
 
 using android::base::StringPrintf;
 using android::net::INetd;
+using android::net::ResolverParamsParcel;
 
 void DnsResponderClient::SetupMappings(unsigned num_hosts, const std::vector<std::string>& domains,
         std::vector<Mapping>* mappings) {
@@ -46,10 +47,45 @@ void DnsResponderClient::SetupMappings(unsigned num_hosts, const std::vector<std
     }
 }
 
+// TODO: Use SetResolverConfiguration() with ResolverParamsParcel struct directly.
+// DEPRECATED: Use SetResolverConfiguration() in new code
+static ResolverParamsParcel makeResolverParamsParcel(
+        int netId, const std::vector<int>& params, const std::vector<std::string>& servers,
+        const std::vector<std::string>& domains, const std::string& tlsHostname,
+        const std::vector<std::string>& tlsServers,
+        const std::vector<std::string>& tlsFingerprints) {
+    using android::net::IDnsResolver;
+    ResolverParamsParcel paramsParcel;
+
+    paramsParcel.netId = netId;
+    paramsParcel.sampleValiditySeconds = params[IDnsResolver::RESOLVER_PARAMS_SAMPLE_VALIDITY];
+    paramsParcel.successThreshold = params[IDnsResolver::RESOLVER_PARAMS_SUCCESS_THRESHOLD];
+    paramsParcel.minSamples = params[IDnsResolver::RESOLVER_PARAMS_MIN_SAMPLES];
+    paramsParcel.maxSamples = params[IDnsResolver::RESOLVER_PARAMS_MAX_SAMPLES];
+    if (params.size() > IDnsResolver::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC) {
+        paramsParcel.baseTimeoutMsec = params[IDnsResolver::RESOLVER_PARAMS_BASE_TIMEOUT_MSEC];
+    } else {
+        paramsParcel.baseTimeoutMsec = 0;
+    }
+    if (params.size() > IDnsResolver::RESOLVER_PARAMS_RETRY_COUNT) {
+        paramsParcel.retryCount = params[IDnsResolver::RESOLVER_PARAMS_RETRY_COUNT];
+    } else {
+        paramsParcel.retryCount = 0;
+    }
+    paramsParcel.servers = servers;
+    paramsParcel.domains = domains;
+    paramsParcel.tlsName = tlsHostname;
+    paramsParcel.tlsServers = tlsServers;
+    paramsParcel.tlsFingerprints = tlsFingerprints;
+
+    return paramsParcel;
+}
+
 bool DnsResponderClient::SetResolversForNetwork(const std::vector<std::string>& servers,
         const std::vector<std::string>& domains, const std::vector<int>& params) {
-    const auto rv = mDnsResolvSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
-                                                            "", {}, {});
+    const auto& resolverParams =
+            makeResolverParamsParcel(TEST_NETID, params, servers, domains, "", {}, {});
+    const auto rv = mDnsResolvSrv->setResolverConfiguration(resolverParams);
     return rv.isOk();
 }
 
@@ -57,8 +93,9 @@ bool DnsResponderClient::SetResolversWithTls(const std::vector<std::string>& ser
         const std::vector<std::string>& domains, const std::vector<int>& params,
         const std::vector<std::string>& tlsServers,
         const std::string& name, const std::vector<std::string>& fingerprints) {
-    const auto rv = mDnsResolvSrv->setResolverConfiguration(TEST_NETID, servers, domains, params,
-                                                            name, tlsServers, fingerprints);
+    const auto& resolverParams = makeResolverParamsParcel(TEST_NETID, params, servers, domains,
+                                                          name, tlsServers, fingerprints);
+    const auto rv = mDnsResolvSrv->setResolverConfiguration(resolverParams);
     if (!rv.isOk()) ALOGI("SetResolversWithTls() -> %s", rv.toString8().c_str());
     return rv.isOk();
 }
