@@ -40,8 +40,8 @@ public:
     void add(const UidRanges& other);
     void remove(const UidRanges& other);
 
-private:
-  std::vector<UidRangeParcel> mRanges;
+  private:
+    std::vector<UidRangeParcel> mRanges;
 };
 
 }  // namespace net
