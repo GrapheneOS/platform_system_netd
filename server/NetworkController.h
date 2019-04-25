@@ -85,10 +85,10 @@ class VirtualNetwork;
 class NetworkController {
 public:
     // NetIds 52..98 are reserved for future use.
-    static const unsigned MIN_OEM_ID = 1;
-    static const unsigned MAX_OEM_ID = 50;
-    static const unsigned LOCAL_NET_ID = INetd::LOCAL_NET_ID;
-    static const unsigned DUMMY_NET_ID = 51;
+    static constexpr int MIN_OEM_ID = 1;
+    static constexpr int MAX_OEM_ID = 50;
+    static constexpr int LOCAL_NET_ID = INetd::LOCAL_NET_ID;
+    static constexpr int DUMMY_NET_ID = 51;
 
     NetworkController();
 
