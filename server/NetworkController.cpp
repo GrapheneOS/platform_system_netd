@@ -23,16 +23,15 @@
 // acquiring the lock. Private functions in this file should call xxxLocked() methods and access
 // internal state directly.
 
-#include "NetworkController.h"
-
 #define LOG_TAG "Netd"
-#include "log/log.h"
+
+#include "NetworkController.h"
 
 #include <android-base/strings.h>
 #include <cutils/misc.h>  // FIRST_APPLICATION_UID
 #include <netd_resolv/resolv.h>
 #include <netd_resolv/resolv_stub.h>
-#include "android/net/INetd.h"
+#include "log/log.h"
 
 #include "Controllers.h"
 #include "DummyNetwork.h"
@@ -58,12 +57,6 @@ const unsigned MIN_NET_ID = 100;
 const unsigned MAX_NET_ID = 65535;
 
 }  // namespace
-
-const unsigned NetworkController::MIN_OEM_ID   =  1;
-const unsigned NetworkController::MAX_OEM_ID   = 50;
-const unsigned NetworkController::DUMMY_NET_ID = 51;
-// NetIds 52..98 are reserved for future use.
-const unsigned NetworkController::LOCAL_NET_ID = INetd::LOCAL_NET_ID;
 
 // All calls to methods here are made while holding a write lock on mRWLock.
 // They are mostly not called directly from this class, but from methods in PhysicalNetwork.cpp.
