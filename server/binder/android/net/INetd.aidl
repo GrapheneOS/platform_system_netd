@@ -1187,4 +1187,11 @@ interface INetd {
     *         cause of the failure.
     */
     void trafficSwapActiveStatsMap();
+
+   /**
+    * Retrieves OEM netd listener interface
+    *
+    * @return a IBinder object, it could be casted to oem specific interface.
+    */
+    IBinder getOemNetd();
 }
