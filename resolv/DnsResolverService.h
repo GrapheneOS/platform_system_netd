@@ -48,7 +48,8 @@ class DnsResolverService : public aidl::android::net::BnDnsResolver {
             std::vector<std::string>* tlsServers, std::vector<int32_t>* params,
             std::vector<int32_t>* stats,
             std::vector<int32_t>* wait_for_pending_req_timeout_count) override;
-    ::ndk::ScopedAStatus clearResolverConfiguration(int32_t netId) override;
+    ::ndk::ScopedAStatus destroyNetworkCache(int32_t netId) override;
+    ::ndk::ScopedAStatus createNetworkCache(int32_t netId) override;
 
     // DNS64-related commands
     ::ndk::ScopedAStatus startPrefix64Discovery(int32_t netId) override;
