@@ -246,6 +246,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status registerUnsolicitedEventListener(
             const android::sp<android::net::INetdUnsolicitedEventListener>& listener) override;
 
+    binder::Status getOemNetd(android::sp<android::IBinder>* listener) override;
+
   private:
     std::vector<uid_t> intsToUids(const std::vector<int32_t>& intUids);
     Permission convertPermission(int32_t permission);
