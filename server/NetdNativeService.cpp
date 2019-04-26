@@ -1254,5 +1254,11 @@ binder::Status NetdNativeService::registerUnsolicitedEventListener(
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::getOemNetd(android::sp<android::IBinder>* listener) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    *listener = nullptr;
+    return binder::Status::ok();
+}
+
 }  // namespace net
 }  // namespace android
