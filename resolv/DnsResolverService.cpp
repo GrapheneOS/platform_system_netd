@@ -278,14 +278,26 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
     return ::ndk::ScopedAStatus(AStatus_newOk());
 }
 
-::ndk::ScopedAStatus DnsResolverService::clearResolverConfiguration(int netId) {
+::ndk::ScopedAStatus DnsResolverService::destroyNetworkCache(int netId) {
+    // Locking happens in res_cache.cpp functions.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
     auto entry = gDnsResolverLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(netId);
 
-    gDnsResolv->resolverCtrl.clearDnsServers(netId);
+    gDnsResolv->resolverCtrl.destroyNetworkCache(netId);
 
     gResNetdCallbacks.log(entry.withAutomaticDuration().toString().c_str());
     return ::ndk::ScopedAStatus(AStatus_newOk());
+}
+
+::ndk::ScopedAStatus DnsResolverService::createNetworkCache(int netId) {
+    // Locking happens in res_cache.cpp functions.
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    auto entry = gDnsResolverLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(netId);
+
+    int res = gDnsResolv->resolverCtrl.createNetworkCache(netId);
+
+    gResNetdCallbacks.log(entry.returns(res).withAutomaticDuration().toString().c_str());
+    return statusFromErrcode(res);
 }
 
 }  // namespace net

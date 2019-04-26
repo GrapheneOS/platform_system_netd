@@ -41,9 +41,13 @@ namespace net {
 // functions of class ResolverTest and class DnsResponderClient.
 class TestBase : public ::testing::Test {
   protected:
-    void TearDown() {
+    void SetUp() override {
+        // Create cache for test
+        resolv_create_cache_for_net(TEST_NETID);
+    }
+    void TearDown() override {
+        // Delete cache for test
         resolv_delete_cache_for_net(TEST_NETID);
-        resolv_set_nameservers_for_net(TEST_NETID, nullptr, 0, "", nullptr);
     }
 
     static std::string ToString(const hostent* he) {
