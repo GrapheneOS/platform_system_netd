@@ -1089,7 +1089,7 @@ int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** a
             return operationError(cli, "destroyNetwork() failed",
                                   status.serviceSpecificErrorCode());
         }
-        mDnsResolver->clearResolverConfiguration(netId);
+        mDnsResolver->destroyNetworkCache(netId);
         return success(cli);
     }
 
