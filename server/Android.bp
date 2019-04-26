@@ -39,7 +39,10 @@ aidl_interface {
             gen_log: true,
         },
     },
-    versions: ["1"],
+    versions: [
+        "1",
+        "2",
+    ],
 }
 
 // Modules common to both netd and netd_unit_test
