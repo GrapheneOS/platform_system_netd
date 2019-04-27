@@ -15,7 +15,6 @@
  */
 
 #define LOG_TAG "ResolverController"
-#define DBG 0
 
 #include "ResolverController.h"
 
@@ -26,8 +25,8 @@
 #include <netdb.h>
 
 #include <aidl/android/net/IDnsResolver.h>
+#include <android-base/logging.h>
 #include <android-base/strings.h>
-#include <log/log.h>
 
 #include "Dns64Configuration.h"
 #include "DnsResolver.h"
@@ -86,7 +85,7 @@ constexpr const char* validationStatusToString(Validation value) {
 void sendNat64PrefixEvent(const Dns64Configuration::Nat64PrefixInfo& args) {
     const auto& listeners = ResolverEventReporter::getInstance().getListeners();
     if (listeners.size() == 0) {
-        ALOGE("No available listener. dropping NAT64 prefix event");
+        LOG(ERROR) << __func__ << ": No available listener. dropping NAT64 prefix event";
         return;
     }
     for (const auto& it : listeners) {
@@ -132,7 +131,7 @@ int getDnsInfo(unsigned netId, std::vector<std::string>* servers, std::vector<st
 
     // Verify that the returned data is sane.
     if (nscount < 0 || nscount > MAXNS || dcount < 0 || dcount > MAXDNSRCH) {
-        ALOGE("%s: nscount=%d, dcount=%d", __FUNCTION__, nscount, dcount);
+        LOG(ERROR) << __func__ << ": nscount = " << nscount << ", dcount = " << dcount;
         return -ENOTRECOVERABLE;
     }
 
@@ -152,7 +151,7 @@ int getDnsInfo(unsigned netId, std::vector<std::string>* servers, std::vector<st
         if (rv == 0) {
             server_str.assign(hbuf);
         } else {
-            ALOGE("getnameinfo() failed for server #%d: %s", i, gai_strerror(rv));
+            LOG(ERROR) << "getnameinfo() failed for server #" << i << ": " << gai_strerror(rv);
             server_str.assign("<invalid>");
         }
         servers->push_back(std::move(server_str));
@@ -181,14 +180,18 @@ ResolverController::ResolverController()
               },
               std::bind(sendNat64PrefixEvent, _1)) {}
 
-int ResolverController::clearDnsServers(unsigned netId) {
-    if (DBG) {
-        ALOGD("clearDnsServers netId = %u\n", netId);
-    }
+void ResolverController::destroyNetworkCache(unsigned netId) {
+    LOG(VERBOSE) << __func__ << ": netId = " << netId;
+
     resolv_delete_cache_for_net(netId);
     mDns64Configuration.stopPrefixDiscovery(netId);
     resolv_delete_private_dns_for_net(netId);
-    return 0;
+}
+
+int ResolverController::createNetworkCache(unsigned netId) {
+    LOG(VERBOSE) << __func__ << ": netId = " << netId;
+
+    return resolv_create_cache_for_net(netId);
 }
 
 // TODO: remove below functions and call into PrivateDnsConfiguration directly.
@@ -249,10 +252,9 @@ int ResolverController::setResolverConfiguration(
     res_params.base_timeout_msec = resolverParams.baseTimeoutMsec;
     res_params.retry_count = resolverParams.retryCount;
 
-    if (DBG) {
-        ALOGD("setDnsServers netId = %u, numservers = %zu", resolverParams.netId,
-              resolverParams.domains.size());
-    }
+    LOG(VERBOSE) << "setDnsServers netId = " << resolverParams.netId
+                 << ", numservers = " << resolverParams.domains.size();
+
     return -resolv_set_nameservers_for_net(resolverParams.netId, server_ptrs.data(),
                                            server_ptrs.size(), domains_str.c_str(), &res_params);
 }
@@ -304,7 +306,8 @@ void ResolverController::stopPrefix64Discovery(int32_t netId) {
 int ResolverController::getPrefix64(unsigned netId, netdutils::IPPrefix* prefix) {
     netdutils::IPPrefix p = mDns64Configuration.getPrefix64(netId);
     if (p.family() != AF_INET6 || p.length() == 0) {
-        ALOGE("No valid NAT64 prefix (%d,%s)\n", netId, p.toString().c_str());
+        LOG(ERROR) << "No valid NAT64 prefix (" << netId << ", " << p.toString().c_str() << ")";
+
         return -ENOENT;
     }
     *prefix = p;
