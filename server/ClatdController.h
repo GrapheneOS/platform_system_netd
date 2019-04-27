@@ -39,8 +39,9 @@ class NetworkController;
 
 class ClatdController {
   public:
-    explicit ClatdController(NetworkController* controller) EXCLUDES(mutex);
-    virtual ~ClatdController() EXCLUDES(mutex);
+    explicit ClatdController(NetworkController* controller) EXCLUDES(mutex)
+        : mNetCtrl(controller){};
+    virtual ~ClatdController() EXCLUDES(mutex){};
 
     /* First thing init/startClatd/stopClatd/dump do is grab the mutex. */
     void init(void) EXCLUDES(mutex);
@@ -53,7 +54,6 @@ class ClatdController {
 
   private:
     struct ClatdTracker {
-        const NetworkController* netCtrl = nullptr;
         pid_t pid = -1;
         unsigned ifIndex;
         char iface[IFNAMSIZ];
@@ -68,10 +68,7 @@ class ClatdController {
         in6_addr pfx96;
         char pfx96String[INET6_ADDRSTRLEN];
 
-        ClatdTracker() = default;
-        explicit ClatdTracker(const NetworkController* netCtrl) : netCtrl(netCtrl) {}
-
-        int init(const std::string& interface, const std::string& nat64Prefix);
+        int init(unsigned networkId, const std::string& interface, const std::string& nat64Prefix);
     };
 
     std::mutex mutex;

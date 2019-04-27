@@ -130,9 +130,18 @@ interface IDnsResolver {
     @utf8InCpp String getPrefix64(int netId);
 
     /**
-     * Clear DNS servers and resolver configurations for the given network.
+     * Create cache for the given network.
      *
-     * @param netId the network ID of the network to clear.
+     * @param netId the network ID of the network to create.
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *         cause of the failure.
      */
-    void clearResolverConfiguration(int netId);
+    void createNetworkCache(int netId);
+
+    /**
+     * Destroy cache for the given network.
+     *
+     * @param netId the network ID of the network to destroy.
+     */
+    void destroyNetworkCache(int netId);
 }
