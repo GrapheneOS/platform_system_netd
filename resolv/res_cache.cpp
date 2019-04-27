@@ -1161,8 +1161,8 @@ static std::mutex cache_mutex;
 static std::condition_variable cv;
 
 /* gets cache associated with a network, or NULL if none exists */
-static struct resolv_cache* find_named_cache_locked(unsigned netid) REQUIRES(cache_mutex);
-static resolv_cache* get_res_cache_for_net_locked(unsigned netid) REQUIRES(cache_mutex);
+static resolv_cache* find_named_cache_locked(unsigned netid) REQUIRES(cache_mutex);
+static int resolv_create_cache_for_net_locked(unsigned netid) REQUIRES(cache_mutex);
 
 static void cache_flush_pending_requests_locked(struct resolv_cache* cache) {
     resolv_cache::pending_req_info *ri, *tmp;
@@ -1602,23 +1602,31 @@ bool resolv_has_nameservers(unsigned netid) {
     return (info != nullptr) && (info->nscount > 0);
 }
 
-// look up the named cache, and creates one if needed
-static resolv_cache* get_res_cache_for_net_locked(unsigned netid) {
+static int resolv_create_cache_for_net_locked(unsigned netid) {
     resolv_cache* cache = find_named_cache_locked(netid);
-    if (!cache) {
-        resolv_cache_info* cache_info = create_cache_info();
-        if (cache_info) {
-            cache = resolv_cache_create();
-            if (cache) {
-                cache_info->cache = cache;
-                cache_info->netid = netid;
-                insert_cache_info_locked(cache_info);
-            } else {
-                free(cache_info);
-            }
-        }
+    // Should not happen
+    if (cache) {
+        LOG(ERROR) << __func__ << ": Cache is already created, netId: " << netid;
+        return -EEXIST;
     }
-    return cache;
+
+    resolv_cache_info* cache_info = create_cache_info();
+    if (!cache_info) return -ENOMEM;
+    cache = resolv_cache_create();
+    if (!cache) {
+        free(cache_info);
+        return -ENOMEM;
+    }
+    cache_info->cache = cache;
+    cache_info->netid = netid;
+    insert_cache_info_locked(cache_info);
+
+    return 0;
+}
+
+int resolv_create_cache_for_net(unsigned netid) {
+    std::lock_guard guard(cache_mutex);
+    return resolv_create_cache_for_net_locked(netid);
 }
 
 void resolv_delete_cache_for_net(unsigned netid) {
@@ -1740,78 +1748,76 @@ int resolv_set_nameservers_for_net(unsigned netid, const char** servers, const i
     }
 
     std::lock_guard guard(cache_mutex);
-    // creates the cache if not created
-    get_res_cache_for_net_locked(netid);
 
     resolv_cache_info* cache_info = find_cache_info_locked(netid);
 
-    if (cache_info != NULL) {
-        uint8_t old_max_samples = cache_info->params.max_samples;
-        if (params != NULL) {
-            cache_info->params = *params;
-        } else {
-            resolv_set_default_params(&cache_info->params);
-        }
-        resolv_set_experiment_params(&cache_info->params);
-        if (!resolv_is_nameservers_equal_locked(cache_info, servers, numservers)) {
-            // free current before adding new
-            free_nameservers_locked(cache_info);
-            for (int i = 0; i < numservers; i++) {
-                cache_info->nsaddrinfo[i] = nsaddrinfo[i];
-                cache_info->nameservers[i] = strdup(servers[i]);
-                LOG(INFO) << __func__ << ": netid = " << netid << ", addr = " << servers[i];
-            }
-            cache_info->nscount = numservers;
+    if (cache_info == NULL) return ENONET;
 
-            // Clear the NS statistics because the mapping to nameservers might have changed.
-            res_cache_clear_stats_locked(cache_info);
-
-            // increment the revision id to ensure that sample state is not written back if the
-            // servers change; in theory it would suffice to do so only if the servers or
-            // max_samples actually change, in practice the overhead of checking is higher than the
-            // cost, and overflows are unlikely
-            ++cache_info->revision_id;
-        } else {
-            if (cache_info->params.max_samples != old_max_samples) {
-                // If the maximum number of samples changes, the overhead of keeping the most recent
-                // samples around is not considered worth the effort, so they are cleared instead.
-                // All other parameters do not affect shared state: Changing these parameters does
-                // not invalidate the samples, as they only affect aggregation and the conditions
-                // under which servers are considered usable.
-                res_cache_clear_stats_locked(cache_info);
-                ++cache_info->revision_id;
-            }
-            for (int j = 0; j < numservers; j++) {
-                freeaddrinfo(nsaddrinfo[j]);
-            }
-        }
-
-        // Always update the search paths, since determining whether they actually changed is
-        // complex due to the zero-padding, and probably not worth the effort. Cache-flushing
-        // however is not necessary, since the stored cache entries do contain the domain, not
-        // just the host name.
-        strlcpy(cache_info->defdname, domains, sizeof(cache_info->defdname));
-        if ((cp = strchr(cache_info->defdname, '\n')) != NULL) *cp = '\0';
-        LOG(INFO) << __func__ << ": domains=\"" << cache_info->defdname << "\"";
-
-        cp = cache_info->defdname;
-        offset = cache_info->dnsrch_offset;
-        while (offset < cache_info->dnsrch_offset + MAXDNSRCH) {
-            while (*cp == ' ' || *cp == '\t') /* skip leading white space */
-                cp++;
-            if (*cp == '\0') /* stop if nothing more to do */
-                break;
-            *offset++ = cp - cache_info->defdname; /* record this search domain */
-            while (*cp) {                          /* zero-terminate it */
-                if (*cp == ' ' || *cp == '\t') {
-                    *cp++ = '\0';
-                    break;
-                }
-                cp++;
-            }
-        }
-        *offset = -1; /* cache_info->dnsrch_offset has MAXDNSRCH+1 items */
+    uint8_t old_max_samples = cache_info->params.max_samples;
+    if (params != NULL) {
+        cache_info->params = *params;
+    } else {
+        resolv_set_default_params(&cache_info->params);
     }
+    resolv_set_experiment_params(&cache_info->params);
+    if (!resolv_is_nameservers_equal_locked(cache_info, servers, numservers)) {
+        // free current before adding new
+        free_nameservers_locked(cache_info);
+        for (int i = 0; i < numservers; i++) {
+            cache_info->nsaddrinfo[i] = nsaddrinfo[i];
+            cache_info->nameservers[i] = strdup(servers[i]);
+            LOG(INFO) << __func__ << ": netid = " << netid << ", addr = " << servers[i];
+        }
+        cache_info->nscount = numservers;
+
+        // Clear the NS statistics because the mapping to nameservers might have changed.
+        res_cache_clear_stats_locked(cache_info);
+
+        // increment the revision id to ensure that sample state is not written back if the
+        // servers change; in theory it would suffice to do so only if the servers or
+        // max_samples actually change, in practice the overhead of checking is higher than the
+        // cost, and overflows are unlikely
+        ++cache_info->revision_id;
+    } else {
+        if (cache_info->params.max_samples != old_max_samples) {
+            // If the maximum number of samples changes, the overhead of keeping the most recent
+            // samples around is not considered worth the effort, so they are cleared instead.
+            // All other parameters do not affect shared state: Changing these parameters does
+            // not invalidate the samples, as they only affect aggregation and the conditions
+            // under which servers are considered usable.
+            res_cache_clear_stats_locked(cache_info);
+            ++cache_info->revision_id;
+        }
+        for (int j = 0; j < numservers; j++) {
+            freeaddrinfo(nsaddrinfo[j]);
+        }
+    }
+
+    // Always update the search paths, since determining whether they actually changed is
+    // complex due to the zero-padding, and probably not worth the effort. Cache-flushing
+    // however is not necessary, since the stored cache entries do contain the domain, not
+    // just the host name.
+    strlcpy(cache_info->defdname, domains, sizeof(cache_info->defdname));
+    if ((cp = strchr(cache_info->defdname, '\n')) != NULL) *cp = '\0';
+    LOG(INFO) << __func__ << ": domains=\"" << cache_info->defdname << "\"";
+
+    cp = cache_info->defdname;
+    offset = cache_info->dnsrch_offset;
+    while (offset < cache_info->dnsrch_offset + MAXDNSRCH) {
+        while (*cp == ' ' || *cp == '\t') /* skip leading white space */
+            cp++;
+        if (*cp == '\0') /* stop if nothing more to do */
+            break;
+        *offset++ = cp - cache_info->defdname; /* record this search domain */
+        while (*cp) {                          /* zero-terminate it */
+            if (*cp == ' ' || *cp == '\t') {
+                *cp++ = '\0';
+                break;
+            }
+            cp++;
+        }
+    }
+    *offset = -1; /* cache_info->dnsrch_offset has MAXDNSRCH+1 items */
 
     return 0;
 }

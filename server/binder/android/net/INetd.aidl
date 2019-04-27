@@ -191,7 +191,7 @@ interface INetd {
      *         name and its tethering statistics.
      *         There will only ever be one entry for a given interface.
      * @throws ServiceSpecificException in case of failure, with an error code indicating the
-     *         cause of the the failure.
+     *         cause of the failure.
      */
     TetherStatsParcel[] tetherGetStats();
 
@@ -502,7 +502,7 @@ interface INetd {
     * @param timeout The time in seconds that will trigger idletimer
     * @param classLabel The unique identifier for this idletimer
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void idletimerAddInterface(
             in @utf8InCpp String ifName,
@@ -516,7 +516,7 @@ interface INetd {
     * @param timeout The time in seconds that will trigger idletimer
     * @param classLabel The unique identifier for this idletimer
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void idletimerRemoveInterface(
             in @utf8InCpp String ifName,
@@ -533,7 +533,7 @@ interface INetd {
     * @param uid Uid of the app
     * @param policyPenalty The penalty policy of the app
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void strictUidCleartextPenalty(int uid, int policyPenalty);
 
@@ -544,7 +544,7 @@ interface INetd {
     * @param nat64Prefix the NAT64 prefix, e.g., "2001:db8:64::/96".
     * @return a string, the IPv6 address that will be used for 464xlat.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     @utf8InCpp String clatdStart(in @utf8InCpp String ifName, in @utf8InCpp String nat64Prefix);
 
@@ -553,7 +553,7 @@ interface INetd {
     *
     * @param ifName interface name to stop clatd
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void clatdStop(in @utf8InCpp String ifName);
 
@@ -577,7 +577,7 @@ interface INetd {
     * @param requester requester name to enable IP forwarding. It is a unique name which will be
     *                  stored in Netd to make sure if any requester needs IP forwarding.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void ipfwdEnableForwarding(in @utf8InCpp String requester);
 
@@ -588,7 +588,7 @@ interface INetd {
     *                  names which are set by ipfwdEnableForwarding.
     *                  IP forwarding would be disabled if it is the last requester.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void ipfwdDisableForwarding(in @utf8InCpp String requester);
 
@@ -598,7 +598,7 @@ interface INetd {
     * @param fromIface interface name to add forwarding ip rule
     * @param toIface interface name to add forwarding ip rule
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void ipfwdAddInterfaceForward(in @utf8InCpp String fromIface, in @utf8InCpp String toIface);
 
@@ -608,7 +608,7 @@ interface INetd {
     * @param fromIface interface name to remove forwarding ip rule
     * @param toIface interface name to remove forwarding ip rule
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void ipfwdRemoveInterfaceForward(in @utf8InCpp String fromIface, in @utf8InCpp String toIface);
 
@@ -618,7 +618,7 @@ interface INetd {
     * @param ifName Name of target interface
     * @param bytes Quota value in bytes
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void bandwidthSetInterfaceQuota(in @utf8InCpp String ifName, long bytes);
 
@@ -627,7 +627,7 @@ interface INetd {
     *
     * @param ifName Name of target interface
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void bandwidthRemoveInterfaceQuota(in @utf8InCpp String ifName);
 
@@ -637,7 +637,7 @@ interface INetd {
     * @param ifName Name of target interface
     * @param bytes Alert value in bytes
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void bandwidthSetInterfaceAlert(in @utf8InCpp String ifName, long bytes);
 
@@ -646,7 +646,7 @@ interface INetd {
     *
     * @param ifName Name of target interface
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void bandwidthRemoveInterfaceAlert(in @utf8InCpp String ifName);
 
@@ -655,7 +655,7 @@ interface INetd {
     *
     * @param bytes Alert value in bytes
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void bandwidthSetGlobalAlert(long bytes);
 
@@ -664,7 +664,7 @@ interface INetd {
     *
     * @param uid uid of target app
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void bandwidthAddNaughtyApp(int uid);
 
@@ -673,7 +673,7 @@ interface INetd {
     *
     * @param uid uid of target app
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void bandwidthRemoveNaughtyApp(int uid);
 
@@ -682,7 +682,7 @@ interface INetd {
     *
     * @param uid uid of target app
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void bandwidthAddNiceApp(int uid);
 
@@ -691,7 +691,7 @@ interface INetd {
     *
     * @param uid uid of target app
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void bandwidthRemoveNiceApp(int uid);
 
@@ -703,7 +703,7 @@ interface INetd {
     *                   Netd splits them into ranges: addr1-addr2, addr3-addr4, etc.
     *                   An odd number of addrs will fail.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void tetherStart(in @utf8InCpp String[] dhcpRanges);
 
@@ -711,7 +711,7 @@ interface INetd {
     * Stop tethering
     *
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void tetherStop();
 
@@ -727,7 +727,7 @@ interface INetd {
     *
     * @param ifName interface name to add
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void tetherInterfaceAdd(in @utf8InCpp String ifName);
 
@@ -736,7 +736,7 @@ interface INetd {
     *
     * @param ifName interface name to remove
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void tetherInterfaceRemove(in @utf8InCpp String ifName);
 
@@ -754,7 +754,7 @@ interface INetd {
     * @param netId the upstream network to forward DNS queries to
     * @param dnsAddrs DNS server address to set
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void tetherDnsSet(int netId, in @utf8InCpp String[] dnsAddrs);
 
@@ -784,7 +784,7 @@ interface INetd {
     * @param nextHop The route's next hop address,
     *                or it could be either NEXTHOP_NONE, NEXTHOP_UNREACHABLE, NEXTHOP_THROW.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void networkAddRoute(
             int netId,
@@ -802,7 +802,7 @@ interface INetd {
     * @param nextHop The route's next hop address,
     *                or it could be either NEXTHOP_NONE, NEXTHOP_UNREACHABLE, NEXTHOP_THROW.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void networkRemoveRoute(
             int netId,
@@ -821,7 +821,7 @@ interface INetd {
     *                or it could be either NEXTHOP_NONE, NEXTHOP_UNREACHABLE, NEXTHOP_THROW.
     * @param uid uid of the user
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void networkAddLegacyRoute(
             int netId,
@@ -841,7 +841,7 @@ interface INetd {
     *                or it could be either NEXTHOP_NONE, NEXTHOP_UNREACHABLE, NEXTHOP_THROW.
     * @param uid uid of the user
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void networkRemoveLegacyRoute(
             int netId,
@@ -862,7 +862,7 @@ interface INetd {
     *
     * @param netId the network to set as the default
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void networkSetDefault(int netId);
 
@@ -870,7 +870,7 @@ interface INetd {
     * Clear default network
     *
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void networkClearDefault();
 
@@ -922,7 +922,7 @@ interface INetd {
     * @param netId the network to set
     * @param permission network permission to use
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void networkSetPermissionForNetwork(int netId, int permission);
 
@@ -989,7 +989,7 @@ interface INetd {
     *
     * @param firewalltype type of firewall, either FIREWALL_WHITELIST or FIREWALL_BLACKLIST
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void firewallSetFirewallType(int firewalltype);
 
@@ -1013,7 +1013,7 @@ interface INetd {
     * @param ifName the interface to allow/deny
     * @param firewallRule either FIREWALL_RULE_ALLOW or FIREWALL_RULE_DENY
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void firewallSetInterfaceRule(in @utf8InCpp String ifName, int firewallRule);
 
@@ -1024,7 +1024,7 @@ interface INetd {
     * @param uid uid to allow/deny
     * @param firewallRule either FIREWALL_RULE_ALLOW or FIREWALL_RULE_DENY
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void firewallSetUidRule(int childChain, int uid, int firewallRule);
 
@@ -1034,7 +1034,7 @@ interface INetd {
     * @param childChain target chain to enable
     * @param enable whether to enable or disable child chain.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void firewallEnableChildChain(int childChain, boolean enable);
 
@@ -1082,7 +1082,7 @@ interface INetd {
     * @param ifName interface name
     * @param enable whether to enable or disable this setting.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void interfaceSetIPv6PrivacyExtensions(in @utf8InCpp String ifName, boolean enable);
 
@@ -1101,7 +1101,7 @@ interface INetd {
     * @param ifName interface name
     * @param enable whether to enable or disable this setting.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void interfaceSetEnableIPv6(in @utf8InCpp String ifName, boolean enable);
 
@@ -1111,7 +1111,7 @@ interface INetd {
     * @param ifName interface name
     * @param mtu MTU value
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void interfaceSetMtu(in @utf8InCpp String ifName, int mtu);
 
@@ -1137,7 +1137,7 @@ interface INetd {
     * @param rmemValues the target values of tcp_rmem, each value is separated by spaces
     * @param wmemValues the target values of tcp_wmem, each value is separated by spaces
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void setTcpRWmemorySize(in @utf8InCpp String rmemValues, in @utf8InCpp String wmemValues);
 
@@ -1147,10 +1147,39 @@ interface INetd {
     *
     * @param listener unsolicited event listener to register
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
-    *         cause of the the failure.
+    *         cause of the failure.
     */
     void registerUnsolicitedEventListener(INetdUnsolicitedEventListener listener);
 
+    /**
+     * Add ingress interface filtering rules to a list of UIDs
+     *
+     * For a given uid, once a filtering rule is added, the kernel will only allow packets from the
+     * whitelisted interface and loopback to be sent to the list of UIDs.
+     *
+     * Calling this method on one or more UIDs with an existing filtering rule but a different
+     * interface name will result in the filtering rule being updated to allow the new interface
+     * instead. Otherwise calling this method will not affect existing rules set on other UIDs.
+     *
+     * @param ifName the name of the interface on which the filtering rules will allow packets to
+              be received.
+     * @param uids an array of UIDs which the filtering rules will be set
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *         cause of the failure.
+     */
+    void firewallAddUidInterfaceRules(in @utf8InCpp String ifName, in int[] uids);
+
+    /**
+     * Remove ingress interface filtering rules from a list of UIDs
+     *
+     * Clear the ingress interface filtering rules from the list of UIDs which were previously set
+     * by firewallAddUidInterfaceRules(). Ignore any uid which does not have filtering rule.
+     *
+     * @param uids an array of UIDs from which the filtering rules will be removed
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *         cause of the failure.
+     */
+    void firewallRemoveUidInterfaceRules(in int[] uids);
 
    /**
     * Request netd to change the current active network stats map.
@@ -1158,4 +1187,11 @@ interface INetd {
     *         cause of the failure.
     */
     void trafficSwapActiveStatsMap();
+
+   /**
+    * Retrieves OEM netd listener interface
+    *
+    * @return a IBinder object, it could be casted to oem specific interface.
+    */
+    IBinder getOemNetd();
 }

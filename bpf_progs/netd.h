@@ -123,7 +123,7 @@ struct bpf_map_def SEC("maps") configuration_map = {
 struct bpf_map_def SEC("maps") uid_owner_map = {
         .type = BPF_MAP_TYPE_HASH,
         .key_size = sizeof(uint32_t),
-        .value_size = sizeof(uint8_t),
+        .value_size = sizeof(struct UidOwnerValue),
         .max_entries = UID_OWNER_MAP_SIZE,
 };
 
@@ -207,26 +207,33 @@ static __always_inline BpfConfig getConfig(uint32_t configKey) {
     return *config;
 }
 
-static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid) {
+static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid, int direction) {
     if (skip_owner_match(skb)) return BPF_PASS;
 
     if ((uid <= MAX_SYSTEM_UID) && (uid >= MIN_SYSTEM_UID)) return BPF_PASS;
 
     BpfConfig enabledRules = getConfig(UID_RULES_CONFIGURATION_KEY);
-    if (!enabledRules) {
-        return BPF_PASS;
-    }
 
-    uint8_t* uidEntry = bpf_map_lookup_elem(&uid_owner_map, &uid);
-    uint8_t uidRules = uidEntry ? *uidEntry : 0;
-    if ((enabledRules & DOZABLE_MATCH) && !(uidRules & DOZABLE_MATCH)) {
-        return BPF_DROP;
+    struct UidOwnerValue* uidEntry = bpf_map_lookup_elem(&uid_owner_map, &uid);
+    uint8_t uidRules = uidEntry ? uidEntry->rule : 0;
+    uint32_t allowed_iif = uidEntry ? uidEntry->iif : 0;
+
+    if (enabledRules) {
+        if ((enabledRules & DOZABLE_MATCH) && !(uidRules & DOZABLE_MATCH)) {
+            return BPF_DROP;
+        }
+        if ((enabledRules & STANDBY_MATCH) && (uidRules & STANDBY_MATCH)) {
+            return BPF_DROP;
+        }
+        if ((enabledRules & POWERSAVE_MATCH) && !(uidRules & POWERSAVE_MATCH)) {
+            return BPF_DROP;
+        }
     }
-    if ((enabledRules & STANDBY_MATCH) && (uidRules & STANDBY_MATCH)) {
-        return BPF_DROP;
-    }
-    if ((enabledRules & POWERSAVE_MATCH) && !(uidRules & POWERSAVE_MATCH)) {
-        return BPF_DROP;
+    if (direction == BPF_INGRESS && (uidRules & IIF_MATCH)) {
+        // Drops packets not coming from lo nor the whitelisted interface
+        if (allowed_iif && skb->ifindex != 1 && skb->ifindex != allowed_iif) {
+            return BPF_DROP;
+        }
     }
     return BPF_PASS;
 }
@@ -242,7 +249,7 @@ static __always_inline inline void update_stats_with_config(struct __sk_buff* sk
 
 static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int direction) {
     uint32_t sock_uid = bpf_get_socket_uid(skb);
-    int match = bpf_owner_match(skb, sock_uid);
+    int match = bpf_owner_match(skb, sock_uid, direction);
     if ((direction == BPF_EGRESS) && (match == BPF_DROP)) {
         // If an outbound packet is going to be dropped, we do not count that
         // traffic.

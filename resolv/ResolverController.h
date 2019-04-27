@@ -38,7 +38,8 @@ class ResolverController {
     ResolverController();
     ~ResolverController() = default;
 
-    int clearDnsServers(unsigned netid);
+    void destroyNetworkCache(unsigned netid);
+    int createNetworkCache(unsigned netid);
 
     int getPrefix64(unsigned netId, netdutils::IPPrefix* prefix);
 

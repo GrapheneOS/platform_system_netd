@@ -16,6 +16,10 @@
  * binder_test.cpp - unit tests for netd binder RPCs.
  */
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #include <vector>
 
 #include <openssl/base64.h>
@@ -28,7 +32,6 @@
 #include <gtest/gtest.h>
 #include <netdb.h>
 #include <netdutils/Stopwatch.h>
-
 #include "tests/BaseTestMetricsListener.h"
 #include "tests/TestMetrics.h"
 
@@ -54,7 +57,7 @@ using android::netdutils::Stopwatch;
 
 // TODO: make this dynamic and stop depending on implementation details.
 // Sync from TEST_NETID in dns_responder_client.cpp as resolver_test.cpp does.
-static const int TEST_NETID = 30;
+constexpr int TEST_NETID = 30;
 
 class DnsResolverBinderTest : public ::testing::Test {
   public:
@@ -64,9 +67,15 @@ class DnsResolverBinderTest : public ::testing::Test {
         if (binder != nullptr) {
             mDnsResolver = android::interface_cast<IDnsResolver>(binder);
         }
+        assert(nullptr != mDnsResolver.get());
+        // Create cache for test
+        mDnsResolver->createNetworkCache(TEST_NETID);
     }
 
-    void SetUp() override { ASSERT_NE(nullptr, mDnsResolver.get()); }
+    ~DnsResolverBinderTest() {
+        // Destroy cache for test
+        mDnsResolver->destroyNetworkCache(TEST_NETID);
+    }
 
   protected:
     sp<IDnsResolver> mDnsResolver;
@@ -135,6 +144,7 @@ TEST_F(DnsResolverBinderTest, IsAlive) {
     ASSERT_TRUE(isAlive);
 }
 
+// TODO: Move this test to resolver_test.cpp
 TEST_F(DnsResolverBinderTest, EventListener_onDnsEvent) {
     // The test configs are used to trigger expected events. The expected results are defined in
     // expectedResults.
@@ -175,6 +185,7 @@ TEST_F(DnsResolverBinderTest, EventListener_onDnsEvent) {
     std::vector<std::string> test_domains = {"example.com"};
     std::vector<int> test_params = {300 /*sample_validity*/, 25 /*success_threshold*/,
                                     8 /*min_samples*/, 8 /*max_samples*/};
+
     ASSERT_TRUE(dnsClient.SetResolversForNetwork(test_servers, test_domains, test_params));
     dns.clearQueries();
 
@@ -262,11 +273,6 @@ TEST_F(DnsResolverBinderTest, SetResolverConfiguration_Tls) {
             EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
         }
     }
-
-    // Ensure TLS is disabled before the start of the next test.
-    const auto resolverParams = makeResolverParamsParcel(
-            TEST_NETID, test_params, kTlsTestData[0].servers, test_domains, "", {}, {});
-    mDnsResolver->setResolverConfiguration(resolverParams);
 }
 
 TEST_F(DnsResolverBinderTest, GetResolverInfo) {
@@ -317,4 +323,28 @@ TEST_F(DnsResolverBinderTest, GetResolverInfo) {
 
     EXPECT_THAT(res_servers, testing::UnorderedElementsAreArray(servers));
     EXPECT_THAT(res_domains, testing::UnorderedElementsAreArray(domains));
+}
+
+TEST_F(DnsResolverBinderTest, CreateDestroyNetworkCache) {
+    // Must not be the same as TEST_NETID
+    const int ANOTHER_TEST_NETID = TEST_NETID + 1;
+
+    // Create a new network cache.
+    EXPECT_TRUE(mDnsResolver->createNetworkCache(ANOTHER_TEST_NETID).isOk());
+
+    // create it again, expect a EEXIST.
+    EXPECT_EQ(EEXIST,
+              mDnsResolver->createNetworkCache(ANOTHER_TEST_NETID).serviceSpecificErrorCode());
+
+    // destroy it.
+    EXPECT_TRUE(mDnsResolver->destroyNetworkCache(ANOTHER_TEST_NETID).isOk());
+
+    // re-create it
+    EXPECT_TRUE(mDnsResolver->createNetworkCache(ANOTHER_TEST_NETID).isOk());
+
+    // destroy it.
+    EXPECT_TRUE(mDnsResolver->destroyNetworkCache(ANOTHER_TEST_NETID).isOk());
+
+    // re-destroy it
+    EXPECT_TRUE(mDnsResolver->destroyNetworkCache(ANOTHER_TEST_NETID).isOk());
 }

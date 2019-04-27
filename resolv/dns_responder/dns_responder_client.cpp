@@ -128,25 +128,30 @@ void DnsResponderClient::ShutdownDNSServers(std::vector<std::unique_ptr<test::DN
 
 int DnsResponderClient::SetupOemNetwork() {
     mNetdSrv->networkDestroy(TEST_NETID);
-    mDnsResolvSrv->clearResolverConfiguration(TEST_NETID);
+    mDnsResolvSrv->destroyNetworkCache(TEST_NETID);
     auto ret = mNetdSrv->networkCreatePhysical(TEST_NETID, INetd::PERMISSION_NONE);
     if (!ret.isOk()) {
         fprintf(stderr, "Creating physical network %d failed, %s\n", TEST_NETID,
                 ret.toString8().string());
         return -1;
     }
-    int oemNetId = TEST_NETID;
-    setNetworkForProcess(oemNetId);
-    if ((unsigned) oemNetId != getNetworkForProcess()) {
+    ret = mDnsResolvSrv->createNetworkCache(TEST_NETID);
+    if (!ret.isOk()) {
+        fprintf(stderr, "Creating network cache %d failed, %s\n", TEST_NETID,
+                ret.toString8().string());
         return -1;
     }
-    return oemNetId;
+    setNetworkForProcess(TEST_NETID);
+    if ((unsigned)TEST_NETID != getNetworkForProcess()) {
+        return -1;
+    }
+    return TEST_NETID;
 }
 
 void DnsResponderClient::TearDownOemNetwork(int oemNetId) {
     if (oemNetId != -1) {
         mNetdSrv->networkDestroy(oemNetId);
-        mDnsResolvSrv->clearResolverConfiguration(oemNetId);
+        mDnsResolvSrv->destroyNetworkCache(oemNetId);
     }
 }
 

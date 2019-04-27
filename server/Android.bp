@@ -39,7 +39,10 @@ aidl_interface {
             gen_log: true,
         },
     },
-    versions: ["1"],
+    versions: [
+        "1",
+        "2",
+    ],
 }
 
 // Modules common to both netd and netd_unit_test
@@ -138,7 +141,6 @@ cc_binary {
         "libnetd_resolv_headers",
     ],
     srcs: [
-        "CommandListener.cpp",
         "DummyNetwork.cpp",
         "EventReporter.cpp",
         "FwmarkServer.cpp",
@@ -163,8 +165,28 @@ cc_binary {
 cc_binary {
     name: "ndc",
     defaults: ["netd_defaults"],
-    shared_libs: ["libcutils"],
-    srcs: ["ndc.cpp"],
+    include_dirs: [
+        "system/netd/include",
+    ],
+    header_libs: [
+        "libnetd_client_headers",
+    ],
+    shared_libs: [
+        "libbase",
+        "libnetdutils",
+        "libnetutils",
+        "libcutils",
+        "liblog",
+        "libutils",
+        "libbinder",
+        "dnsresolver_aidl_interface-cpp",
+        "netd_aidl_interface-cpp",
+    ],
+    srcs: [
+        "ndc.cpp",
+        "UidRanges.cpp",
+        "NdcDispatcher.cpp",
+    ],
 }
 
 cc_test {
