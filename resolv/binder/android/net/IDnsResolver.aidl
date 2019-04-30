@@ -144,4 +144,21 @@ interface IDnsResolver {
      * @param netId the network ID of the network to destroy.
      */
     void destroyNetworkCache(int netId);
+
+    // Refer to enum LogSeverity from system/core/base/include/android-base/logging.h
+    const int DNS_RESOLVER_LOG_VERBOSE = 0;
+    const int DNS_RESOLVER_LOG_DEBUG = 1;
+    const int DNS_RESOLVER_LOG_INFO = 2;
+    const int DNS_RESOLVER_LOG_WARNING = 3;
+    const int DNS_RESOLVER_LOG_ERROR = 4;
+
+    /**
+     * Set DNS resolver log severity
+     *
+     * @param logSeverity print log in "VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR".
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         POSIX errno.
+     */
+    void setLogSeverity(int logSeverity);
 }
