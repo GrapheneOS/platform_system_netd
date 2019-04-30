@@ -28,9 +28,7 @@ bool resolv_init(const ResolverNetdCallbacks& callbacks) {
     android::base::InitLogging(/*argv=*/nullptr);
     android::base::SetDefaultTag("libnetd_resolv");
     LOG(INFO) << __func__ << ": Initializing resolver";
-    const std::string logSeverityStr =
-            android::base::GetProperty("persist.sys.nw_dns_resolver_log", "WARNING");
-    android::base::SetMinimumLogSeverity(logSeverityStrToEnum(logSeverityStr));
+    resolv_set_log_severity(android::base::WARNING);
 
     android::net::gResNetdCallbacks = callbacks;
     android::net::gDnsResolv = android::net::DnsResolver::getInstance();
@@ -74,6 +72,10 @@ bool DnsResolver::start() {
         return false;
     }
     return true;
+}
+
+int DnsResolver::setLogSeverity(int32_t logSeverity) {
+    return resolv_set_log_severity(logSeverity);
 }
 
 }  // namespace net
