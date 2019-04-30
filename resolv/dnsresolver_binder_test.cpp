@@ -348,3 +348,22 @@ TEST_F(DnsResolverBinderTest, CreateDestroyNetworkCache) {
     // re-destroy it
     EXPECT_TRUE(mDnsResolver->destroyNetworkCache(ANOTHER_TEST_NETID).isOk());
 }
+
+TEST_F(DnsResolverBinderTest, setLogSeverity) {
+    // Expect fail
+    EXPECT_EQ(EINVAL, mDnsResolver->setLogSeverity(-1).serviceSpecificErrorCode());
+
+    // Test set different log level
+    EXPECT_TRUE(mDnsResolver->setLogSeverity(IDnsResolver::DNS_RESOLVER_LOG_VERBOSE).isOk());
+
+    EXPECT_TRUE(mDnsResolver->setLogSeverity(IDnsResolver::DNS_RESOLVER_LOG_DEBUG).isOk());
+
+    EXPECT_TRUE(mDnsResolver->setLogSeverity(IDnsResolver::DNS_RESOLVER_LOG_INFO).isOk());
+
+    EXPECT_TRUE(mDnsResolver->setLogSeverity(IDnsResolver::DNS_RESOLVER_LOG_WARNING).isOk());
+
+    EXPECT_TRUE(mDnsResolver->setLogSeverity(IDnsResolver::DNS_RESOLVER_LOG_ERROR).isOk());
+
+    // Set back to default
+    EXPECT_TRUE(mDnsResolver->setLogSeverity(IDnsResolver::DNS_RESOLVER_LOG_WARNING).isOk());
+}

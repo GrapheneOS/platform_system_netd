@@ -29,6 +29,7 @@ class DnsResolver {
   public:
     static DnsResolver* getInstance();
     bool start();
+    int setLogSeverity(int32_t logSeverity);
 
     DnsResolver(DnsResolver const&) = delete;
     void operator=(DnsResolver const&) = delete;

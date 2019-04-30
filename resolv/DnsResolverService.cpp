@@ -278,6 +278,15 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
     return ::ndk::ScopedAStatus(AStatus_newOk());
 }
 
+::ndk::ScopedAStatus DnsResolverService::setLogSeverity(int32_t logSeverity) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    auto entry = gDnsResolverLog.newEntry().prettyFunction(__PRETTY_FUNCTION__).arg(logSeverity);
+    int res = gDnsResolv->setLogSeverity(logSeverity);
+
+    gResNetdCallbacks.log(entry.returns(res).withAutomaticDuration().toString().c_str());
+    return statusFromErrcode(res);
+}
+
 ::ndk::ScopedAStatus DnsResolverService::destroyNetworkCache(int netId) {
     // Locking happens in res_cache.cpp functions.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
