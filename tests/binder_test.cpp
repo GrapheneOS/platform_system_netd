@@ -57,6 +57,7 @@
 #include "XfrmController.h"
 #include "android/net/INetd.h"
 #include "binder/IServiceManager.h"
+#include "com/android/internal/net/IOemNetd.h"
 #include "netdutils/Stopwatch.h"
 #include "netdutils/Syscalls.h"
 #include "tun_interface.h"
@@ -3032,4 +3033,19 @@ TEST_F(BinderTest, NDC) {
     }
     // Remove test physical network
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
+TEST_F(BinderTest, OemNetdIsAlive) {
+    sp<IBinder> binder;
+    binder::Status status = mNetd->getOemNetd(&binder);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    sp<com::android::internal::net::IOemNetd> oemNetd;
+    if (binder != nullptr) {
+        oemNetd = android::interface_cast<com::android::internal::net::IOemNetd>(binder);
+    }
+
+    TimedOperation t("OemNetd isAlive RPC");
+    bool isAlive = false;
+    oemNetd->isAlive(&isAlive);
+    ASSERT_TRUE(isAlive);
 }

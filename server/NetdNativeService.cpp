@@ -42,6 +42,7 @@
 #include "NetdConstants.h"  // SHA256_SIZE
 #include "NetdNativeService.h"
 #include "NetdPermissions.h"
+#include "OemNetdListener.h"
 #include "Permission.h"
 #include "Process.h"
 #include "RouteController.h"
@@ -1256,7 +1257,8 @@ binder::Status NetdNativeService::registerUnsolicitedEventListener(
 
 binder::Status NetdNativeService::getOemNetd(android::sp<android::IBinder>* listener) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    *listener = nullptr;
+    *listener = com::android::internal::net::OemNetdListener::getListener();
+
     return binder::Status::ok();
 }
 
