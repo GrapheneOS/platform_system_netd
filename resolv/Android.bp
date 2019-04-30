@@ -14,6 +14,7 @@ aidl_interface {
         "netd_event_listener_interface",
     ],
     api_dir: "binder/api",
+    versions: ["1"],
     // Enable gen_log after it is supported in NDK backend. b/126501406
 }
 
@@ -136,7 +137,7 @@ cc_test {
     compile_multilib: "both",
     sanitize: {
         address: true,
-        recover: [ "all" ],
+        recover: ["all"],
     },
 }
 
