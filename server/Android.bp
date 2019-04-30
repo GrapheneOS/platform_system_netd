@@ -45,6 +45,14 @@ aidl_interface {
     ],
 }
 
+aidl_interface {
+    name: "oemnetd_aidl_interface",
+    local_include_dir: "binder",
+    srcs: [
+        "binder/com/android/internal/net/IOemNetd.aidl",
+    ],
+}
+
 // Modules common to both netd and netd_unit_test
 cc_library_static {
     name: "libnetd_server",
@@ -133,6 +141,7 @@ cc_binary {
         "libutils",
         "netd_aidl_interface-cpp",
         "netd_event_listener_interface-cpp",
+        "oemnetd_aidl_interface-cpp",
     ],
     static_libs: [
         "libnetd_server",
@@ -152,6 +161,7 @@ cc_binary {
         "NetlinkHandler.cpp",
         "Network.cpp",
         "NetworkController.cpp",
+        "OemNetdListener.cpp",
         "PhysicalNetwork.cpp",
         "PppController.cpp",
         "Process.cpp",
