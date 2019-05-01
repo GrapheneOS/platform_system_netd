@@ -46,10 +46,15 @@ aidl_interface {
 }
 
 aidl_interface {
+    // This interface is for OEM calls to netd and vice versa that do not exist in AOSP.
+    // Those calls cannot be part of INetd.aidl and INetdUnsolicitedEventListener.aidl
+    // because those interfaces are versioned.
+    // These interfaces must never be versioned or OEMs will not be able to change them.
     name: "oemnetd_aidl_interface",
     local_include_dir: "binder",
     srcs: [
         "binder/com/android/internal/net/IOemNetd.aidl",
+        "binder/com/android/internal/net/IOemNetdUnsolicitedEventListener.aidl",
     ],
 }
 
