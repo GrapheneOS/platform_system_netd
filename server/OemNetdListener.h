@@ -14,38 +14,34 @@
  * limitations under the License.
  */
 
-#ifndef _DNS_RESOLVER_H_
-#define _DNS_RESOLVER_H_
+#ifndef NETD_SERVER_OEM_NETD_LISTENER_H
+#define NETD_SERVER_OEM_NETD_LISTENER_H
 
-#include "DnsProxyListener.h"
-#include "ResolverController.h"
-#include "netd_resolv/resolv.h"
-#include "netdutils/Log.h"
+#include "com/android/internal/net/BnOemNetd.h"
 
+namespace com {
 namespace android {
+namespace internal {
 namespace net {
 
-class DnsResolver {
+class OemNetdListener : public BnOemNetd {
   public:
-    static DnsResolver* getInstance();
-    bool start();
-    int setLogSeverity(int32_t logSeverity);
+    OemNetdListener() = default;
+    ~OemNetdListener() = default;
+    static ::android::sp<::android::IBinder> getListener();
 
-    DnsResolver(DnsResolver const&) = delete;
-    void operator=(DnsResolver const&) = delete;
-
-    ResolverController resolverCtrl;
+    ::android::binder::Status isAlive(bool* alive) override;
 
   private:
-    DnsResolver() {}
-    DnsProxyListener mDnsProxyListener;
+    std::mutex mMutex;
+    ::android::sp<::android::IBinder> mIBinder GUARDED_BY(mMutex);
+
+    ::android::sp<::android::IBinder> getIBinder() EXCLUDES(mMutex);
 };
 
-extern DnsResolver* gDnsResolv;
-extern ResolverNetdCallbacks gResNetdCallbacks;
-extern netdutils::Log gDnsResolverLog;
-
 }  // namespace net
+}  // namespace internal
 }  // namespace android
+}  // namespace com
 
-#endif  // _DNS_RESOLVER_H_
+#endif  // NETD_SERVER_OEM_NETD_LISTENER_H

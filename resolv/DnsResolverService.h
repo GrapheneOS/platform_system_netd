@@ -57,6 +57,9 @@ class DnsResolverService : public aidl::android::net::BnDnsResolver {
     // (internal use only)
     ::ndk::ScopedAStatus getPrefix64(int netId, std::string* stringPrefix) override;
 
+    // Debug log command
+    ::ndk::ScopedAStatus setLogSeverity(int32_t logSeverity) override;
+
   private:
     DnsResolverService() {}
     // TODO: Remove below items after libbiner_ndk supports check_permission.
