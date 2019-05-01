@@ -16,19 +16,15 @@
 
 package com.android.internal.net;
 
-import com.android.internal.net.IOemNetdUnsolicitedEventListener;
-
-/** {@hide} */
-interface IOemNetd {
-   /**
-    * Returns true if the service is responding.
-    */
-    boolean isAlive();
+/**
+ * {@hide}
+ */
+oneway interface IOemNetdUnsolicitedEventListener {
 
    /**
-    * Register oem unsolicited event listener
+    * Notifies that a listener is registered.
     *
-    * @param listener oem unsolicited event listener to register
+    * It is a sample method and used for testing.
     */
-    void registerOemUnsolicitedEventListener(IOemNetdUnsolicitedEventListener listener);
+    void onRegistered();
 }
