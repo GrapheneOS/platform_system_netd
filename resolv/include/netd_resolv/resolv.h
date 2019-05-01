@@ -142,6 +142,9 @@ void resolv_delete_cache_for_net(unsigned netid);
 // Create the cache associated with a certain network
 int resolv_create_cache_for_net(unsigned netid);
 
+// switch resolver log severity
+int resolv_set_log_severity(uint32_t logSeverity);
+
 LIBNETD_RESOLV_PUBLIC bool resolv_has_nameservers(unsigned netid);
 
 // Set callbacks and bring DnsResolver up.
