@@ -43,8 +43,11 @@
 #include <android-base/macros.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <binder/IPCThreadState.h>
 #include <bpf/BpfMap.h>
 #include <bpf/BpfUtils.h>
+#include <com/android/internal/net/BnOemNetdUnsolicitedEventListener.h>
+#include <com/android/internal/net/IOemNetd.h>
 #include <cutils/multiuser.h>
 #include <gtest/gtest.h>
 #include <logwrap/logwrap.h>
@@ -57,7 +60,6 @@
 #include "XfrmController.h"
 #include "android/net/INetd.h"
 #include "binder/IServiceManager.h"
-#include "com/android/internal/net/IOemNetd.h"
 #include "netdutils/Stopwatch.h"
 #include "netdutils/Syscalls.h"
 #include "tun_interface.h"
@@ -3035,7 +3037,7 @@ TEST_F(BinderTest, NDC) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, OemNetdIsAlive) {
+TEST_F(BinderTest, OemNetdRelated) {
     sp<IBinder> binder;
     binder::Status status = mNetd->getOemNetd(&binder);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
@@ -3043,9 +3045,47 @@ TEST_F(BinderTest, OemNetdIsAlive) {
     if (binder != nullptr) {
         oemNetd = android::interface_cast<com::android::internal::net::IOemNetd>(binder);
     }
+    ASSERT_NE(nullptr, oemNetd.get());
 
     TimedOperation t("OemNetd isAlive RPC");
     bool isAlive = false;
     oemNetd->isAlive(&isAlive);
     ASSERT_TRUE(isAlive);
+
+    class TestOemUnsolListener
+        : public com::android::internal::net::BnOemNetdUnsolicitedEventListener {
+      public:
+        android::binder::Status onRegistered() override {
+            std::lock_guard lock(mCvMutex);
+            mCv.notify_one();
+            return android::binder::Status::ok();
+        }
+        std::condition_variable& getCv() { return mCv; }
+        std::mutex& getCvMutex() { return mCvMutex; }
+
+      private:
+        std::mutex mCvMutex;
+        std::condition_variable mCv;
+    };
+
+    // Start the Binder thread pool.
+    android::ProcessState::self()->startThreadPool();
+
+    android::sp<TestOemUnsolListener> testListener = new TestOemUnsolListener();
+
+    auto& cv = testListener->getCv();
+    auto& cvMutex = testListener->getCvMutex();
+
+    {
+        std::unique_lock lock(cvMutex);
+
+        status = oemNetd->registerOemUnsolicitedEventListener(
+                ::android::interface_cast<
+                        com::android::internal::net::IOemNetdUnsolicitedEventListener>(
+                        testListener));
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+        // Wait for receiving expected events.
+        EXPECT_EQ(std::cv_status::no_timeout, cv.wait_for(lock, std::chrono::seconds(2)));
+    }
 }
