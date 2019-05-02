@@ -73,12 +73,15 @@ using netdutils::status::ok;
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
 constexpr int PER_UID_STATS_ENTRIES_LIMIT = 500;
-constexpr int TOTAL_UID_STATS_ENTRIES_LIMIT = STATS_MAP_SIZE - 500;
+// Total stats entry limit is 90% of the stats map total size.
+constexpr int TOTAL_UID_STATS_ENTRIES_LIMIT = STATS_MAP_SIZE * 0.9;
 
 static_assert(BPF_PERMISSION_INTERNET == INetd::PERMISSION_INTERNET,
               "Mismatch between BPF and AIDL permissions: PERMISSION_INTERNET");
 static_assert(BPF_PERMISSION_UPDATE_DEVICE_STATS == INetd::PERMISSION_UPDATE_DEVICE_STATS,
               "Mismatch between BPF and AIDL permissions: PERMISSION_UPDATE_DEVICE_STATS");
+static_assert(STATS_MAP_SIZE - TOTAL_UID_STATS_ENTRIES_LIMIT > 100,
+              "The limit for stats map is to high, stats data may be lost due to overflow");
 
 #define FLAG_MSG_TRANS(result, flag, value)            \
     do {                                               \
