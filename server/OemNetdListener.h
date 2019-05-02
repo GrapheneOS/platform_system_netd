@@ -17,7 +17,12 @@
 #ifndef NETD_SERVER_OEM_NETD_LISTENER_H
 #define NETD_SERVER_OEM_NETD_LISTENER_H
 
+#include <map>
+#include <mutex>
+
+#include <android-base/thread_annotations.h>
 #include "com/android/internal/net/BnOemNetd.h"
+#include "com/android/internal/net/IOemNetdUnsolicitedEventListener.h"
 
 namespace com {
 namespace android {
@@ -26,17 +31,32 @@ namespace net {
 
 class OemNetdListener : public BnOemNetd {
   public:
+    using OemUnsolListenerMap = std::map<const ::android::sp<IOemNetdUnsolicitedEventListener>,
+                                         const ::android::sp<::android::IBinder::DeathRecipient>>;
+
     OemNetdListener() = default;
     ~OemNetdListener() = default;
     static ::android::sp<::android::IBinder> getListener();
 
     ::android::binder::Status isAlive(bool* alive) override;
+    ::android::binder::Status registerOemUnsolicitedEventListener(
+            const ::android::sp<IOemNetdUnsolicitedEventListener>& listener) override;
 
   private:
     std::mutex mMutex;
+    std::mutex mOemUnsolicitedMutex;
+
     ::android::sp<::android::IBinder> mIBinder GUARDED_BY(mMutex);
+    OemUnsolListenerMap mOemUnsolListenerMap GUARDED_BY(mOemUnsolicitedMutex);
 
     ::android::sp<::android::IBinder> getIBinder() EXCLUDES(mMutex);
+
+    void registerOemUnsolicitedEventListenerInternal(
+            const ::android::sp<IOemNetdUnsolicitedEventListener>& listener)
+            EXCLUDES(mOemUnsolicitedMutex);
+    void unregisterOemUnsolicitedEventListenerInternal(
+            const ::android::sp<IOemNetdUnsolicitedEventListener>& listener)
+            EXCLUDES(mOemUnsolicitedMutex);
 };
 
 }  // namespace net

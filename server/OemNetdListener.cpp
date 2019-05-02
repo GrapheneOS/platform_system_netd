@@ -16,14 +16,7 @@
 
 #define LOG_TAG "OemNetd"
 
-#include <log/log.h>
-#include <utils/Errors.h>
-
-#include <binder/IPCThreadState.h>
-
 #include "OemNetdListener.h"
-
-#include "com/android/internal/net/BnOemNetd.h"
 
 namespace com {
 namespace android {
@@ -46,6 +39,46 @@ namespace net {
 ::android::binder::Status OemNetdListener::isAlive(bool* alive) {
     *alive = true;
     return ::android::binder::Status::ok();
+}
+
+::android::binder::Status OemNetdListener::registerOemUnsolicitedEventListener(
+        const ::android::sp<IOemNetdUnsolicitedEventListener>& listener) {
+    registerOemUnsolicitedEventListenerInternal(listener);
+    listener->onRegistered();
+    return ::android::binder::Status::ok();
+}
+
+void OemNetdListener::registerOemUnsolicitedEventListenerInternal(
+        const ::android::sp<IOemNetdUnsolicitedEventListener>& listener) {
+    std::lock_guard lock(mOemUnsolicitedMutex);
+
+    // Create the death listener.
+    class DeathRecipient : public ::android::IBinder::DeathRecipient {
+      public:
+        DeathRecipient(OemNetdListener* oemNetdListener,
+                       ::android::sp<IOemNetdUnsolicitedEventListener> listener)
+            : mOemNetdListener(oemNetdListener), mListener(std::move(listener)) {}
+        ~DeathRecipient() override = default;
+        void binderDied(const ::android::wp<::android::IBinder>& /* who */) override {
+            mOemNetdListener->unregisterOemUnsolicitedEventListenerInternal(mListener);
+        }
+
+      private:
+        OemNetdListener* mOemNetdListener;
+        ::android::sp<IOemNetdUnsolicitedEventListener> mListener;
+    };
+    ::android::sp<::android::IBinder::DeathRecipient> deathRecipient =
+            new DeathRecipient(this, listener);
+
+    ::android::IInterface::asBinder(listener)->linkToDeath(deathRecipient);
+
+    mOemUnsolListenerMap.insert({listener, deathRecipient});
+}
+
+void OemNetdListener::unregisterOemUnsolicitedEventListenerInternal(
+        const ::android::sp<IOemNetdUnsolicitedEventListener>& listener) {
+    std::lock_guard lock(mOemUnsolicitedMutex);
+    mOemUnsolListenerMap.erase(listener);
 }
 
 }  // namespace net
