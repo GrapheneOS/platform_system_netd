@@ -25,3 +25,11 @@ TEST(NetUtilsWrapperTest, TestFileCapabilities) {
     ASSERT_EQ(NULL, cap_get_file("/system/bin/netutils-wrapper-1.0"));
     ASSERT_EQ(ENODATA, errno);
 }
+
+TEST(NetdSELinuxTest, CheckProperMTULabels) {
+    // Since we expect the egrep regexp to filter everything out,
+    // we thus expect no matches and thus a return code of 1
+    // NOLINTNEXTLINE(cert-env33-c)
+    ASSERT_EQ(W_EXITCODE(1, 0), system("ls -Z /sys/class/net/*/mtu | egrep -q -v "
+                                       "'^u:object_r:sysfs_net:s0 /sys/class/net/'"));
+}
