@@ -73,12 +73,15 @@ using netdutils::status::ok;
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
 constexpr int PER_UID_STATS_ENTRIES_LIMIT = 500;
-constexpr int TOTAL_UID_STATS_ENTRIES_LIMIT = STATS_MAP_SIZE - 500;
+// Total stats entry limit is 90% of the stats map total size.
+constexpr int TOTAL_UID_STATS_ENTRIES_LIMIT = STATS_MAP_SIZE * 0.9;
 
 static_assert(BPF_PERMISSION_INTERNET == INetd::PERMISSION_INTERNET,
               "Mismatch between BPF and AIDL permissions: PERMISSION_INTERNET");
 static_assert(BPF_PERMISSION_UPDATE_DEVICE_STATS == INetd::PERMISSION_UPDATE_DEVICE_STATS,
               "Mismatch between BPF and AIDL permissions: PERMISSION_UPDATE_DEVICE_STATS");
+static_assert(STATS_MAP_SIZE - TOTAL_UID_STATS_ENTRIES_LIMIT > 100,
+              "The limit for stats map is to high, stats data may be lost due to overflow");
 
 #define FLAG_MSG_TRANS(result, flag, value)            \
     do {                                               \
@@ -374,14 +377,20 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
               strerror(configuration.status().code()), mConfigurationMap.getMap().get());
         return -configuration.status().code();
     }
-    if (configuration.value() == SELECT_MAP_A) {
-        mStatsMapA.iterate(countUidStatsEntries).ignoreError();
-    } else if (configuration.value() == SELECT_MAP_B) {
-        mStatsMapB.iterate(countUidStatsEntries).ignoreError();
-    } else {
+    if (configuration.value() != SELECT_MAP_A && configuration.value() != SELECT_MAP_B) {
         ALOGE("unknown configuration value: %d", configuration.value());
         return -EINVAL;
     }
+
+    BpfMap<StatsKey, StatsValue>& currentMap =
+            (configuration.value() == SELECT_MAP_A) ? mStatsMapA : mStatsMapB;
+    Status res = currentMap.iterate(countUidStatsEntries);
+    if (!isOk(res)) {
+        ALOGE("Failed to count the stats entry in map %d: %s", currentMap.getMap().get(),
+              strerror(res.code()));
+        return -res.code();
+    }
+
     if (totalEntryCount > mTotalUidStatsEntriesLimit ||
         perUidEntryCount > mPerUidStatsEntriesLimit) {
         ALOGE("Too many stats entries in the map, total count: %u, uid(%u) count: %u, blocking tag"
@@ -394,7 +403,7 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
     // yet. And update the tag if there is already a tag stored. Since the eBPF
     // program in kernel only read this map, and is protected by rcu read lock. It
     // should be fine to cocurrently update the map while eBPF program is running.
-    Status res = mCookieTagMap.writeValue(sock_cookie, newKey, BPF_ANY);
+    res = mCookieTagMap.writeValue(sock_cookie, newKey, BPF_ANY);
     if (!isOk(res)) {
         ALOGE("Failed to tag the socket: %s, fd: %d", strerror(res.code()),
               mCookieTagMap.getMap().get());
@@ -831,7 +840,13 @@ void TrafficController::setPermissionForUids(int permission, const std::vector<u
             // Clean up all permission information for the related uid if all the
             // packages related to it are uninstalled.
             mPrivilegedUser.erase(uid);
-            Status ret = mUidPermissionMap.deleteValue(uid);
+            if (mBpfLevel > BpfLevel::NONE) {
+                Status ret = mUidPermissionMap.deleteValue(uid);
+                if (!isOk(ret) && ret.code() != ENONET) {
+                    ALOGE("Failed to clean up the permission for %u: %s", uid,
+                          strerror(ret.code()));
+                }
+            }
         }
         return;
     }
@@ -839,6 +854,16 @@ void TrafficController::setPermissionForUids(int permission, const std::vector<u
     bool privileged = (permission & INetd::PERMISSION_UPDATE_DEVICE_STATS);
 
     for (uid_t uid : uids) {
+        if (privileged) {
+            mPrivilegedUser.insert(uid);
+        } else {
+            mPrivilegedUser.erase(uid);
+        }
+
+        // Skip the bpf map operation if not supported.
+        if (mBpfLevel == BpfLevel::NONE) {
+            continue;
+        }
         // The map stores all the permissions that the UID has, except if the only permission
         // the UID has is the INTERNET permission, then the UID should not appear in the map.
         if (permission != INetd::PERMISSION_INTERNET) {
@@ -852,12 +877,6 @@ void TrafficController::setPermissionForUids(int permission, const std::vector<u
             if (!isOk(ret) && ret.code() != ENOENT) {
                 ALOGE("Failed to remove uid %u from permission map: %s", uid, strerror(ret.code()));
             }
-        }
-
-        if (privileged) {
-            mPrivilegedUser.insert(uid);
-        } else {
-            mPrivilegedUser.erase(uid);
         }
     }
 }
