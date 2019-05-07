@@ -138,7 +138,7 @@ class TrafficController {
      * Map Key: uint64_t socket cookie
      * Map Value: struct UidTag, contains a uint32 uid and a uint32 tag.
      */
-    BpfMap<uint64_t, UidTag> mCookieTagMap;
+    BpfMap<uint64_t, UidTag> mCookieTagMap GUARDED_BY(mMutex);
 
     /*
      * mUidCounterSetMap: Store the counterSet of a specific uid.
@@ -146,7 +146,7 @@ class TrafficController {
      * Map Value: uint32 counterSet specifies if the traffic is a background
      * or foreground traffic.
      */
-    BpfMap<uint32_t, uint8_t> mUidCounterSetMap;
+    BpfMap<uint32_t, uint8_t> mUidCounterSetMap GUARDED_BY(mMutex);
 
     /*
      * mAppUidStatsMap: Store the total traffic stats for a uid regardless of
@@ -222,7 +222,9 @@ class TrafficController {
     //    mUidPermissionMap, and mPrivilegedUser. These data members are controlled by netd but can
     //    be modified from different threads. TrafficController provides several APIs directly
     //    called by the binder RPC, and different binder threads can concurrently access these data
-    //    members mentioned above.
+    //    members mentioned above. Some of the data members such as mUidPermissionMap and
+    //    mPrivilegedUsers are also accessed from a different thread when tagging sockets or
+    //    setting the counterSet through FwmarkServer
     // 2. Coordinate the deletion of uid stats in mStatsMapA and mStatsMapB. The system server
     //    always call into netd to ask for a live stats map change before it pull and clean up the
     //    stats from the inactive map. The mMutex will block netd from accessing the stats map when
