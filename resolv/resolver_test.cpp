@@ -66,6 +66,9 @@
 constexpr int TEST_VPN_NETID = 65502;
 constexpr int MAXPACKET = (8 * 1024);
 
+// Use maximum reserved appId for applications to avoid conflict with existing uids.
+static const int TEST_UID = 99999;
+
 // Semi-public Bionic hook used by the NDK (frameworks/base/native/android/net.c)
 // Tested here for convenience.
 extern "C" int android_getaddrinfofornet(const char* hostname, const char* servname,
@@ -75,6 +78,7 @@ extern "C" int android_getaddrinfofornet(const char* hostname, const char* servn
 using android::base::ParseInt;
 using android::base::StringPrintf;
 using android::base::unique_fd;
+using android::net::INetd;
 using android::net::ResolverStats;
 using android::net::metrics::DnsMetricsListener;
 using android::netdutils::enableSockopt;
@@ -3439,4 +3443,60 @@ TEST_F(ResolverTest, getDnsNetId) {
     sendCommand(fd, "getdnsnetidNotSupported");
     // Keep in sync with FrameworkListener.cpp (500, "Command not recognized")
     EXPECT_EQ(500, readResponseCode(fd));
+}
+
+TEST_F(ResolverTest, BlockDnsQueryWithUidRule) {
+    constexpr char listen_addr1[] = "127.0.0.4";
+    constexpr char listen_addr2[] = "::1";
+    constexpr char host_name[] = "howdy.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+
+    test::DNSResponder dns1(listen_addr1);
+    test::DNSResponder dns2(listen_addr2);
+    StartDns(dns1, records);
+    StartDns(dns2, records);
+
+    std::vector<std::string> servers = {listen_addr1, listen_addr2};
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
+    dns1.clearQueries();
+    dns2.clearQueries();
+
+    // Add drop Rule for Uid
+    EXPECT_TRUE(mDnsClient.netdService()
+                        ->firewallSetUidRule(INetd::FIREWALL_CHAIN_STANDBY, TEST_UID,
+                                             INetd::FIREWALL_RULE_DENY)
+                        .isOk());
+
+    // Save uid
+    int suid = getuid();
+
+    // Switch to TEST_UID
+    EXPECT_TRUE(seteuid(TEST_UID) == 0);
+
+    // Dns Query
+    int fd1 = resNetworkQuery(TEST_NETID, host_name, ns_c_in, ns_t_a, 0);
+    int fd2 = resNetworkQuery(TEST_NETID, host_name, ns_c_in, ns_t_aaaa, 0);
+    EXPECT_TRUE(fd1 != -1);
+    EXPECT_TRUE(fd2 != -1);
+
+    uint8_t buf[MAXPACKET] = {};
+    int rcode;
+    int res = getAsyncResponse(fd2, &rcode, buf, MAXPACKET);
+    EXPECT_EQ(-ECONNREFUSED, res);
+
+    memset(buf, 0, MAXPACKET);
+    res = getAsyncResponse(fd1, &rcode, buf, MAXPACKET);
+    EXPECT_EQ(-ECONNREFUSED, res);
+
+    // Restore uid
+    EXPECT_TRUE(seteuid(suid) == 0);
+
+    // Remove drop Rule for Uid
+    EXPECT_TRUE(mDnsClient.netdService()
+                        ->firewallSetUidRule(INetd::FIREWALL_CHAIN_STANDBY, TEST_UID,
+                                             INetd::FIREWALL_RULE_ALLOW)
+                        .isOk());
 }
