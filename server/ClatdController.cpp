@@ -268,10 +268,8 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             .local6 = tracker.v6,
     };
     ClatIngressValue value = {
-            // Redirect the mangled packets to the same interface so we can see them in tcpdump.
-            // TODO: move the tun interface creation to netd, and use that ifindex instead.
             // TODO: move all the clat code to eBPF and remove the tun interface entirely.
-            .oif = tracker.ifIndex,
+            .oif = tracker.v4ifIndex,
             .local4 = tracker.v4,
     };
 
