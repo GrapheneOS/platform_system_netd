@@ -57,6 +57,8 @@ class ClatdController {
         pid_t pid = -1;
         unsigned ifIndex;
         char iface[IFNAMSIZ];
+        unsigned v4ifIndex;
+        char v4iface[IFNAMSIZ];
         Fwmark fwmark;
         char fwmarkString[UINT32_STRLEN];
         unsigned netId;
