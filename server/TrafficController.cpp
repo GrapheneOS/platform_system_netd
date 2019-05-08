@@ -313,6 +313,7 @@ Status TrafficController::start() {
     }
     // Rx handler extracts nfgenmsg looks up and invokes registered dispatch function.
     const auto rxHandler = [this](const nlmsghdr&, const Slice msg) {
+        std::lock_guard guard(mMutex);
         inet_diag_msg diagmsg = {};
         if (extract(msg, diagmsg) < sizeof(inet_diag_msg)) {
             ALOGE("Unrecognized netlink message: %s", toString(msg).c_str());
@@ -412,6 +413,7 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
 }
 
 int TrafficController::untagSocket(int sockFd) {
+    std::lock_guard guard(mMutex);
     if (mBpfLevel == BpfLevel::NONE) {
         if (legacy_untagSocket(sockFd)) return -errno;
         return 0;
