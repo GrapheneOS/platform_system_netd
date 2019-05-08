@@ -70,7 +70,8 @@ class ClatdController {
         in6_addr pfx96;
         char pfx96String[INET6_ADDRSTRLEN];
 
-        int init(unsigned networkId, const std::string& interface, const std::string& nat64Prefix);
+        int init(unsigned networkId, const std::string& interface, const std::string& v4interface,
+                 const std::string& nat64Prefix);
     };
 
     std::mutex mutex;
