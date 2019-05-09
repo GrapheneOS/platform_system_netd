@@ -57,6 +57,8 @@ class ClatdController {
         pid_t pid = -1;
         unsigned ifIndex;
         char iface[IFNAMSIZ];
+        unsigned v4ifIndex;
+        char v4iface[IFNAMSIZ];
         Fwmark fwmark;
         char fwmarkString[UINT32_STRLEN];
         unsigned netId;
@@ -68,7 +70,8 @@ class ClatdController {
         in6_addr pfx96;
         char pfx96String[INET6_ADDRSTRLEN];
 
-        int init(unsigned networkId, const std::string& interface, const std::string& nat64Prefix);
+        int init(unsigned networkId, const std::string& interface, const std::string& v4interface,
+                 const std::string& nat64Prefix);
     };
 
     std::mutex mutex;
