@@ -132,7 +132,7 @@ Status NetlinkListener::run() {
         if (revents[0] & POLLIN) {
             break;
         }
-        if (revents[1] & (POLLIN | POLLERR)) {
+        if (revents[1] & (POLLIN|POLLERR)) {
             auto rx = sys.recvfrom(mSock, makeSlice(rxbuf), 0);
             int err = rx.status().code();
             if (err) {
