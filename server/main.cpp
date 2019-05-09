@@ -64,7 +64,6 @@ using android::net::NFLogListener;
 using android::netdutils::Stopwatch;
 
 const char* const PID_FILE_PATH = "/data/misc/net/netd_pid";
-constexpr const char NETD_SOCKET_NAME[] = "netd";
 constexpr const char DNSPROXYLISTENER_SOCKET_NAME[] = "dnsproxyd";
 
 std::mutex android::net::gBigNetdLock;
@@ -104,8 +103,8 @@ int main() {
     // Before we do anything that could fork, mark CLOEXEC the UNIX sockets that we get from init.
     // FrameworkListener does this on initialization as well, but we only initialize these
     // components after having initialized other subsystems that can fork.
-    for (const auto& sock : {NETD_SOCKET_NAME, DNSPROXYLISTENER_SOCKET_NAME,
-                             FwmarkServer::SOCKET_NAME, MDnsSdListener::SOCKET_NAME}) {
+    for (const auto& sock :
+         {DNSPROXYLISTENER_SOCKET_NAME, FwmarkServer::SOCKET_NAME, MDnsSdListener::SOCKET_NAME}) {
         setCloseOnExec(sock);
     }
 
