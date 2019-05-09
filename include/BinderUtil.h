@@ -56,7 +56,7 @@ std::string exceptionToString(int32_t exception) {
 
 using LogFn = std::function<void(const std::string& msg)>;
 
-void binderCallLogFn(const Json::Value& logTransaction, LogFn logFn) {
+void binderCallLogFn(const Json::Value& logTransaction, const LogFn& logFn) {
     using namespace std::string_literals;
 
     bool hasReturnArgs;
