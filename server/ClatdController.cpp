@@ -268,10 +268,8 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             .local6 = tracker.v6,
     };
     ClatIngressValue value = {
-            // Redirect the mangled packets to the same interface so we can see them in tcpdump.
-            // TODO: move the tun interface creation to netd, and use that ifindex instead.
             // TODO: move all the clat code to eBPF and remove the tun interface entirely.
-            .oif = tracker.ifIndex,
+            .oif = tracker.v4ifIndex,
             .local4 = tracker.v4,
     };
 
@@ -346,6 +344,7 @@ ClatdController::ClatdTracker* ClatdController::getClatdTracker(const std::strin
 
 // Initializes a ClatdTracker for the specified interface.
 int ClatdController::ClatdTracker::init(unsigned networkId, const std::string& interface,
+                                        const std::string& v4interface,
                                         const std::string& nat64Prefix) {
     netId = networkId;
 
@@ -358,7 +357,7 @@ int ClatdController::ClatdTracker::init(unsigned networkId, const std::string& i
     snprintf(netIdString, sizeof(netIdString), "%u", netId);
     strlcpy(iface, interface.c_str(), sizeof(iface));
     ifIndex = if_nametoindex(iface);
-    snprintf(v4iface, sizeof(v4iface), "v4-%s", iface);
+    strlcpy(v4iface, v4interface.c_str(), sizeof(v4iface));
     v4ifIndex = if_nametoindex(v4iface);
 
     // Pass in everything that clatd needs: interface, a netid to use for DNS lookups, a fwmark for
@@ -424,10 +423,13 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
     unique_fd tmpTunFd(res);
 
     // 4. create the v4-... tun interface
+    std::string v4interface("v4-");
+    v4interface += interface;
+
     struct ifreq ifr = {
             .ifr_flags = IFF_TUN,
     };
-    snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "v4-%s", interface.c_str());
+    strlcpy(ifr.ifr_name, v4interface.c_str(), sizeof(ifr.ifr_name));
 
     res = ioctl(tmpTunFd, TUNSETIFF, &ifr, sizeof(ifr));
     if (res == -1) {
@@ -438,7 +440,7 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
 
     // 5. initialize tracker object
     ClatdTracker tracker;
-    int ret = tracker.init(networkId, interface, nat64Prefix);
+    int ret = tracker.init(networkId, interface, v4interface, nat64Prefix);
     if (ret) return ret;
 
     // 6. create a throwaway socket to reserve a file descriptor number
