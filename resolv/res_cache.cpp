@@ -1413,8 +1413,10 @@ ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int qu
                                        uint32_t flags) {
     // Skip cache lookup, return RESOLV_CACHE_NOTFOUND directly so that it is
     // possible to cache the answer of this query.
+    // If ANDROID_RESOLV_NO_CACHE_STORE is set, return RESOLV_CACHE_SKIP to skip possible cache
+    // storing.
     if (flags & ANDROID_RESOLV_NO_CACHE_LOOKUP) {
-        return RESOLV_CACHE_NOTFOUND;
+        return flags & ANDROID_RESOLV_NO_CACHE_STORE ? RESOLV_CACHE_SKIP : RESOLV_CACHE_NOTFOUND;
     }
     Entry key;
     Entry** lookup;
