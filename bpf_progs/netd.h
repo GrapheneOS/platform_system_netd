@@ -73,13 +73,10 @@ typedef struct {
 
 DEFINE_BPF_MAP(cookie_tag_map, HASH, uint64_t, uid_tag, COOKIE_UID_MAP_SIZE)
 DEFINE_BPF_MAP(uid_counterset_map, HASH, uint32_t, uint8_t, UID_COUNTERSET_MAP_SIZE)
-
-/* these are updated via bpf_update_stats() which unfortunately isn't type safe */
-DEFINE_BPF_MAP_NO_ACCESSORS(app_uid_stats_map, HASH, uint32_t, stats_value, APP_STATS_MAP_SIZE)
-DEFINE_BPF_MAP_NO_ACCESSORS(stats_map_A, HASH, stats_key, stats_value, STATS_MAP_SIZE)
-DEFINE_BPF_MAP_NO_ACCESSORS(stats_map_B, HASH, stats_key, stats_value, STATS_MAP_SIZE)
-DEFINE_BPF_MAP_NO_ACCESSORS(iface_stats_map, HASH, uint32_t, stats_value, IFACE_STATS_MAP_SIZE)
-
+DEFINE_BPF_MAP(app_uid_stats_map, HASH, uint32_t, stats_value, APP_STATS_MAP_SIZE)
+DEFINE_BPF_MAP(stats_map_A, HASH, stats_key, stats_value, STATS_MAP_SIZE)
+DEFINE_BPF_MAP(stats_map_B, HASH, stats_key, stats_value, STATS_MAP_SIZE)
+DEFINE_BPF_MAP(iface_stats_map, HASH, uint32_t, stats_value, IFACE_STATS_MAP_SIZE)
 DEFINE_BPF_MAP(configuration_map, HASH, uint32_t, uint8_t, CONFIGURATION_MAP_SIZE)
 DEFINE_BPF_MAP(uid_owner_map, HASH, uint32_t, UidOwnerValue, UID_OWNER_MAP_SIZE)
 
@@ -91,29 +88,31 @@ static __always_inline int is_system_uid(uint32_t uid) {
     return (uid <= MAX_SYSTEM_UID) && (uid >= MIN_SYSTEM_UID);
 }
 
-/* this function deals with bpf maps from any key type to 'stats_value' value,
- * but it is on the programmer to ensure this, and to ensure the type/length of
- * the passed in key is appropriate for the passed in map.
- */
-static __always_inline inline void bpf_update_stats(struct __sk_buff* skb, struct bpf_map_def* map,
-                                                    int direction, void* key) {
-    stats_value* value;
-    value = unsafe_bpf_map_lookup_elem(map, key);
-    if (!value) {
-        stats_value newValue = {};
-        unsafe_bpf_map_update_elem(map, key, &newValue, BPF_NOEXIST);
-        value = unsafe_bpf_map_lookup_elem(map, key);
+#define DEFINE_UPDATE_STATS(the_stats_map, TypeOfKey)                                          \
+    static __always_inline inline void update_##the_stats_map(struct __sk_buff* skb,           \
+                                                              int direction, TypeOfKey* key) { \
+        stats_value* value;                                                                    \
+        value = bpf_##the_stats_map##_lookup_elem(key);                                        \
+        if (!value) {                                                                          \
+            stats_value newValue = {};                                                         \
+            bpf_##the_stats_map##_update_elem(key, &newValue, BPF_NOEXIST);                    \
+            value = bpf_##the_stats_map##_lookup_elem(key);                                    \
+        }                                                                                      \
+        if (value) {                                                                           \
+            if (direction == BPF_EGRESS) {                                                     \
+                __sync_fetch_and_add(&value->txPackets, 1);                                    \
+                __sync_fetch_and_add(&value->txBytes, skb->len);                               \
+            } else if (direction == BPF_INGRESS) {                                             \
+                __sync_fetch_and_add(&value->rxPackets, 1);                                    \
+                __sync_fetch_and_add(&value->rxBytes, skb->len);                               \
+            }                                                                                  \
+        }                                                                                      \
     }
-    if (value) {
-        if (direction == BPF_EGRESS) {
-            __sync_fetch_and_add(&value->txPackets, 1);
-            __sync_fetch_and_add(&value->txBytes, skb->len);
-        } else if (direction == BPF_INGRESS) {
-            __sync_fetch_and_add(&value->rxPackets, 1);
-            __sync_fetch_and_add(&value->rxBytes, skb->len);
-        }
-    }
-}
+
+DEFINE_UPDATE_STATS(app_uid_stats_map, uint32_t)
+DEFINE_UPDATE_STATS(iface_stats_map, uint32_t)
+DEFINE_UPDATE_STATS(stats_map_A, stats_key)
+DEFINE_UPDATE_STATS(stats_map_B, stats_key)
 
 static inline bool skip_owner_match(struct __sk_buff* skb) {
     int offset = -1;
@@ -196,11 +195,11 @@ static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid, int direc
 }
 
 static __always_inline inline void update_stats_with_config(struct __sk_buff* skb, int direction,
-                                                            void* key, uint8_t selectedMap) {
+                                                            stats_key* key, uint8_t selectedMap) {
     if (selectedMap == SELECT_MAP_A) {
-        bpf_update_stats(skb, &stats_map_A, direction, key);
+        update_stats_map_A(skb, direction, key);
     } else if (selectedMap == SELECT_MAP_B) {
-        bpf_update_stats(skb, &stats_map_B, direction, key);
+        update_stats_map_B(skb, direction, key);
     }
 }
 
@@ -235,12 +234,12 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
         return match;
     }
 
-    if (tag) {
+    if (key.tag) {
         update_stats_with_config(skb, direction, &key, *selectedMap);
+        key.tag = 0;
     }
 
-    key.tag = 0;
     update_stats_with_config(skb, direction, &key, *selectedMap);
-    bpf_update_stats(skb, &app_uid_stats_map, direction, &uid);
+    update_app_uid_stats_map(skb, direction, &uid);
     return match;
 }
