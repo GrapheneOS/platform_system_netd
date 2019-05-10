@@ -2040,9 +2040,12 @@ TEST_F(ResolverTest, Async_MalformedQuery) {
 TEST_F(ResolverTest, Async_CacheFlags) {
     constexpr char listen_addr[] = "127.0.0.4";
     constexpr char host_name[] = "howdy.example.com.";
+    constexpr char another_host_name[] = "howdy.example2.com.";
     const std::vector<DnsRecord> records = {
             {host_name, ns_type::ns_t_a, "1.2.3.4"},
             {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+            {another_host_name, ns_type::ns_t_a, "1.2.3.5"},
+            {another_host_name, ns_type::ns_t_aaaa, "::1.2.3.5"},
     };
 
     test::DNSResponder dns(listen_addr);
@@ -2131,6 +2134,37 @@ TEST_F(ResolverTest, Async_CacheFlags) {
 
     // Cache hits, expect still 2 queries
     EXPECT_EQ(2U, GetNumQueries(dns, host_name));
+
+    // Test both ANDROID_RESOLV_NO_CACHE_STORE and ANDROID_RESOLV_NO_CACHE_LOOKUP are set
+    dns.clearQueries();
+
+    // Make sure that the cache of "howdy.example2.com" exists.
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example2.com", ns_c_in, ns_t_aaaa, 0);
+    EXPECT_TRUE(fd1 != -1);
+    expectAnswersValid(fd1, AF_INET6, "::1.2.3.5");
+    EXPECT_EQ(1U, GetNumQueries(dns, another_host_name));
+
+    // Re-query with testFlags
+    const int testFlag = ANDROID_RESOLV_NO_CACHE_STORE | ANDROID_RESOLV_NO_CACHE_LOOKUP;
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example2.com", ns_c_in, ns_t_aaaa, testFlag);
+    EXPECT_TRUE(fd1 != -1);
+    expectAnswersValid(fd1, AF_INET6, "::1.2.3.5");
+    // Expect cache lookup is skipped.
+    EXPECT_EQ(2U, GetNumQueries(dns, another_host_name));
+
+    // Do another query with testFlags
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example2.com", ns_c_in, ns_t_a, testFlag);
+    EXPECT_TRUE(fd1 != -1);
+    expectAnswersValid(fd1, AF_INET, "1.2.3.5");
+    // Expect cache lookup is skipped.
+    EXPECT_EQ(3U, GetNumQueries(dns, another_host_name));
+
+    // Re-query with no flags
+    fd1 = resNetworkQuery(TEST_NETID, "howdy.example2.com", ns_c_in, ns_t_a, 0);
+    EXPECT_TRUE(fd1 != -1);
+    expectAnswersValid(fd1, AF_INET, "1.2.3.5");
+    // Expect no cache hit because cache storing is also skipped in previous query.
+    EXPECT_EQ(4U, GetNumQueries(dns, another_host_name));
 }
 
 TEST_F(ResolverTest, Async_NoRetryFlag) {
