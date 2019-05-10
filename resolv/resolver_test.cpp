@@ -102,7 +102,6 @@ class ResolverTest : public ::testing::Test {
 
     void SetUp() { mDnsClient.SetUp(); }
     void TearDown() {
-        mDnsClient.resolvService()->stopPrefix64Discovery(TEST_NETID);
         mDnsClient.TearDown();
     }
 
@@ -3282,6 +3281,52 @@ TEST_F(ResolverTest, GetHostByName2_Dns64QuerySpecialUseIPv4Addresses) {
 
         dns.clearQueries();
     }
+}
+
+TEST_F(ResolverTest, PrefixDiscoveryBypassTls) {
+    constexpr char listen_addr[] = "::1";
+    constexpr char cleartext_port[] = "53";
+    constexpr char tls_port[] = "853";
+    constexpr char dns64_name[] = "ipv4only.arpa.";
+    const std::vector<std::string> servers = {listen_addr};
+
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, {{dns64_name, ns_type::ns_t_aaaa, "64:ff9b::192.0.0.170"}});
+    test::DnsTlsFrontend tls(listen_addr, tls_port, listen_addr, cleartext_port);
+    ASSERT_TRUE(tls.startServer());
+
+    // Setup OPPORTUNISTIC mode and wait for the validation complete.
+    ASSERT_TRUE(
+            mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, "", {}));
+    EXPECT_TRUE(tls.waitForQueries(1, 5000));
+    tls.clearQueries();
+
+    // Start NAT64 prefix discovery and wait for it complete.
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // Verify it bypassed TLS even though there's a TLS server available.
+    EXPECT_EQ(0, tls.queries());
+    EXPECT_EQ(1U, GetNumQueries(dns, dns64_name));
+
+    // Restart the testing network to reset the cache.
+    mDnsClient.TearDown();
+    mDnsClient.SetUp();
+    dns.clearQueries();
+
+    // Setup STRICT mode and wait for the validation complete.
+    ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains, kDefaultParams, "",
+                                               {base64Encode(tls.fingerprint())}));
+    EXPECT_TRUE(tls.waitForQueries(1, 5000));
+    tls.clearQueries();
+
+    // Start NAT64 prefix discovery and wait for it to complete.
+    EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
+    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+
+    // Verify it bypassed TLS despite STRICT mode.
+    EXPECT_EQ(0, tls.queries());
+    EXPECT_EQ(1U, GetNumQueries(dns, dns64_name));
 }
 
 namespace {
