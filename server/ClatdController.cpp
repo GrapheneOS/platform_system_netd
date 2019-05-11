@@ -20,6 +20,8 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <linux/if_arp.h>
+#include <linux/if_tun.h>
+#include <linux/ioctl.h>
 #include <net/if.h>
 #include <netinet/in.h>
 #include <spawn.h>
@@ -33,6 +35,7 @@
 #include "ClatdController.h"
 
 #include "android-base/properties.h"
+#include "android-base/scopeguard.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
 #include "netdbpf/bpf_shared.h"
@@ -64,14 +67,9 @@ using android::netdutils::ScopedIndent;
 namespace android {
 namespace net {
 
-ClatdController::ClatdController(NetworkController* controller)
-        : mNetCtrl(controller) {
-}
+void ClatdController::init(void) {
+    std::lock_guard guard(mutex);
 
-ClatdController::~ClatdController() {
-}
-
-void ClatdController::Init(void) {
     // TODO: should refactor into separate function for testability
     if (bpf::getBpfSupportLevel() == bpf::BpfLevel::NONE) {
         ALOGI("Pre-4.9 kernel or pre-P api shipping level - disabling clat ebpf.");
@@ -270,10 +268,8 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             .local6 = tracker.v6,
     };
     ClatIngressValue value = {
-            // Redirect the mangled packets to the same interface so we can see them in tcpdump.
-            // TODO: move the tun interface creation to netd, and use that ifindex instead.
             // TODO: move all the clat code to eBPF and remove the tun interface entirely.
-            .oif = tracker.ifIndex,
+            .oif = tracker.v4ifIndex,
             .local4 = tracker.v4,
     };
 
@@ -347,14 +343,10 @@ ClatdController::ClatdTracker* ClatdController::getClatdTracker(const std::strin
 }
 
 // Initializes a ClatdTracker for the specified interface.
-int ClatdController::ClatdTracker::init(const std::string& interface,
+int ClatdController::ClatdTracker::init(unsigned networkId, const std::string& interface,
+                                        const std::string& v4interface,
                                         const std::string& nat64Prefix) {
-    netId = netCtrl->getNetworkForInterface(interface.c_str());
-    if (netId == NETID_UNSET) {
-        ALOGE("Interface %s not assigned to any netId", interface.c_str());
-        errno = ENODEV;
-        return -errno;
-    }
+    netId = networkId;
 
     fwmark.netId = netId;
     fwmark.explicitlySelected = true;
@@ -363,8 +355,10 @@ int ClatdController::ClatdTracker::init(const std::string& interface,
 
     snprintf(fwmarkString, sizeof(fwmarkString), "0x%x", fwmark.intValue);
     snprintf(netIdString, sizeof(netIdString), "%u", netId);
-    ifIndex = if_nametoindex(interface.c_str());
     strlcpy(iface, interface.c_str(), sizeof(iface));
+    ifIndex = if_nametoindex(iface);
+    strlcpy(v4iface, v4interface.c_str(), sizeof(v4iface));
+    v4ifIndex = if_nametoindex(v4iface);
 
     // Pass in everything that clatd needs: interface, a netid to use for DNS lookups, a fwmark for
     // outgoing packets, the NAT64 prefix, and the IPv4 and IPv6 addresses.
@@ -403,40 +397,119 @@ int ClatdController::ClatdTracker::init(const std::string& interface,
 
 int ClatdController::startClatd(const std::string& interface, const std::string& nat64Prefix,
                                 std::string* v6Str) {
+    std::lock_guard guard(mutex);
+
+    // 1. fail if pre-existing tracker already exists
     ClatdTracker* existing = getClatdTracker(interface);
     if (existing != nullptr) {
         ALOGE("clatd pid=%d already started on %s", existing->pid, interface.c_str());
-        errno = EBUSY;
-        return -errno;
+        return -EBUSY;
     }
 
-    ClatdTracker tracker(mNetCtrl);
-    if (int ret = tracker.init(interface, nat64Prefix)) {
-        return ret;
+    // 2. get network id associated with this external interface
+    unsigned networkId = mNetCtrl->getNetworkForInterface(interface.c_str());
+    if (networkId == NETID_UNSET) {
+        ALOGE("Interface %s not assigned to any netId", interface.c_str());
+        return -ENODEV;
     }
 
+    // 3. open the tun device in non blocking mode as required by clatd
+    int res = open("/dev/tun", O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    if (res == -1) {
+        res = errno;
+        ALOGE("open of tun device failed (%s)", strerror(res));
+        return -res;
+    }
+    unique_fd tmpTunFd(res);
+
+    // 4. create the v4-... tun interface
+    std::string v4interface("v4-");
+    v4interface += interface;
+
+    struct ifreq ifr = {
+            .ifr_flags = IFF_TUN,
+    };
+    strlcpy(ifr.ifr_name, v4interface.c_str(), sizeof(ifr.ifr_name));
+
+    res = ioctl(tmpTunFd, TUNSETIFF, &ifr, sizeof(ifr));
+    if (res == -1) {
+        res = errno;
+        ALOGE("ioctl(TUNSETIFF) failed (%s)", strerror(res));
+        return -res;
+    }
+
+    // 5. initialize tracker object
+    ClatdTracker tracker;
+    int ret = tracker.init(networkId, interface, v4interface, nat64Prefix);
+    if (ret) return ret;
+
+    // 6. create a throwaway socket to reserve a file descriptor number
+    res = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (res == -1) {
+        res = errno;
+        ALOGE("socket(ipv6/udp) failed (%s)", strerror(res));
+        return -res;
+    }
+    unique_fd passedTunFd(res);
+
+    // 7. this is the FD we'll pass to clatd on the cli, so need it as a string
+    char passedTunFdStr[INT32_STRLEN];
+    snprintf(passedTunFdStr, sizeof(passedTunFdStr), "%d", passedTunFd.get());
+
+    // 8. we're going to use this as argv[0] to clatd to make ps output more useful
     std::string progname("clatd-");
     progname += tracker.iface;
 
     // clang-format off
-    char* args[] = {(char*) progname.c_str(),
-                    (char*) "-i", tracker.iface,
-                    (char*) "-n", tracker.netIdString,
-                    (char*) "-m", tracker.fwmarkString,
-                    (char*) "-p", tracker.pfx96String,
-                    (char*) "-4", tracker.v4Str,
-                    (char*) "-6", tracker.v6Str,
-                    nullptr};
+    const char* args[] = {progname.c_str(),
+                          "-i", tracker.iface,
+                          "-n", tracker.netIdString,
+                          "-m", tracker.fwmarkString,
+                          "-p", tracker.pfx96String,
+                          "-4", tracker.v4Str,
+                          "-6", tracker.v6Str,
+                          "-t", passedTunFdStr,
+                          nullptr};
     // clang-format on
 
-    // Specify no flags and no actions, posix_spawn will use vfork and is
-    // guaranteed to return only once exec has been called.
-    int res = posix_spawn(&tracker.pid, kClatdPath, nullptr, nullptr, args, nullptr);
+    // 9. register vfork requirement
+    posix_spawnattr_t attr;
+    res = posix_spawnattr_init(&attr);
+    if (res) {
+        ALOGE("posix_spawnattr_init failed (%s)", strerror(res));
+        return -res;
+    }
+    const android::base::ScopeGuard attrGuard = [&] { posix_spawnattr_destroy(&attr); };
+    res = posix_spawnattr_setflags(&attr, POSIX_SPAWN_USEVFORK);
+    if (res) {
+        ALOGE("posix_spawnattr_setflags failed (%s)", strerror(res));
+        return -res;
+    }
+
+    // 10. register dup2() action: this is what 'clears' the CLOEXEC flag
+    // on the tun fd that we want the child clatd process to inherit
+    // (this will happen after the vfork, and before the execve)
+    posix_spawn_file_actions_t fa;
+    res = posix_spawn_file_actions_init(&fa);
+    if (res) {
+        ALOGE("posix_spawn_file_actions_init failed (%s)", strerror(res));
+        return -res;
+    }
+    const android::base::ScopeGuard faGuard = [&] { posix_spawn_file_actions_destroy(&fa); };
+    res = posix_spawn_file_actions_adddup2(&fa, tmpTunFd, passedTunFd);
+    if (res) {
+        ALOGE("posix_spawn_file_actions_adddup2 failed (%s)", strerror(res));
+        return -res;
+    }
+
+    // 11. actually perform vfork/dup2/execve
+    res = posix_spawn(&tracker.pid, kClatdPath, &fa, &attr, (char* const*)args, nullptr);
     if (res) {
         ALOGE("posix_spawn failed (%s)", strerror(res));
         return -res;
     }
 
+    // 12. configure eBPF offload - if possible
     maybeStartBpf(tracker);
 
     mClatdTrackers[interface] = tracker;
@@ -447,6 +520,7 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
 }
 
 int ClatdController::stopClatd(const std::string& interface) {
+    std::lock_guard guard(mutex);
     ClatdTracker* tracker = getClatdTracker(interface);
 
     if (tracker == nullptr) {
@@ -475,13 +549,14 @@ void ClatdController::dump(DumpWriter& dw) {
 
     {
         ScopedIndent trackerIndent(dw);
-        dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr [netId]");
+        dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr v4iif[v4iface] [netId]");
 
         ScopedIndent trackerDetailIndent(dw);
         for (const auto& pair : mClatdTrackers) {
             const ClatdTracker& tracker = pair.second;
-            dw.println("%u[%s] %s/96 %s -> %s [%u]", tracker.ifIndex, tracker.iface,
-                       tracker.pfx96String, tracker.v6Str, tracker.v4Str, tracker.netId);
+            dw.println("%u[%s] %s/96 %s -> %s %u[%s] [%u]", tracker.ifIndex, tracker.iface,
+                       tracker.pfx96String, tracker.v6Str, tracker.v4Str, tracker.v4ifIndex,
+                       tracker.v4iface, tracker.netId);
         }
     }
 

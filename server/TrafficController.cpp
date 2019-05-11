@@ -73,12 +73,18 @@ using netdutils::status::ok;
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
 constexpr int PER_UID_STATS_ENTRIES_LIMIT = 500;
-constexpr int TOTAL_UID_STATS_ENTRIES_LIMIT = STATS_MAP_SIZE - 500;
+// At most 90% of the stats map may be used by tagged traffic entries. This ensures
+// that 10% of the map is always available to count untagged traffic, one entry per UID.
+// Otherwise, apps would be able to avoid data usage accounting entirely by filling up the
+// map with tagged traffic entries.
+constexpr int TOTAL_UID_STATS_ENTRIES_LIMIT = STATS_MAP_SIZE * 0.9;
 
 static_assert(BPF_PERMISSION_INTERNET == INetd::PERMISSION_INTERNET,
               "Mismatch between BPF and AIDL permissions: PERMISSION_INTERNET");
 static_assert(BPF_PERMISSION_UPDATE_DEVICE_STATS == INetd::PERMISSION_UPDATE_DEVICE_STATS,
               "Mismatch between BPF and AIDL permissions: PERMISSION_UPDATE_DEVICE_STATS");
+static_assert(STATS_MAP_SIZE - TOTAL_UID_STATS_ENTRIES_LIMIT > 100,
+              "The limit for stats map is to high, stats data may be lost due to overflow");
 
 #define FLAG_MSG_TRANS(result, flag, value)            \
     do {                                               \
@@ -310,6 +316,7 @@ Status TrafficController::start() {
     }
     // Rx handler extracts nfgenmsg looks up and invokes registered dispatch function.
     const auto rxHandler = [this](const nlmsghdr&, const Slice msg) {
+        std::lock_guard guard(mMutex);
         inet_diag_msg diagmsg = {};
         if (extract(msg, diagmsg) < sizeof(inet_diag_msg)) {
             ALOGE("Unrecognized netlink message: %s", toString(msg).c_str());
@@ -409,6 +416,7 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
 }
 
 int TrafficController::untagSocket(int sockFd) {
+    std::lock_guard guard(mMutex);
     if (mBpfLevel == BpfLevel::NONE) {
         if (legacy_untagSocket(sockFd)) return -errno;
         return 0;

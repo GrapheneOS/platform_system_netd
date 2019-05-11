@@ -26,17 +26,18 @@
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <binder/IPCThreadState.h>
+#include <binder/IServiceManager.h>
+#include <binder/Status.h>
 #include <cutils/properties.h>
+#include <json/value.h>
+#include <json/writer.h>
 #include <log/log.h>
+#include <netdutils/DumpWriter.h>
 #include <utils/Errors.h>
 #include <utils/String16.h>
 
-#include <binder/IPCThreadState.h>
-#include <binder/IServiceManager.h>
-
-#include <json/value.h>
-#include <json/writer.h>
-
+#include "BinderUtil.h"
 #include "Controllers.h"
 #include "InterfaceController.h"
 #include "NetdConstants.h"  // SHA256_SIZE
@@ -49,7 +50,6 @@
 #include "SockDiag.h"
 #include "UidRanges.h"
 #include "android/net/BnNetd.h"
-#include "netdutils/DumpWriter.h"
 #include "netid_client.h"  // NETID_UNSET
 
 using android::base::StringPrintf;
@@ -148,41 +148,13 @@ bool contains(const Vector<String16>& words, const String16& word) {
     return false;
 }
 
-std::string exceptionToString(int32_t exception) {
-    std::string ret = "UnknownException";
-    switch (exception) {
-        case binder::Status::EX_SECURITY:
-            ret = "SecurityException";
-            break;
-        case binder::Status::EX_BAD_PARCELABLE:
-            ret = "BadParcelableException";
-            break;
-        case binder::Status::EX_ILLEGAL_ARGUMENT:
-            ret = "IllegalArgumentException";
-            break;
-        case binder::Status::EX_NETWORK_MAIN_THREAD:
-            ret = "NetworkMainThreadException";
-            break;
-        case binder::Status::EX_UNSUPPORTED_OPERATION:
-            ret = "UnsupportedOperationException";
-            break;
-        case binder::Status::EX_SERVICE_SPECIFIC:
-            ret = "ServiceSpecificException";
-            break;
-        case binder::Status::EX_PARCELABLE:
-            ret = "ParcelableException";
-            break;
-        case binder::Status::EX_HAS_REPLY_HEADER:
-            ret = "HasReplyHeaderException";
-            break;
-        case binder::Status::EX_TRANSACTION_FAILED:
-            ret = "TransactionFailedException";
-            break;
-    }
-    return ret;
-}
-
 }  // namespace
+
+NetdNativeService::NetdNativeService() {
+    // register log callback to BnNetd::logFunc
+    BnNetd::logFunc = std::bind(binderCallLogFn, std::placeholders::_1,
+                                [](const std::string& msg) { gLog.info("%s", msg.c_str()); });
+}
 
 status_t NetdNativeService::start() {
     IPCThreadState::self()->disableBackgroundScheduling(true);
@@ -193,54 +165,6 @@ status_t NetdNativeService::start() {
     sp<ProcessState> ps(ProcessState::self());
     ps->startThreadPool();
     ps->giveThreadPoolName();
-
-    // register log callback to BnNetd::logFunc
-    BnNetd::logFunc = [](const Json::Value& logTransaction) {
-        using namespace std::string_literals;
-
-        bool hasReturnArgs;
-        std::string output;
-        const Json::Value& returnArgs = logTransaction["_aidl_return"];
-        const Json::Value& inputArgsArray = logTransaction["input_args"];
-        const int exceptionCode = logTransaction["binder_status"]["exception_code"].asInt();
-
-        hasReturnArgs = !returnArgs.empty();
-        output.append(logTransaction["method_name"].asString() + "("s);
-
-        // input args
-        Json::FastWriter fastWriter;
-        fastWriter.omitEndingLineFeed();
-        for (Json::Value::ArrayIndex i = 0; i < inputArgsArray.size(); ++i) {
-            std::string value = fastWriter.write(inputArgsArray[i]["value"]);
-            output.append(value);
-            if (i != inputArgsArray.size() - 1) {
-                output.append(", "s);
-            }
-        }
-        output.append(")"s);
-        if (hasReturnArgs || exceptionCode != binder::Status::EX_NONE) output.append(" -> "s);
-        // return status
-        if (!binder::Status::fromExceptionCode(exceptionCode).isOk()) {
-            // an exception occurred
-            if (exceptionCode == binder::Status::EX_SERVICE_SPECIFIC) {
-                output.append(StringPrintf(
-                        "%s(%d, \"%s\")", exceptionToString(exceptionCode).c_str(),
-                        logTransaction["binder_status"]["service_specific_error_code"].asInt(),
-                        logTransaction["binder_status"]["exception_message"].asString().c_str()));
-            } else {
-                output.append(StringPrintf(
-                        "%s(%d, \"%s\")", exceptionToString(exceptionCode).c_str(), exceptionCode,
-                        logTransaction["binder_status"]["exception_message"].asString().c_str()));
-            }
-        }
-        // return args
-        if (hasReturnArgs) {
-            output.append(StringPrintf("{%s}", fastWriter.write(returnArgs).c_str()));
-        }
-        // duration time
-        output.append(StringPrintf(" <%.2fms>", logTransaction["duration_ms"].asFloat()));
-        gLog.info("%s", output.c_str());
-    };
 
     return android::OK;
 }
@@ -853,13 +777,13 @@ binder::Status NetdNativeService::strictUidCleartextPenalty(int32_t uid, int32_t
 
 binder::Status NetdNativeService::clatdStart(const std::string& ifName,
                                              const std::string& nat64Prefix, std::string* v6Addr) {
-    NETD_LOCKING_RPC(gCtls->clatdCtrl.mutex, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
+    ENFORCE_ANY_PERMISSION(PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     int res = gCtls->clatdCtrl.startClatd(ifName.c_str(), nat64Prefix, v6Addr);
     return statusFromErrcode(res);
 }
 
 binder::Status NetdNativeService::clatdStop(const std::string& ifName) {
-    NETD_LOCKING_RPC(gCtls->clatdCtrl.mutex, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
+    ENFORCE_ANY_PERMISSION(PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     int res = gCtls->clatdCtrl.stopClatd(ifName.c_str());
     return statusFromErrcode(res);
 }

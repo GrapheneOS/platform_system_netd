@@ -30,14 +30,14 @@ int bpf_cgroup_egress(struct __sk_buff* skb) {
 SEC("skfilter/egress/xtbpf")
 int xt_bpf_egress_prog(struct __sk_buff* skb) {
     uint32_t key = skb->ifindex;
-    bpf_update_stats(skb, &iface_stats_map, BPF_EGRESS, &key);
+    update_iface_stats_map(skb, BPF_EGRESS, &key);
     return BPF_MATCH;
 }
 
 SEC("skfilter/ingress/xtbpf")
 int xt_bpf_ingress_prog(struct __sk_buff* skb) {
     uint32_t key = skb->ifindex;
-    bpf_update_stats(skb, &iface_stats_map, BPF_INGRESS, &key);
+    update_iface_stats_map(skb, BPF_INGRESS, &key);
     return BPF_MATCH;
 }
 
@@ -45,7 +45,7 @@ SEC("skfilter/whitelist/xtbpf")
 int xt_bpf_whitelist_prog(struct __sk_buff* skb) {
     uint32_t sock_uid = bpf_get_socket_uid(skb);
     if (is_system_uid(sock_uid)) return BPF_MATCH;
-    struct UidOwnerValue* whitelistMatch = bpf_map_lookup_elem(&uid_owner_map, &sock_uid);
+    UidOwnerValue* whitelistMatch = bpf_uid_owner_map_lookup_elem(&sock_uid);
     if (whitelistMatch) return whitelistMatch->rule & HAPPY_BOX_MATCH;
     return BPF_NOMATCH;
 }
@@ -53,17 +53,12 @@ int xt_bpf_whitelist_prog(struct __sk_buff* skb) {
 SEC("skfilter/blacklist/xtbpf")
 int xt_bpf_blacklist_prog(struct __sk_buff* skb) {
     uint32_t sock_uid = bpf_get_socket_uid(skb);
-    struct UidOwnerValue* blacklistMatch = bpf_map_lookup_elem(&uid_owner_map, &sock_uid);
+    UidOwnerValue* blacklistMatch = bpf_uid_owner_map_lookup_elem(&sock_uid);
     if (blacklistMatch) return blacklistMatch->rule & PENALTY_BOX_MATCH;
     return BPF_NOMATCH;
 }
 
-struct bpf_map_def SEC("maps") uid_permission_map = {
-        .type = BPF_MAP_TYPE_HASH,
-        .key_size = sizeof(uint32_t),
-        .value_size = sizeof(uint8_t),
-        .max_entries = UID_OWNER_MAP_SIZE,
-};
+DEFINE_BPF_MAP(uid_permission_map, HASH, uint32_t, uint8_t, UID_OWNER_MAP_SIZE)
 
 SEC("cgroupsock/inet/create")
 int inet_socket_create(struct bpf_sock* sk) {
@@ -75,7 +70,7 @@ int inet_socket_create(struct bpf_sock* sk) {
      * run time. See UserHandle#isSameApp for detail.
      */
     uint32_t appId = (gid_uid & 0xffffffff) % PER_USER_RANGE;
-    uint8_t* permissions = bpf_map_lookup_elem(&uid_permission_map, &appId);
+    uint8_t* permissions = bpf_uid_permission_map_lookup_elem(&appId);
     if (!permissions) {
         // UID not in map. Default to just INTERNET permission.
         return 1;

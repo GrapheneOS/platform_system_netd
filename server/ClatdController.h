@@ -39,25 +39,26 @@ class NetworkController;
 
 class ClatdController {
   public:
-    explicit ClatdController(NetworkController* controller);
-    virtual ~ClatdController();
+    explicit ClatdController(NetworkController* controller) EXCLUDES(mutex)
+        : mNetCtrl(controller){};
+    virtual ~ClatdController() EXCLUDES(mutex){};
 
-    void Init(void);
+    /* First thing init/startClatd/stopClatd/dump do is grab the mutex. */
+    void init(void) EXCLUDES(mutex);
 
     int startClatd(const std::string& interface, const std::string& nat64Prefix,
-                   std::string* v6Addr);
-    int stopClatd(const std::string& interface);
+                   std::string* v6Addr) EXCLUDES(mutex);
+    int stopClatd(const std::string& interface) EXCLUDES(mutex);
 
     void dump(netdutils::DumpWriter& dw) EXCLUDES(mutex);
 
-    std::mutex mutex;
-
   private:
     struct ClatdTracker {
-        const NetworkController* netCtrl = nullptr;
         pid_t pid = -1;
         unsigned ifIndex;
         char iface[IFNAMSIZ];
+        unsigned v4ifIndex;
+        char v4iface[IFNAMSIZ];
         Fwmark fwmark;
         char fwmarkString[UINT32_STRLEN];
         unsigned netId;
@@ -69,15 +70,15 @@ class ClatdController {
         in6_addr pfx96;
         char pfx96String[INET6_ADDRSTRLEN];
 
-        ClatdTracker() = default;
-        explicit ClatdTracker(const NetworkController* netCtrl) : netCtrl(netCtrl) {}
-
-        int init(const std::string& interface, const std::string& nat64Prefix);
+        int init(unsigned networkId, const std::string& interface, const std::string& v4interface,
+                 const std::string& nat64Prefix);
     };
 
-    const NetworkController* mNetCtrl;
-    std::map<std::string, ClatdTracker> mClatdTrackers;
-    ClatdTracker* getClatdTracker(const std::string& interface);
+    std::mutex mutex;
+
+    const NetworkController* mNetCtrl GUARDED_BY(mutex);
+    std::map<std::string, ClatdTracker> mClatdTrackers GUARDED_BY(mutex);
+    ClatdTracker* getClatdTracker(const std::string& interface) REQUIRES(mutex);
 
     static in_addr_t selectIpv4Address(const in_addr ip, int16_t prefixlen);
     static int generateIpv6Address(const char* iface, const in_addr v4, const in6_addr& nat64Prefix,
@@ -89,12 +90,12 @@ class ClatdController {
         ClatEbpfMaybe,     // >=4.9 kernel &&   P api shipping level -- might work
         ClatEbpfEnabled,   // >=4.9 kernel && >=Q api shipping level -- must work
     };
-    eClatEbpfMode mClatEbpfMode;
-    base::unique_fd mNetlinkFd;
-    bpf::BpfMap<ClatIngressKey, ClatIngressValue> mClatIngressMap;
+    eClatEbpfMode mClatEbpfMode GUARDED_BY(mutex);
+    base::unique_fd mNetlinkFd GUARDED_BY(mutex);
+    bpf::BpfMap<ClatIngressKey, ClatIngressValue> mClatIngressMap GUARDED_BY(mutex);
 
-    void maybeStartBpf(const ClatdTracker& tracker);
-    void maybeStopBpf(const ClatdTracker& tracker);
+    void maybeStartBpf(const ClatdTracker& tracker) REQUIRES(mutex);
+    void maybeStopBpf(const ClatdTracker& tracker) REQUIRES(mutex);
 
     // For testing.
     friend class ClatdControllerTest;

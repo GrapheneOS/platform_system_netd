@@ -13,13 +13,16 @@ aidl_interface {
     imports: [
         "netd_event_listener_interface",
     ],
-    // Enable gen_log after it is supported in NDK backend. b/126501406
+    backend: {
+        ndk: {
+            gen_log: true,
+        },
+    },
     api_dir: "binder/api",
     versions: [
         "1",
         "2",
     ],
-
 }
 
 cc_test_library {
@@ -77,17 +80,22 @@ cc_library {
         "libbase",
         "libcrypto",
         "libcutils",
+        "libjsoncpp",
         "liblog",
         "libnetdutils",
         "libssl",
+        "libstatslog_resolv",
+        "libstatssocket",
         "libsysutils",
+        "libutils",
         "netd_event_listener_interface-ndk_platform",
         "dnsresolver_aidl_interface-ndk_platform",
         "server_configurable_flags",
+        "stats_proto",
+        "libprotobuf-cpp-lite",
     ],
     shared_libs: [
         "libbinder_ndk",
-        "libstatslog",
     ],
     include_dirs: [
         "system/netd/include",
@@ -103,6 +111,50 @@ cc_library {
             ],
         },
     },
+}
+
+cc_library_static {
+    name: "stats_proto",
+    defaults: ["netd_defaults"],
+    proto: {
+        export_proto_headers: true,
+        type: "lite",
+    },
+    srcs: [
+        "stats.proto",
+    ],
+}
+
+genrule {
+    name: "statslog_resolv.h",
+    tools: ["stats-log-api-gen"],
+    cmd: "$(location stats-log-api-gen) --header $(genDir)/statslog_resolv.h --module resolv --namespace android,net,stats",
+    out: [
+        "statslog_resolv.h",
+    ],
+}
+
+genrule {
+    name: "statslog_resolv.cpp",
+    tools: ["stats-log-api-gen"],
+    cmd: "$(location stats-log-api-gen) --cpp $(genDir)/statslog_resolv.cpp --module resolv --namespace android,net,stats --importHeader statslog_resolv.h",
+    out: [
+        "statslog_resolv.cpp",
+    ],
+}
+
+cc_library_static {
+    name: "libstatslog_resolv",
+    generated_sources: ["statslog_resolv.cpp"],
+    generated_headers: ["statslog_resolv.h"],
+    defaults: ["netd_defaults"],
+    export_generated_headers: ["statslog_resolv.h"],
+    static_libs: [
+        "libcutils",
+        "liblog",
+        "libstatssocket",
+        "libutils",
+    ],
 }
 
 cc_test {

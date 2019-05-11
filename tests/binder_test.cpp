@@ -974,7 +974,7 @@ TEST_F(BinderTest, GetSetProcSysNet) {
 
     std::string value{};
     EXPECT_TRUE(mNetd->getProcSysNet(ipversion, category, tun, parameter, &value).isOk());
-    EXPECT_FALSE(value.empty());
+    ASSERT_FALSE(value.empty());
     const int ival = std::stoi(value);
     EXPECT_GT(ival, 0);
     // Try doubling the parameter value (always best!).
@@ -1335,7 +1335,7 @@ bool getIpfwdV4Enable() {
 }
 
 bool getIpfwdV6Enable() {
-    static const char ipv6IpfwdCmd[] = "cat proc/sys/net/ipv6/conf/all/forwarding";
+    static const char ipv6IpfwdCmd[] = "cat /proc/sys/net/ipv6/conf/all/forwarding";
     std::vector<std::string> result = runCommand(ipv6IpfwdCmd);
     EXPECT_TRUE(!result.empty());
     int v6Enable = std::stoi(result[0]);
