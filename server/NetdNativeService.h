@@ -29,6 +29,7 @@ namespace net {
 
 class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd {
   public:
+    NetdNativeService();
     static status_t start();
     static char const* getServiceName() { return "netd"; }
     virtual status_t dump(int fd, const Vector<String16> &args) override;

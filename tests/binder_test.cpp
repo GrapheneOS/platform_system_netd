@@ -1335,7 +1335,7 @@ bool getIpfwdV4Enable() {
 }
 
 bool getIpfwdV6Enable() {
-    static const char ipv6IpfwdCmd[] = "cat proc/sys/net/ipv6/conf/all/forwarding";
+    static const char ipv6IpfwdCmd[] = "cat /proc/sys/net/ipv6/conf/all/forwarding";
     std::vector<std::string> result = runCommand(ipv6IpfwdCmd);
     EXPECT_TRUE(!result.empty());
     int v6Enable = std::stoi(result[0]);
