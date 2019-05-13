@@ -117,8 +117,8 @@ bool TrafficController::hasUpdateDeviceStatsPermission(uid_t uid) {
 }
 
 const std::string UidPermissionTypeToString(uint8_t permission) {
-    if (permission == INetd::NO_PERMISSIONS) {
-        return "NO_PERMISSIONS";
+    if (permission == INetd::PERMISSION_NONE) {
+        return "PERMISSION_NONE";
     }
     if (permission == INetd::PERMISSION_UNINSTALLED) {
         // This should never appear in the map, complain loudly if it does.
