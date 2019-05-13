@@ -272,7 +272,7 @@ class TrafficControllerTest : public ::testing::Test {
 
     void removePrivilegedUid(uid_t uid) {
         std::vector privilegedUid = {uid};
-        mTc.setPermissionForUids(INetd::NO_PERMISSIONS, privilegedUid);
+        mTc.setPermissionForUids(INetd::PERMISSION_NONE, privilegedUid);
     }
 
     void expectFakeStatsUnchanged(uint64_t cookie, uint32_t tag, uint32_t uid,
@@ -395,7 +395,7 @@ TEST_F(TrafficControllerTest, TestTagSocketWithPermission) {
     expectMapEmpty(mFakeCookieTagMap);
 
     // Clean up the permission
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, callingUid);
+    mTc.setPermissionForUids(INetd::PERMISSION_NONE, callingUid);
     expectPrivilegedUserSetEmpty();
 }
 
@@ -857,8 +857,8 @@ TEST_F(TrafficControllerTest, TestRevokeInternetPermission) {
 
     std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
 
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
-    expectUidPermissionMapValues(appUids, INetd::NO_PERMISSIONS);
+    mTc.setPermissionForUids(INetd::PERMISSION_NONE, appUids);
+    expectUidPermissionMapValues(appUids, INetd::PERMISSION_NONE);
 }
 
 TEST_F(TrafficControllerTest, TestPermissionUninstalled) {
@@ -891,9 +891,9 @@ TEST_F(TrafficControllerTest, TestGrantUpdateStatsPermission) {
     expectUidPermissionMapValues(appUids, INetd::PERMISSION_UPDATE_DEVICE_STATS);
     expectPrivilegedUserSet(appUids);
 
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
+    mTc.setPermissionForUids(INetd::PERMISSION_NONE, appUids);
     expectPrivilegedUserSetEmpty();
-    expectUidPermissionMapValues(appUids, INetd::NO_PERMISSIONS);
+    expectUidPermissionMapValues(appUids, INetd::PERMISSION_NONE);
 }
 
 TEST_F(TrafficControllerTest, TestRevokeUpdateStatsPermission) {
@@ -905,12 +905,12 @@ TEST_F(TrafficControllerTest, TestRevokeUpdateStatsPermission) {
     expectPrivilegedUserSet(appUids);
 
     std::vector<uid_t> uidToRemove = {TEST_UID};
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, uidToRemove);
+    mTc.setPermissionForUids(INetd::PERMISSION_NONE, uidToRemove);
 
     std::vector<uid_t> uidRemain = {TEST_UID3, TEST_UID2};
     expectPrivilegedUserSet(uidRemain);
 
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, uidRemain);
+    mTc.setPermissionForUids(INetd::PERMISSION_NONE, uidRemain);
     expectPrivilegedUserSetEmpty();
 }
 
@@ -919,9 +919,9 @@ TEST_F(TrafficControllerTest, TestGrantWrongPermission) {
 
     std::vector<uid_t> appUids = {TEST_UID, TEST_UID2, TEST_UID3};
 
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
+    mTc.setPermissionForUids(INetd::PERMISSION_NONE, appUids);
     expectPrivilegedUserSetEmpty();
-    expectUidPermissionMapValues(appUids, INetd::NO_PERMISSIONS);
+    expectUidPermissionMapValues(appUids, INetd::PERMISSION_NONE);
 }
 
 TEST_F(TrafficControllerTest, TestGrantDuplicatePermissionSlientlyFail) {
@@ -937,8 +937,8 @@ TEST_F(TrafficControllerTest, TestGrantDuplicatePermissionSlientlyFail) {
 
     expectPrivilegedUserSetEmpty();
 
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
-    expectUidPermissionMapValues(appUids, INetd::NO_PERMISSIONS);
+    mTc.setPermissionForUids(INetd::PERMISSION_NONE, appUids);
+    expectUidPermissionMapValues(appUids, INetd::PERMISSION_NONE);
 
     mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, appUids);
     expectPrivilegedUserSet(appUids);
@@ -946,7 +946,7 @@ TEST_F(TrafficControllerTest, TestGrantDuplicatePermissionSlientlyFail) {
     mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, uidToAdd);
     expectPrivilegedUserSet(appUids);
 
-    mTc.setPermissionForUids(INetd::NO_PERMISSIONS, appUids);
+    mTc.setPermissionForUids(INetd::PERMISSION_NONE, appUids);
     expectPrivilegedUserSetEmpty();
 }
 
