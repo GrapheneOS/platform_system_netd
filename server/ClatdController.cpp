@@ -33,6 +33,7 @@
 #include <log/log.h>
 
 #include "ClatdController.h"
+#include "InterfaceController.h"
 
 #include "android-base/properties.h"
 #include "android-base/scopeguard.h"
@@ -437,6 +438,10 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
         ALOGE("ioctl(TUNSETIFF) failed (%s)", strerror(res));
         return -res;
     }
+
+    // disable IPv6 on it - failing to do so is not a critical error
+    res = InterfaceController::setEnableIPv6(v4interface.c_str(), 0);
+    if (res) ALOGE("setEnableIPv6 %s failed (%s)", v4interface.c_str(), strerror(res));
 
     // 5. initialize tracker object
     ClatdTracker tracker;
