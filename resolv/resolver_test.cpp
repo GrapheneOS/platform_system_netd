@@ -269,8 +269,6 @@ class ResolverTest : public ::testing::Test {
         ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_tls_servers, &res_params,
                                     &res_stats, &wait_for_pending_req_timeout_count));
         EXPECT_EQ(0, wait_for_pending_req_timeout_count);
-
-        ASSERT_NO_FATAL_FAILURE(mDnsClient.ShutdownDNSServers(&dns));
     }
 
     void StartDns(test::DNSResponder& dns, const std::vector<DnsRecord>& records) {
@@ -555,8 +553,6 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
 
     EXPECT_THAT(res_servers, testing::UnorderedElementsAreArray(servers));
     EXPECT_THAT(res_domains, testing::UnorderedElementsAreArray(domains));
-
-    ASSERT_NO_FATAL_FAILURE(mDnsClient.ShutdownDNSServers(&dns));
 }
 
 TEST_F(ResolverTest, GetAddrInfo) {
@@ -815,7 +811,6 @@ TEST_F(ResolverTest, MultidomainResolution) {
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
     EXPECT_EQ("1.2.3.3", ToString(result));
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
-    dns.stopServer();
 }
 
 TEST_F(ResolverTest, GetAddrInfoV6_numeric) {
@@ -1074,13 +1069,6 @@ static void setupTlsServers(const std::vector<std::string>& servers,
     }
 }
 
-static void shutdownTlsServers(std::vector<std::unique_ptr<test::DnsTlsFrontend>>* tls) {
-    for (const auto& t : *tls) {
-        t->stopServer();
-    }
-    tls->clear();
-}
-
 TEST_F(ResolverTest, MaxServerPrune_Binder) {
     std::vector<std::string> domains;
     std::vector<std::unique_ptr<test::DNSResponder>> dns;
@@ -1114,9 +1102,6 @@ TEST_F(ResolverTest, MaxServerPrune_Binder) {
     EXPECT_TRUE(std::equal(servers.begin(), servers.begin() + MAXNS, res_servers.begin()));
     EXPECT_TRUE(std::equal(servers.begin(), servers.begin() + MAXNS, res_tls_servers.begin()));
     EXPECT_TRUE(std::equal(domains.begin(), domains.begin() + MAXDNSRCH, res_domains.begin()));
-
-    ASSERT_NO_FATAL_FAILURE(mDnsClient.ShutdownDNSServers(&dns));
-    ASSERT_NO_FATAL_FAILURE(shutdownTlsServers(&tls));
 }
 
 TEST_F(ResolverTest, ResolverStats) {
@@ -2435,8 +2420,6 @@ TEST_F(ResolverTest, BrokenEdns) {
         tls.stopServer();
         dns.clearQueries();
     }
-
-    dns.stopServer();
 }
 
 // DNS-over-TLS validation success, but server does not respond to TLS query after a while.
