@@ -19,13 +19,14 @@
 
 #include "dns/DnsTlsSocket.h"
 
-#include <algorithm>
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <errno.h>
 #include <linux/tcp.h>
 #include <openssl/err.h>
+#include <sys/eventfd.h>
 #include <sys/poll.h>
+#include <algorithm>
 
 #include "dns/DnsTlsSessionCache.h"
 #include "dns/IDnsTlsSocketObserver.h"
@@ -166,14 +167,8 @@ bool DnsTlsSocket::initialize() {
     if (!mSsl) {
         return false;
     }
-    int sv[2];
-    if (socketpair(AF_LOCAL, SOCK_SEQPACKET, 0, sv)) {
-        return false;
-    }
-    // The two sockets are perfectly symmetrical, so the choice of which one is
-    // "in" and which one is "out" is arbitrary.
-    mIpcInFd.reset(sv[0]);
-    mIpcOutFd.reset(sv[1]);
+
+    mEventFd.reset(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
 
     // Start the I/O loop.
     mLoopThread.reset(new std::thread(&DnsTlsSocket::loop, this));
@@ -341,26 +336,27 @@ bool DnsTlsSocket::sslWrite(const Slice buffer) {
 
 void DnsTlsSocket::loop() {
     std::lock_guard<std::mutex> guard(mLock);
-    // Buffer at most one query.
-    Query q;
+    std::deque<std::vector<uint8_t>> q;
 
     const int timeout_msecs = DnsTlsSocket::kIdleTimeout.count() * 1000;
     while (true) {
         // poll() ignores negative fds
         struct pollfd fds[2] = { { .fd = -1 }, { .fd = -1 } };
-        enum { SSLFD = 0, IPCFD = 1 };
+        enum { SSLFD = 0, EVENTFD = 1 };
 
         // Always listen for a response from server.
         fds[SSLFD].fd = mSslFd.get();
         fds[SSLFD].events = POLLIN;
 
-        // If we have a pending query, also wait for space
-        // to write it, otherwise listen for a new query.
-        if (!q.query.empty()) {
+        // If we have pending queries, wait for space to write one.
+        // Otherwise, listen for new queries.
+        // Note: This blocks the destructor until q is empty, i.e. until all pending
+        // queries are sent or have failed to send.
+        if (!q.empty()) {
             fds[SSLFD].events |= POLLOUT;
         } else {
-            fds[IPCFD].fd = mIpcOutFd.get();
-            fds[IPCFD].events = POLLIN;
+            fds[EVENTFD].fd = mEventFd.get();
+            fds[EVENTFD].events = POLLIN;
         }
 
         const int s = TEMP_FAILURE_RETRY(poll(fds, ARRAY_SIZE(fds), timeout_msecs));
@@ -372,34 +368,42 @@ void DnsTlsSocket::loop() {
             ALOGV("Poll failed: %d", errno);
             break;
         }
-        if (fds[SSLFD].revents & (POLLIN | POLLERR)) {
+        if (fds[SSLFD].revents & (POLLIN | POLLERR | POLLHUP)) {
             if (!readResponse()) {
                 ALOGV("SSL remote close or read error.");
                 break;
             }
         }
-        if (fds[IPCFD].revents & (POLLIN | POLLERR)) {
-            int res = read(mIpcOutFd.get(), &q, sizeof(q));
+        if (fds[EVENTFD].revents & (POLLIN | POLLERR)) {
+            int64_t num_queries;
+            ssize_t res = read(mEventFd.get(), &num_queries, sizeof(num_queries));
             if (res < 0) {
-                ALOGW("Error during IPC read");
+                ALOGW("Error during eventfd read");
                 break;
             } else if (res == 0) {
-                ALOGV("IPC channel closed; disconnecting");
+                ALOGW("eventfd closed; disconnecting");
                 break;
-            } else if (res != sizeof(q)) {
-                ALOGE("Struct size mismatch: %d != %zu", res, sizeof(q));
+            } else if (res != sizeof(num_queries)) {
+                ALOGE("Int size mismatch: %zd != %zu", res, sizeof(num_queries));
+                break;
+            } else if (num_queries < 0) {
+                ALOGV("Negative eventfd read indicates destructor-initiated shutdown");
                 break;
             }
+            // Take ownership of all pending queries.  (q is always empty here.)
+            mQueue.swap(q);
         } else if (fds[SSLFD].revents & POLLOUT) {
-            // query cannot be null here.
-            if (!sendQuery(q)) {
+            // q cannot be empty here.
+            // Sending the entire queue here would risk a TCP flow control deadlock, so
+            // we only send a single query on each cycle of this loop.
+            // TODO: Coalesce multiple pending queries if there is enough space in the
+            // write buffer.
+            if (!sendQuery(q.front())) {
                 break;
             }
-            q = Query();  // Reset q to empty
+            q.pop_front();
         }
     }
-    ALOGV("Closing IPC read FD");
-    mIpcOutFd.reset();
     ALOGV("Disconnecting");
     sslDisconnect();
     ALOGV("Calling onClosed");
@@ -410,7 +414,7 @@ void DnsTlsSocket::loop() {
 DnsTlsSocket::~DnsTlsSocket() {
     ALOGV("Destructor");
     // This will trigger an orderly shutdown in loop().
-    mIpcInFd.reset();
+    requestLoopShutdown();
     {
         // Wait for the orderly shutdown to complete.
         std::lock_guard<std::mutex> guard(mLock);
@@ -428,12 +432,40 @@ DnsTlsSocket::~DnsTlsSocket() {
 }
 
 bool DnsTlsSocket::query(uint16_t id, const Slice query) {
-    const Query q = { .id = id, .query = query };
-    if (!mIpcInFd) {
+    // Compose the entire message in a single buffer, so that it can be
+    // sent as a single TLS record.
+    std::vector<uint8_t> buf(query.size() + 4);
+    // Write 2-byte length
+    uint16_t len = query.size() + 2;  // + 2 for the ID.
+    buf[0] = len >> 8;
+    buf[1] = len;
+    // Write 2-byte ID
+    buf[2] = id >> 8;
+    buf[3] = id;
+    // Copy body
+    std::memcpy(buf.data() + 4, query.base(), query.size());
+
+    mQueue.push(std::move(buf));
+    // Increment the mEventFd counter by 1.
+    return incrementEventFd(1);
+}
+
+void DnsTlsSocket::requestLoopShutdown() {
+    // Write a negative number to the eventfd.  This triggers an immediate shutdown.
+    incrementEventFd(INT64_MIN);
+}
+
+bool DnsTlsSocket::incrementEventFd(const int64_t count) {
+    if (!mEventFd) {
+        ALOGV("eventfd is not initialized");
         return false;
     }
-    int written = write(mIpcInFd.get(), &q, sizeof(q));
-    return written == sizeof(q);
+    int written = write(mEventFd.get(), &count, sizeof(count));
+    if (written != sizeof(count)) {
+        ALOGE("Failed to increment eventfd by %" PRId64, count);
+        return false;
+    }
+    return true;
 }
 
 // Read exactly len bytes into buffer or fail with an SSL error code
@@ -467,20 +499,7 @@ int DnsTlsSocket::sslRead(const Slice buffer, bool wait) {
     return SSL_ERROR_NONE;
 }
 
-bool DnsTlsSocket::sendQuery(const Query& q) {
-    ALOGV("sending query");
-    // Compose the entire message in a single buffer, so that it can be
-    // sent as a single TLS record.
-    std::vector<uint8_t> buf(q.query.size() + 4);
-    // Write 2-byte length
-    uint16_t len = q.query.size() + 2; // + 2 for the ID.
-    buf[0] = len >> 8;
-    buf[1] = len;
-    // Write 2-byte ID
-    buf[2] = q.id >> 8;
-    buf[3] = q.id;
-    // Copy body
-    std::memcpy(buf.data() + 4, q.query.base(), q.query.size());
+bool DnsTlsSocket::sendQuery(const std::vector<uint8_t>& buf) {
     if (!sslWrite(netdutils::makeSlice(buf))) {
         return false;
     }
