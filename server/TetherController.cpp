@@ -36,6 +36,7 @@
 #include <vector>
 
 #define LOG_TAG "TetherController"
+#include <android-base/scopeguard.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
@@ -114,22 +115,6 @@ bool inBpToolsMode() {
     char bootmode[PROPERTY_VALUE_MAX] = {0};
     property_get("ro.bootmode", bootmode, "unknown");
     return !strcmp(BP_TOOLS_MODE, bootmode);
-}
-
-int setPosixSpawnFileActionsAddDup2(posix_spawn_file_actions_t* fa, int fd, int new_fd) {
-    int res = posix_spawn_file_actions_init(fa);
-    if (res) {
-        return res;
-    }
-    return posix_spawn_file_actions_adddup2(fa, fd, new_fd);
-}
-
-int setPosixSpawnAttrFlags(posix_spawnattr_t* attr, short flags) {
-    int res = posix_spawnattr_init(attr);
-    if (res) {
-        return res;
-    }
-    return posix_spawnattr_setflags(attr, flags);
 }
 
 }  // namespace
@@ -267,23 +252,33 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
     // dup2 creates fd without CLOEXEC, dnsmasq will receive commands through the
     // duplicated fd.
     posix_spawn_file_actions_t fa;
-    int res = setPosixSpawnFileActionsAddDup2(&fa, pipeRead.get(), STDIN_FILENO);
+    int res = posix_spawn_file_actions_init(&fa);
     if (res) {
-        ALOGE("posix_spawn set fa failed (%s)", strerror(res));
+        ALOGE("posix_spawn_file_actions_init failed (%s)", strerror(res));
+        return -res;
+    }
+    const android::base::ScopeGuard faGuard = [&] { posix_spawn_file_actions_destroy(&fa); };
+    res = posix_spawn_file_actions_adddup2(&fa, pipeRead.get(), STDIN_FILENO);
+    if (res) {
+        ALOGE("posix_spawn_file_actions_adddup2 failed (%s)", strerror(res));
         return -res;
     }
 
     posix_spawnattr_t attr;
-    res = setPosixSpawnAttrFlags(&attr, POSIX_SPAWN_USEVFORK);
+    res = posix_spawnattr_init(&attr);
     if (res) {
-        ALOGE("posix_spawn set attr flag failed (%s)", strerror(res));
+        ALOGE("posix_spawnattr_init failed (%s)", strerror(res));
+        return -res;
+    }
+    const android::base::ScopeGuard attrGuard = [&] { posix_spawnattr_destroy(&attr); };
+    res = posix_spawnattr_setflags(&attr, POSIX_SPAWN_USEVFORK);
+    if (res) {
+        ALOGE("posix_spawnattr_setflags failed (%s)", strerror(res));
         return -res;
     }
 
     pid_t pid;
     res = posix_spawn(&pid, args[0], &fa, &attr, &args[0], nullptr);
-    posix_spawnattr_destroy(&attr);
-    posix_spawn_file_actions_destroy(&fa);
     if (res) {
         ALOGE("posix_spawn failed (%s)", strerror(res));
         return -res;

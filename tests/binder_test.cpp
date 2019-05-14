@@ -2876,7 +2876,7 @@ void checkUidsInPermissionMap(std::vector<int32_t>& uids, bool exist) {
         android::netdutils::StatusOr<uint8_t> permission = uidPermissionMap.readValue(uid);
         if (exist) {
             EXPECT_TRUE(isOk(permission));
-            EXPECT_EQ(INetd::NO_PERMISSIONS, permission.value());
+            EXPECT_EQ(INetd::PERMISSION_NONE, permission.value());
         } else {
             EXPECT_FALSE(isOk(permission));
             EXPECT_EQ(ENOENT, permission.status().code());
@@ -2893,7 +2893,7 @@ TEST_F(BinderTest, TestInternetPermission) {
 
     mNetd->trafficSetNetPermForUids(INetd::PERMISSION_INTERNET, appUids);
     checkUidsInPermissionMap(appUids, false);
-    mNetd->trafficSetNetPermForUids(INetd::NO_PERMISSIONS, appUids);
+    mNetd->trafficSetNetPermForUids(INetd::PERMISSION_NONE, appUids);
     checkUidsInPermissionMap(appUids, true);
     mNetd->trafficSetNetPermForUids(INetd::PERMISSION_UNINSTALLED, appUids);
     checkUidsInPermissionMap(appUids, false);
