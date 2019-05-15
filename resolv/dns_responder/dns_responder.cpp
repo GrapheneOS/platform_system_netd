@@ -535,10 +535,9 @@ const char* DNSHeader::readHeader(const char* buffer, const char* buffer_end,
 /* DNS responder */
 
 DNSResponder::DNSResponder(std::string listen_address, std::string listen_service,
-                           int poll_timeout_ms, ns_rcode error_rcode)
+                           ns_rcode error_rcode)
     : listen_address_(std::move(listen_address)),
       listen_service_(std::move(listen_service)),
-      poll_timeout_ms_(poll_timeout_ms),
       error_rcode_(error_rcode) {}
 
 DNSResponder::~DNSResponder() {
@@ -699,9 +698,8 @@ void DNSResponder::clearQueries() {
 void DNSResponder::requestHandler() {
     epoll_event evs[EPOLL_MAX_EVENTS];
     while (true) {
-        int n = epoll_wait(epoll_fd_.get(), evs, EPOLL_MAX_EVENTS, poll_timeout_ms_);
-        if (n == 0) continue;
-        if (n < 0) {
+        int n = epoll_wait(epoll_fd_.get(), evs, EPOLL_MAX_EVENTS, -1);
+        if (n <= 0) {
             APLOGI("epoll_wait() failed, n=%d", n);
             return;
         }

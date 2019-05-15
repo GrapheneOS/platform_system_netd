@@ -332,7 +332,7 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname_NoData) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
     constexpr char v4_host_name[] = "v4only.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
     dns.addMapping(v4_host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
     const char* servers[] = {listen_addr};
@@ -359,7 +359,7 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname) {
     constexpr char v4addr[] = "1.2.3.4";
     constexpr char v6addr[] = "::1.2.3.4";
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, v4addr);
     dns.addMapping(host_name, ns_type::ns_t_aaaa, v6addr);
     ASSERT_TRUE(dns.startServer());
@@ -417,8 +417,7 @@ TEST_F(GetAddrInfoForNetContextTest, ServerResponseError) {
     for (const auto& config : testConfigs) {
         SCOPED_TRACE(StringPrintf("rcode: %d", config.rcode));
 
-        test::DNSResponder dns(listen_addr, listen_srv, 250,
-                               config.rcode /*response specific rcode*/);
+        test::DNSResponder dns(listen_addr, listen_srv, config.rcode /*response specific rcode*/);
         dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
         dns.setResponseProbability(0.0);  // always ignore requests and response preset rcode
         ASSERT_TRUE(dns.startServer());
@@ -442,7 +441,7 @@ TEST_F(GetAddrInfoForNetContextTest, ServerTimeout) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "hello.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, static_cast<ns_rcode>(-1) /*no response*/);
+    test::DNSResponder dns(listen_addr, listen_srv, static_cast<ns_rcode>(-1) /*no response*/);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
     dns.setResponseProbability(0.0);  // always ignore requests and don't response
     ASSERT_TRUE(dns.startServer());
@@ -466,7 +465,7 @@ TEST_F(GetHostByNameForNetContextTest, AlphabeticalHostname) {
     constexpr char v4addr[] = "1.2.3.4";
     constexpr char v6addr[] = "::1.2.3.4";
 
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
     dns.addMapping(host_name, ns_type::ns_t_a, v4addr);
     dns.addMapping(host_name, ns_type::ns_t_aaaa, v6addr);
     ASSERT_TRUE(dns.startServer());
@@ -501,7 +500,7 @@ TEST_F(GetHostByNameForNetContextTest, NoData) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
     constexpr char v4_host_name[] = "v4only.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
     dns.addMapping(v4_host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
     const char* servers[] = {listen_addr};
@@ -544,8 +543,7 @@ TEST_F(GetHostByNameForNetContextTest, ServerResponseError) {
     for (const auto& config : testConfigs) {
         SCOPED_TRACE(StringPrintf("rcode: %d", config.rcode));
 
-        test::DNSResponder dns(listen_addr, listen_srv, 250,
-                               config.rcode /*response specific rcode*/);
+        test::DNSResponder dns(listen_addr, listen_srv, config.rcode /*response specific rcode*/);
         dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
         dns.setResponseProbability(0.0);  // always ignore requests and response preset rcode
         ASSERT_TRUE(dns.startServer());
@@ -566,7 +564,7 @@ TEST_F(GetHostByNameForNetContextTest, ServerTimeout) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "hello.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, static_cast<ns_rcode>(-1) /*no response*/);
+    test::DNSResponder dns(listen_addr, listen_srv, static_cast<ns_rcode>(-1) /*no response*/);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
     dns.setResponseProbability(0.0);  // always ignore requests and don't response
     ASSERT_TRUE(dns.startServer());
