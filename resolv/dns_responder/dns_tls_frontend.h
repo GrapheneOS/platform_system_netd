@@ -58,6 +58,7 @@ public:
     bool startServer();
     bool stopServer();
     int queries() const { return queries_; }
+    void clearQueries() { queries_ = 0; }
     bool waitForQueries(int number, int timeoutMs) const;
     void set_chain_length(int length) { chain_length_ = length; }
     // Represents a fingerprint from the middle of the certificate chain.
