@@ -28,6 +28,7 @@
 
 #include "dns/DnsTlsServer.h"
 #include "dns/IDnsTlsSocket.h"
+#include "dns/LockedQueue.h"
 
 namespace android {
 namespace net {
@@ -64,7 +65,7 @@ public:
     // notified that the socket is closed.
     // Note that success here indicates successful sending, not receipt of a response.
     // Thread-safe.
-    bool query(uint16_t id, const Slice query) override;
+    bool query(uint16_t id, const Slice query) override EXCLUDES(mLock);
 
 private:
     // Lock to be held by the SSL event loop thread.  This is not normally in contention.
@@ -95,20 +96,30 @@ private:
     // will return SSL_ERROR_WANT_READ if there is no data from the server to read.
     int sslRead(const Slice buffer, bool wait) REQUIRES(mLock);
 
-    struct Query {
-        uint16_t id;
-        Slice query;
-    };
-
-    bool sendQuery(const Query& q) REQUIRES(mLock);
+    bool sendQuery(const std::vector<uint8_t>& buf) REQUIRES(mLock);
     bool readResponse() REQUIRES(mLock);
 
-    // SOCK_SEQPACKET socket pair used for sending queries from myriad query
-    // threads to the SSL thread.  EOF indicates a close request.
-    // We have to use a socket pair (i.e. a pipe) because the SSL thread needs to wait in
-    // select() for input from either a remote server or a query thread.
-    base::unique_fd mIpcInFd;
-    base::unique_fd mIpcOutFd GUARDED_BY(mLock);
+    // Similar to query(), this function uses incrementEventFd to send a message to the
+    // loop thread.  However, instead of incrementing the counter by one (indicating a
+    // new query), it wraps the counter to negative, which we use to indicate a shutdown
+    // request.
+    void requestLoopShutdown() EXCLUDES(mLock);
+
+    // This function sends a message to the loop thread by incrementing mEventFd.
+    bool incrementEventFd(int64_t count) EXCLUDES(mLock);
+
+    // Queue of pending queries.  query() pushes items onto the queue and notifies
+    // the loop thread by incrementing mEventFd.  loop() reads items off the queue.
+    LockedQueue<std::vector<uint8_t>> mQueue;
+
+    // eventfd socket used for notifying the SSL thread when queries are ready to send.
+    // This socket acts similarly to an atomic counter, incremented by query() and cleared
+    // by loop().  We have to use a socket because the SSL thread needs to wait in poll()
+    // for input from either a remote server or a query thread.  Since eventfd does not have
+    // EOF, we indicate a close request by setting the counter to a negative number.
+    // This file descriptor is opened by initialize(), and closed implicitly after
+    // destruction.
+    base::unique_fd mEventFd;
 
     // SSL Socket fields.
     bssl::UniquePtr<SSL_CTX> mSslCtx GUARDED_BY(mLock);
