@@ -45,13 +45,13 @@
 #include <netdutils/Stopwatch.h>
 #include <netdutils/ThreadUtil.h>
 #include <private/android_filesystem_config.h>  // AID_SYSTEM
-#include <resolv.h>
 #include <statslog_resolv.h>
 #include <sysutils/SocketClient.h>
 
 #include "DnsResolver.h"
 #include "NetdClient.h"  // NETID_USE_LOCAL_NAMESERVERS
 #include "NetdPermissions.h"
+#include "PrivateDnsConfiguration.h"
 #include "ResolverEventReporter.h"
 #include "netd_resolv/stats.h"  // RCODE_TIMEOUT
 #include "resolv_private.h"
@@ -115,8 +115,9 @@ constexpr bool requestingUseLocalNameservers(unsigned flags) {
 }
 
 inline bool queryingViaTls(unsigned dns_netid) {
+    // TODO: The simpler PrivateDnsStatus should suffice here.
     ExternalPrivateDnsStatus privateDnsStatus = {PrivateDnsMode::OFF, 0, {}};
-    resolv_get_private_dns_status_for_net(dns_netid, &privateDnsStatus);
+    gPrivateDnsConfiguration.getStatus(dns_netid, &privateDnsStatus);
     switch (static_cast<PrivateDnsMode>(privateDnsStatus.mode)) {
         case PrivateDnsMode::OPPORTUNISTIC:
             for (int i = 0; i < privateDnsStatus.numServers; i++) {
