@@ -29,6 +29,7 @@
 #include <vector>
 
 #include <android-base/thread_annotations.h>
+#include "android-base/unique_fd.h"
 
 namespace test {
 
@@ -38,8 +39,7 @@ struct DNSRecord;
 
 inline const std::string kDefaultListenAddr = "127.0.0.3";
 inline const std::string kDefaultListenService = "53";
-inline const int kDefaultPollTimoutMillis = 250;
-inline const ns_rcode kDefaultErrorCode = ns_rcode::ns_r_servfail;
+inline const int kDefaultPollTimoutMillis = -1;
 
 /*
  * Simple DNS responder, which replies to queries with the registered response
@@ -122,6 +122,18 @@ class DNSResponder {
     bool makeErrorResponse(DNSHeader* header, ns_rcode rcode, char* response,
                            size_t* response_len) const;
 
+    // Add a new file descriptor to be polled by the handler thread.
+    bool addFd(int fd, uint32_t events);
+
+    // Read the query sent from the client and send the answer back to the client. It
+    // makes sure the I/O communicated with the client is correct.
+    void handleQuery();
+
+    // Trigger the handler thread to terminate.
+    bool sendToEventFd();
+
+    // Used in the handler thread for the termination signal.
+    void handleEventFd();
 
     // Address and service to listen on, currently limited to UDP.
     const std::string listen_address_;
@@ -133,6 +145,8 @@ class DNSResponder {
     // Probability that a valid response is being sent instead of being sent
     // instead of returning error_rcode_.
     std::atomic<double> response_probability_ = 1.0;
+    // Maximum number of fds for epoll.
+    const int EPOLL_MAX_EVENTS = 2;
 
     // Control how the DNS server behaves when it receives the requests containing OPT RR.
     // If it's set Edns::ON, the server can recognize and reply the response; if it's set
@@ -151,11 +165,11 @@ class DNSResponder {
         GUARDED_BY(queries_mutex_);
     mutable std::mutex queries_mutex_;
     // Socket on which the server is listening.
-    int socket_ = -1;
+    android::base::unique_fd socket_;
     // File descriptor for epoll.
-    int epoll_fd_ = -1;
-    // Signal for request handler termination.
-    std::atomic<bool> terminate_ = false;
+    android::base::unique_fd epoll_fd_;
+    // Eventfd used to signal for the handler thread termination.
+    android::base::unique_fd event_fd_;
     // Thread for handling incoming threads.
     std::thread handler_thread_ GUARDED_BY(update_mutex_);
     std::mutex update_mutex_;
