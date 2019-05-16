@@ -790,9 +790,12 @@ int DnsProxyListener::ResNSendCommand::runCommand(SocketClient* cli, int argc, c
         return -1;
     }
 
+    const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
+
     android_net_context netcontext;
     gResNetdCallbacks.get_network_context(netId, uid, &netcontext);
-    if (checkAndClearUseLocalNameserversFlag(&netId)) {
+
+    if (useLocalNameservers) {
         netcontext.flags |= NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS;
     }
 
