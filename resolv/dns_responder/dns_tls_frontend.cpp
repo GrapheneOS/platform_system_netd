@@ -16,16 +16,15 @@
 
 #include "dns_tls_frontend.h"
 
-#include <netdb.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <sys/poll.h>
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/ssl.h>
+#include <sys/eventfd.h>
+#include <sys/poll.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #define LOG_TAG "DnsTlsFrontend"
@@ -63,9 +62,7 @@ bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
 
 std::string errno2str() {
     char error_msg[512] = { 0 };
-    if (strerror_r(errno, error_msg, sizeof(error_msg)))
-        return std::string();
-    return std::string(error_msg);
+    return strerror_r(errno, error_msg, sizeof(error_msg));
 }
 
 #define APLOGI(fmt, ...) ALOGI(fmt ": [%d] %s", __VA_ARGS__, errno, errno2str().c_str())
@@ -197,65 +194,70 @@ bool DnsTlsFrontend::startServer() {
         .ai_socktype = SOCK_STREAM,
         .ai_flags = AI_PASSIVE
     };
-    addrinfo* frontend_ai_res;
+    addrinfo* frontend_ai_res = nullptr;
     int rv = getaddrinfo(listen_address_.c_str(), listen_service_.c_str(),
                          &frontend_ai_hints, &frontend_ai_res);
+    ScopedAddrinfo frontend_ai_res_cleanup(frontend_ai_res);
     if (rv) {
         ALOGE("frontend getaddrinfo(%s, %s) failed: %s", listen_address_.c_str(),
             listen_service_.c_str(), gai_strerror(rv));
         return false;
     }
 
-    int s = -1;
     for (const addrinfo* ai = frontend_ai_res ; ai ; ai = ai->ai_next) {
-        s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
-        if (s < 0) continue;
-        enableSockopt(s, SOL_SOCKET, SO_REUSEPORT).ignoreError();
-        enableSockopt(s, SOL_SOCKET, SO_REUSEADDR).ignoreError();
-        if (bind(s, ai->ai_addr, ai->ai_addrlen)) {
-            APLOGI("bind failed for socket %d", s);
-            close(s);
-            s = -1;
+        android::base::unique_fd s(socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol));
+        if (s.get() < 0) {
+            APLOGI("ignore creating socket failed %d", s.get());
             continue;
         }
+        enableSockopt(s.get(), SOL_SOCKET, SO_REUSEPORT).ignoreError();
+        enableSockopt(s.get(), SOL_SOCKET, SO_REUSEADDR).ignoreError();
         std::string host_str = addr2str(ai->ai_addr, ai->ai_addrlen);
+        if (bind(s.get(), ai->ai_addr, ai->ai_addrlen)) {
+            APLOGI("failed to bind TCP %s:%s", host_str.c_str(), listen_service_.c_str());
+            continue;
+        }
         ALOGI("bound to TCP %s:%s", host_str.c_str(), listen_service_.c_str());
+        socket_ = std::move(s);
         break;
     }
-    freeaddrinfo(frontend_ai_res);
-    if (s < 0) {
-        ALOGE("server socket creation failed");
+
+    if (listen(socket_.get(), 1) < 0) {
+        APLOGI("failed to listen socket %d", socket_.get());
         return false;
     }
-
-    if (listen(s, 1) < 0) {
-        ALOGE("listen failed");
-        return false;
-    }
-
-    socket_ = s;
 
     // Set up UDP client socket to backend.
     addrinfo backend_ai_hints{
         .ai_family = AF_UNSPEC,
         .ai_socktype = SOCK_DGRAM
     };
-    addrinfo* backend_ai_res;
+    addrinfo* backend_ai_res = nullptr;
     rv = getaddrinfo(backend_address_.c_str(), backend_service_.c_str(),
                          &backend_ai_hints, &backend_ai_res);
+    ScopedAddrinfo backend_ai_res_cleanup(backend_ai_res);
     if (rv) {
         ALOGE("backend getaddrinfo(%s, %s) failed: %s", listen_address_.c_str(),
             listen_service_.c_str(), gai_strerror(rv));
         return false;
     }
-    backend_socket_ = socket(backend_ai_res->ai_family, backend_ai_res->ai_socktype,
-        backend_ai_res->ai_protocol);
-    if (backend_socket_ < 0) {
-        ALOGE("backend socket creation failed");
+    backend_socket_.reset(socket(backend_ai_res->ai_family, backend_ai_res->ai_socktype,
+                                 backend_ai_res->ai_protocol));
+    if (backend_socket_.get() < 0) {
+        APLOGI("backend socket %d creation failed", backend_socket_.get());
         return false;
     }
-    connect(backend_socket_, backend_ai_res->ai_addr, backend_ai_res->ai_addrlen);
-    freeaddrinfo(backend_ai_res);
+
+    // connect() always fails in the test DnsTlsSocketTest.SlowDestructor because of
+    // no backend server. Don't check it.
+    connect(backend_socket_.get(), backend_ai_res->ai_addr, backend_ai_res->ai_addrlen);
+
+    // Set up eventfd socket.
+    event_fd_.reset(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
+    if (event_fd_.get() == -1) {
+        APLOGI("failed to create eventfd %d", event_fd_.get());
+        return false;
+    }
 
     {
         std::lock_guard lock(update_mutex_);
@@ -267,51 +269,55 @@ bool DnsTlsFrontend::startServer() {
 
 void DnsTlsFrontend::requestHandler() {
     ALOGD("Request handler started");
-    struct pollfd fds[1] = {{ .fd = socket_, .events = POLLIN }};
+    enum { EVENT_FD = 0, LISTEN_FD = 1 };
+    pollfd fds[2] = {{.fd = event_fd_.get(), .events = POLLIN},
+                     {.fd = socket_.get(), .events = POLLIN}};
 
-    while (!terminate_) {
-        int poll_code = poll(fds, 1, 10 /* ms */);
-        if (poll_code == 0) {
-            // Timeout.  Poll again.
-            continue;
-        } else if (poll_code < 0) {
-            ALOGW("Poll failed with error %d", poll_code);
-            // Error.
-            break;
-        }
-        sockaddr_storage addr;
-        socklen_t len = sizeof(addr);
-
-        ALOGD("Trying to accept a client");
-        int client = accept4(socket_, reinterpret_cast<sockaddr*>(&addr), &len, SOCK_CLOEXEC);
-        ALOGD("Got client socket %d", client);
-        if (client < 0) {
-            // Stop
+    while (true) {
+        int poll_code = poll(fds, std::size(fds), -1);
+        if (poll_code <= 0) {
+            APLOGI("Poll failed with error %d", poll_code);
             break;
         }
 
-        bssl::UniquePtr<SSL> ssl(SSL_new(ctx_.get()));
-        SSL_set_fd(ssl.get(), client);
-
-        ALOGD("Doing SSL handshake");
-        bool success = false;
-        if (SSL_accept(ssl.get()) <= 0) {
-            ALOGI("SSL negotiation failure");
-        } else {
-            ALOGD("SSL handshake complete");
-            success = handleOneRequest(ssl.get());
+        if (fds[EVENT_FD].revents & (POLLIN | POLLERR)) {
+            handleEventFd();
+            break;
         }
+        if (fds[LISTEN_FD].revents & (POLLIN | POLLERR)) {
+            sockaddr_storage addr;
+            socklen_t len = sizeof(addr);
 
-        close(client);
+            ALOGD("Trying to accept a client");
+            android::base::unique_fd client(
+                    accept4(socket_.get(), reinterpret_cast<sockaddr*>(&addr), &len, SOCK_CLOEXEC));
+            if (client.get() < 0) {
+                // Stop
+                APLOGI("failed to accept client socket %d", client.get());
+                break;
+            }
 
-        if (success) {
-            // Increment queries_ as late as possible, because it represents
-            // a query that is fully processed, and the response returned to the
-            // client, including cleanup actions.
-            ++queries_;
+            bssl::UniquePtr<SSL> ssl(SSL_new(ctx_.get()));
+            SSL_set_fd(ssl.get(), client.get());
+
+            ALOGD("Doing SSL handshake");
+            bool success = false;
+            if (SSL_accept(ssl.get()) <= 0) {
+                ALOGI("SSL negotiation failure");
+            } else {
+                ALOGD("SSL handshake complete");
+                success = handleOneRequest(ssl.get());
+            }
+
+            if (success) {
+                // Increment queries_ as late as possible, because it represents
+                // a query that is fully processed, and the response returned to the
+                // client, including cleanup actions.
+                ++queries_;
+            }
         }
     }
-    ALOGD("Request handler terminating");
+    ALOGD("Ending loop");
 }
 
 bool DnsTlsFrontend::handleOneRequest(SSL* ssl) {
@@ -331,14 +337,14 @@ bool DnsTlsFrontend::handleOneRequest(SSL* ssl) {
         }
         qbytes += ret;
     }
-    int sent = send(backend_socket_, query, qlen, 0);
+    int sent = send(backend_socket_.get(), query, qlen, 0);
     if (sent != qlen) {
         ALOGI("Failed to send query");
         return false;
     }
     const int max_size = 4096;
     uint8_t recv_buffer[max_size];
-    int rlen = recv(backend_socket_, recv_buffer, max_size, 0);
+    int rlen = recv(backend_socket_.get(), recv_buffer, max_size, 0);
     if (rlen <= 0) {
         ALOGI("Failed to receive response");
         return false;
@@ -363,18 +369,15 @@ bool DnsTlsFrontend::stopServer() {
         ALOGI("server not running");
         return false;
     }
-    if (terminate_) {
-        ALOGI("LOGIC ERROR");
+
+    ALOGI("stopping frontend");
+    if (!sendToEventFd()) {
         return false;
     }
-    ALOGI("stopping frontend");
-    terminate_ = true;
     handler_thread_.join();
-    close(socket_);
-    close(backend_socket_);
-    terminate_ = false;
-    socket_ = -1;
-    backend_socket_ = -1;
+    socket_.reset();
+    backend_socket_.reset();
+    event_fd_.reset();
     ctx_.reset();
     fingerprint_.clear();
     ALOGI("frontend stopped successfully");
@@ -397,6 +400,22 @@ bool DnsTlsFrontend::waitForQueries(int number, int timeoutMs) const {
         }
     }
     return false;
+}
+
+bool DnsTlsFrontend::sendToEventFd() {
+    const uint64_t data = 1;
+    if (const ssize_t rt = write(event_fd_.get(), &data, sizeof(data)); rt != sizeof(data)) {
+        APLOGI("failed to write eventfd, rt=%zd", rt);
+        return false;
+    }
+    return true;
+}
+
+void DnsTlsFrontend::handleEventFd() {
+    int64_t data;
+    if (const ssize_t rt = read(event_fd_.get(), &data, sizeof(data)); rt != sizeof(data)) {
+        APLOGI("ignore reading eventfd failed, rt=%zd", rt);
+    }
 }
 
 }  // namespace test
