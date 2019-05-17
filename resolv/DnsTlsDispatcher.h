@@ -28,6 +28,7 @@
 #include "DnsTlsServer.h"
 #include "DnsTlsTransport.h"
 #include "IDnsTlsSocketFactory.h"
+#include "resolv_private.h"
 
 namespace android {
 namespace net {
@@ -48,9 +49,9 @@ class DnsTlsDispatcher {
     // the count of bytes written in |resplen|. Returns a success or error code.
     // The order in which servers from |tlsServers| are queried may not be the
     // order passed in by the caller.
-    DnsTlsTransport::Response query(const std::list<DnsTlsServer>& tlsServers, unsigned mark,
-                                    const netdutils::Slice query, const netdutils::Slice ans,
-                                    int* _Nonnull resplen);
+    DnsTlsTransport::Response query(const std::list<DnsTlsServer>& tlsServers,
+                                    res_state _Nonnull statp, const netdutils::Slice query,
+                                    const netdutils::Slice ans, int* _Nonnull resplen);
 
     // Given a |query|, sends it to the server on the network indicated by |mark|,
     // and writes the response into |ans|,  and indicates
