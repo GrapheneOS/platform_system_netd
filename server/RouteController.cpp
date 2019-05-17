@@ -610,8 +610,7 @@ WARN_UNUSED_RESULT int modifyImplicitNetworkRule(unsigned netId, uint32_t table,
 // A rule to enable split tunnel VPNs.
 //
 // If a packet with a VPN's netId doesn't find a route in the VPN's routing table, it's allowed to
-// go over the default network, provided it wasn't explicitly restricted to the VPN and has the
-// permissions required by the default network.
+// go over the default network, provided it has the permissions required by the default network.
 WARN_UNUSED_RESULT int RouteController::modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId,
                                                                  const char* physicalInterface,
                                                                  Permission permission) {
@@ -625,9 +624,6 @@ WARN_UNUSED_RESULT int RouteController::modifyVpnFallthroughRule(uint16_t action
 
     fwmark.netId = vpnNetId;
     mask.netId = FWMARK_NET_ID_MASK;
-
-    fwmark.explicitlySelected = false;
-    mask.explicitlySelected = true;
 
     fwmark.permission = permission;
     mask.permission = permission;
