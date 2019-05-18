@@ -148,6 +148,6 @@ int resolv_set_log_severity(uint32_t logSeverity);
 LIBNETD_RESOLV_PUBLIC bool resolv_has_nameservers(unsigned netid);
 
 // Set callbacks and bring DnsResolver up.
-LIBNETD_RESOLV_PUBLIC bool resolv_init(const ResolverNetdCallbacks& callbacks);
+LIBNETD_RESOLV_PUBLIC bool resolv_init(const ResolverNetdCallbacks* callbacks);
 
 #endif  // NETD_RESOLV_RESOLV_H
