@@ -21,8 +21,8 @@
 #include <cinttypes>
 #include <condition_variable>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
+#include <iostream>
 #include <mutex>
 #include <set>
 #include <vector>
@@ -159,7 +159,7 @@ class TimedOperation : public Stopwatch {
   public:
     explicit TimedOperation(const std::string &name): mName(name) {}
     virtual ~TimedOperation() {
-        fprintf(stderr, "    %s: %6.1f ms\n", mName.c_str(), timeTaken());
+        std::cerr << "    " << mName << ": " << timeTakenUs() << "us" << std::endl;
     }
 
   private:
