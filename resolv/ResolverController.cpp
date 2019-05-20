@@ -31,6 +31,7 @@
 #include "Dns64Configuration.h"
 #include "DnsResolver.h"
 #include "Fwmark.h"
+#include "PrivateDnsConfiguration.h"
 #include "ResolverEventReporter.h"
 #include "ResolverStats.h"
 #include "netd_resolv/resolv.h"
@@ -197,7 +198,6 @@ int ResolverController::createNetworkCache(unsigned netId) {
 // TODO: remove below functions and call into PrivateDnsConfiguration directly.
 //       resolv_set_private_dns_for_net()
 //       resolv_delete_private_dns_for_net()
-//       resolv_get_private_dns_status_for_net()
 int ResolverController::setResolverConfiguration(
         const ResolverParamsParcel& resolverParams,
         const std::set<std::vector<uint8_t>>& tlsFingerprints) {
@@ -278,7 +278,7 @@ int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>*
     ResolverStats::encodeAll(res_stats, stats);
 
     ExternalPrivateDnsStatus privateDnsStatus = {PrivateDnsMode::OFF, 0, {}};
-    resolv_get_private_dns_status_for_net(netId, &privateDnsStatus);
+    gPrivateDnsConfiguration.getStatus(netId, &privateDnsStatus);
     for (int i = 0; i < privateDnsStatus.numServers; i++) {
         std::string tlsServer_str = addrToString(&(privateDnsStatus.serverStatus[i].ss));
         tlsServers->push_back(std::move(tlsServer_str));
@@ -371,7 +371,7 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
 
         mDns64Configuration.dump(dw, netId);
         ExternalPrivateDnsStatus privateDnsStatus = {PrivateDnsMode::OFF, 0, {}};
-        resolv_get_private_dns_status_for_net(netId, &privateDnsStatus);
+        gPrivateDnsConfiguration.getStatus(netId, &privateDnsStatus);
         dw.println("Private DNS mode: %s",
                    getPrivateDnsModeString(static_cast<PrivateDnsMode>(privateDnsStatus.mode)));
         if (!privateDnsStatus.numServers) {

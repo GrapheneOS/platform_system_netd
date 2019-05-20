@@ -23,18 +23,32 @@
 #include <vector>
 
 #include <android-base/thread_annotations.h>
-#include <netd_resolv/resolv.h>
 
 #include "DnsTlsServer.h"
-
-struct ExternalPrivateDnsStatus;  // Defined in netd_resolv/resolv.h
 
 namespace android {
 namespace net {
 
+// The DNS over TLS mode on a specific netId.
+enum class PrivateDnsMode : uint8_t { OFF, OPPORTUNISTIC, STRICT };
+
+// Validation status of a DNS over TLS server (on a specific netId).
+enum class Validation : uint8_t { in_process, success, fail, unknown_server, unknown_netid };
+
 struct PrivateDnsStatus {
     PrivateDnsMode mode;
     std::list<DnsTlsServer> validatedServers;
+};
+
+// TODO: remove this C-style struct and use PrivateDnsStatus everywhere.
+struct ExternalPrivateDnsStatus {
+    PrivateDnsMode mode;
+    int numServers;
+    struct PrivateDnsInfo {
+        sockaddr_storage ss;
+        const char* hostname;
+        Validation validation;
+    } serverStatus[MAXNS];
 };
 
 class PrivateDnsConfiguration {
@@ -44,7 +58,7 @@ class PrivateDnsConfiguration {
 
     PrivateDnsStatus getStatus(unsigned netId);
 
-    // Externally used for netd.
+    // DEPRECATED, use getStatus() above.
     void getStatus(unsigned netId, ExternalPrivateDnsStatus* status);
 
     void clear(unsigned netId);
