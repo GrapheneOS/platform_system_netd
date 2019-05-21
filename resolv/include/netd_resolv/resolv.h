@@ -117,10 +117,6 @@ int resolv_res_nsend(const android_net_context* netContext, const uint8_t* msg, 
 int resolv_set_nameservers_for_net(unsigned netid, const char** servers, int numservers,
                                    const char* domains, const res_params* params);
 
-int resolv_set_private_dns_for_net(unsigned netid, uint32_t mark, const char** servers,
-                                   int numServers, const char* tlsName,
-                                   const uint8_t** fingerprints, int numFingerprints);
-
 void resolv_delete_private_dns_for_net(unsigned netid);
 
 // Delete the cache associated with a certain network
