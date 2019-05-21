@@ -28,10 +28,6 @@
 #include "netd_resolv/resolv.h"
 #include "netdutils/BackoffSequence.h"
 
-void resolv_delete_private_dns_for_net(unsigned netid) {
-    android::net::gPrivateDnsConfiguration.clear(netid);
-}
-
 namespace android {
 namespace net {
 
