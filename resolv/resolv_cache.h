@@ -64,12 +64,8 @@ int resolv_cache_add(unsigned netid, const void* query, int querylen, const void
 void _resolv_cache_query_failed(unsigned netid, const void* query, int querylen, uint32_t flags);
 
 // Sets name servers for a given network.
-int resolv_set_nameservers(unsigned netid, const char** servers, int numservers,
-                           const std::vector<std::string>& domains, const res_params* params);
-
-// TODO: remove it after updating all callers.
-int resolv_set_nameservers(unsigned netid, const char** servers, int numservers,
-                           const char* domains, const res_params* params);
+int resolv_set_nameservers(unsigned netid, const std::vector<std::string>& servers,
+                           const std::vector<std::string>& domains, const res_params& params);
 
 // Creates the cache associated with the given network.
 int resolv_create_cache_for_net(unsigned netid);
@@ -84,4 +80,4 @@ bool has_named_cache(unsigned netid);
 // For test only.
 // Get the expiration time of a cache entry. Return 0 on success; otherwise, an negative error is
 // returned if the expiration time can't be acquired.
-int resolv_cache_get_expiration(unsigned netid, const std::vector<char> query, time_t* expiration);
+int resolv_cache_get_expiration(unsigned netid, const std::vector<char>& query, time_t* expiration);

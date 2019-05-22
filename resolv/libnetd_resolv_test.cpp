@@ -90,15 +90,20 @@ class TestBase : public ::testing::Test {
         return found;
     }
 
-    const char* mDefaultSearchDomains = "example.com";
-    const res_params mDefaultParams_Binder = {
-            .sample_validity = 300,
-            .success_threshold = 25,
-            .min_samples = 8,
-            .max_samples = 8,
-            .base_timeout_msec = 1000,
-            .retry_count = 2,
-    };
+    int setResolvers() {
+        const std::vector<std::string> servers = {test::kDefaultListenAddr};
+        const std::vector<std::string> domains = {"example.com"};
+        const res_params params = {
+                .sample_validity = 300,
+                .success_threshold = 25,
+                .min_samples = 8,
+                .max_samples = 8,
+                .base_timeout_msec = 1000,
+                .retry_count = 2,
+        };
+        return resolv_set_nameservers(TEST_NETID, servers, domains, params);
+    }
+
     const android_net_context mNetcontext = {
             .app_netid = TEST_NETID,
             .app_mark = MARK_UNSET,
@@ -361,16 +366,11 @@ TEST_F(ResolvGetAddrInfoTest, InvalidParameters_PortNameAndNumber) {
 }
 
 TEST_F(ResolvGetAddrInfoTest, AlphabeticalHostname_NoData) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
     constexpr char v4_host_name[] = "v4only.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     dns.addMapping(v4_host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
-    dns.clearQueries();
+    ASSERT_EQ(0, setResolvers());
 
     // Want AAAA answer but DNS server has A answer only.
     addrinfo* result = nullptr;
@@ -384,19 +384,15 @@ TEST_F(ResolvGetAddrInfoTest, AlphabeticalHostname_NoData) {
 }
 
 TEST_F(ResolvGetAddrInfoTest, AlphabeticalHostname) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "sawadee.example.com.";
     constexpr char v4addr[] = "1.2.3.4";
     constexpr char v6addr[] = "::1.2.3.4";
 
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     dns.addMapping(host_name, ns_type::ns_t_a, v4addr);
     dns.addMapping(host_name, ns_type::ns_t_aaaa, v6addr);
     ASSERT_TRUE(dns.startServer());
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     static const struct TestConfig {
         int ai_family;
@@ -423,15 +419,9 @@ TEST_F(ResolvGetAddrInfoTest, AlphabeticalHostname) {
 }
 
 TEST_F(ResolvGetAddrInfoTest, IllegalHostname) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
-
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     ASSERT_TRUE(dns.startServer());
-
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     // Illegal hostname is verified by res_hnok() in system/netd/resolv/res_comp.cpp.
     static constexpr char const* illegalHostnames[] = {
@@ -469,8 +459,6 @@ TEST_F(ResolvGetAddrInfoTest, IllegalHostname) {
 }
 
 TEST_F(ResolvGetAddrInfoTest, ServerResponseError) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "hello.example.com.";
 
     static const struct TestConfig {
@@ -492,41 +480,33 @@ TEST_F(ResolvGetAddrInfoTest, ServerResponseError) {
     for (const auto& config : testConfigs) {
         SCOPED_TRACE(StringPrintf("rcode: %d", config.rcode));
 
-        test::DNSResponder dns(listen_addr, listen_srv, config.rcode /*response specific rcode*/);
+        test::DNSResponder dns(config.rcode);
         dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
         dns.setResponseProbability(0.0);  // always ignore requests and response preset rcode
         ASSERT_TRUE(dns.startServer());
-        const char* servers[] = {listen_addr};
-        ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                            mDefaultSearchDomains, &mDefaultParams_Binder));
+        ASSERT_EQ(0, setResolvers());
 
         addrinfo* result = nullptr;
         const addrinfo hints = {.ai_family = AF_UNSPEC};
         NetworkDnsEventReported event;
         int rv = resolv_getaddrinfo(host_name, nullptr, &hints, &mNetcontext, &result, &event);
-        ScopedAddrinfo result_cleanup(result);
         EXPECT_EQ(config.expected_eai_error, rv);
     }
 }
 
 // TODO: Add private DNS server timeout test.
 TEST_F(ResolvGetAddrInfoTest, ServerTimeout) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "hello.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, static_cast<ns_rcode>(-1) /*no response*/);
+    test::DNSResponder dns(static_cast<ns_rcode>(-1) /*no response*/);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
     dns.setResponseProbability(0.0);  // always ignore requests and don't response
     ASSERT_TRUE(dns.startServer());
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     addrinfo* result = nullptr;
     const addrinfo hints = {.ai_family = AF_UNSPEC};
     NetworkDnsEventReported event;
     int rv = resolv_getaddrinfo("hello", nullptr, &hints, &mNetcontext, &result, &event);
-    ScopedAddrinfo result_cleanup(result);
     EXPECT_EQ(NETD_RESOLV_TIMEOUT, rv);
 }
 
@@ -534,17 +514,11 @@ TEST_F(ResolvGetAddrInfoTest, CnamesNoIpAddress) {
     constexpr char ACNAME[] = "acname";  // expect a cname in answer
     constexpr char CNAMES[] = "cnames";  // expect cname chain in answer
 
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
-
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     dns.addMapping("cnames.example.com.", ns_type::ns_t_cname, "acname.example.com.");
     dns.addMapping("acname.example.com.", ns_type::ns_t_cname, "hello.example.com.");
     ASSERT_TRUE(dns.startServer());
-
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     static const struct TestConfig {
         const char* name;
@@ -575,15 +549,9 @@ TEST_F(ResolvGetAddrInfoTest, CnamesNoIpAddress) {
 }
 
 TEST_F(ResolvGetAddrInfoTest, CnamesBrokenChainByIllegalCname) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
-
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     ASSERT_TRUE(dns.startServer());
-
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     static const struct TestConfig {
         const char* name;
@@ -633,17 +601,11 @@ TEST_F(ResolvGetAddrInfoTest, CnamesBrokenChainByIllegalCname) {
 }
 
 TEST_F(ResolvGetAddrInfoTest, CnamesInfiniteLoop) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
-
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     dns.addMapping("hello.example.com.", ns_type::ns_t_cname, "a.example.com.");
     dns.addMapping("a.example.com.", ns_type::ns_t_cname, "hello.example.com.");
     ASSERT_TRUE(dns.startServer());
-
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     for (const auto& family : {AF_INET, AF_INET6, AF_UNSPEC}) {
         SCOPED_TRACE(StringPrintf("family: %d", family));
@@ -659,19 +621,15 @@ TEST_F(ResolvGetAddrInfoTest, CnamesInfiniteLoop) {
 }
 
 TEST_F(GetHostByNameForNetContextTest, AlphabeticalHostname) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "jiababuei.example.com.";
     constexpr char v4addr[] = "1.2.3.4";
     constexpr char v6addr[] = "::1.2.3.4";
 
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     dns.addMapping(host_name, ns_type::ns_t_a, v4addr);
     dns.addMapping(host_name, ns_type::ns_t_aaaa, v6addr);
     ASSERT_TRUE(dns.startServer());
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     static const struct TestConfig {
         int ai_family;
@@ -697,15 +655,9 @@ TEST_F(GetHostByNameForNetContextTest, AlphabeticalHostname) {
 }
 
 TEST_F(GetHostByNameForNetContextTest, IllegalHostname) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
-
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     ASSERT_TRUE(dns.startServer());
-
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     // Illegal hostname is verified by res_hnok() in system/netd/resolv/res_comp.cpp.
     static constexpr char const* illegalHostnames[] = {
@@ -742,15 +694,12 @@ TEST_F(GetHostByNameForNetContextTest, IllegalHostname) {
 }
 
 TEST_F(GetHostByNameForNetContextTest, NoData) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
     constexpr char v4_host_name[] = "v4only.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+
+    test::DNSResponder dns;
     dns.addMapping(v4_host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
     dns.clearQueries();
 
     // Want AAAA answer but DNS server has A answer only.
@@ -763,8 +712,6 @@ TEST_F(GetHostByNameForNetContextTest, NoData) {
 }
 
 TEST_F(GetHostByNameForNetContextTest, ServerResponseError) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "hello.example.com.";
 
     static const struct TestConfig {
@@ -788,13 +735,11 @@ TEST_F(GetHostByNameForNetContextTest, ServerResponseError) {
     for (const auto& config : testConfigs) {
         SCOPED_TRACE(StringPrintf("rcode: %d", config.rcode));
 
-        test::DNSResponder dns(listen_addr, listen_srv, config.rcode /*response specific rcode*/);
+        test::DNSResponder dns(config.rcode);
         dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
         dns.setResponseProbability(0.0);  // always ignore requests and response preset rcode
         ASSERT_TRUE(dns.startServer());
-        const char* servers[] = {listen_addr};
-        ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                            mDefaultSearchDomains, &mDefaultParams_Binder));
+        ASSERT_EQ(0, setResolvers());
 
         hostent* hp = nullptr;
         NetworkDnsEventReported event;
@@ -806,16 +751,12 @@ TEST_F(GetHostByNameForNetContextTest, ServerResponseError) {
 
 // TODO: Add private DNS server timeout test.
 TEST_F(GetHostByNameForNetContextTest, ServerTimeout) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "hello.example.com.";
-    test::DNSResponder dns(listen_addr, listen_srv, static_cast<ns_rcode>(-1) /*no response*/);
+    test::DNSResponder dns(static_cast<ns_rcode>(-1) /*no response*/);
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
     dns.setResponseProbability(0.0);  // always ignore requests and don't response
     ASSERT_TRUE(dns.startServer());
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     hostent* hp = nullptr;
     NetworkDnsEventReported event;
@@ -827,17 +768,11 @@ TEST_F(GetHostByNameForNetContextTest, CnamesNoIpAddress) {
     constexpr char ACNAME[] = "acname";  // expect a cname in answer
     constexpr char CNAMES[] = "cnames";  // expect cname chain in answer
 
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
-
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     dns.addMapping("cnames.example.com.", ns_type::ns_t_cname, "acname.example.com.");
     dns.addMapping("acname.example.com.", ns_type::ns_t_cname, "hello.example.com.");
     ASSERT_TRUE(dns.startServer());
-
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     static const struct TestConfig {
         const char* name;
@@ -863,15 +798,9 @@ TEST_F(GetHostByNameForNetContextTest, CnamesNoIpAddress) {
 }
 
 TEST_F(GetHostByNameForNetContextTest, CnamesBrokenChainByIllegalCname) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
-
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     ASSERT_TRUE(dns.startServer());
-
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     static const struct TestConfig {
         const char* name;
@@ -920,17 +849,11 @@ TEST_F(GetHostByNameForNetContextTest, CnamesBrokenChainByIllegalCname) {
 }
 
 TEST_F(GetHostByNameForNetContextTest, CnamesInfiniteLoop) {
-    constexpr char listen_addr[] = "127.0.0.3";
-    constexpr char listen_srv[] = "53";
-
-    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns;
     dns.addMapping("hello.example.com.", ns_type::ns_t_cname, "a.example.com.");
     dns.addMapping("a.example.com.", ns_type::ns_t_cname, "hello.example.com.");
     ASSERT_TRUE(dns.startServer());
-
-    const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
-                                        mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, setResolvers());
 
     for (const auto& family : {AF_INET, AF_INET6}) {
         SCOPED_TRACE(StringPrintf("family: %d", family));
