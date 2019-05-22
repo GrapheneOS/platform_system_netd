@@ -603,28 +603,20 @@ bool DNSResponder::startServer() {
         return false;
     }
     for (const addrinfo* ai = ai_res ; ai ; ai = ai->ai_next) {
-        android::base::unique_fd s(socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol));
-        if (s.get() < 0) {
-            APLOGI("ignore creating socket %d failed", s.get());
+        socket_.reset(socket(ai->ai_family, ai->ai_socktype | SOCK_NONBLOCK, ai->ai_protocol));
+        if (socket_.get() < 0) {
+            APLOGI("ignore creating socket %d failed", socket_.get());
             continue;
         }
-        enableSockopt(s.get(), SOL_SOCKET, SO_REUSEPORT).ignoreError();
-        enableSockopt(s.get(), SOL_SOCKET, SO_REUSEADDR).ignoreError();
+        enableSockopt(socket_.get(), SOL_SOCKET, SO_REUSEPORT).ignoreError();
+        enableSockopt(socket_.get(), SOL_SOCKET, SO_REUSEADDR).ignoreError();
         std::string host_str = addr2str(ai->ai_addr, ai->ai_addrlen);
-        if (bind(s.get(), ai->ai_addr, ai->ai_addrlen)) {
+        if (bind(socket_.get(), ai->ai_addr, ai->ai_addrlen)) {
             APLOGI("failed to bind UDP %s:%s", host_str.c_str(), listen_service_.c_str());
             continue;
         }
         ALOGI("bound to UDP %s:%s", host_str.c_str(), listen_service_.c_str());
-        socket_ = std::move(s);
         break;
-    }
-
-    int flags = fcntl(socket_.get(), F_GETFL, 0);
-    if (flags < 0) flags = 0;
-    if (fcntl(socket_.get(), F_SETFL, flags | O_NONBLOCK) < 0) {
-        APLOGI("fcntl(F_SETFL) failed for socket %d", socket_.get());
-        return false;
     }
 
     // Set up eventfd socket.
