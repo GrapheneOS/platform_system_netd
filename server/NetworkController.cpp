@@ -206,9 +206,8 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
 
     if (checkUserNetworkAccessLocked(uid, *netId) == 0) {
         // If a non-zero NetId was explicitly specified, and the user has permission for that
-        // network, use that network's DNS servers. Do not fall through to the default network even
-        // if the explicitly selected network is a split tunnel VPN: the explicitlySelected bit
-        // ensures that the VPN fallthrough rule does not match.
+        // network, use that network's DNS servers. (possibly falling through the to the default
+        // network if the VPN doesn't provide a route to them).
         fwmark.explicitlySelected = true;
 
         // If the network is a VPN and it doesn't have DNS servers, use the default network's DNS
@@ -222,8 +221,8 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
     } else {
         // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
         // (possibly falling through to the default network if the VPN doesn't provide a route to
-        // them). Otherwise, use the default network's DNS servers. We cannot set the explicit bit
-        // because we need to be able to fall through a split tunnel to the default network.
+        // them). Otherwise, use the default network's DNS servers.
+        // TODO: Consider if we should set the explicit bit here.
         VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
         if (virtualNetwork && RESOLV_STUB.resolv_has_nameservers(virtualNetwork->getNetId())) {
             *netId = virtualNetwork->getNetId();
