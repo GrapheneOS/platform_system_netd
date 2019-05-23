@@ -95,6 +95,7 @@ public:
     virtual void TearDown();
 
     android::net::IDnsResolver* resolvService() const { return mDnsResolvSrv.get(); }
+    android::net::INetd* netdService() const { return mNetdSrv.get(); }
 
   private:
     android::sp<android::net::INetd> mNetdSrv = nullptr;

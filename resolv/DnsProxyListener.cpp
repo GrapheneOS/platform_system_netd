@@ -498,6 +498,7 @@ DnsProxyListener::DnsProxyListener() : FrameworkListener(SOCKET_NAME) {
     registerCmd(new GetHostByAddrCmd());
     registerCmd(new GetHostByNameCmd());
     registerCmd(new ResNSendCommand());
+    registerCmd(new GetDnsNetIdCommand());
 }
 
 DnsProxyListener::GetAddrInfoHandler::GetAddrInfoHandler(SocketClient* c, char* host, char* service,
@@ -894,6 +895,44 @@ void DnsProxyListener::ResNSendHandler::run() {
                        resNSendToAiError(nsendAns, arcode), dnsEvent, rr_name, ip_addrs,
                        total_ip_addr_count);
     }
+}
+
+namespace {
+
+bool sendCodeAndBe32(SocketClient* c, int code, int data) {
+    return c->sendCode(code) || sendBE32(c, data);
+}
+
+}  // namespace
+
+/*******************************************************
+ *                  GetDnsNetId                        *
+ *******************************************************/
+DnsProxyListener::GetDnsNetIdCommand::GetDnsNetIdCommand() : FrameworkCommand("getdnsnetid") {}
+
+int DnsProxyListener::GetDnsNetIdCommand::runCommand(SocketClient* cli, int argc, char** argv) {
+    logArguments(argc, argv);
+
+    const uid_t uid = cli->getUid();
+    if (argc != 2) {
+        LOG(WARNING) << "GetDnsNetIdCommand::runCommand: getdnsnetid: from UID " << uid
+                     << ", invalid number of arguments to getdnsnetid: " << argc;
+        sendCodeAndBe32(cli, ResponseCode::DnsProxyQueryResult, -EINVAL);
+        return -1;
+    }
+
+    unsigned netId;
+    if (!simpleStrtoul(argv[1], &netId)) {
+        LOG(WARNING) << "GetDnsNetIdCommand::runCommand: getdnsnetid: from UID " << uid
+                     << ", invalid netId";
+        sendCodeAndBe32(cli, ResponseCode::DnsProxyQueryResult, -EINVAL);
+        return -1;
+    }
+
+    android_net_context netcontext;
+    gResNetdCallbacks.get_network_context(netId, uid, &netcontext);
+
+    return sendCodeAndBe32(cli, ResponseCode::DnsProxyQueryResult, netcontext.dns_netid);
 }
 
 /*******************************************************

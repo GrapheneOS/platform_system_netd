@@ -116,7 +116,7 @@ class DnsProxyListener : public FrameworkListener {
     class ResNSendCommand : public FrameworkCommand {
       public:
         ResNSendCommand();
-        ~ResNSendCommand() override {}
+        virtual ~ResNSendCommand() {}
         int runCommand(SocketClient* c, int argc, char** argv) override;
     };
 
@@ -133,6 +133,14 @@ class DnsProxyListener : public FrameworkListener {
         std::string mMsg;
         uint32_t mFlags;
         android_net_context mNetContext;
+    };
+
+    /* ------ getdnsnetid ------*/
+    class GetDnsNetIdCommand : public FrameworkCommand {
+      public:
+        GetDnsNetIdCommand();
+        virtual ~GetDnsNetIdCommand() {}
+        int runCommand(SocketClient* c, int argc, char** argv) override;
     };
 };
 

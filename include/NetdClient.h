@@ -31,6 +31,7 @@ int getNetworkForSocket(unsigned* netId, int socketFd);
 int setNetworkForSocket(unsigned netId, int socketFd);
 
 unsigned getNetworkForProcess(void);
+
 int setNetworkForProcess(unsigned netId);
 
 int setNetworkForResolv(unsigned netId);
@@ -56,6 +57,8 @@ int resNetworkResult(int query_fd, int* rcode, uint8_t* answer, size_t anslen);
 int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen, uint32_t flags);
 
 void resNetworkCancel(int nsend_fd);
+
+int getNetworkForDns();
 __END_DECLS
 
 #endif  // NETD_INCLUDE_NETD_CLIENT_H
