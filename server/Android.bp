@@ -6,6 +6,7 @@ aidl_interface {
         "binder/android/net/metrics/INetdEventListener.aidl",
     ],
     api_dir: "aidl/netdeventlistener",
+    versions: ["1"],
 }
 
 // These are used in netd_integration_test
