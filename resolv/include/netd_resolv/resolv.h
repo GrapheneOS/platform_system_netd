@@ -85,31 +85,19 @@ struct android_net_context {
 #define NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS 0x00000001
 #define NET_CONTEXT_FLAG_USE_EDNS 0x00000002
 
-struct ExternalPrivateDnsStatus {
-    PrivateDnsMode mode;
-    int numServers;
-    struct PrivateDnsInfo {
-        sockaddr_storage ss;
-        const char* hostname;
-        Validation validation;
-    } serverStatus[MAXNS];
-};
-
-/*
- * Some of functions (e.g. checkCallingPermission()) require the dependency on libbinder.so,
- * but we can't include the library since it's not stable. Move the functions to netd and use
- * these function pointers pointing to them.
- */
-typedef void (*get_network_context_callback)(unsigned netid, uid_t uid,
-                                             android_net_context* netcontext);
-
 // TODO: investigate having the resolver check permissions itself, either by adding support to
 // libbinder_ndk or by converting IPermissionController into a stable AIDL interface.
 typedef bool (*check_calling_permission_callback)(const char* permission);
-
-// TODO: Remove the callback after moving NAT64 prefix discovery out of netd to libnetd_resolv.
+typedef void (*get_network_context_callback)(unsigned netid, uid_t uid,
+                                             android_net_context* netcontext);
 typedef void (*log_callback)(const char* msg);
 
+/*
+ * Some functions needed by the resolver (e.g. checkCallingPermission()) live in
+ * libraries with no ABI stability guarantees, such as libbinder.so.
+ * As a temporary workaround, we keep these functions in netd and call them via
+ * function pointers.
+ */
 struct ResolverNetdCallbacks {
     check_calling_permission_callback check_calling_permission;
     get_network_context_callback get_network_context;
@@ -135,8 +123,6 @@ int resolv_set_private_dns_for_net(unsigned netid, uint32_t mark, const char** s
 
 void resolv_delete_private_dns_for_net(unsigned netid);
 
-void resolv_get_private_dns_status_for_net(unsigned netid, ExternalPrivateDnsStatus* status);
-
 // Delete the cache associated with a certain network
 void resolv_delete_cache_for_net(unsigned netid);
 // Create the cache associated with a certain network
@@ -148,6 +134,6 @@ int resolv_set_log_severity(uint32_t logSeverity);
 LIBNETD_RESOLV_PUBLIC bool resolv_has_nameservers(unsigned netid);
 
 // Set callbacks and bring DnsResolver up.
-LIBNETD_RESOLV_PUBLIC bool resolv_init(const ResolverNetdCallbacks& callbacks);
+LIBNETD_RESOLV_PUBLIC bool resolv_init(const ResolverNetdCallbacks* callbacks);
 
 #endif  // NETD_RESOLV_RESOLV_H
