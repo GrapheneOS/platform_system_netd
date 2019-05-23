@@ -53,8 +53,9 @@
 #include <logwrap/logwrap.h>
 #include <netdbpf/bpf_shared.h>
 #include <netutils/ifc.h>
-
+#include "Fwmark.h"
 #include "InterfaceController.h"
+#include "NetdClient.h"
 #include "NetdConstants.h"
 #include "TestUnsolService.h"
 #include "XfrmController.h"
@@ -62,6 +63,7 @@
 #include "binder/IServiceManager.h"
 #include "netdutils/Stopwatch.h"
 #include "netdutils/Syscalls.h"
+#include "netid_client.h"  // NETID_UNSET
 #include "tun_interface.h"
 
 #define IP_PATH "/system/bin/ip"
@@ -126,6 +128,9 @@ class BinderTest : public ::testing::Test {
     void TearDown() override {
         mNetd->networkDestroy(TEST_NETID1);
         mNetd->networkDestroy(TEST_NETID2);
+        setNetworkForProcess(NETID_UNSET);
+        // Restore default network
+        if (mStoredDefaultNetwork >= 0) mNetd->networkSetDefault(mStoredDefaultNetwork);
     }
 
     bool allocateIpSecResources(bool expectOk, int32_t* spi);
@@ -146,7 +151,13 @@ class BinderTest : public ::testing::Test {
 
     static void fakeRemoteSocketPair(int *clientSocket, int *serverSocket, int *acceptedSocket);
 
+    void createVpnNetworkWithUid(bool secure, uid_t uid, int vpnNetId = TEST_NETID2,
+                                 int fallthroughNetId = TEST_NETID1);
+
   protected:
+    // Use -1 to represent that default network was not modified because
+    // real netId must be an unsigned value.
+    int mStoredDefaultNetwork = -1;
     sp<INetd> mNetd;
     static TunInterface sTun;
     static TunInterface sTun2;
@@ -1929,9 +1940,8 @@ TEST_F(BinderTest, NetworkPermissionDefault) {
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
 
     // Get current default network NetId
-    int currentNetid;
-    binder::Status status = mNetd->networkGetDefault(&currentNetid);
-    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    binder::Status status = mNetd->networkGetDefault(&mStoredDefaultNetwork);
+    ASSERT_TRUE(status.isOk()) << status.exceptionMessage();
 
     // Test SetDefault
     status = mNetd->networkSetDefault(TEST_NETID1);
@@ -1942,8 +1952,8 @@ TEST_F(BinderTest, NetworkPermissionDefault) {
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectNetworkDefaultIpRuleDoesNotExist();
 
-    // Add default network back
-    status = mNetd->networkSetDefault(currentNetid);
+    // Set default network back
+    status = mNetd->networkSetDefault(mStoredDefaultNetwork);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 
     // Test SetPermission
@@ -3088,4 +3098,188 @@ TEST_F(BinderTest, OemNetdRelated) {
         // Wait for receiving expected events.
         EXPECT_EQ(std::cv_status::no_timeout, cv.wait_for(lock, std::chrono::seconds(2)));
     }
+}
+
+void BinderTest::createVpnNetworkWithUid(bool secure, uid_t uid, int vpnNetId,
+                                         int fallthroughNetId) {
+    // Re-init sTun* to ensure route rule exists.
+    sTun.destroy();
+    sTun.init();
+    sTun2.destroy();
+    sTun2.init();
+
+    // Create physical network with fallthroughNetId but not set it as default network
+    EXPECT_TRUE(mNetd->networkCreatePhysical(fallthroughNetId, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(fallthroughNetId, sTun.name()).isOk());
+
+    // Create VPN with vpnNetId
+    EXPECT_TRUE(mNetd->networkCreateVpn(vpnNetId, secure).isOk());
+
+    // Add uid to VPN
+    EXPECT_TRUE(mNetd->networkAddUidRanges(vpnNetId, {makeUidRangeParcel(uid, uid)}).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(vpnNetId, sTun2.name()).isOk());
+
+    // Add default route to fallthroughNetwork
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
+    // Add limited route
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID2, sTun2.name(), "2001:db8::/32", "").isOk());
+}
+
+namespace {
+
+class ScopedUidChange {
+  public:
+    explicit ScopedUidChange(uid_t uid) : mInputUid(uid) {
+        mStoredUid = getuid();
+        if (mInputUid == mStoredUid) return;
+        EXPECT_TRUE(seteuid(uid) == 0);
+    }
+    ~ScopedUidChange() {
+        if (mInputUid == mStoredUid) return;
+        EXPECT_TRUE(seteuid(mStoredUid) == 0);
+    }
+
+  private:
+    uid_t mInputUid;
+    uid_t mStoredUid;
+};
+
+constexpr uint32_t RULE_PRIORITY_VPN_FALLTHROUGH = 21000;
+
+void clearQueue(int tunFd) {
+    char buf[4096];
+    int ret;
+    do {
+        ret = read(tunFd, buf, sizeof(buf));
+    } while (ret > 0);
+}
+
+void checkDataReceived(int udpSocket, int tunFd) {
+    char buf[4096] = {};
+    // Clear tunFd's queue before write something because there might be some
+    // arbitrary packets in the queue. (e.g. ICMPv6 packet)
+    clearQueue(tunFd);
+    EXPECT_EQ(4, write(udpSocket, "foo", sizeof("foo")));
+    // TODO: extract header and verify data
+    EXPECT_GT(read(tunFd, buf, sizeof(buf)), 0);
+}
+
+bool sendIPv6PacketFromUid(uid_t uid, const in6_addr& dstAddr, Fwmark* fwmark, int tunFd) {
+    ScopedUidChange scopedUidChange(uid);
+    android::base::unique_fd testSocket(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+    if (testSocket < 0) return false;
+
+    const sockaddr_in6 dst6 = {.sin6_family = AF_INET6, .sin6_addr = dstAddr, .sin6_port = 42};
+    int res = connect(testSocket, (sockaddr*)&dst6, sizeof(dst6));
+    socklen_t fwmarkLen = sizeof(fwmark->intValue);
+    EXPECT_NE(-1, getsockopt(testSocket, SOL_SOCKET, SO_MARK, &(fwmark->intValue), &fwmarkLen));
+    if (res == -1) return false;
+
+    char addr[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, &dstAddr, addr, INET6_ADDRSTRLEN);
+    SCOPED_TRACE(StringPrintf("sendIPv6PacketFromUid, addr: %s, uid: %u", addr, uid));
+    checkDataReceived(testSocket, tunFd);
+    return true;
+}
+
+void expectVpnFallthroughRuleExists(const std::string& ifName, int vpnNetId) {
+    std::string vpnFallthroughRule =
+            StringPrintf("%d:\tfrom all fwmark 0x%x/0xffff lookup %s",
+                         RULE_PRIORITY_VPN_FALLTHROUGH, vpnNetId, ifName.c_str());
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_TRUE(ipRuleExists(ipVersion, vpnFallthroughRule));
+    }
+}
+
+void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable, uid_t uid,
+                               const TunInterface& fallthroughNetwork,
+                               const TunInterface& vpnNetwork, int vpnNetId = TEST_NETID2,
+                               int fallthroughNetId = TEST_NETID1) {
+    // Set default network to NETID_UNSET
+    EXPECT_TRUE(netdService->networkSetDefault(NETID_UNSET).isOk());
+
+    // insideVpnAddr based on the route we added in createVpnNetworkWithUid
+    in6_addr insideVpnAddr = {
+            {// 2001:db8:cafe::1
+             .u6_addr8 = {0x20, 0x01, 0x0d, 0xb8, 0xca, 0xfe, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}}};
+    // outsideVpnAddr will hit the route in the fallthrough network route table
+    // because we added default route in createVpnNetworkWithUid
+    in6_addr outsideVpnAddr = {
+            {// 2607:f0d0:1002::4
+             .u6_addr8 = {0x26, 0x07, 0xf0, 0xd0, 0x10, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4}}};
+
+    int fallthroughFd = fallthroughNetwork.getFdForTesting();
+    int vpnFd = vpnNetwork.getFdForTesting();
+    // Expect all connections to fail because UID 0 is not routed to the VPN and there is no
+    // default network.
+    Fwmark fwmark;
+    EXPECT_FALSE(sendIPv6PacketFromUid(0, outsideVpnAddr, &fwmark, fallthroughFd));
+    EXPECT_FALSE(sendIPv6PacketFromUid(0, insideVpnAddr, &fwmark, fallthroughFd));
+
+    // Set default network
+    EXPECT_TRUE(netdService->networkSetDefault(fallthroughNetId).isOk());
+
+    // Connections go on the default network because UID 0 is not subject to the VPN.
+    EXPECT_TRUE(sendIPv6PacketFromUid(0, outsideVpnAddr, &fwmark, fallthroughFd));
+    EXPECT_EQ(fallthroughNetId | 0xC0000, static_cast<int>(fwmark.intValue));
+    EXPECT_TRUE(sendIPv6PacketFromUid(0, insideVpnAddr, &fwmark, fallthroughFd));
+    EXPECT_EQ(fallthroughNetId | 0xC0000, static_cast<int>(fwmark.intValue));
+
+    // Check if fallthrough rule exists
+    expectVpnFallthroughRuleExists(fallthroughNetwork.name(), vpnNetId);
+
+    // Expect fallthrough to default network
+    // The fwmark differs depending on whether the VPN is bypassable or not.
+    EXPECT_TRUE(sendIPv6PacketFromUid(uid, outsideVpnAddr, &fwmark, fallthroughFd));
+    EXPECT_EQ(bypassable ? vpnNetId : fallthroughNetId, static_cast<int>(fwmark.intValue));
+
+    // Expect connect success, packet will be sent to vpnFd.
+    EXPECT_TRUE(sendIPv6PacketFromUid(uid, insideVpnAddr, &fwmark, vpnFd));
+    EXPECT_EQ(bypassable ? vpnNetId : fallthroughNetId, static_cast<int>(fwmark.intValue));
+
+    // Explicitly select vpn network
+    setNetworkForProcess(vpnNetId);
+
+    // Expect fallthrough to default network
+    EXPECT_TRUE(sendIPv6PacketFromUid(0, outsideVpnAddr, &fwmark, fallthroughFd));
+    // Expect the mark contains all the bit because we've selected network.
+    EXPECT_EQ(vpnNetId | 0xF0000, static_cast<int>(fwmark.intValue));
+
+    // Expect connect success, packet will be sent to vpnFd.
+    EXPECT_TRUE(sendIPv6PacketFromUid(0, insideVpnAddr, &fwmark, vpnFd));
+    // Expect the mark contains all the bit because we've selected network.
+    EXPECT_EQ(vpnNetId | 0xF0000, static_cast<int>(fwmark.intValue));
+
+    // Explicitly select fallthrough network
+    setNetworkForProcess(fallthroughNetId);
+
+    // The mark is set to fallthrough network because we've selected it.
+    EXPECT_TRUE(sendIPv6PacketFromUid(0, outsideVpnAddr, &fwmark, fallthroughFd));
+    EXPECT_TRUE(sendIPv6PacketFromUid(0, insideVpnAddr, &fwmark, fallthroughFd));
+
+    // If vpn is BypassableVPN, connections can also go on the fallthrough network under vpn uid.
+    if (bypassable) {
+        EXPECT_TRUE(sendIPv6PacketFromUid(uid, outsideVpnAddr, &fwmark, fallthroughFd));
+        EXPECT_TRUE(sendIPv6PacketFromUid(uid, insideVpnAddr, &fwmark, fallthroughFd));
+    } else {
+        // If not, no permission to bypass vpn.
+        EXPECT_FALSE(sendIPv6PacketFromUid(uid, outsideVpnAddr, &fwmark, fallthroughFd));
+        EXPECT_FALSE(sendIPv6PacketFromUid(uid, insideVpnAddr, &fwmark, fallthroughFd));
+    }
+}
+
+}  // namespace
+
+TEST_F(BinderTest, SecureVPNFallthrough) {
+    createVpnNetworkWithUid(true /* secure */, TEST_UID1);
+    // Get current default network NetId
+    ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
+    expectVpnFallthroughWorks(mNetd.get(), false /* bypassable */, TEST_UID1, sTun, sTun2);
+}
+
+TEST_F(BinderTest, BypassableVPNFallthrough) {
+    createVpnNetworkWithUid(false /* secure */, TEST_UID1);
+    // Get current default network NetId
+    ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
+    expectVpnFallthroughWorks(mNetd.get(), true /* bypassable */, TEST_UID1, sTun, sTun2);
 }
