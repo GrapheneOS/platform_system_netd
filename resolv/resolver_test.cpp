@@ -1086,6 +1086,16 @@ TEST_F(ResolverTest, MaxServerPrune_Binder) {
 
     ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, domains, kDefaultParams, "", fingerprints));
 
+    // If the private DNS validation hasn't completed yet before backend DNS servers stop,
+    // TLS servers will get stuck in handleOneRequest(), which causes this test stuck in
+    // ~DnsTlsFrontend() because the TLS server loop threads can't be terminated.
+    // So, wait for private DNS validation done before stopping backend DNS servers.
+    for (int i = 0; i < MAXNS; i++) {
+        ALOGI("Waiting for private DNS validation on %s.", tls[i]->listen_address().c_str());
+        EXPECT_TRUE(tls[i]->waitForQueries(1, 5000));
+        ALOGI("private DNS validation on %s done.", tls[i]->listen_address().c_str());
+    }
+
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
     std::vector<std::string> res_tls_servers;
