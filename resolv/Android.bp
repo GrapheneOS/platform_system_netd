@@ -18,7 +18,7 @@ aidl_interface {
             gen_log: true,
         },
     },
-    api_dir: "binder/api",
+    api_dir: "aidl/dnsresolver",
     versions: [
         "1",
         "2",
@@ -38,7 +38,7 @@ cc_test_library {
     shared_libs: [
         "libbinder",
         "libutils",
-        "netd_event_listener_interface-cpp",
+        "netd_event_listener_interface-V1-cpp",
     ],
 }
 
@@ -186,9 +186,9 @@ cc_test {
         "libnetd_test_tun_interface",
         "liblogwrap",
         "libnetdutils",
-        "netd_aidl_interface-cpp",
-        "netd_event_listener_interface-cpp",
-        "dnsresolver_aidl_interface-cpp",
+        "netd_aidl_interface-V2-cpp",
+        "netd_event_listener_interface-V1-cpp",
+        "dnsresolver_aidl_interface-V2-cpp",
     ],
     compile_multilib: "both",
     sanitize: {

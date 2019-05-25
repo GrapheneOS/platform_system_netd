@@ -5,7 +5,8 @@ aidl_interface {
     srcs: [
         "binder/android/net/metrics/INetdEventListener.aidl",
     ],
-    api_dir: "binder/api",
+    api_dir: "aidl/netdeventlistener",
+    versions: ["1"],
 }
 
 // These are used in netd_integration_test
@@ -33,7 +34,7 @@ aidl_interface {
         "binder/android/net/TetherStatsParcel.aidl",
         "binder/android/net/UidRangeParcel.aidl",
     ],
-    api_dir: "binder/api",
+    api_dir: "aidl/netd",
     backend: {
         cpp: {
             gen_log: true,
@@ -101,8 +102,8 @@ cc_library_static {
         "libpcap",
         "libqtaguid",
         "libssl",
-        "netd_aidl_interface-cpp",
-        "netd_event_listener_interface-cpp",
+        "netd_aidl_interface-V2-cpp",
+        "netd_event_listener_interface-V1-cpp",
     ],
     header_libs: [
         "libnetd_resolv_headers",
@@ -144,8 +145,8 @@ cc_binary {
         "libselinux",
         "libsysutils",
         "libutils",
-        "netd_aidl_interface-cpp",
-        "netd_event_listener_interface-cpp",
+        "netd_aidl_interface-V2-cpp",
+        "netd_event_listener_interface-V1-cpp",
         "oemnetd_aidl_interface-cpp",
     ],
     static_libs: [
@@ -194,8 +195,8 @@ cc_binary {
         "liblog",
         "libutils",
         "libbinder",
-        "dnsresolver_aidl_interface-cpp",
-        "netd_aidl_interface-cpp",
+        "dnsresolver_aidl_interface-V2-cpp",
+        "netd_aidl_interface-V2-cpp",
     ],
     srcs: [
         "ndc.cpp",
@@ -251,7 +252,7 @@ cc_test {
         "libqtaguid",
         "libsysutils",
         "libutils",
-        "netd_aidl_interface-cpp",
-        "netd_event_listener_interface-cpp",
+        "netd_aidl_interface-V2-cpp",
+        "netd_event_listener_interface-V1-cpp",
     ],
 }
