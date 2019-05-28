@@ -41,6 +41,7 @@
 
 #include <android-base/file.h>
 #include <android-base/macros.h>
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <binder/IPCThreadState.h>
@@ -95,6 +96,11 @@ using android::net::TunInterface;
 using android::net::UidRangeParcel;
 using android::netdutils::sSyscalls;
 using android::netdutils::Stopwatch;
+
+#define SKIP_IF_CUTTLEFISH          \
+    do {                            \
+        if (isCuttleFish()) return; \
+    } while (0)
 
 static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
@@ -1934,7 +1940,23 @@ TEST_F(BinderTest, NetworkAddRemoveRouteUserPermission) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
+namespace {
+
+constexpr char CUTTLEFISH_PRODUCT_DEVICE[] = "vsoc_x86";
+constexpr char CUTTLEFISH_SYSTEM_NAME[] = "cf_x86_phone";
+
+bool isCuttleFish() {
+    static const std::string sProductDevice = android::base::GetProperty("ro.product.device", "");
+    static const std::string sSystemName = android::base::GetProperty("ro.product.system.name", "");
+    return (sProductDevice.find(CUTTLEFISH_PRODUCT_DEVICE) != std::string::npos) &&
+           (sSystemName.find(CUTTLEFISH_SYSTEM_NAME) != std::string::npos);
+}
+
+}  // namespace
+
 TEST_F(BinderTest, NetworkPermissionDefault) {
+    SKIP_IF_CUTTLEFISH;
+
     // Add test physical network
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
