@@ -14,19 +14,22 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "Netd"
+
+#include "SockDiag.h"
+
 #include <errno.h>
+#include <linux/inet_diag.h>
+#include <linux/netlink.h>
+#include <linux/sock_diag.h>
 #include <netdb.h>
-#include <string.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
 
-#include <linux/netlink.h>
-#include <linux/sock_diag.h>
-#include <linux/inet_diag.h>
-
-#define LOG_TAG "Netd"
+#include <cinttypes>
 
 #include <android-base/strings.h>
 #include <log/log.h>
@@ -34,7 +37,6 @@
 
 #include "NetdConstants.h"
 #include "Permission.h"
-#include "SockDiag.h"
 
 #ifndef SOCK_DESTROY
 #define SOCK_DESTROY 21
@@ -323,7 +325,8 @@ int SockDiag::destroySockets(const char *addrstr) {
     }
 
     if (mSocketsDestroyed > 0) {
-        ALOGI("Destroyed %d sockets on %s in %.1f ms", mSocketsDestroyed, addrstr, s.timeTaken());
+        ALOGI("Destroyed %d sockets on %s in %" PRId64 "us", mSocketsDestroyed, addrstr,
+              s.timeTakenUs());
     }
 
     return mSocketsDestroyed;
@@ -397,7 +400,7 @@ int SockDiag::destroySockets(uint8_t proto, const uid_t uid, bool excludeLoopbac
     }
 
     if (mSocketsDestroyed > 0) {
-        ALOGI("Destroyed %d sockets for UID in %.1f ms", mSocketsDestroyed, s.timeTaken());
+        ALOGI("Destroyed %d sockets for UID in %" PRId64 "us", mSocketsDestroyed, s.timeTakenUs());
     }
 
     return 0;
@@ -424,9 +427,9 @@ int SockDiag::destroySockets(const UidRanges& uidRanges, const std::set<uid_t>& 
     }
 
     if (mSocketsDestroyed > 0) {
-        ALOGI("Destroyed %d sockets for %s skip={%s} in %.1f ms",
-              mSocketsDestroyed, uidRanges.toString().c_str(),
-              android::base::Join(skipUids, " ").c_str(), s.timeTaken());
+        ALOGI("Destroyed %d sockets for %s skip={%s} in %" PRId64 "us", mSocketsDestroyed,
+              uidRanges.toString().c_str(), android::base::Join(skipUids, " ").c_str(),
+              s.timeTakenUs());
     }
 
     return 0;
@@ -517,8 +520,8 @@ int SockDiag::destroySocketsLackingPermission(unsigned netId, Permission permiss
     }
 
     if (mSocketsDestroyed > 0) {
-        ALOGI("Destroyed %d sockets for netId %d permission=%d in %.1f ms",
-              mSocketsDestroyed, netId, permission, s.timeTaken());
+        ALOGI("Destroyed %d sockets for netId %d permission=%d in %" PRId64 "us", mSocketsDestroyed,
+              netId, permission, s.timeTakenUs());
     }
 
     return 0;
