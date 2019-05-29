@@ -32,6 +32,8 @@
 
 #define LOG_TAG "getaddrinfo"
 
+#include "getaddrinfo.h"
+
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <assert.h>
