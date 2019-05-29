@@ -51,6 +51,8 @@
  * --Copyright--
  */
 
+#include "gethnamaddr.h"
+
 #include <android-base/logging.h>
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
