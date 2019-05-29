@@ -32,12 +32,16 @@
 #include "Fwmark.h"
 #include "FwmarkClient.h"
 #include "FwmarkCommand.h"
+#include "netdutils/ResponseCode.h"
 #include "netdutils/Stopwatch.h"
 #include "netid_client.h"
 
+#include <android-base/parseint.h>
 #include "android-base/unique_fd.h"
 
+using android::base::ParseInt;
 using android::base::unique_fd;
+using android::netdutils::ResponseCode;
 using android::netdutils::Stopwatch;
 
 namespace {
@@ -276,6 +280,23 @@ bool readBE32(int fd, int32_t* result) {
     return true;
 }
 
+bool readResonseCode(int fd, int* result) {
+    char buf[4];
+    int n = TEMP_FAILURE_RETRY(read(fd, &buf, sizeof(buf)));
+    if (n < 0) {
+        return false;
+    }
+
+    // The format of response code is 3 bytes followed by a space.
+    buf[3] = '\0';
+    if (!ParseInt(buf, result)) {
+        errno = EINVAL;
+        return false;
+    }
+
+    return true;
+}
+
 }  // namespace
 
 #define CHECK_SOCKET_IS_MARKABLE(sock)          \
@@ -470,4 +491,38 @@ extern "C" int resNetworkResult(int fd, int* rcode, uint8_t* answer, size_t ansl
 
 extern "C" void resNetworkCancel(int fd) {
     close(fd);
+}
+
+extern "C" int getNetworkForDns() {
+    int fd = dns_open_proxy();
+    if (fd == -1) {
+        return -errno;
+    }
+    unique_fd ufd(fd);
+    unsigned dnsNetId = getNetworkForResolv(NETID_UNSET);
+    const std::string cmd = "getdnsnetid " + std::to_string(dnsNetId);
+    ssize_t rc = sendData(fd, cmd.c_str(), cmd.size() + 1);
+    if (rc < 0) {
+        return rc;
+    }
+
+    int responseCode = 0;
+    // Read responseCode
+    if (!readResonseCode(fd, &responseCode)) {
+        // Unexpected behavior, read responseCode fail
+        return -errno;
+    }
+
+    if (responseCode != ResponseCode::DnsProxyQueryResult) {
+        return -EOPNOTSUPP;
+    }
+
+    int32_t result = 0;
+    // Read -errno/dnsnetid
+    if (!readBE32(fd, &result)) {
+        // Unexpected behavior, read -errno/dnsnetid fail
+        return -errno;
+    }
+
+    return result;
 }
