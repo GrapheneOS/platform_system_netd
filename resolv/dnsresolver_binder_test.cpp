@@ -18,9 +18,10 @@
 #undef NDEBUG
 #endif
 
-#include <vector>
+#include <netdb.h>
 
-#include <openssl/base64.h>
+#include <iostream>
+#include <vector>
 
 #include <android-base/strings.h>
 #include <android/net/IDnsResolver.h>
@@ -28,8 +29,8 @@
 #include <binder/IServiceManager.h>
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
-#include <netdb.h>
 #include <netdutils/Stopwatch.h>
+#include <openssl/base64.h>
 #include "tests/BaseTestMetricsListener.h"
 #include "tests/TestMetrics.h"
 
@@ -82,7 +83,9 @@ class DnsResolverBinderTest : public ::testing::Test {
 class TimedOperation : public Stopwatch {
   public:
     explicit TimedOperation(const std::string& name) : mName(name) {}
-    virtual ~TimedOperation() { fprintf(stderr, "    %s: %6.1f ms\n", mName.c_str(), timeTaken()); }
+    virtual ~TimedOperation() {
+        std::cerr << "    " << mName << ": " << timeTakenUs() << "us" << std::endl;
+    }
 
   private:
     std::string mName;
