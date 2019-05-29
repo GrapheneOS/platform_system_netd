@@ -1053,8 +1053,11 @@ TEST_F(BinderTest, TetherGetStats) {
     std::string intIface1 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
     std::string intIface2 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
     std::string intIface3 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
-    std::string extIface1 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
-    std::string extIface2 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
+
+    // Ensure we won't use the same interface name, otherwise the test will fail.
+    u_int32_t rNumber = arc4random_uniform(10000);
+    std::string extIface1 = StringPrintf("netdtest_%u", rNumber);
+    std::string extIface2 = StringPrintf("netdtest_%u", rNumber + 1);
 
     addTetherCounterValues(IPTABLES_PATH,  intIface1, extIface1, 123, 111);
     addTetherCounterValues(IP6TABLES_PATH, intIface1, extIface1, 456,  10);
