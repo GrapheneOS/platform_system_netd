@@ -1627,13 +1627,13 @@ TEST_F(BinderTest, BandwidthSetRemoveInterfaceAlert) {
 }
 
 TEST_F(BinderTest, BandwidthSetGlobalAlert) {
-    long testAlertBytes = 2097149;
+    int64_t testAlertBytes = 2097200;
 
     binder::Status status = mNetd->bandwidthSetGlobalAlert(testAlertBytes);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectBandwidthGlobalAlertRuleExists(testAlertBytes);
 
-    testAlertBytes = 2097152;
+    testAlertBytes = 2098230;
     status = mNetd->bandwidthSetGlobalAlert(testAlertBytes);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectBandwidthGlobalAlertRuleExists(testAlertBytes);
