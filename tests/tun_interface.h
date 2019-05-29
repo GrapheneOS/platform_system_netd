@@ -38,6 +38,7 @@ public:
     const in6_addr& dstAddr() const { return mDstAddr; }
 
     int addAddress(const std::string& addr, int prefixlen);
+    int getFdForTesting() const { return mFd; }
 
   private:
     int mFd = -1;
