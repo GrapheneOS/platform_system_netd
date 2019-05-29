@@ -53,7 +53,10 @@
 #include "NetdPermissions.h"
 #include "PrivateDnsConfiguration.h"
 #include "ResolverEventReporter.h"
+#include "getaddrinfo.h"
+#include "gethnamaddr.h"
 #include "netd_resolv/stats.h"  // RCODE_TIMEOUT
+#include "res_send.h"
 #include "resolv_private.h"
 #include "stats.pb.h"
 
