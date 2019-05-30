@@ -14,14 +14,16 @@
  * limitations under the License.
  */
 
-#include <string>
 #include <fcntl.h>
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include <cinttypes>
+#include <iostream>
+#include <string>
 
 #define LOG_TAG "IptablesRestoreControllerTest"
 #include <android-base/stringprintf.h>
@@ -269,9 +271,9 @@ TEST_F(IptablesRestoreControllerTest, TestUidRuleBenchmark) {
             EXPECT_EQ(0, con.execute(V4V6, IPTABLES_RESTORE_ADD, nullptr));
             EXPECT_EQ(0, con.execute(V4V6, IPTABLES_RESTORE_DEL, nullptr));
         }
-        float timeTaken = s.getTimeAndReset();
-        fprintf(stderr, "    Add/del %d UID rules via restore: %.1fms (%.2fms per operation)\n",
-                iterations, timeTaken, timeTaken / 2 / iterations);
+        int64_t timeTaken = s.getTimeAndResetUs();
+        std::cerr << "    Add/del " << iterations << " UID rules via restore: " << timeTaken
+                  << "us (" << (timeTaken / 2 / iterations) << "us per operation)" << std::endl;
     }
 }
 

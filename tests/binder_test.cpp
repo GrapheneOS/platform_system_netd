@@ -21,8 +21,8 @@
 #include <cinttypes>
 #include <condition_variable>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
+#include <iostream>
 #include <mutex>
 #include <set>
 #include <vector>
@@ -176,7 +176,7 @@ class TimedOperation : public Stopwatch {
   public:
     explicit TimedOperation(const std::string &name): mName(name) {}
     virtual ~TimedOperation() {
-        fprintf(stderr, "    %s: %6.1f ms\n", mName.c_str(), timeTaken());
+        std::cerr << "    " << mName << ": " << timeTakenUs() << "us" << std::endl;
     }
 
   private:
@@ -1053,8 +1053,11 @@ TEST_F(BinderTest, TetherGetStats) {
     std::string intIface1 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
     std::string intIface2 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
     std::string intIface3 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
-    std::string extIface1 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
-    std::string extIface2 = StringPrintf("netdtest_%u", arc4random_uniform(10000));
+
+    // Ensure we won't use the same interface name, otherwise the test will fail.
+    u_int32_t rNumber = arc4random_uniform(10000);
+    std::string extIface1 = StringPrintf("netdtest_%u", rNumber);
+    std::string extIface2 = StringPrintf("netdtest_%u", rNumber + 1);
 
     addTetherCounterValues(IPTABLES_PATH,  intIface1, extIface1, 123, 111);
     addTetherCounterValues(IP6TABLES_PATH, intIface1, extIface1, 456,  10);
@@ -1627,13 +1630,13 @@ TEST_F(BinderTest, BandwidthSetRemoveInterfaceAlert) {
 }
 
 TEST_F(BinderTest, BandwidthSetGlobalAlert) {
-    long testAlertBytes = 2097149;
+    int64_t testAlertBytes = 2097200;
 
     binder::Status status = mNetd->bandwidthSetGlobalAlert(testAlertBytes);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectBandwidthGlobalAlertRuleExists(testAlertBytes);
 
-    testAlertBytes = 2097152;
+    testAlertBytes = 2098230;
     status = mNetd->bandwidthSetGlobalAlert(testAlertBytes);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectBandwidthGlobalAlertRuleExists(testAlertBytes);

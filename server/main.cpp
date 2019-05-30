@@ -14,19 +14,19 @@
  * limitations under the License.
  */
 
-#include <chrono>
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
-#include <errno.h>
 #include <string.h>
-#include <mutex>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-
-#include <fcntl.h>
-#include <dirent.h>
+#include <chrono>
+#include <cinttypes>
+#include <mutex>
 
 #define LOG_TAG "Netd"
 
@@ -175,7 +175,7 @@ int main() {
         ALOGE("Unable to start NetdNativeService: %d", ret);
         exit(1);
     }
-    gLog.info("Registering NetdNativeService: %.1fms", subTime.getTimeAndReset());
+    gLog.info("Registering NetdNativeService: %" PRId64 "us", subTime.getTimeAndResetUs());
 
     android::net::process::ScopedPidFile pidFile(PID_FILE_PATH);
 
@@ -186,9 +186,8 @@ int main() {
         ALOGE("Unable to start NetdHwService: %d", ret);
         exit(1);
     }
-    gLog.info("Registering NetdHwService: %.1fms", subTime.getTimeAndReset());
-
-    gLog.info("Netd started in %dms", static_cast<int>(s.timeTaken()));
+    gLog.info("Registering NetdHwService: %" PRId64 "us", subTime.getTimeAndResetUs());
+    gLog.info("Netd started in %" PRId64 "us", s.timeTakenUs());
 
     IPCThreadState::self()->joinThreadPool();
 
