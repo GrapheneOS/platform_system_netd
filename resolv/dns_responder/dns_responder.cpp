@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -37,15 +38,17 @@
 #include <log/log.h>
 #include <netdutils/SocketOption.h>
 
+#include "NetdConstants.h"
+
 using android::netdutils::enableSockopt;
 
 namespace test {
 
 std::string errno2str() {
     char error_msg[512] = { 0 };
-    if (strerror_r(errno, error_msg, sizeof(error_msg)))
-        return std::string();
-    return std::string(error_msg);
+    // It actually calls __gnu_strerror_r() which returns the type |char*| rather than |int|.
+    // PLOG is an option though it requires lots of changes from ALOGx() to LOG(x).
+    return strerror_r(errno, error_msg, sizeof(error_msg));
 }
 
 #define APLOGI(fmt, ...) ALOGI(fmt ": [%d] %s", __VA_ARGS__, errno, errno2str().c_str())
@@ -576,7 +579,7 @@ void DNSResponder::setEdns(Edns edns) {
 }
 
 bool DNSResponder::running() const {
-    return socket_ != -1;
+    return socket_.get() != -1;
 }
 
 bool DNSResponder::startServer() {
@@ -584,70 +587,64 @@ bool DNSResponder::startServer() {
         ALOGI("server already running");
         return false;
     }
+
+    // Set up UDP socket.
     addrinfo ai_hints{
         .ai_family = AF_UNSPEC,
         .ai_socktype = SOCK_DGRAM,
         .ai_flags = AI_PASSIVE
     };
-    addrinfo* ai_res;
+    addrinfo* ai_res = nullptr;
     int rv = getaddrinfo(listen_address_.c_str(), listen_service_.c_str(),
                          &ai_hints, &ai_res);
+    ScopedAddrinfo ai_res_cleanup(ai_res);
     if (rv) {
         ALOGI("getaddrinfo(%s, %s) failed: %s", listen_address_.c_str(),
             listen_service_.c_str(), gai_strerror(rv));
         return false;
     }
-    int s = -1;
     for (const addrinfo* ai = ai_res ; ai ; ai = ai->ai_next) {
-        s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
-        if (s < 0) continue;
-        enableSockopt(s, SOL_SOCKET, SO_REUSEPORT).ignoreError();
-        enableSockopt(s, SOL_SOCKET, SO_REUSEADDR).ignoreError();
-        if (bind(s, ai->ai_addr, ai->ai_addrlen)) {
-            APLOGI("bind failed for socket %d", s);
-            close(s);
-            s = -1;
+        socket_.reset(socket(ai->ai_family, ai->ai_socktype | SOCK_NONBLOCK, ai->ai_protocol));
+        if (socket_.get() < 0) {
+            APLOGI("ignore creating socket %d failed", socket_.get());
             continue;
         }
+        enableSockopt(socket_.get(), SOL_SOCKET, SO_REUSEPORT).ignoreError();
+        enableSockopt(socket_.get(), SOL_SOCKET, SO_REUSEADDR).ignoreError();
         std::string host_str = addr2str(ai->ai_addr, ai->ai_addrlen);
+        if (bind(socket_.get(), ai->ai_addr, ai->ai_addrlen)) {
+            APLOGI("failed to bind UDP %s:%s", host_str.c_str(), listen_service_.c_str());
+            continue;
+        }
         ALOGI("bound to UDP %s:%s", host_str.c_str(), listen_service_.c_str());
         break;
     }
-    freeaddrinfo(ai_res);
-    if (s < 0) {
-        ALOGI("bind() failed");
+
+    // Set up eventfd socket.
+    event_fd_.reset(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
+    if (event_fd_.get() == -1) {
+        APLOGI("failed to create eventfd %d", event_fd_.get());
         return false;
     }
 
-    int flags = fcntl(s, F_GETFL, 0);
-    if (flags < 0) flags = 0;
-    if (fcntl(s, F_SETFL, flags | O_NONBLOCK) < 0) {
-        APLOGI("fcntl(F_SETFL) failed for socket %d", s);
-        close(s);
+    // Set up epoll socket.
+    epoll_fd_.reset(epoll_create1(EPOLL_CLOEXEC));
+    if (epoll_fd_.get() < 0) {
+        APLOGI("epoll_create1() failed on fd %d", epoll_fd_.get());
         return false;
     }
 
-    int ep_fd = epoll_create1(EPOLL_CLOEXEC);
-    if (ep_fd < 0) {
-        char error_msg[512] = { 0 };
-        if (strerror_r(errno, error_msg, sizeof(error_msg)))
-            strncpy(error_msg, "UNKNOWN", sizeof(error_msg));
-        APLOGI("epoll_create1() failed: %s", error_msg);
-        close(s);
+    ALOGI("adding socket %d to epoll", socket_.get());
+    if (!addFd(socket_.get(), EPOLLIN)) {
+        ALOGE("failed to add the socket %d to epoll", socket_.get());
         return false;
     }
-    epoll_event ev;
-    ev.events = EPOLLIN;
-    ev.data.fd = s;
-    if (epoll_ctl(ep_fd, EPOLL_CTL_ADD, s, &ev) < 0) {
-        APLOGI("epoll_ctl() failed for socket %d", s);
-        close(ep_fd);
-        close(s);
+    ALOGI("adding eventfd %d to epoll", event_fd_.get());
+    if (!addFd(event_fd_.get(), EPOLLIN)) {
+        ALOGE("failed to add the eventfd %d to epoll", event_fd_.get());
         return false;
     }
 
-    epoll_fd_ = ep_fd;
-    socket_ = s;
     {
         std::lock_guard lock(update_mutex_);
         handler_thread_ = std::thread(&DNSResponder::requestHandler, this);
@@ -662,17 +659,13 @@ bool DNSResponder::stopServer() {
         ALOGI("server not running");
         return false;
     }
-    if (terminate_) {
-        ALOGI("LOGIC ERROR");
+    ALOGI("stopping server");
+    if (!sendToEventFd()) {
         return false;
     }
-    ALOGI("stopping server");
-    terminate_ = true;
     handler_thread_.join();
-    close(epoll_fd_);
-    close(socket_);
-    terminate_ = false;
-    socket_ = -1;
+    epoll_fd_.reset();
+    socket_.reset();
     ALOGI("server stopped successfully");
     return true;
 }
@@ -697,59 +690,27 @@ void DNSResponder::clearQueries() {
 }
 
 void DNSResponder::requestHandler() {
-    epoll_event evs[1];
-    while (!terminate_) {
-        int n = epoll_wait(epoll_fd_, evs, 1, poll_timeout_ms_);
+    epoll_event evs[EPOLL_MAX_EVENTS];
+    while (true) {
+        int n = epoll_wait(epoll_fd_.get(), evs, EPOLL_MAX_EVENTS, poll_timeout_ms_);
         if (n == 0) continue;
         if (n < 0) {
-            ALOGI("epoll_wait() failed");
-            // TODO(imaipi): terminate on error.
+            APLOGI("epoll_wait() failed, n=%d", n);
             return;
         }
-        char buffer[4096];
-        sockaddr_storage sa;
-        socklen_t sa_len = sizeof(sa);
-        ssize_t len;
-        do {
-            len = recvfrom(socket_, buffer, sizeof(buffer), 0,
-                           (sockaddr*) &sa, &sa_len);
-        } while (len < 0 && (errno == EAGAIN || errno == EINTR));
-        if (len <= 0) {
-            ALOGI("recvfrom() failed");
-            continue;
-        }
-        DBGLOG("read %zd bytes", len);
-        std::lock_guard lock(cv_mutex_);
-        char response[4096];
-        size_t response_len = sizeof(response);
-        if (handleDNSRequest(buffer, len, response, &response_len) &&
-            response_len > 0) {
-            // place wait_for after handleDNSRequest() so we can check the number of queries in
-            // test case before it got responded.
-            std::unique_lock guard(cv_mutex_for_deferred_resp_);
-            cv_for_deferred_resp_.wait(guard, [this]() REQUIRES(cv_mutex_for_deferred_resp_) {
-                return !deferred_resp_;
-            });
 
-            len = sendto(socket_, response, response_len, 0,
-                         reinterpret_cast<const sockaddr*>(&sa), sa_len);
-            std::string host_str =
-                addr2str(reinterpret_cast<const sockaddr*>(&sa), sa_len);
-            if (len > 0) {
-                DBGLOG("sent %zu bytes to %s", len, host_str.c_str());
+        for (int i = 0; i < n; i++) {
+            const int fd = evs[i].data.fd;
+            const uint32_t events = evs[i].events;
+            if (fd == event_fd_.get() && (events & (EPOLLIN | EPOLLERR))) {
+                handleEventFd();
+                return;
+            } else if (fd == socket_.get() && (events & (EPOLLIN | EPOLLERR))) {
+                handleQuery();
             } else {
-                APLOGI("sendto() failed for %s", host_str.c_str());
+                ALOGW("unexpected epoll events 0x%x on fd %d", events, fd);
             }
-            // Test that the response is actually a correct DNS message.
-            const char* response_end = response + len;
-            DNSHeader header;
-            const char* cur = header.read(response, response_end);
-            if (cur == nullptr) ALOGI("response is flawed");
-
-        } else {
-            ALOGI("not responding");
         }
-        cv.notify_one();
     }
 }
 
@@ -957,6 +918,76 @@ void DNSResponder::setDeferredResp(bool deferred_resp) {
     deferred_resp_ = deferred_resp;
     if (!deferred_resp_) {
         cv_for_deferred_resp_.notify_one();
+    }
+}
+
+bool DNSResponder::addFd(int fd, uint32_t events) {
+    epoll_event ev;
+    ev.events = events;
+    ev.data.fd = fd;
+    if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, fd, &ev) < 0) {
+        APLOGI("epoll_ctl() for socket %d failed", fd);
+        return false;
+    }
+    return true;
+}
+
+void DNSResponder::handleQuery() {
+    char buffer[4096];
+    sockaddr_storage sa;
+    socklen_t sa_len = sizeof(sa);
+    ssize_t len;
+    do {
+        len = recvfrom(socket_.get(), buffer, sizeof(buffer), 0, (sockaddr*)&sa, &sa_len);
+    } while (len < 0 && (errno == EAGAIN || errno == EINTR));
+    if (len <= 0) {
+        APLOGI("recvfrom() failed, len=%zu", len);
+        return;
+    }
+    DBGLOG("read %zd bytes", len);
+    std::lock_guard lock(cv_mutex_);
+    char response[4096];
+    size_t response_len = sizeof(response);
+    if (handleDNSRequest(buffer, len, response, &response_len) && response_len > 0) {
+        // place wait_for after handleDNSRequest() so we can check the number of queries in
+        // test case before it got responded.
+        std::unique_lock guard(cv_mutex_for_deferred_resp_);
+        cv_for_deferred_resp_.wait(
+                guard, [this]() REQUIRES(cv_mutex_for_deferred_resp_) { return !deferred_resp_; });
+
+        len = sendto(socket_.get(), response, response_len, 0,
+                     reinterpret_cast<const sockaddr*>(&sa), sa_len);
+        std::string host_str = addr2str(reinterpret_cast<const sockaddr*>(&sa), sa_len);
+        if (len > 0) {
+            DBGLOG("sent %zu bytes to %s", len, host_str.c_str());
+        } else {
+            APLOGI("sendto() failed for %s", host_str.c_str());
+        }
+        // Test that the response is actually a correct DNS message.
+        const char* response_end = response + len;
+        DNSHeader header;
+        const char* cur = header.read(response, response_end);
+        if (cur == nullptr) ALOGW("response is flawed");
+    } else {
+        ALOGW("not responding");
+    }
+    cv.notify_one();
+    return;
+}
+
+bool DNSResponder::sendToEventFd() {
+    const uint64_t data = 1;
+    if (const ssize_t rt = write(event_fd_.get(), &data, sizeof(data)); rt != sizeof(data)) {
+        APLOGI("failed to write eventfd, rt=%zd", rt);
+        return false;
+    }
+    return true;
+}
+
+void DNSResponder::handleEventFd() {
+    int64_t data;
+    if (const ssize_t rt = read(event_fd_.get(), &data, sizeof(data)); rt != sizeof(data)) {
+        APLOGI("ignore reading eventfd failed, rt=%zd", rt);
     }
 }
 
