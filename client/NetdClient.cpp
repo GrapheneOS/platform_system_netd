@@ -29,15 +29,16 @@
 #include <string>
 #include <vector>
 
+#include <android-base/parseint.h>
+#include <android-base/unique_fd.h>
+
 #include "Fwmark.h"
 #include "FwmarkClient.h"
 #include "FwmarkCommand.h"
+#include "netdclient_priv.h"
 #include "netdutils/ResponseCode.h"
 #include "netdutils/Stopwatch.h"
 #include "netid_client.h"
-
-#include <android-base/parseint.h>
-#include "android-base/unique_fd.h"
 
 using android::base::ParseInt;
 using android::base::unique_fd;
@@ -201,6 +202,7 @@ int dns_open_proxy() {
     const char* cache_mode = getenv("ANDROID_DNS_MODE");
     const bool use_proxy = (cache_mode == NULL || strcmp(cache_mode, "local") != 0);
     if (!use_proxy) {
+        errno = ENOSYS;
         return -1;
     }
 
@@ -220,7 +222,10 @@ int dns_open_proxy() {
     const auto connectFunc = libcConnect ? libcConnect : connect;
     if (TEMP_FAILURE_RETRY(
                 connectFunc(s, (const struct sockaddr*) &proxy_addr, sizeof(proxy_addr))) != 0) {
+        // Store the errno for connect because we only care about why we can't connect to dnsproxyd
+        int storedErrno = errno;
         close(s);
+        errno = storedErrno;
         return -1;
     }
 
@@ -272,18 +277,18 @@ int readData(int fd, void* buf, size_t size) {
 
 bool readBE32(int fd, int32_t* result) {
     int32_t tmp;
-    int n = TEMP_FAILURE_RETRY(read(fd, &tmp, sizeof(tmp)));
-    if (n < 0) {
+    ssize_t n = TEMP_FAILURE_RETRY(read(fd, &tmp, sizeof(tmp)));
+    if (n < static_cast<ssize_t>(sizeof(tmp))) {
         return false;
     }
     *result = ntohl(tmp);
     return true;
 }
 
-bool readResonseCode(int fd, int* result) {
+bool readResponseCode(int fd, int* result) {
     char buf[4];
-    int n = TEMP_FAILURE_RETRY(read(fd, &buf, sizeof(buf)));
-    if (n < 0) {
+    ssize_t n = TEMP_FAILURE_RETRY(read(fd, &buf, sizeof(buf)));
+    if (n < static_cast<ssize_t>(sizeof(buf))) {
         return false;
     }
 
@@ -493,14 +498,24 @@ extern "C" void resNetworkCancel(int fd) {
     close(fd);
 }
 
-extern "C" int getNetworkForDns() {
+extern "C" int getNetworkForDns(unsigned* dnsNetId) {
+    if (dnsNetId == nullptr) return -EFAULT;
     int fd = dns_open_proxy();
     if (fd == -1) {
         return -errno;
     }
     unique_fd ufd(fd);
-    unsigned dnsNetId = getNetworkForResolv(NETID_UNSET);
-    const std::string cmd = "getdnsnetid " + std::to_string(dnsNetId);
+    return getNetworkForDnsInternal(fd, dnsNetId);
+}
+
+int getNetworkForDnsInternal(int fd, unsigned* dnsNetId) {
+    if (fd == -1) {
+        return -EBADF;
+    }
+
+    unsigned resolvNetId = getNetworkForResolv(NETID_UNSET);
+
+    const std::string cmd = "getdnsnetid " + std::to_string(resolvNetId);
     ssize_t rc = sendData(fd, cmd.c_str(), cmd.size() + 1);
     if (rc < 0) {
         return rc;
@@ -508,7 +523,7 @@ extern "C" int getNetworkForDns() {
 
     int responseCode = 0;
     // Read responseCode
-    if (!readResonseCode(fd, &responseCode)) {
+    if (!readResponseCode(fd, &responseCode)) {
         // Unexpected behavior, read responseCode fail
         return -errno;
     }
@@ -524,5 +539,7 @@ extern "C" int getNetworkForDns() {
         return -errno;
     }
 
-    return result;
+    *dnsNetId = result;
+
+    return 0;
 }
