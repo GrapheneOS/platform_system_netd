@@ -1997,16 +1997,20 @@ TEST_F(BinderTest, NetworkPermissionDefault) {
 }
 
 TEST_F(BinderTest, NetworkSetProtectAllowDeny) {
-    const int testUid = randomUid();
-    binder::Status status = mNetd->networkSetProtectAllow(testUid);
+    binder::Status status = mNetd->networkSetProtectAllow(TEST_UID1);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     bool ret = false;
-    status = mNetd->networkCanProtect(testUid, &ret);
+    status = mNetd->networkCanProtect(TEST_UID1, &ret);
     EXPECT_TRUE(ret);
 
-    status = mNetd->networkSetProtectDeny(testUid);
+    status = mNetd->networkSetProtectDeny(TEST_UID1);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    status = mNetd->networkCanProtect(testUid, &ret);
+
+    // Clear uid permission before calling networkCanProtect to ensure
+    // the call won't be affected by uid permission.
+    EXPECT_TRUE(mNetd->networkClearPermissionForUser({TEST_UID1}).isOk());
+
+    status = mNetd->networkCanProtect(TEST_UID1, &ret);
     EXPECT_FALSE(ret);
 }
 
