@@ -65,6 +65,8 @@
 
 // TODO: make this dynamic and stop depending on implementation details.
 constexpr int TEST_NETID = 30;
+// Valid VPN netId range is 100 ~ 65535
+constexpr int TEST_VPN_NETID = 65502;
 constexpr int MAXPACKET = (8 * 1024);
 
 // Semi-public Bionic hook used by the NDK (frameworks/base/native/android/net.c)
@@ -3341,6 +3343,25 @@ TEST_F(ResolverTest, PrefixDiscoveryBypassTls) {
 
 namespace {
 
+class ScopedSetNetworkForProcess {
+  public:
+    explicit ScopedSetNetworkForProcess(unsigned netId) {
+        mStoredNetId = getNetworkForProcess();
+        if (netId == mStoredNetId) return;
+        EXPECT_EQ(0, setNetworkForProcess(netId));
+    }
+    ~ScopedSetNetworkForProcess() { EXPECT_EQ(0, setNetworkForProcess(mStoredNetId)); }
+
+  private:
+    unsigned mStoredNetId;
+};
+
+class ScopedSetNetworkForResolv {
+  public:
+    explicit ScopedSetNetworkForResolv(unsigned netId) { EXPECT_EQ(0, setNetworkForResolv(netId)); }
+    ~ScopedSetNetworkForResolv() { EXPECT_EQ(0, setNetworkForResolv(NETID_UNSET)); }
+};
+
 void sendCommand(int fd, const std::string& cmd) {
     ssize_t rc = TEMP_FAILURE_RETRY(write(fd, cmd.c_str(), cmd.size() + 1));
     EXPECT_EQ(rc, static_cast<ssize_t>(cmd.size() + 1));
@@ -3353,7 +3374,7 @@ int32_t readBE32(int fd) {
     return ntohl(tmp);
 }
 
-int readResonseCode(int fd) {
+int readResponseCode(int fd) {
     char buf[4];
     int n = TEMP_FAILURE_RETRY(read(fd, &buf, sizeof(buf)));
     EXPECT_TRUE(n > 0);
@@ -3364,30 +3385,91 @@ int readResonseCode(int fd) {
     return result;
 }
 
+bool checkAndClearUseLocalNameserversFlag(unsigned* netid) {
+    if (netid == nullptr || ((*netid) & NETID_USE_LOCAL_NAMESERVERS) == 0) {
+        return false;
+    }
+    *netid = (*netid) & ~NETID_USE_LOCAL_NAMESERVERS;
+    return true;
+}
+
+android::net::UidRangeParcel makeUidRangeParcel(int start, int stop) {
+    android::net::UidRangeParcel res;
+    res.start = start;
+    res.stop = stop;
+
+    return res;
+}
+
+void expectNetIdWithLocalNameserversFlag(unsigned netId) {
+    unsigned dnsNetId = 0;
+    EXPECT_EQ(0, getNetworkForDns(&dnsNetId));
+    EXPECT_TRUE(checkAndClearUseLocalNameserversFlag(&dnsNetId));
+    EXPECT_EQ(netId, static_cast<unsigned>(dnsNetId));
+}
+
+void expectDnsNetIdEquals(unsigned netId) {
+    unsigned dnsNetId = 0;
+    EXPECT_EQ(0, getNetworkForDns(&dnsNetId));
+    EXPECT_EQ(netId, static_cast<unsigned>(dnsNetId));
+}
+
+void expectDnsNetIdIsDefaultNetwork(android::net::INetd* netdService) {
+    int currentNetid;
+    EXPECT_TRUE(netdService->networkGetDefault(&currentNetid).isOk());
+    expectDnsNetIdEquals(currentNetid);
+}
+
+void expectDnsNetIdWithVpn(android::net::INetd* netdService, unsigned vpnNetId,
+                           unsigned expectedNetId) {
+    EXPECT_TRUE(netdService->networkCreateVpn(vpnNetId, false /* secure */).isOk());
+    uid_t uid = getuid();
+    // Add uid to VPN
+    EXPECT_TRUE(netdService->networkAddUidRanges(vpnNetId, {makeUidRangeParcel(uid, uid)}).isOk());
+    expectDnsNetIdEquals(expectedNetId);
+    EXPECT_TRUE(netdService->networkDestroy(vpnNetId).isOk());
+}
+
 }  // namespace
 
 TEST_F(ResolverTest, getDnsNetId) {
     // We've called setNetworkForProcess in SetupOemNetwork, so reset to default first.
     setNetworkForProcess(NETID_UNSET);
-    int currentNetid;
-    EXPECT_TRUE(mDnsClient.netdService()->networkGetDefault(&currentNetid).isOk());
-    int dnsNetId = getNetworkForDns();
-    // Assume no vpn.
-    EXPECT_EQ(currentNetid, dnsNetId);
+
+    expectDnsNetIdIsDefaultNetwork(mDnsClient.netdService());
+    expectDnsNetIdWithVpn(mDnsClient.netdService(), TEST_VPN_NETID, TEST_VPN_NETID);
 
     // Test with setNetworkForProcess
-    setNetworkForProcess(TEST_NETID);
-    dnsNetId = getNetworkForDns();
-    EXPECT_EQ(TEST_NETID, dnsNetId);
-    // Set back
-    setNetworkForProcess(NETID_UNSET);
+    {
+        ScopedSetNetworkForProcess scopedSetNetworkForProcess(TEST_NETID);
+        expectDnsNetIdEquals(TEST_NETID);
+    }
+
+    // Test with setNetworkForProcess with NETID_USE_LOCAL_NAMESERVERS
+    {
+        ScopedSetNetworkForProcess scopedSetNetworkForProcess(TEST_NETID |
+                                                              NETID_USE_LOCAL_NAMESERVERS);
+        expectNetIdWithLocalNameserversFlag(TEST_NETID);
+    }
 
     // Test with setNetworkForResolv
-    setNetworkForResolv(TEST_NETID);
-    dnsNetId = getNetworkForDns();
-    EXPECT_EQ(TEST_NETID, dnsNetId);
-    // Set back
-    setNetworkForResolv(NETID_UNSET);
+    {
+        ScopedSetNetworkForResolv scopedSetNetworkForResolv(TEST_NETID);
+        expectDnsNetIdEquals(TEST_NETID);
+    }
+
+    // Test with setNetworkForResolv with NETID_USE_LOCAL_NAMESERVERS
+    {
+        ScopedSetNetworkForResolv scopedSetNetworkForResolv(TEST_NETID |
+                                                            NETID_USE_LOCAL_NAMESERVERS);
+        expectNetIdWithLocalNameserversFlag(TEST_NETID);
+    }
+
+    // Test with setNetworkForResolv under bypassable vpn
+    {
+        ScopedSetNetworkForResolv scopedSetNetworkForResolv(TEST_NETID);
+        expectDnsNetIdWithVpn(mDnsClient.netdService(), TEST_VPN_NETID, TEST_NETID);
+    }
 
     // Create socket connected to DnsProxyListener
     int fd = dns_open_proxy();
@@ -3396,11 +3478,11 @@ TEST_F(ResolverTest, getDnsNetId) {
 
     // Test command with wrong netId
     sendCommand(fd, "getdnsnetid abc");
-    EXPECT_EQ(ResponseCode::DnsProxyQueryResult, readResonseCode(fd));
+    EXPECT_EQ(ResponseCode::DnsProxyQueryResult, readResponseCode(fd));
     EXPECT_EQ(-EINVAL, readBE32(fd));
 
     // Test unsupported command
     sendCommand(fd, "getdnsnetidNotSupported");
     // Keep in sync with FrameworkListener.cpp (500, "Command not recognized")
-    EXPECT_EQ(500, readResonseCode(fd));
+    EXPECT_EQ(500, readResponseCode(fd));
 }
