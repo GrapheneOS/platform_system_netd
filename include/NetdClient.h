@@ -58,7 +58,7 @@ int resNetworkSend(unsigned netId, const uint8_t* msg, size_t msglen, uint32_t f
 
 void resNetworkCancel(int nsend_fd);
 
-int getNetworkForDns();
+int getNetworkForDns(unsigned* dnsNetId);
 __END_DECLS
 
 #endif  // NETD_INCLUDE_NETD_CLIENT_H
