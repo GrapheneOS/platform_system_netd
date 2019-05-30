@@ -25,8 +25,8 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-#ifndef NETD_RESOLV_CACHE_H
-#define NETD_RESOLV_CACHE_H
+
+#pragma once
 
 #include "netd_resolv/resolv.h"
 
@@ -64,4 +64,12 @@ void _resolv_cache_add(unsigned netid, const void* query, int querylen, const vo
 /* Notify the cache a request failed */
 void _resolv_cache_query_failed(unsigned netid, const void* query, int querylen, uint32_t flags);
 
-#endif  // NETD_RESOLV_CACHE_H
+// Sets name servers for a given network.
+int resolv_set_nameservers_for_net(unsigned netid, const char** servers, int numservers,
+                                   const char* domains, const res_params* params);
+
+// Creates the cache associated with the given network.
+int resolv_create_cache_for_net(unsigned netid);
+
+// Deletes the cache associated with the given network.
+void resolv_delete_cache_for_net(unsigned netid);
