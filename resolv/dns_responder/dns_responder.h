@@ -39,7 +39,6 @@ struct DNSRecord;
 
 inline const std::string kDefaultListenAddr = "127.0.0.3";
 inline const std::string kDefaultListenService = "53";
-inline const int kDefaultPollTimoutMillis = -1;
 
 /*
  * Simple DNS responder, which replies to queries with the registered response
@@ -50,7 +49,6 @@ class DNSResponder {
   public:
     DNSResponder(std::string listen_address = kDefaultListenAddr,
                  std::string listen_service = kDefaultListenService,
-                 int poll_timeout_ms = kDefaultPollTimoutMillis,
                  ns_rcode error_rcode = ns_rcode::ns_r_servfail);
     ~DNSResponder();
 
@@ -138,8 +136,6 @@ class DNSResponder {
     // Address and service to listen on, currently limited to UDP.
     const std::string listen_address_;
     const std::string listen_service_;
-    // epoll_wait() timeout in ms.
-    const int poll_timeout_ms_;
     // Error code to return for requests for an unknown name.
     const ns_rcode error_rcode_;
     // Probability that a valid response is being sent instead of being sent
