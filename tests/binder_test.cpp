@@ -634,22 +634,18 @@ TEST_F(BinderTest, NetworkRejectNonSecureVpn) {
 
     std::vector<UidRangeParcel> uidRanges = {makeUidRangeParcel(BASE_UID + 150, BASE_UID + 224),
                                              makeUidRangeParcel(BASE_UID + 226, BASE_UID + 300)};
-
-    const std::vector<std::string> initialRulesV4 = listIpRules(IP_RULE_V4);
-    const std::vector<std::string> initialRulesV6 = listIpRules(IP_RULE_V6);
-
+    // Make sure no rules existed before calling commands.
+    for (auto const& range : uidRanges) {
+        EXPECT_FALSE(ipRuleExistsForRange(RULE_PRIORITY, range, "prohibit"));
+    }
     // Create two valid rules.
     ASSERT_TRUE(mNetd->networkRejectNonSecureVpn(true, uidRanges).isOk());
-    EXPECT_EQ(initialRulesV4.size() + 2, listIpRules(IP_RULE_V4).size());
-    EXPECT_EQ(initialRulesV6.size() + 2, listIpRules(IP_RULE_V6).size());
     for (auto const& range : uidRanges) {
         EXPECT_TRUE(ipRuleExistsForRange(RULE_PRIORITY, range, "prohibit"));
     }
 
     // Remove the rules.
     ASSERT_TRUE(mNetd->networkRejectNonSecureVpn(false, uidRanges).isOk());
-    EXPECT_EQ(initialRulesV4.size(), listIpRules(IP_RULE_V4).size());
-    EXPECT_EQ(initialRulesV6.size(), listIpRules(IP_RULE_V6).size());
     for (auto const& range : uidRanges) {
         EXPECT_FALSE(ipRuleExistsForRange(RULE_PRIORITY, range, "prohibit"));
     }
@@ -658,10 +654,6 @@ TEST_F(BinderTest, NetworkRejectNonSecureVpn) {
     binder::Status status = mNetd->networkRejectNonSecureVpn(false, uidRanges);
     ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
     EXPECT_EQ(ENOENT, status.serviceSpecificErrorCode());
-
-    // All rules should be the same as before.
-    EXPECT_EQ(initialRulesV4, listIpRules(IP_RULE_V4));
-    EXPECT_EQ(initialRulesV6, listIpRules(IP_RULE_V6));
 }
 
 // Create a socket pair that isLoopbackSocket won't think is local.
