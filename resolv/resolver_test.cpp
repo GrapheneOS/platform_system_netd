@@ -667,9 +667,9 @@ TEST_F(ResolverTest, GetAddrInfoV4_deferred_resp) {
     const char* listen_srv = "53";
     const char* host_name_deferred = "hello.example.com.";
     const char* host_name_normal = "konbanha.example.com.";
-    test::DNSResponder dns1(listen_addr1, listen_srv, 250, ns_rcode::ns_r_servfail);
-    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
-    test::DNSResponder dns3(listen_addr3, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns1(listen_addr1, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns2(listen_addr2, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns3(listen_addr3, listen_srv, ns_rcode::ns_r_servfail);
     dns1.addMapping(host_name_deferred, ns_type::ns_t_a, "1.2.3.4");
     dns2.addMapping(host_name_deferred, ns_type::ns_t_a, "1.2.3.4");
     dns3.addMapping(host_name_normal, ns_type::ns_t_a, "1.2.3.5");
@@ -895,8 +895,8 @@ TEST_F(ResolverTest, GetAddrInfoV6_nonresponsive) {
 
     // dns0 does not respond with 100% probability, while
     // dns1 responds normally, at least initially.
-    test::DNSResponder dns0(listen_addr0, listen_srv, 250, static_cast<ns_rcode>(-1));
-    test::DNSResponder dns1(listen_addr1, listen_srv, 250, static_cast<ns_rcode>(-1));
+    test::DNSResponder dns0(listen_addr0, listen_srv, static_cast<ns_rcode>(-1));
+    test::DNSResponder dns1(listen_addr1, listen_srv, static_cast<ns_rcode>(-1));
     dns0.setResponseProbability(0.0);
     StartDns(dns0, records0);
     StartDns(dns1, records1);
@@ -1126,7 +1126,7 @@ TEST_F(ResolverTest, ResolverStats) {
     constexpr char listen_addr3[] = "127.0.0.6";
 
     // Set server 1 timeout.
-    test::DNSResponder dns1(listen_addr1, "53", 250, static_cast<ns_rcode>(-1));
+    test::DNSResponder dns1(listen_addr1, "53", static_cast<ns_rcode>(-1));
     dns1.setResponseProbability(0.0);
     ASSERT_TRUE(dns1.startServer());
 
@@ -2313,7 +2313,7 @@ TEST_F(ResolverTest, BrokenEdns) {
     const char TLS_PORT[] = "853";
     const std::vector<std::string> servers = { CLEARTEXT_ADDR };
 
-    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, ns_rcode::ns_r_servfail);
     ASSERT_TRUE(dns.startServer());
 
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
@@ -2450,7 +2450,7 @@ TEST_F(ResolverTest, UnstableTls) {
     const char* host_name2 = "nonexistent2.example.com.";
     const std::vector<std::string> servers = {CLEARTEXT_ADDR};
 
-    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, ns_rcode::ns_r_servfail);
     ASSERT_TRUE(dns.startServer());
     dns.setEdns(test::DNSResponder::Edns::FORMERR_ON_EDNS);
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
@@ -2483,7 +2483,7 @@ TEST_F(ResolverTest, BogusDnsServer) {
     const char* host_name2 = "nonexistent2.example.com.";
     const std::vector<std::string> servers = {CLEARTEXT_ADDR};
 
-    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, ns_rcode::ns_r_servfail);
     ASSERT_TRUE(dns.startServer());
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
     ASSERT_TRUE(tls.startServer());
