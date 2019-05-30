@@ -177,7 +177,7 @@ TEST_F(DnsResolverBinderTest, EventListener_onDnsEvent) {
     // Setup DNS responder server.
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
-    test::DNSResponder dns(listen_addr, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(listen_addr, listen_srv, ns_rcode::ns_r_servfail);
     dns.addMapping("hi.example.com.", ns_type::ns_t_a, "1.2.3.4");
     ASSERT_TRUE(dns.startServer());
 
