@@ -34,3 +34,26 @@ cc_library {
         }
     }
 }
+
+cc_test {
+    name: "netdclient_test",
+    srcs: [
+        "NetdClientTest.cpp",
+    ],
+    defaults: ["netd_defaults"],
+    test_suites: ["device-tests"],
+    include_dirs: [
+        "system/netd/resolv",
+        "system/netd/include",
+        "system/netd/libnetdutils/include",
+    ],
+    static_libs: [
+        "libgmock",
+        "libbase",
+        "libnetd_client",
+    ],
+    sanitize: {
+        address: true,
+        recover: [ "all" ],
+    },
+}

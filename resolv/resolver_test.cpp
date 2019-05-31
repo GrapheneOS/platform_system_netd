@@ -64,6 +64,8 @@
 
 // TODO: make this dynamic and stop depending on implementation details.
 constexpr int TEST_NETID = 30;
+// Valid VPN netId range is 100 ~ 65535
+constexpr int TEST_VPN_NETID = 65502;
 constexpr int MAXPACKET = (8 * 1024);
 
 // Semi-public Bionic hook used by the NDK (frameworks/base/native/android/net.c)
@@ -667,9 +669,9 @@ TEST_F(ResolverTest, GetAddrInfoV4_deferred_resp) {
     const char* listen_srv = "53";
     const char* host_name_deferred = "hello.example.com.";
     const char* host_name_normal = "konbanha.example.com.";
-    test::DNSResponder dns1(listen_addr1, listen_srv, 250, ns_rcode::ns_r_servfail);
-    test::DNSResponder dns2(listen_addr2, listen_srv, 250, ns_rcode::ns_r_servfail);
-    test::DNSResponder dns3(listen_addr3, listen_srv, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns1(listen_addr1, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns2(listen_addr2, listen_srv, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns3(listen_addr3, listen_srv, ns_rcode::ns_r_servfail);
     dns1.addMapping(host_name_deferred, ns_type::ns_t_a, "1.2.3.4");
     dns2.addMapping(host_name_deferred, ns_type::ns_t_a, "1.2.3.4");
     dns3.addMapping(host_name_normal, ns_type::ns_t_a, "1.2.3.5");
@@ -895,8 +897,8 @@ TEST_F(ResolverTest, GetAddrInfoV6_nonresponsive) {
 
     // dns0 does not respond with 100% probability, while
     // dns1 responds normally, at least initially.
-    test::DNSResponder dns0(listen_addr0, listen_srv, 250, static_cast<ns_rcode>(-1));
-    test::DNSResponder dns1(listen_addr1, listen_srv, 250, static_cast<ns_rcode>(-1));
+    test::DNSResponder dns0(listen_addr0, listen_srv, static_cast<ns_rcode>(-1));
+    test::DNSResponder dns1(listen_addr1, listen_srv, static_cast<ns_rcode>(-1));
     dns0.setResponseProbability(0.0);
     StartDns(dns0, records0);
     StartDns(dns1, records1);
@@ -1126,7 +1128,7 @@ TEST_F(ResolverTest, ResolverStats) {
     constexpr char listen_addr3[] = "127.0.0.6";
 
     // Set server 1 timeout.
-    test::DNSResponder dns1(listen_addr1, "53", 250, static_cast<ns_rcode>(-1));
+    test::DNSResponder dns1(listen_addr1, "53", static_cast<ns_rcode>(-1));
     dns1.setResponseProbability(0.0);
     ASSERT_TRUE(dns1.startServer());
 
@@ -2313,7 +2315,7 @@ TEST_F(ResolverTest, BrokenEdns) {
     const char TLS_PORT[] = "853";
     const std::vector<std::string> servers = { CLEARTEXT_ADDR };
 
-    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, ns_rcode::ns_r_servfail);
     ASSERT_TRUE(dns.startServer());
 
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
@@ -2450,7 +2452,7 @@ TEST_F(ResolverTest, UnstableTls) {
     const char* host_name2 = "nonexistent2.example.com.";
     const std::vector<std::string> servers = {CLEARTEXT_ADDR};
 
-    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, ns_rcode::ns_r_servfail);
     ASSERT_TRUE(dns.startServer());
     dns.setEdns(test::DNSResponder::Edns::FORMERR_ON_EDNS);
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
@@ -2483,7 +2485,7 @@ TEST_F(ResolverTest, BogusDnsServer) {
     const char* host_name2 = "nonexistent2.example.com.";
     const std::vector<std::string> servers = {CLEARTEXT_ADDR};
 
-    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, 250, ns_rcode::ns_r_servfail);
+    test::DNSResponder dns(CLEARTEXT_ADDR, CLEARTEXT_PORT, ns_rcode::ns_r_servfail);
     ASSERT_TRUE(dns.startServer());
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
     ASSERT_TRUE(tls.startServer());
@@ -3323,6 +3325,25 @@ TEST_F(ResolverTest, PrefixDiscoveryBypassTls) {
 
 namespace {
 
+class ScopedSetNetworkForProcess {
+  public:
+    explicit ScopedSetNetworkForProcess(unsigned netId) {
+        mStoredNetId = getNetworkForProcess();
+        if (netId == mStoredNetId) return;
+        EXPECT_EQ(0, setNetworkForProcess(netId));
+    }
+    ~ScopedSetNetworkForProcess() { EXPECT_EQ(0, setNetworkForProcess(mStoredNetId)); }
+
+  private:
+    unsigned mStoredNetId;
+};
+
+class ScopedSetNetworkForResolv {
+  public:
+    explicit ScopedSetNetworkForResolv(unsigned netId) { EXPECT_EQ(0, setNetworkForResolv(netId)); }
+    ~ScopedSetNetworkForResolv() { EXPECT_EQ(0, setNetworkForResolv(NETID_UNSET)); }
+};
+
 void sendCommand(int fd, const std::string& cmd) {
     ssize_t rc = TEMP_FAILURE_RETRY(write(fd, cmd.c_str(), cmd.size() + 1));
     EXPECT_EQ(rc, static_cast<ssize_t>(cmd.size() + 1));
@@ -3335,7 +3356,7 @@ int32_t readBE32(int fd) {
     return ntohl(tmp);
 }
 
-int readResonseCode(int fd) {
+int readResponseCode(int fd) {
     char buf[4];
     int n = TEMP_FAILURE_RETRY(read(fd, &buf, sizeof(buf)));
     EXPECT_TRUE(n > 0);
@@ -3346,30 +3367,91 @@ int readResonseCode(int fd) {
     return result;
 }
 
+bool checkAndClearUseLocalNameserversFlag(unsigned* netid) {
+    if (netid == nullptr || ((*netid) & NETID_USE_LOCAL_NAMESERVERS) == 0) {
+        return false;
+    }
+    *netid = (*netid) & ~NETID_USE_LOCAL_NAMESERVERS;
+    return true;
+}
+
+android::net::UidRangeParcel makeUidRangeParcel(int start, int stop) {
+    android::net::UidRangeParcel res;
+    res.start = start;
+    res.stop = stop;
+
+    return res;
+}
+
+void expectNetIdWithLocalNameserversFlag(unsigned netId) {
+    unsigned dnsNetId = 0;
+    EXPECT_EQ(0, getNetworkForDns(&dnsNetId));
+    EXPECT_TRUE(checkAndClearUseLocalNameserversFlag(&dnsNetId));
+    EXPECT_EQ(netId, static_cast<unsigned>(dnsNetId));
+}
+
+void expectDnsNetIdEquals(unsigned netId) {
+    unsigned dnsNetId = 0;
+    EXPECT_EQ(0, getNetworkForDns(&dnsNetId));
+    EXPECT_EQ(netId, static_cast<unsigned>(dnsNetId));
+}
+
+void expectDnsNetIdIsDefaultNetwork(android::net::INetd* netdService) {
+    int currentNetid;
+    EXPECT_TRUE(netdService->networkGetDefault(&currentNetid).isOk());
+    expectDnsNetIdEquals(currentNetid);
+}
+
+void expectDnsNetIdWithVpn(android::net::INetd* netdService, unsigned vpnNetId,
+                           unsigned expectedNetId) {
+    EXPECT_TRUE(netdService->networkCreateVpn(vpnNetId, false /* secure */).isOk());
+    uid_t uid = getuid();
+    // Add uid to VPN
+    EXPECT_TRUE(netdService->networkAddUidRanges(vpnNetId, {makeUidRangeParcel(uid, uid)}).isOk());
+    expectDnsNetIdEquals(expectedNetId);
+    EXPECT_TRUE(netdService->networkDestroy(vpnNetId).isOk());
+}
+
 }  // namespace
 
 TEST_F(ResolverTest, getDnsNetId) {
     // We've called setNetworkForProcess in SetupOemNetwork, so reset to default first.
     setNetworkForProcess(NETID_UNSET);
-    int currentNetid;
-    EXPECT_TRUE(mDnsClient.netdService()->networkGetDefault(&currentNetid).isOk());
-    int dnsNetId = getNetworkForDns();
-    // Assume no vpn.
-    EXPECT_EQ(currentNetid, dnsNetId);
+
+    expectDnsNetIdIsDefaultNetwork(mDnsClient.netdService());
+    expectDnsNetIdWithVpn(mDnsClient.netdService(), TEST_VPN_NETID, TEST_VPN_NETID);
 
     // Test with setNetworkForProcess
-    setNetworkForProcess(TEST_NETID);
-    dnsNetId = getNetworkForDns();
-    EXPECT_EQ(TEST_NETID, dnsNetId);
-    // Set back
-    setNetworkForProcess(NETID_UNSET);
+    {
+        ScopedSetNetworkForProcess scopedSetNetworkForProcess(TEST_NETID);
+        expectDnsNetIdEquals(TEST_NETID);
+    }
+
+    // Test with setNetworkForProcess with NETID_USE_LOCAL_NAMESERVERS
+    {
+        ScopedSetNetworkForProcess scopedSetNetworkForProcess(TEST_NETID |
+                                                              NETID_USE_LOCAL_NAMESERVERS);
+        expectNetIdWithLocalNameserversFlag(TEST_NETID);
+    }
 
     // Test with setNetworkForResolv
-    setNetworkForResolv(TEST_NETID);
-    dnsNetId = getNetworkForDns();
-    EXPECT_EQ(TEST_NETID, dnsNetId);
-    // Set back
-    setNetworkForResolv(NETID_UNSET);
+    {
+        ScopedSetNetworkForResolv scopedSetNetworkForResolv(TEST_NETID);
+        expectDnsNetIdEquals(TEST_NETID);
+    }
+
+    // Test with setNetworkForResolv with NETID_USE_LOCAL_NAMESERVERS
+    {
+        ScopedSetNetworkForResolv scopedSetNetworkForResolv(TEST_NETID |
+                                                            NETID_USE_LOCAL_NAMESERVERS);
+        expectNetIdWithLocalNameserversFlag(TEST_NETID);
+    }
+
+    // Test with setNetworkForResolv under bypassable vpn
+    {
+        ScopedSetNetworkForResolv scopedSetNetworkForResolv(TEST_NETID);
+        expectDnsNetIdWithVpn(mDnsClient.netdService(), TEST_VPN_NETID, TEST_NETID);
+    }
 
     // Create socket connected to DnsProxyListener
     int fd = dns_open_proxy();
@@ -3378,11 +3460,11 @@ TEST_F(ResolverTest, getDnsNetId) {
 
     // Test command with wrong netId
     sendCommand(fd, "getdnsnetid abc");
-    EXPECT_EQ(ResponseCode::DnsProxyQueryResult, readResonseCode(fd));
+    EXPECT_EQ(ResponseCode::DnsProxyQueryResult, readResponseCode(fd));
     EXPECT_EQ(-EINVAL, readBE32(fd));
 
     // Test unsupported command
     sendCommand(fd, "getdnsnetidNotSupported");
     // Keep in sync with FrameworkListener.cpp (500, "Command not recognized")
-    EXPECT_EQ(500, readResonseCode(fd));
+    EXPECT_EQ(500, readResponseCode(fd));
 }
