@@ -15,12 +15,11 @@
  */
 
 #define LOG_TAG "resolv"
-//#define LOG_NDEBUG 0
 
 #include "DnsTlsDispatcher.h"
 #include "DnsTlsSocketFactory.h"
 
-#include "log/log.h"
+#include <android-base/logging.h>
 
 namespace android {
 namespace net {
@@ -87,7 +86,7 @@ DnsTlsTransport::Response DnsTlsDispatcher::query(
         const Slice query, const Slice ans, int *resplen) {
     const std::list<DnsTlsServer> orderedServers(getOrderedServerList(tlsServers, mark));
 
-    if (orderedServers.empty()) ALOGW("Empty DnsTlsServer list");
+    if (orderedServers.empty()) LOG(WARNING) << "Empty DnsTlsServer list";
 
     DnsTlsTransport::Response code = DnsTlsTransport::Response::internal_error;
     for (const auto& server : orderedServers) {
@@ -129,22 +128,22 @@ DnsTlsTransport::Response DnsTlsDispatcher::query(const DnsTlsServer& server, un
         ++xport->useCount;
     }
 
-    ALOGV("Sending query of length %zu", query.size());
+    LOG(DEBUG) << "Sending query of length " << query.size();
     auto res = xport->transport.query(query);
-    ALOGV("Awaiting response");
+    LOG(DEBUG) << "Awaiting response";
     const auto& result = res.get();
     DnsTlsTransport::Response code = result.code;
     if (code == DnsTlsTransport::Response::success) {
         if (result.response.size() > ans.size()) {
-            ALOGV("Response too large: %zu > %zu", result.response.size(), ans.size());
+            LOG(DEBUG) << "Response too large: " << result.response.size() << " > " << ans.size();
             code = DnsTlsTransport::Response::limit_error;
         } else {
-            ALOGV("Got response successfully");
+            LOG(DEBUG) << "Got response successfully";
             *resplen = result.response.size();
             netdutils::copy(ans, netdutils::makeSlice(result.response));
         }
     } else {
-        ALOGV("Query failed: %u", (unsigned int) code);
+        LOG(DEBUG) << "Query failed: " << (unsigned int)code;
     }
 
     auto now = std::chrono::steady_clock::now();
