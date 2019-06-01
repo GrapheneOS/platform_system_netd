@@ -1109,7 +1109,7 @@ int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** a
         } else if (strcmp(argv[2], "clear")) {
             return syntaxError(cli, "Unknown argument");
         }
-        if (Status status = mNetd->networkSetDefault(netId); status.isOk()) {
+        if (Status status = mNetd->networkSetDefault(netId); !status.isOk()) {
             return operationError(cli, "setDefaultNetwork() failed",
                                   status.serviceSpecificErrorCode());
         }
