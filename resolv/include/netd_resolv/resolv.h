@@ -25,16 +25,12 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-#ifndef NETD_RESOLV_RESOLV_H
-#define NETD_RESOLV_RESOLV_H
+
+#pragma once
 
 #include "params.h"
 
 #include <netinet/in.h>
-
-struct addrinfo;
-struct hostent;
-struct res_params;
 
 typedef union sockaddr_union {
     struct sockaddr sa;
@@ -81,7 +77,6 @@ struct android_net_context {
 };
 
 #define NET_CONTEXT_INVALID_UID ((uid_t) -1)
-
 #define NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS 0x00000001
 #define NET_CONTEXT_FLAG_USE_EDNS 0x00000002
 
@@ -104,36 +99,7 @@ struct ResolverNetdCallbacks {
     log_callback log;
 };
 
-int android_gethostbyaddrfornetcontext(const void*, socklen_t, int, const android_net_context*,
-                                       hostent**);
-int android_gethostbynamefornetcontext(const char*, int, const android_net_context*, hostent**);
-int android_getaddrinfofornetcontext(const char*, const char*, const addrinfo*,
-                                     const android_net_context*, addrinfo**);
-// Query dns with raw msg
-int resolv_res_nsend(const android_net_context* netContext, const uint8_t* msg, int msgLen,
-                     uint8_t* ans, int ansLen, int* rcode, uint32_t flags);
-
-// Set name servers for a network
-int resolv_set_nameservers_for_net(unsigned netid, const char** servers, int numservers,
-                                   const char* domains, const res_params* params);
-
-int resolv_set_private_dns_for_net(unsigned netid, uint32_t mark, const char** servers,
-                                   int numServers, const char* tlsName,
-                                   const uint8_t** fingerprints, int numFingerprints);
-
-void resolv_delete_private_dns_for_net(unsigned netid);
-
-// Delete the cache associated with a certain network
-void resolv_delete_cache_for_net(unsigned netid);
-// Create the cache associated with a certain network
-int resolv_create_cache_for_net(unsigned netid);
-
-// switch resolver log severity
-int resolv_set_log_severity(uint32_t logSeverity);
-
 LIBNETD_RESOLV_PUBLIC bool resolv_has_nameservers(unsigned netid);
 
 // Set callbacks and bring DnsResolver up.
 LIBNETD_RESOLV_PUBLIC bool resolv_init(const ResolverNetdCallbacks* callbacks);
-
-#endif  // NETD_RESOLV_RESOLV_H

@@ -28,6 +28,7 @@
 #include <vector>
 
 #include <android-base/thread_annotations.h>
+#include <android-base/unique_fd.h>
 #include <openssl/ssl.h>
 
 namespace test {
@@ -37,12 +38,13 @@ namespace test {
  * Only handles a single request at a time.
  */
 class DnsTlsFrontend {
-public:
+  public:
     DnsTlsFrontend(const std::string& listen_address, const std::string& listen_service,
-            const std::string& backend_address, const std::string& backend_service) :
-            listen_address_(listen_address), listen_service_(listen_service),
-            backend_address_(backend_address), backend_service_(backend_service),
-            queries_(0), terminate_(false) { }
+                   const std::string& backend_address, const std::string& backend_service)
+        : listen_address_(listen_address),
+          listen_service_(listen_service),
+          backend_address_(backend_address),
+          backend_service_(backend_service) {}
     ~DnsTlsFrontend() {
         stopServer();
     }
@@ -58,24 +60,34 @@ public:
     bool startServer();
     bool stopServer();
     int queries() const { return queries_; }
+    void clearQueries() { queries_ = 0; }
     bool waitForQueries(int number, int timeoutMs) const;
     void set_chain_length(int length) { chain_length_ = length; }
     // Represents a fingerprint from the middle of the certificate chain.
     const std::vector<uint8_t>& fingerprint() const { return fingerprint_; }
 
-private:
+  private:
     void requestHandler();
     bool handleOneRequest(SSL* ssl);
+
+    // Trigger the handler thread to terminate.
+    bool sendToEventFd();
+
+    // Used in the handler thread for the termination signal.
+    void handleEventFd();
 
     std::string listen_address_;
     std::string listen_service_;
     std::string backend_address_;
     std::string backend_service_;
     bssl::UniquePtr<SSL_CTX> ctx_;
-    int socket_ = -1;
-    int backend_socket_ = -1;
-    std::atomic<int> queries_;
-    std::atomic<bool> terminate_;
+    // Socket on which the server is listening for a TCP connection with a client.
+    android::base::unique_fd socket_;
+    // Socket used to communicate with the backend DNS server.
+    android::base::unique_fd backend_socket_;
+    // Eventfd used to signal for the handler thread termination.
+    android::base::unique_fd event_fd_;
+    std::atomic<int> queries_ = 0;
     std::thread handler_thread_ GUARDED_BY(update_mutex_);
     std::mutex update_mutex_;
     int chain_length_ = 1;

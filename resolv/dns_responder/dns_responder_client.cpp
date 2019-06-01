@@ -119,13 +119,6 @@ void DnsResponderClient::SetupDNSServers(unsigned num_servers, const std::vector
     }
 }
 
-void DnsResponderClient::ShutdownDNSServers(std::vector<std::unique_ptr<test::DNSResponder>>* dns) {
-    for (const auto& d : *dns) {
-        d->stopServer();
-    }
-    dns->clear();
-}
-
 int DnsResponderClient::SetupOemNetwork() {
     mNetdSrv->networkDestroy(TEST_NETID);
     mDnsResolvSrv->destroyNetworkCache(TEST_NETID);

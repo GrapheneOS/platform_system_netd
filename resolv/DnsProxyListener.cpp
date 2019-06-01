@@ -53,7 +53,10 @@
 #include "NetdPermissions.h"
 #include "PrivateDnsConfiguration.h"
 #include "ResolverEventReporter.h"
+#include "getaddrinfo.h"
+#include "gethnamaddr.h"
 #include "netd_resolv/stats.h"  // RCODE_TIMEOUT
+#include "res_send.h"
 #include "resolv_private.h"
 #include "stats.pb.h"
 
@@ -900,7 +903,7 @@ void DnsProxyListener::ResNSendHandler::run() {
 namespace {
 
 bool sendCodeAndBe32(SocketClient* c, int code, int data) {
-    return c->sendCode(code) || sendBE32(c, data);
+    return !c->sendCode(code) && sendBE32(c, data);
 }
 
 }  // namespace
@@ -929,10 +932,15 @@ int DnsProxyListener::GetDnsNetIdCommand::runCommand(SocketClient* cli, int argc
         return -1;
     }
 
+    const bool useLocalNameservers = checkAndClearUseLocalNameserversFlag(&netId);
     android_net_context netcontext;
     gResNetdCallbacks.get_network_context(netId, uid, &netcontext);
 
-    return sendCodeAndBe32(cli, ResponseCode::DnsProxyQueryResult, netcontext.dns_netid);
+    if (useLocalNameservers) {
+        netcontext.app_netid |= NETID_USE_LOCAL_NAMESERVERS;
+    }
+
+    return sendCodeAndBe32(cli, ResponseCode::DnsProxyQueryResult, netcontext.app_netid) ? 0 : -1;
 }
 
 /*******************************************************

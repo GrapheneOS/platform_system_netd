@@ -19,10 +19,10 @@
 #include <android-base/logging.h>
 #include <android-base/properties.h>
 
-#include <resolv.h>
 #include "DnsProxyListener.h"
 #include "DnsResolverService.h"
-#include "resolv_private.h"
+#include "netd_resolv/resolv.h"
+#include "res_debug.h"
 
 bool resolv_init(const ResolverNetdCallbacks* callbacks) {
     android::base::InitLogging(/*argv=*/nullptr);
