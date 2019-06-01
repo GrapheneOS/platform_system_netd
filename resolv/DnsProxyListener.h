@@ -14,14 +14,16 @@
  * limitations under the License.
  */
 
-#ifndef _DNSPROXYLISTENER_H__
-#define _DNSPROXYLISTENER_H__
+#pragma once
 
 #include <string>
 
 #include <netd_resolv/resolv.h>  // android_net_context
 #include <sysutils/FrameworkCommand.h>
 #include <sysutils/FrameworkListener.h>
+
+struct addrinfo;
+struct hostent;
 
 namespace android {
 namespace net {
@@ -146,5 +148,3 @@ class DnsProxyListener : public FrameworkListener {
 
 }  // namespace net
 }  // namespace android
-
-#endif

@@ -34,8 +34,8 @@
 #include "PrivateDnsConfiguration.h"
 #include "ResolverEventReporter.h"
 #include "ResolverStats.h"
-#include "netd_resolv/resolv.h"
 #include "netd_resolv/stats.h"
+#include "resolv_cache.h"
 
 using namespace std::placeholders;
 using aidl::android::net::ResolverParamsParcel;
@@ -186,7 +186,7 @@ void ResolverController::destroyNetworkCache(unsigned netId) {
 
     resolv_delete_cache_for_net(netId);
     mDns64Configuration.stopPrefixDiscovery(netId);
-    resolv_delete_private_dns_for_net(netId);
+    gPrivateDnsConfiguration.clear(netId);
 }
 
 int ResolverController::createNetworkCache(unsigned netId) {
@@ -195,27 +195,10 @@ int ResolverController::createNetworkCache(unsigned netId) {
     return resolv_create_cache_for_net(netId);
 }
 
-// TODO: remove below functions and call into PrivateDnsConfiguration directly.
-//       resolv_set_private_dns_for_net()
-//       resolv_delete_private_dns_for_net()
 int ResolverController::setResolverConfiguration(
         const ResolverParamsParcel& resolverParams,
         const std::set<std::vector<uint8_t>>& tlsFingerprints) {
     using aidl::android::net::IDnsResolver;
-
-    std::vector<const char*> server_ptrs;
-    size_t count = std::min<size_t>(MAXNS, resolverParams.tlsServers.size());
-    server_ptrs.reserve(count);
-    for (size_t i = 0; i < count; i++) {
-        server_ptrs.push_back(resolverParams.tlsServers[i].data());
-    }
-
-    std::vector<const uint8_t*> fingerprint_ptrs;
-    count = tlsFingerprints.size();
-    fingerprint_ptrs.reserve(count);
-    for (const auto& fp : tlsFingerprints) {
-        fingerprint_ptrs.push_back(fp.data());
-    }
 
     // At private DNS validation time, we only know the netId, so we have to guess/compute the
     // corresponding socket mark.
@@ -225,19 +208,21 @@ int ResolverController::setResolverConfiguration(
     fwmark.protectedFromVpn = true;
     fwmark.permission = PERMISSION_SYSTEM;
 
-    // TODO: Change resolv_set_private_dns_for_net() to take a vector directly.
-    const int err = resolv_set_private_dns_for_net(
-            resolverParams.netId, fwmark.intValue, server_ptrs.data(), server_ptrs.size(),
-            resolverParams.tlsName.c_str(), fingerprint_ptrs.data(), fingerprint_ptrs.size());
+    // Allow at most MAXNS private DNS servers in a network to prevent too many broken servers.
+    std::vector<std::string> tlsServers = resolverParams.tlsServers;
+    if (tlsServers.size() > MAXNS) {
+        tlsServers.resize(MAXNS);
+    }
+    const int err = gPrivateDnsConfiguration.set(resolverParams.netId, fwmark.intValue, tlsServers,
+                                                 resolverParams.tlsName, tlsFingerprints);
     if (err != 0) {
         return err;
     }
 
     // Convert network-assigned server list to bionic's format.
-    server_ptrs.clear();
-    count = std::min<size_t>(MAXNS, resolverParams.servers.size());
-    server_ptrs.reserve(count);
-    for (size_t i = 0; i < count; ++i) {
+    const size_t serverCount = std::min<size_t>(MAXNS, resolverParams.servers.size());
+    std::vector<const char*> server_ptrs;
+    for (size_t i = 0; i < serverCount; ++i) {
         server_ptrs.push_back(resolverParams.servers[i].c_str());
     }
 

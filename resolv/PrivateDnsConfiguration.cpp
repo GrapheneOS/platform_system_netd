@@ -28,28 +28,6 @@
 #include "netd_resolv/resolv.h"
 #include "netdutils/BackoffSequence.h"
 
-int resolv_set_private_dns_for_net(unsigned netid, uint32_t mark, const char** servers,
-                                   const int numServers, const char* tlsName,
-                                   const uint8_t** fingerprints, const int numFingerprint) {
-    std::vector<std::string> tlsServers;
-    for (int i = 0; i < numServers; i++) {
-        tlsServers.push_back(std::string(servers[i]));
-    }
-
-    std::set<std::vector<uint8_t>> tlsFingerprints;
-    for (int i = 0; i < numFingerprint; i++) {
-        // Each fingerprint stored are 32(SHA256_SIZE) bytes long.
-        tlsFingerprints.emplace(std::vector<uint8_t>(fingerprints[i], fingerprints[i] + 32));
-    }
-
-    return android::net::gPrivateDnsConfiguration.set(netid, mark, tlsServers, std::string(tlsName),
-                                                      tlsFingerprints);
-}
-
-void resolv_delete_private_dns_for_net(unsigned netid) {
-    android::net::gPrivateDnsConfiguration.clear(netid);
-}
-
 namespace android {
 namespace net {
 
@@ -79,8 +57,8 @@ int PrivateDnsConfiguration::set(int32_t netId, uint32_t mark,
                                  const std::vector<std::string>& servers, const std::string& name,
                                  const std::set<std::vector<uint8_t>>& fingerprints) {
     if (DBG) {
-        ALOGD("PrivateDnsConfiguration::set(%u, %zu, %s, %zu)", netId, servers.size(), name.c_str(),
-              fingerprints.size());
+        ALOGD("PrivateDnsConfiguration::set(%u, 0x%x, %zu, %s, %zu)", netId, mark, servers.size(),
+              name.c_str(), fingerprints.size());
     }
 
     const bool explicitlyConfigured = !name.empty() || !fingerprints.empty();
