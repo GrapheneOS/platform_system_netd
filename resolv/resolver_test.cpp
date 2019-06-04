@@ -1617,6 +1617,7 @@ TEST_F(ResolverTest, TlsBypass) {
     ASSERT_TRUE(dns.startServer());
 
     test::DnsTlsFrontend tls(cleartext_addr, tls_port, cleartext_addr, cleartext_port);
+    ASSERT_TRUE(tls.startServer());
 
     struct TestConfig {
         const std::string mode;
@@ -1630,24 +1631,24 @@ TEST_F(ResolverTest, TlsBypass) {
                                 method.c_str());
         }
     } testConfigs[]{
-        {OFF,           false, GETHOSTBYNAME},
-        {OPPORTUNISTIC, false, GETHOSTBYNAME},
-        {STRICT,        false, GETHOSTBYNAME},
         {OFF,           true,  GETHOSTBYNAME},
         {OPPORTUNISTIC, true,  GETHOSTBYNAME},
         {STRICT,        true,  GETHOSTBYNAME},
-        {OFF,           false, GETADDRINFO},
-        {OPPORTUNISTIC, false, GETADDRINFO},
-        {STRICT,        false, GETADDRINFO},
         {OFF,           true,  GETADDRINFO},
         {OPPORTUNISTIC, true,  GETADDRINFO},
         {STRICT,        true,  GETADDRINFO},
-        {OFF,           false, GETADDRINFOFORNET},
-        {OPPORTUNISTIC, false, GETADDRINFOFORNET},
-        {STRICT,        false, GETADDRINFOFORNET},
         {OFF,           true,  GETADDRINFOFORNET},
         {OPPORTUNISTIC, true,  GETADDRINFOFORNET},
         {STRICT,        true,  GETADDRINFOFORNET},
+        {OFF,           false, GETHOSTBYNAME},
+        {OPPORTUNISTIC, false, GETHOSTBYNAME},
+        {STRICT,        false, GETHOSTBYNAME},
+        {OFF,           false, GETADDRINFO},
+        {OPPORTUNISTIC, false, GETADDRINFO},
+        {STRICT,        false, GETADDRINFO},
+        {OFF,           false, GETADDRINFOFORNET},
+        {OPPORTUNISTIC, false, GETADDRINFOFORNET},
+        {STRICT,        false, GETADDRINFOFORNET},
     };
 
     for (const auto& config : testConfigs) {
@@ -1659,7 +1660,15 @@ TEST_F(ResolverTest, TlsBypass) {
         dns.addMapping(host_name, ns_type::ns_t_a, ADDR4);
         dns.addMapping(host_name, ns_type::ns_t_aaaa, ADDR6);
 
-        if (config.withWorkingTLS) ASSERT_TRUE(tls.startServer());
+        if (config.withWorkingTLS) {
+            if (!tls.running()) {
+                ASSERT_TRUE(tls.startServer());
+            }
+        } else {
+            if (tls.running()) {
+                ASSERT_TRUE(tls.stopServer());
+            }
+        }
 
         if (config.mode == OFF) {
             ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, kDefaultSearchDomains,
@@ -1679,11 +1688,8 @@ TEST_F(ResolverTest, TlsBypass) {
                                                        {base64Encode(fingerprint)}));
             // Wait for validation to complete.
             if (config.withWorkingTLS) EXPECT_TRUE(tls.waitForQueries(1, 5000));
-        } else {
-            FAIL() << "Unsupported Private DNS mode: " << config.mode;
         }
-
-        const int tlsQueriesBefore = tls.queries();
+        tls.clearQueries();
 
         const hostent* h_result = nullptr;
         ScopedAddrinfo ai_result;
@@ -1720,16 +1726,12 @@ TEST_F(ResolverTest, TlsBypass) {
             const std::string result_str = ToString(ai_result);
             EXPECT_TRUE(result_str == ADDR4 || result_str == ADDR6)
                 << ", result_str='" << result_str << "'";
-        } else {
-            FAIL() << "Unsupported query method: " << config.method;
         }
 
-        const int tlsQueriesAfter = tls.queries();
-        EXPECT_EQ(0, tlsQueriesAfter - tlsQueriesBefore);
+        EXPECT_EQ(0, tls.queries());
 
         // Clear per-process resolv netid.
         ASSERT_EQ(0, setNetworkForResolv(NETID_UNSET));
-        tls.stopServer();
         dns.clearQueries();
     }
 }
@@ -2331,6 +2333,7 @@ TEST_F(ResolverTest, BrokenEdns) {
     ASSERT_TRUE(dns.startServer());
 
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
+    ASSERT_TRUE(tls.startServer());
 
     static const struct TestConfig {
         std::string mode;
@@ -2402,13 +2405,11 @@ TEST_F(ResolverTest, BrokenEdns) {
             ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
                                                        kDefaultParams, "", {}));
         } else if (config.mode == OPPORTUNISTIC_TLS) {
-            ASSERT_TRUE(tls.startServer());
             ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
                                                        kDefaultParams, "", {}));
             // Wait for validation to complete.
             EXPECT_TRUE(tls.waitForQueries(1, 5000));
         } else if (config.mode == STRICT) {
-            ASSERT_TRUE(tls.startServer());
             ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
                                                        kDefaultParams, "",
                                                        {base64Encode(tls.fingerprint())}));
@@ -2447,7 +2448,7 @@ TEST_F(ResolverTest, BrokenEdns) {
             FAIL() << "Unsupported query method: " << config.method;
         }
 
-        tls.stopServer();
+        tls.clearQueries();
         dns.clearQueries();
     }
 }
