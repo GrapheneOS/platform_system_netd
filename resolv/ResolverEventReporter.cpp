@@ -90,11 +90,11 @@ int ResolverEventReporter::addListenerImplLocked(
         return -EINVAL;
     }
 
-    // TODO: Perhaps ignore the listener which comes from the same binder.
-    const auto& it = mListeners.find(listener);
-    if (it != mListeners.end()) {
-        LOG(WARNING) << "The listener was already subscribed";
-        return -EEXIST;
+    for (const auto& it : mListeners) {
+        if (it->asBinder().get() == listener->asBinder().get()) {
+            LOG(WARNING) << "The listener was already subscribed";
+            return -EEXIST;
+        }
     }
 
     static AIBinder_DeathRecipient* deathRecipient = nullptr;
