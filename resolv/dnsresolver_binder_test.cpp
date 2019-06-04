@@ -145,8 +145,33 @@ TEST_F(DnsResolverBinderTest, IsAlive) {
     ASSERT_TRUE(isAlive);
 }
 
+TEST_F(DnsResolverBinderTest, RegisterEventListener_NullListener) {
+    android::binder::Status status = mDnsResolver->registerEventListener(
+            android::interface_cast<INetdEventListener>(nullptr));
+    ASSERT_FALSE(status.isOk());
+    ASSERT_EQ(EINVAL, status.serviceSpecificErrorCode());
+}
+
+TEST_F(DnsResolverBinderTest, RegisterEventListener_DuplicateSubscription) {
+    class DummyListener : public android::net::metrics::BaseTestMetricsListener {
+        bool isVerified() override { return true; }  // unused
+    };
+
+    // Expect to subscribe successfully.
+    android::sp<DummyListener> dummyListener = new DummyListener();
+    android::binder::Status status = mDnsResolver->registerEventListener(
+            android::interface_cast<INetdEventListener>(dummyListener));
+    ASSERT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Expect to subscribe failed with registered listener instance.
+    status = mDnsResolver->registerEventListener(
+            android::interface_cast<INetdEventListener>(dummyListener));
+    ASSERT_FALSE(status.isOk());
+    ASSERT_EQ(EEXIST, status.serviceSpecificErrorCode());
+}
+
 // TODO: Move this test to resolver_test.cpp
-TEST_F(DnsResolverBinderTest, EventListener_onDnsEvent) {
+TEST_F(DnsResolverBinderTest, RegisterEventListener_onDnsEvent) {
     // The test configs are used to trigger expected events. The expected results are defined in
     // expectedResults.
     static const struct TestConfig {
