@@ -163,8 +163,9 @@ cc_test {
     defaults: ["netd_defaults"],
     srcs: [
         "dns_responder/dns_responder.cpp",
-        "resolver_test.cpp",
         "dnsresolver_binder_test.cpp",
+        "resolver_test.cpp",
+        "tests/resolv_test_utils.cpp",
     ],
     include_dirs: [
         "system/netd/resolv/include",
