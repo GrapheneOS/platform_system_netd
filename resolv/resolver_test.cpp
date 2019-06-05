@@ -886,6 +886,16 @@ TEST_F(ResolverTest, GetAddrInfoV6_nonresponsive) {
     constexpr char listen_srv[] = "53";
     constexpr char host_name1[] = "ohayou.example.com.";
     constexpr char host_name2[] = "ciao.example.com.";
+    const std::vector<std::string> defaultSearchDomain = {"example.com"};
+    // The minimal timeout is 1000ms, so we can't decrease timeout
+    // So reduce retry count.
+    const std::vector<int> reduceRetryParams = {
+            300,      // sample validity in seconds
+            25,       // success threshod in percent
+            8,    8,  // {MIN,MAX}_SAMPLES
+            1000,     // BASE_TIMEOUT_MSEC
+            1,        // retry count
+    };
     const std::vector<DnsRecord> records0 = {
             {host_name1, ns_type::ns_t_aaaa, "2001:db8::5"},
             {host_name2, ns_type::ns_t_aaaa, "2001:db8::5"},
@@ -902,9 +912,11 @@ TEST_F(ResolverTest, GetAddrInfoV6_nonresponsive) {
     dns0.setResponseProbability(0.0);
     StartDns(dns0, records0);
     StartDns(dns1, records1);
-    ASSERT_TRUE(mDnsClient.SetResolversForNetwork({listen_addr0, listen_addr1}));
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork({listen_addr0, listen_addr1}, defaultSearchDomain,
+                                                  reduceRetryParams));
 
-    const addrinfo hints = {.ai_family = AF_INET6};
+    // Specify ai_socktype to make getaddrinfo will only query 1 time
+    const addrinfo hints = {.ai_family = AF_INET6, .ai_socktype = SOCK_STREAM};
 
     // dns0 will ignore the request, and we'll fallback to dns1 after the first
     // retry.
@@ -914,13 +926,13 @@ TEST_F(ResolverTest, GetAddrInfoV6_nonresponsive) {
     EXPECT_EQ(1U, GetNumQueries(dns1, host_name1));
 
     // Now make dns1 also ignore 100% requests... The resolve should alternate
-    // retries between the nameservers and fail after 4 attempts.
+    // queries between the nameservers and fail
     dns1.setResponseProbability(0.0);
     addrinfo* result2 = nullptr;
     EXPECT_EQ(EAI_NODATA, getaddrinfo(host_name2, nullptr, &hints, &result2));
     EXPECT_EQ(nullptr, result2);
-    EXPECT_EQ(4U, GetNumQueries(dns0, host_name2));
-    EXPECT_EQ(4U, GetNumQueries(dns1, host_name2));
+    EXPECT_EQ(1U, GetNumQueries(dns0, host_name2));
+    EXPECT_EQ(1U, GetNumQueries(dns1, host_name2));
 }
 
 TEST_F(ResolverTest, GetAddrInfoV6_concurrent) {
@@ -1605,6 +1617,7 @@ TEST_F(ResolverTest, TlsBypass) {
     ASSERT_TRUE(dns.startServer());
 
     test::DnsTlsFrontend tls(cleartext_addr, tls_port, cleartext_addr, cleartext_port);
+    ASSERT_TRUE(tls.startServer());
 
     struct TestConfig {
         const std::string mode;
@@ -1618,24 +1631,24 @@ TEST_F(ResolverTest, TlsBypass) {
                                 method.c_str());
         }
     } testConfigs[]{
-        {OFF,           false, GETHOSTBYNAME},
-        {OPPORTUNISTIC, false, GETHOSTBYNAME},
-        {STRICT,        false, GETHOSTBYNAME},
         {OFF,           true,  GETHOSTBYNAME},
         {OPPORTUNISTIC, true,  GETHOSTBYNAME},
         {STRICT,        true,  GETHOSTBYNAME},
-        {OFF,           false, GETADDRINFO},
-        {OPPORTUNISTIC, false, GETADDRINFO},
-        {STRICT,        false, GETADDRINFO},
         {OFF,           true,  GETADDRINFO},
         {OPPORTUNISTIC, true,  GETADDRINFO},
         {STRICT,        true,  GETADDRINFO},
-        {OFF,           false, GETADDRINFOFORNET},
-        {OPPORTUNISTIC, false, GETADDRINFOFORNET},
-        {STRICT,        false, GETADDRINFOFORNET},
         {OFF,           true,  GETADDRINFOFORNET},
         {OPPORTUNISTIC, true,  GETADDRINFOFORNET},
         {STRICT,        true,  GETADDRINFOFORNET},
+        {OFF,           false, GETHOSTBYNAME},
+        {OPPORTUNISTIC, false, GETHOSTBYNAME},
+        {STRICT,        false, GETHOSTBYNAME},
+        {OFF,           false, GETADDRINFO},
+        {OPPORTUNISTIC, false, GETADDRINFO},
+        {STRICT,        false, GETADDRINFO},
+        {OFF,           false, GETADDRINFOFORNET},
+        {OPPORTUNISTIC, false, GETADDRINFOFORNET},
+        {STRICT,        false, GETADDRINFOFORNET},
     };
 
     for (const auto& config : testConfigs) {
@@ -1647,7 +1660,15 @@ TEST_F(ResolverTest, TlsBypass) {
         dns.addMapping(host_name, ns_type::ns_t_a, ADDR4);
         dns.addMapping(host_name, ns_type::ns_t_aaaa, ADDR6);
 
-        if (config.withWorkingTLS) ASSERT_TRUE(tls.startServer());
+        if (config.withWorkingTLS) {
+            if (!tls.running()) {
+                ASSERT_TRUE(tls.startServer());
+            }
+        } else {
+            if (tls.running()) {
+                ASSERT_TRUE(tls.stopServer());
+            }
+        }
 
         if (config.mode == OFF) {
             ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, kDefaultSearchDomains,
@@ -1667,11 +1688,8 @@ TEST_F(ResolverTest, TlsBypass) {
                                                        {base64Encode(fingerprint)}));
             // Wait for validation to complete.
             if (config.withWorkingTLS) EXPECT_TRUE(tls.waitForQueries(1, 5000));
-        } else {
-            FAIL() << "Unsupported Private DNS mode: " << config.mode;
         }
-
-        const int tlsQueriesBefore = tls.queries();
+        tls.clearQueries();
 
         const hostent* h_result = nullptr;
         ScopedAddrinfo ai_result;
@@ -1708,16 +1726,12 @@ TEST_F(ResolverTest, TlsBypass) {
             const std::string result_str = ToString(ai_result);
             EXPECT_TRUE(result_str == ADDR4 || result_str == ADDR6)
                 << ", result_str='" << result_str << "'";
-        } else {
-            FAIL() << "Unsupported query method: " << config.method;
         }
 
-        const int tlsQueriesAfter = tls.queries();
-        EXPECT_EQ(0, tlsQueriesAfter - tlsQueriesBefore);
+        EXPECT_EQ(0, tls.queries());
 
         // Clear per-process resolv netid.
         ASSERT_EQ(0, setNetworkForResolv(NETID_UNSET));
-        tls.stopServer();
         dns.clearQueries();
     }
 }
@@ -2319,6 +2333,7 @@ TEST_F(ResolverTest, BrokenEdns) {
     ASSERT_TRUE(dns.startServer());
 
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
+    ASSERT_TRUE(tls.startServer());
 
     static const struct TestConfig {
         std::string mode;
@@ -2390,13 +2405,11 @@ TEST_F(ResolverTest, BrokenEdns) {
             ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
                                                        kDefaultParams, "", {}));
         } else if (config.mode == OPPORTUNISTIC_TLS) {
-            ASSERT_TRUE(tls.startServer());
             ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
                                                        kDefaultParams, "", {}));
             // Wait for validation to complete.
             EXPECT_TRUE(tls.waitForQueries(1, 5000));
         } else if (config.mode == STRICT) {
-            ASSERT_TRUE(tls.startServer());
             ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
                                                        kDefaultParams, "",
                                                        {base64Encode(tls.fingerprint())}));
@@ -2435,7 +2448,7 @@ TEST_F(ResolverTest, BrokenEdns) {
             FAIL() << "Unsupported query method: " << config.method;
         }
 
-        tls.stopServer();
+        tls.clearQueries();
         dns.clearQueries();
     }
 }
