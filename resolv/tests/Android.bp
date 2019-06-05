@@ -1,0 +1,36 @@
+cc_test {
+    name: "resolv_stress_test",
+    test_suites: ["device-tests"],
+    test_config: "resolv_stress_test_config.xml",
+    defaults: ["netd_defaults"],
+    srcs: [
+        "resolv_stress_test.cpp",
+        "resolv_test_utils.cpp",
+    ],
+    include_dirs: [
+        "system/netd/resolv",
+        "system/netd/resolv/include",
+        // TODO: stop including NetdConstants.h, copy ScopedAddrinfo out
+        "system/netd/server",
+    ],
+    shared_libs: [
+        "libbase",
+        "libbinder",
+        // TODO: remove it after making dns_responder use LOG(*) instead of ALOG*
+        "liblog",
+        "libnetd_client",
+        "libutils",
+    ],
+    static_libs: [
+        "libgmock",
+        "libnetd_test_dnsresponder",
+        "libnetdutils",
+        "netd_aidl_interface-V2-cpp",
+        "dnsresolver_aidl_interface-V2-cpp",
+    ],
+    compile_multilib: "both",
+    sanitize: {
+        address: true,
+        recover: ["all"],
+    },
+}

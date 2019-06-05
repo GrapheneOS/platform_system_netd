@@ -36,9 +36,10 @@ void serverLoop(int dnsProxyFd) {
         pollfd fds[1] = {{.fd = dnsProxyFd, .events = POLLIN}};
         enum { SERVERFD = 0 };
 
-        const int s = TEMP_FAILURE_RETRY(poll(fds, std::size(fds), -1));
-        if (s <= 0) break;
+        int poll_result = TEMP_FAILURE_RETRY(poll(fds, std::size(fds), -1));
+        ASSERT_GT(poll_result, 0);
 
+        if (fds[SERVERFD].revents & POLLERR) return;
         if (fds[SERVERFD].revents & POLLIN) {
             char buf[4096];
             TEMP_FAILURE_RETRY(read(fds[SERVERFD].fd, &buf, sizeof(buf)));
