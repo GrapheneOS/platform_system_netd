@@ -22,15 +22,8 @@
 #include <string>
 #include <vector>
 
-#include <cutils/sockets.h>
-
-#include <private/android_filesystem_config.h>
-#include <utils/StrongPointer.h>
-
-#include "NetdClient.h"
 #include "android/net/IDnsResolver.h"
 #include "android/net/INetd.h"
-#include "binder/IServiceManager.h"
 #include "dns_responder.h"
 
 inline const std::vector<std::string> kDefaultServers = {"127.0.0.3"};

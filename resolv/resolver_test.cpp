@@ -17,17 +17,27 @@
 
 #define LOG_TAG "resolv_integration_test"
 
+#include <android-base/parseint.h>
+#include <android-base/stringprintf.h>
+#include <android-base/unique_fd.h>
+#include <android/multinetwork.h>  // ResNsendFlags
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
+#include <cutils/sockets.h>
+#include <gmock/gmock-matchers.h>
+#include <gtest/gtest.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <openssl/base64.h>
 #include <poll.h> /* poll */
+#include <private/android_filesystem_config.h>
 #include <resolv.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <utils/Log.h>
 
 #include <algorithm>
 #include <chrono>
@@ -35,31 +45,18 @@
 #include <numeric>
 #include <thread>
 
-#include <android-base/parseint.h>
-#include <android-base/stringprintf.h>
-#include <android-base/unique_fd.h>
-#include <android/multinetwork.h>  // ResNsendFlags
-#include <cutils/sockets.h>
-#include <gmock/gmock-matchers.h>
-#include <gtest/gtest.h>
-#include <openssl/base64.h>
-#include <private/android_filesystem_config.h>
-#include <utils/Log.h>
-
-#include "netd_resolv/params.h"  // MAXNS
-#include "netid_client.h"        // NETID_UNSET
-
+#include "NetdClient.h"
+#include "NetdConstants.h"
+#include "ResolverStats.h"
+#include "android/net/IDnsResolver.h"
+#include "binder/IServiceManager.h"
 #include "dns_responder/dns_responder.h"
 #include "dns_responder/dns_responder_client.h"
 #include "dns_responder/dns_tls_frontend.h"
-
-#include "NetdConstants.h"
-#include "ResolverStats.h"
-
-#include "android/net/IDnsResolver.h"
-#include "binder/IServiceManager.h"
+#include "netd_resolv/params.h"  // MAXNS
 #include "netdutils/ResponseCode.h"
 #include "netdutils/SocketOption.h"
+#include "netid_client.h"  // NETID_UNSET
 #include "tests/resolv_test_utils.h"
 
 // Valid VPN netId range is 100 ~ 65535

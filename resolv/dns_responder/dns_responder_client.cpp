@@ -15,10 +15,14 @@
  */
 
 #define LOG_TAG "dns_responder_client"
+
 #include "dns_responder_client.h"
 
 #include <android-base/stringprintf.h>
 #include <utils/Log.h>
+
+#include "NetdClient.h"
+#include "binder/IServiceManager.h"
 
 // TODO: make this dynamic and stop depending on implementation details.
 #define TEST_OEM_NETWORK "oem29"
