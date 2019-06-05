@@ -95,7 +95,6 @@ cc_library_static {
         "libbpf_android",
         "libbase",
         "libbinder",
-        "liblogwrap",
         "libnetdbpf",
         "libnetutils",
         "libnetdutils",
@@ -134,7 +133,6 @@ cc_binary {
         "libhidltransport",
         "libjsoncpp",
         "liblog",
-        "liblogwrap",
         "libmdnssd",
         "libnetdbpf",
         "libnetdutils",
@@ -213,7 +211,6 @@ cc_test {
         "system/netd/include",
         "system/netd/server/binder",
         "system/netd/tests",
-        "system/core/logwrapper/include",
     ],
     srcs: [
         "BandwidthControllerTest.cpp",
