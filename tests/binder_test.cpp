@@ -51,7 +51,6 @@
 #include <com/android/internal/net/IOemNetd.h>
 #include <cutils/multiuser.h>
 #include <gtest/gtest.h>
-#include <logwrap/logwrap.h>
 #include <netdbpf/bpf_shared.h>
 #include <netutils/ifc.h>
 #include "Fwmark.h"

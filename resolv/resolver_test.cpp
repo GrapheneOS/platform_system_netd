@@ -46,9 +46,8 @@
 #include <private/android_filesystem_config.h>
 #include <utils/Log.h>
 
-#include "NetdClient.h"
-#include "netid_client.h"  // NETID_UNSET
-#include "netd_resolv/params.h"  // MAX_NS
+#include "netd_resolv/params.h"  // MAXNS
+#include "netid_client.h"        // NETID_UNSET
 
 #include "dns_responder/dns_responder.h"
 #include "dns_responder/dns_responder_client.h"

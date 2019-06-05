@@ -38,7 +38,6 @@
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
 #include "log/log.h"
-#include "logwrap/logwrap.h"
 #include "netid_client.h"
 #include "netutils/ifc.h"
 

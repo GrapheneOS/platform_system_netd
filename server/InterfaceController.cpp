@@ -30,7 +30,6 @@
 #include <android-base/strings.h>
 #include <linux/if_ether.h>
 #include <log/log.h>
-#include <logwrap/logwrap.h>
 #include <netutils/ifc.h>
 
 #include <android/net/INetd.h>

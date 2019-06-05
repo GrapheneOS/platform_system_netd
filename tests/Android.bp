@@ -77,7 +77,6 @@ cc_test {
         "libnetd_test_tun_interface",
         "libnetd_test_unsol_service",
         "libbpf_android",
-        "liblogwrap",
         "libnetdbpf",
         "libnetdutils",
         "netd_aidl_interface-cpp",
