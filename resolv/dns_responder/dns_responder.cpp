@@ -754,7 +754,7 @@ bool DNSResponder::addAnswerRecords(const DNSQuestion& question,
     return true;
 }
 
-bool DNSResponder::fillAnswerRdata(const std::string& rdatastr, DNSRecord& record) const {
+bool DNSResponder::fillAnswerRdata(const std::string& rdatastr, DNSRecord& record) {
     if (record.rtype == ns_type::ns_t_a) {
         record.rdata.resize(4);
         if (inet_pton(AF_INET, rdatastr.c_str(), record.rdata.data()) != 1) {
