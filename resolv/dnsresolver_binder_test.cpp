@@ -31,8 +31,9 @@
 #include <gtest/gtest.h>
 #include <netdutils/Stopwatch.h>
 #include <openssl/base64.h>
-#include "tests/BaseTestMetricsListener.h"
-#include "tests/TestMetrics.h"
+
+#include "tests/dns_metrics_listener/base_metrics_listener.h"
+#include "tests/dns_metrics_listener/test_metrics.h"
 
 #include "NetdConstants.h"  // SHA256_SIZE
 #include "ResolverStats.h"
@@ -153,9 +154,7 @@ TEST_F(DnsResolverBinderTest, RegisterEventListener_NullListener) {
 }
 
 TEST_F(DnsResolverBinderTest, RegisterEventListener_DuplicateSubscription) {
-    class DummyListener : public android::net::metrics::BaseTestMetricsListener {
-        bool isVerified() override { return true; }  // unused
-    };
+    class DummyListener : public android::net::metrics::BaseMetricsListener {};
 
     // Expect to subscribe successfully.
     android::sp<DummyListener> dummyListener = new DummyListener();

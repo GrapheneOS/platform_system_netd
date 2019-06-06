@@ -25,23 +25,6 @@ aidl_interface {
     ],
 }
 
-cc_test_library {
-    name: "libnetd_test_metrics_listener",
-    defaults: ["netd_defaults"],
-    srcs: [
-        "tests/BaseTestMetricsListener.cpp",
-        "tests/TestMetrics.cpp",
-    ],
-    include_dirs: [
-        "system/netd/include",
-    ],
-    shared_libs: [
-        "libbinder",
-        "libutils",
-        "netd_event_listener_interface-V1-cpp",
-    ],
-}
-
 cc_library {
     name: "libnetd_resolv",
     version_script: "libnetd_resolv.map.txt",
