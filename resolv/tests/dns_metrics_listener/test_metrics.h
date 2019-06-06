@@ -14,18 +14,59 @@
  * limitations under the License.
  */
 
-#ifndef _TEST_METRICS_H_
-#define _TEST_METRICS_H_
+#pragma once
 
-#include "BaseTestMetricsListener.h"
+#include "base_metrics_listener.h"
+
+enum EventFlag : uint32_t {
+    onDnsEvent = 1 << 0,
+    onPrivateDnsValidationEvent = 1 << 1,
+    onConnectEvent = 1 << 2,
+    onWakeupEvent = 1 << 3,
+    onTcpSocketStatsEvent = 1 << 4,
+    onNat64PrefixEvent = 1 << 5,
+};
 
 namespace android {
 namespace net {
 namespace metrics {
 
-class TestOnDnsEvent : public BaseTestMetricsListener {
+// Base class for metrics event unit test. Used for notifications about DNS event changes. Should
+// be extended by unit tests wanting notifications.
+class BaseTestMetricsEvent : public BaseMetricsListener {
+  public:
+    // Returns TRUE if the verification was successful. Otherwise, returns FALSE.
+    virtual bool isVerified() = 0;
+
+    std::condition_variable& getCv() { return mCv; }
+    std::mutex& getCvMutex() { return mCvMutex; }
+
+  private:
+    // The verified event(s) as a bitwise-OR combination of enum EventFlag flags.
+    uint32_t mVerified{};
+
+    // This lock prevents racing condition between signaling thread(s) and waiting thread(s).
+    std::mutex mCvMutex;
+
+    // Condition variable signaled when notify() is called.
+    std::condition_variable mCv;
+
+  protected:
+    // Notify who is waiting for test results. See also mCvMutex and mCv.
+    void notify();
+
+    // Get current verified event(s).
+    uint32_t getVerified() const { return mVerified; }
+
+    // Set the specific event as verified if its verification was successful.
+    void setVerified(EventFlag event);
+};
+
+// Derived class for testing onDnsEvent().
+class TestOnDnsEvent : public BaseTestMetricsEvent {
   public:
     // Both latencyMs and uid are not verified. No special reason.
+    // TODO: Considering to verify uid.
     struct TestResult {
         int netId;
         int eventType;
@@ -38,7 +79,7 @@ class TestOnDnsEvent : public BaseTestMetricsListener {
     TestOnDnsEvent() = delete;
     TestOnDnsEvent(const std::vector<TestResult>& results) : mResults(results){};
 
-    // BaseTestMetricsListener::isVerified() override.
+    // BaseTestMetricsEvent::isVerified() override.
     bool isVerified() override { return (getVerified() & EventFlag::onDnsEvent) != 0; }
 
     // Override for testing verification.
@@ -54,5 +95,3 @@ class TestOnDnsEvent : public BaseTestMetricsListener {
 }  // namespace metrics
 }  // namespace net
 }  // namespace android
-
-#endif  // _TEST_METRICS_H_
