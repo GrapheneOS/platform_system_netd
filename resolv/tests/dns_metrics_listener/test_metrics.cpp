@@ -14,14 +14,25 @@
  * limitations under the License.
  */
 
-#include <netdb.h>
+#include "test_metrics.h"
 
-#include "TestMetrics.h"
+#include <netdb.h>
 
 namespace android {
 namespace net {
 namespace metrics {
 
+// Base class BaseTestMetricsEvent.
+void BaseTestMetricsEvent::notify() {
+    std::lock_guard lock(mCvMutex);
+    mCv.notify_one();
+}
+
+void BaseTestMetricsEvent::setVerified(EventFlag event) {
+    mVerified |= event;
+}
+
+// Derived class TestOnDnsEvent.
 android::binder::Status TestOnDnsEvent::onDnsEvent(int32_t netId, int32_t eventType,
                                                    int32_t returnCode, int32_t /*latencyMs*/,
                                                    const std::string& hostname,

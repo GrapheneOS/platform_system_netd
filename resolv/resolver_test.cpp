@@ -23,6 +23,7 @@
 #include <android/multinetwork.h>  // ResNsendFlags
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
+#include <binder/ProcessState.h>
 #include <cutils/sockets.h>
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
@@ -57,6 +58,7 @@
 #include "netdutils/ResponseCode.h"
 #include "netdutils/SocketOption.h"
 #include "netid_client.h"  // NETID_UNSET
+#include "tests/dns_metrics_listener/dns_metrics_listener.h"
 #include "tests/resolv_test_utils.h"
 
 // Valid VPN netId range is 100 ~ 65535
@@ -73,6 +75,7 @@ using android::base::ParseInt;
 using android::base::StringPrintf;
 using android::base::unique_fd;
 using android::net::ResolverStats;
+using android::net::metrics::DnsMetricsListener;
 using android::netdutils::enableSockopt;
 using android::netdutils::ResponseCode;
 
@@ -91,6 +94,20 @@ ScopedAddrinfo safe_getaddrinfo(const char* node, const char* service,
 }  // namespace
 
 class ResolverTest : public ::testing::Test {
+  public:
+    ResolverTest() {
+        // Use a shared static DNS listener for all tests to avoid registering lots of listeners
+        // which may be released late until process terminated. Currently, registered DNS listener
+        // is removed by binder death notification which is fired when the process hosting an
+        // IBinder has gone away. If every test in ResolverTest registers its DNS listener, Netd
+        // may temporarily hold lots of dead listeners until the unit test process terminates.
+        // TODO: Perhaps add an unregistering listener binder call or fork a listener process which
+        // could be terminated earlier.
+        static android::sp<DnsMetricsListener> listener =
+                new DnsMetricsListener(TEST_NETID /*monitor specific network*/);
+        mDnsMetricsListener = listener;
+    }
+
   protected:
     struct DnsRecord {
         std::string host_name;  // host name
@@ -98,24 +115,20 @@ class ResolverTest : public ::testing::Test {
         std::string addr;       // ipv4/v6 address
     };
 
-    void SetUp() { mDnsClient.SetUp(); }
-    void TearDown() {
-        mDnsClient.TearDown();
+    void SetUp() {
+        mDnsClient.SetUp();
+
+        // Register the shared static DNS listener which may have been registered in previous test
+        // ResolverTest.
+        // TODO: Move the registration to SetUpTestCase which is called once before the first test.
+        auto status = mDnsClient.resolvService()->registerEventListener(mDnsMetricsListener);
+        ASSERT_TRUE(status.isOk() || status.serviceSpecificErrorCode() == EEXIST /*ignore*/);
+
+        // Start the binder thread pool for listening DNS metrics events.
+        android::ProcessState::self()->startThreadPool();
     }
 
-    bool WaitForPrefix64Detected(int netId, int timeoutMs) {
-        constexpr int intervalMs = 2;
-        const int limit = timeoutMs / intervalMs;
-        for (int count = 0; count <= limit; ++count) {
-            std::string prefix;
-            auto rv = mDnsClient.resolvService()->getPrefix64(netId, &prefix);
-            if (rv.isOk()) {
-                return true;
-            }
-            usleep(intervalMs * 1000);
-        }
-        return false;
-    }
+    void TearDown() { mDnsClient.TearDown(); }
 
     void StartDns(test::DNSResponder& dns, const std::vector<DnsRecord>& records) {
         for (const auto& r : records) {
@@ -126,7 +139,13 @@ class ResolverTest : public ::testing::Test {
         dns.clearQueries();
     }
 
+    bool WaitForNat64Prefix(ExpectNat64PrefixStatus status,
+                            std::chrono::milliseconds timeout = std::chrono::milliseconds(1000)) {
+        return mDnsMetricsListener->waitForNat64Prefix(status, timeout);
+    }
+
     DnsResponderClient mDnsClient;
+    android::sp<DnsMetricsListener> mDnsMetricsListener;  // Initialized in constructor.
 
     static constexpr char kLocalHost[] = "localhost";
     static constexpr char kLocalHostAddr[] = "127.0.0.1";
@@ -2368,7 +2387,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // hints are necessary in order to let netd know which type of addresses the caller is
     // interested in.
@@ -2384,7 +2403,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
 
     // Stopping NAT64 prefix discovery disables synthesis.
     EXPECT_TRUE(mDnsClient.resolvService()->stopPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_FALSE(WaitForPrefix64Detected(TEST_NETID, 300));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_NOT_FOUND));
 
     dns.clearQueries();
 
@@ -2414,7 +2433,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecified) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // Ensure to synthesize AAAA if AF_INET6 is specified, and not to synthesize AAAA
     // in AF_INET case.
@@ -2451,7 +2470,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedV6) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     const addrinfo hints = {.ai_family = AF_UNSPEC};
     ScopedAddrinfo result = safe_getaddrinfo("v4v6", nullptr, &hints);
@@ -2482,7 +2501,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedNoV6) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     const addrinfo hints = {.ai_family = AF_UNSPEC};
     ScopedAddrinfo result = safe_getaddrinfo("v4v6", nullptr, &hints);
@@ -2517,7 +2536,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecialUseIPv4Addresses) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     static const struct TestConfig {
         std::string name;
@@ -2580,7 +2599,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryWithNullArgumentHints) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // Assign argument hints of getaddrinfo() as null is equivalent to set ai_family AF_UNSPEC.
     // In AF_UNSPEC case, synthesize AAAA if there has A answer only.
@@ -2621,7 +2640,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryNullArgumentNode) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // If node is null, return address is listed by libc/getaddrinfo.c as follows.
     // - passive socket -> anyaddr (0.0.0.0 or ::)
@@ -2701,7 +2720,7 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDnsQueryWithHavingNat64Prefix) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // Reverse IPv4 DNS query. Prefix should have no effect on it.
     inet_pton(AF_INET, "1.2.3.4", &v4addr);
@@ -2745,7 +2764,7 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDns64Query) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // Synthesized PTR record doesn't exist on DNS server
     // Reverse IPv6 DNS64 query while DNS server doesn't have an answer for synthesized address.
@@ -2791,7 +2810,7 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDns64QueryFromHostFile) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // Using synthesized "localhost" address to be a trick for resolving host name
     // from host file /etc/hosts and "localhost" is the only name in /etc/hosts. Note that this is
@@ -2833,7 +2852,7 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDnsQueryWithHavingNat64Prefix) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     static const struct TestConfig {
         int flag;
@@ -2912,7 +2931,7 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64Query) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     static const struct TestConfig {
         bool hasSynthesizedPtrRecord;
@@ -2982,7 +3001,7 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64QueryFromHostFile) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // Using synthesized "localhost" address to be a trick for resolving host name
     // from host file /etc/hosts and "localhost" is the only name in /etc/hosts. Note that this is
@@ -3016,7 +3035,7 @@ TEST_F(ResolverTest, GetHostByName2_Dns64Synthesize) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // Query an IPv4-only hostname. Expect that gets a synthesized address.
     struct hostent* result = gethostbyname2("ipv4only", AF_INET6);
@@ -3043,7 +3062,7 @@ TEST_F(ResolverTest, GetHostByName2_DnsQueryWithHavingNat64Prefix) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // IPv4 DNS query. Prefix should have no effect on it.
     struct hostent* result = gethostbyname2("v4v6", AF_INET);
@@ -3084,7 +3103,7 @@ TEST_F(ResolverTest, GetHostByName2_Dns64QuerySpecialUseIPv4Addresses) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     static const struct TestConfig {
         std::string name;
@@ -3140,7 +3159,7 @@ TEST_F(ResolverTest, PrefixDiscoveryBypassTls) {
 
     // Start NAT64 prefix discovery and wait for it complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // Verify it bypassed TLS even though there's a TLS server available.
     EXPECT_EQ(0, tls.queries());
@@ -3159,7 +3178,7 @@ TEST_F(ResolverTest, PrefixDiscoveryBypassTls) {
 
     // Start NAT64 prefix discovery and wait for it to complete.
     EXPECT_TRUE(mDnsClient.resolvService()->startPrefix64Discovery(TEST_NETID).isOk());
-    EXPECT_TRUE(WaitForPrefix64Detected(TEST_NETID, 1000));
+    EXPECT_TRUE(WaitForNat64Prefix(EXPECT_FOUND));
 
     // Verify it bypassed TLS despite STRICT mode.
     EXPECT_EQ(0, tls.queries());
