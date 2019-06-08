@@ -25,23 +25,6 @@ aidl_interface {
     ],
 }
 
-cc_test_library {
-    name: "libnetd_test_metrics_listener",
-    defaults: ["netd_defaults"],
-    srcs: [
-        "tests/BaseTestMetricsListener.cpp",
-        "tests/TestMetrics.cpp",
-    ],
-    include_dirs: [
-        "system/netd/include",
-    ],
-    shared_libs: [
-        "libbinder",
-        "libutils",
-        "netd_event_listener_interface-V1-cpp",
-    ],
-}
-
 cc_library {
     name: "libnetd_resolv",
     version_script: "libnetd_resolv.map.txt",
@@ -163,8 +146,9 @@ cc_test {
     defaults: ["netd_defaults"],
     srcs: [
         "dns_responder/dns_responder.cpp",
-        "resolver_test.cpp",
         "dnsresolver_binder_test.cpp",
+        "resolver_test.cpp",
+        "tests/resolv_test_utils.cpp",
     ],
     include_dirs: [
         "system/netd/resolv/include",
@@ -184,7 +168,6 @@ cc_test {
         "libnetd_test_dnsresponder",
         "libnetd_test_metrics_listener",
         "libnetd_test_tun_interface",
-        "liblogwrap",
         "libnetdutils",
         "netd_aidl_interface-V2-cpp",
         "netd_event_listener_interface-V1-cpp",

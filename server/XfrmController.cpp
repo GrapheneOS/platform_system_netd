@@ -53,7 +53,6 @@
 #include <cutils/properties.h>
 #include <log/log.h>
 #include <log/log_properties.h>
-#include <logwrap/logwrap.h>
 #include "Fwmark.h"
 #include "InterfaceController.h"
 #include "NetdConstants.h"

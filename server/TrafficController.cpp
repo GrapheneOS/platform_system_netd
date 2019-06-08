@@ -38,7 +38,6 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
-#include <logwrap/logwrap.h>
 #include <netdutils/StatusOr.h>
 
 #include <netdutils/Misc.h>
