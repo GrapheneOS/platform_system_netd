@@ -144,20 +144,6 @@ const char* dnsclass2str(unsigned dnsclass) {
     return it->second;
 }
 
-struct DNSName {
-    std::string name;
-    const char* read(const char* buffer, const char* buffer_end);
-    char* write(char* buffer, const char* buffer_end) const;
-    const char* toString() const;
-private:
-    const char* parseField(const char* buffer, const char* buffer_end,
-                           bool* last);
-};
-
-const char* DNSName::toString() const {
-    return name.c_str();
-}
-
 const char* DNSName::read(const char* buffer, const char* buffer_end) {
     const char* cur = buffer;
     bool last = false;
@@ -201,8 +187,7 @@ char* DNSName::write(char* buffer, const char* buffer_end) const {
     return buffer_cur;
 }
 
-const char* DNSName::parseField(const char* buffer, const char* buffer_end,
-                                bool* last) {
+const char* DNSName::parseField(const char* buffer, const char* buffer_end, bool* last) {
     if (buffer + sizeof(uint8_t) > buffer_end) {
         LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
@@ -231,15 +216,6 @@ const char* DNSName::parseField(const char* buffer, const char* buffer_end,
     return nullptr;
 }
 
-struct DNSQuestion {
-    DNSName qname;
-    unsigned qtype;
-    unsigned qclass;
-    const char* read(const char* buffer, const char* buffer_end);
-    char* write(char* buffer, const char* buffer_end) const;
-    std::string toString() const;
-};
-
 const char* DNSQuestion::read(const char* buffer, const char* buffer_end) {
     const char* cur = qname.read(buffer, buffer_end);
     if (cur == nullptr) {
@@ -263,40 +239,16 @@ char* DNSQuestion::write(char* buffer, const char* buffer_end) const {
         return nullptr;
     }
     *reinterpret_cast<uint16_t*>(buffer_cur) = htons(qtype);
-    *reinterpret_cast<uint16_t*>(buffer_cur + sizeof(uint16_t)) =
-            htons(qclass);
-    return buffer_cur + 2*sizeof(uint16_t);
+    *reinterpret_cast<uint16_t*>(buffer_cur + sizeof(uint16_t)) = htons(qclass);
+    return buffer_cur + 2 * sizeof(uint16_t);
 }
 
 std::string DNSQuestion::toString() const {
     char buffer[4096];
-    int len = snprintf(buffer, sizeof(buffer), "Q<%s,%s,%s>", qname.toString(),
+    int len = snprintf(buffer, sizeof(buffer), "Q<%s,%s,%s>", qname.name.c_str(),
                        dnstype2str(qtype), dnsclass2str(qclass));
     return std::string(buffer, len);
 }
-
-struct DNSRecord {
-    DNSName name;
-    unsigned rtype;
-    unsigned rclass;
-    unsigned ttl;
-    std::vector<char> rdata;
-    const char* read(const char* buffer, const char* buffer_end);
-    char* write(char* buffer, const char* buffer_end) const;
-    std::string toString() const;
-private:
-    struct IntFields {
-        uint16_t rtype;
-        uint16_t rclass;
-        uint32_t ttl;
-        uint16_t rdlen;
-    } __attribute__((__packed__));
-
-    const char* readIntFields(const char* buffer, const char* buffer_end,
-            unsigned* rdlen);
-    char* writeIntFields(unsigned rdlen, char* buffer,
-                         const char* buffer_end) const;
-};
 
 const char* DNSRecord::read(const char* buffer, const char* buffer_end) {
     const char* cur = name.read(buffer, buffer_end);
@@ -332,8 +284,8 @@ char* DNSRecord::write(char* buffer, const char* buffer_end) const {
 
 std::string DNSRecord::toString() const {
     char buffer[4096];
-    int len = snprintf(buffer, sizeof(buffer), "R<%s,%s,%s>", name.toString(),
-                       dnstype2str(rtype), dnsclass2str(rclass));
+    int len = snprintf(buffer, sizeof(buffer), "R<%s,%s,%s>", name.name.c_str(), dnstype2str(rtype),
+                       dnsclass2str(rclass));
     return std::string(buffer, len);
 }
 
@@ -365,47 +317,12 @@ char* DNSRecord::writeIntFields(unsigned rdlen, char* buffer,
     return buffer + sizeof(IntFields);
 }
 
-struct DNSHeader {
-    unsigned id;
-    bool ra;
-    uint8_t rcode;
-    bool qr;
-    uint8_t opcode;
-    bool aa;
-    bool tr;
-    bool rd;
-    bool ad;
-    std::vector<DNSQuestion> questions;
-    std::vector<DNSRecord> answers;
-    std::vector<DNSRecord> authorities;
-    std::vector<DNSRecord> additionals;
-    const char* read(const char* buffer, const char* buffer_end);
-    char* write(char* buffer, const char* buffer_end) const;
-    std::string toString() const;
-
-private:
-    struct Header {
-        uint16_t id;
-        uint8_t flags0;
-        uint8_t flags1;
-        uint16_t qdcount;
-        uint16_t ancount;
-        uint16_t nscount;
-        uint16_t arcount;
-    } __attribute__((__packed__));
-
-    const char* readHeader(const char* buffer, const char* buffer_end,
-                           unsigned* qdcount, unsigned* ancount,
-                           unsigned* nscount, unsigned* arcount);
-};
-
 const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
     unsigned qdcount;
     unsigned ancount;
     unsigned nscount;
     unsigned arcount;
-    const char* cur = readHeader(buffer, buffer_end, &qdcount, &ancount,
-                                 &nscount, &arcount);
+    const char* cur = readHeader(buffer, buffer_end, &qdcount, &ancount, &nscount, &arcount);
     if (cur == nullptr) {
         LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
