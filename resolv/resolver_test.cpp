@@ -2182,7 +2182,6 @@ TEST_F(ResolverTest, BrokenEdns) {
     ASSERT_TRUE(dns.startServer());
 
     test::DnsTlsFrontend tls(CLEARTEXT_ADDR, TLS_PORT, CLEARTEXT_ADDR, CLEARTEXT_PORT);
-    ASSERT_TRUE(tls.startServer());
 
     static const struct TestConfig {
         std::string mode;
@@ -2249,16 +2248,28 @@ TEST_F(ResolverTest, BrokenEdns) {
         dns.setEdns(config.edns);
 
         if (config.mode == OFF) {
+            if (tls.running()) {
+                ASSERT_TRUE(tls.stopServer());
+            }
             ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
         } else if (config.mode == OPPORTUNISTIC_UDP) {
+            if (tls.running()) {
+                ASSERT_TRUE(tls.stopServer());
+            }
             ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
                                                        kDefaultParams, "", {}));
         } else if (config.mode == OPPORTUNISTIC_TLS) {
+            if (!tls.running()) {
+                ASSERT_TRUE(tls.startServer());
+            }
             ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
                                                        kDefaultParams, "", {}));
             // Wait for validation to complete.
             EXPECT_TRUE(tls.waitForQueries(1, 5000));
         } else if (config.mode == STRICT) {
+            if (!tls.running()) {
+                ASSERT_TRUE(tls.startServer());
+            }
             ASSERT_TRUE(mDnsClient.SetResolversWithTls(servers, kDefaultSearchDomains,
                                                        kDefaultParams, "",
                                                        {base64Encode(tls.fingerprint())}));
