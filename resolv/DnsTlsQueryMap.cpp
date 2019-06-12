@@ -15,11 +15,10 @@
  */
 
 #define LOG_TAG "resolv"
-//#define LOG_NDEBUG 0
 
 #include "DnsTlsQueryMap.h"
 
-#include "log/log.h"
+#include <android-base/logging.h>
 
 namespace android {
 namespace net {
@@ -30,12 +29,12 @@ std::unique_ptr<DnsTlsQueryMap::QueryFuture> DnsTlsQueryMap::recordQuery(
 
     // Store the query so it can be matched to the response or reissued.
     if (query.size() < 2) {
-        ALOGW("Query is too short");
+        LOG(WARNING) << "Query is too short";
         return nullptr;
     }
     int32_t newId = getFreeId();
     if (newId < 0) {
-        ALOGW("All query IDs are in use");
+        LOG(WARNING) << "All query IDs are in use";
         return nullptr;
     }
     Query q = { .newId = static_cast<uint16_t>(newId), .query = query };
@@ -43,7 +42,7 @@ std::unique_ptr<DnsTlsQueryMap::QueryFuture> DnsTlsQueryMap::recordQuery(
     bool inserted;
     std::tie(it, inserted) = mQueries.emplace(newId, q);
     if (!inserted) {
-        ALOGE("Failed to store pending query");
+        LOG(ERROR) << "Failed to store pending query";
         return nullptr;
     }
     return std::make_unique<QueryFuture>(q, it->second.result.get_future());
@@ -124,16 +123,16 @@ void DnsTlsQueryMap::clear() {
 }
 
 void DnsTlsQueryMap::onResponse(std::vector<uint8_t> response) {
-    ALOGV("Got response of size %zu", response.size());
+    LOG(VERBOSE) << "Got response of size " << response.size();
     if (response.size() < 2) {
-        ALOGW("Response is too short");
+        LOG(WARNING) << "Response is too short";
         return;
     }
     uint16_t id = response[0] << 8 | response[1];
     std::lock_guard guard(mLock);
     auto it = mQueries.find(id);
     if (it == mQueries.end()) {
-        ALOGW("Discarding response: unknown ID %d", id);
+        LOG(WARNING) << "Discarding response: unknown ID " << id;
         return;
     }
     Result r = { .code = Response::success, .response = std::move(response) };
@@ -141,7 +140,7 @@ void DnsTlsQueryMap::onResponse(std::vector<uint8_t> response) {
     const uint8_t* data = it->second.query.query.base();
     r.response[0] = data[0];
     r.response[1] = data[1];
-    ALOGV("Sending result to dispatcher");
+    LOG(DEBUG) << "Sending result to dispatcher";
     it->second.result.set_value(std::move(r));
     mQueries.erase(it);
 }
