@@ -15,7 +15,6 @@
  */
 
 #define LOG_TAG "resolv"
-//#define LOG_NDEBUG 0
 
 #include "DnsTlsSocket.h"
 
@@ -32,7 +31,8 @@
 #include "DnsTlsSessionCache.h"
 #include "IDnsTlsSocketObserver.h"
 
-#include "log/log.h"
+#include <android-base/logging.h>
+
 #include "netdutils/SocketOption.h"
 
 namespace android {
@@ -64,7 +64,7 @@ int waitForWriting(int fd) {
 }  // namespace
 
 Status DnsTlsSocket::tcpConnect() {
-    ALOGV("%u connecting TCP socket", mMark);
+    LOG(DEBUG) << mMark << " connecting TCP socket";
     int type = SOCK_NONBLOCK | SOCK_CLOEXEC;
     switch (mServer.protocol) {
         case IPPROTO_TCP:
@@ -76,20 +76,20 @@ Status DnsTlsSocket::tcpConnect() {
 
     mSslFd.reset(socket(mServer.ss.ss_family, type, mServer.protocol));
     if (mSslFd.get() == -1) {
-        ALOGE("Failed to create socket");
+        LOG(ERROR) << "Failed to create socket";
         return Status(errno);
     }
 
     const socklen_t len = sizeof(mMark);
     if (setsockopt(mSslFd.get(), SOL_SOCKET, SO_MARK, &mMark, len) == -1) {
-        ALOGE("Failed to set socket mark");
+        LOG(ERROR) << "Failed to set socket mark";
         mSslFd.reset();
         return Status(errno);
     }
 
     const Status tfo = enableSockopt(mSslFd.get(), SOL_TCP, TCP_FASTOPEN_CONNECT);
     if (!isOk(tfo) && tfo.code() != ENOPROTOOPT) {
-        ALOGI("Failed to enable TFO: %s", tfo.msg().c_str());
+        LOG(WARNING) << "Failed to enable TFO: " << tfo.msg();
     }
 
     // Send 5 keepalives, 3 seconds apart, after 15 seconds of inactivity.
@@ -98,7 +98,7 @@ Status DnsTlsSocket::tcpConnect() {
     if (connect(mSslFd.get(), reinterpret_cast<const struct sockaddr *>(&mServer.ss),
                 sizeof(mServer.ss)) != 0 &&
             errno != EINPROGRESS) {
-        ALOGV("Socket failed to connect");
+        LOG(DEBUG) << "Socket failed to connect";
         mSslFd.reset();
         return Status(errno);
     }
@@ -111,18 +111,18 @@ bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
     unsigned char spki[spki_len];
     unsigned char* temp = spki;
     if (spki_len != i2d_X509_PUBKEY(X509_get_X509_PUBKEY(cert), &temp)) {
-        ALOGW("SPKI length mismatch");
+        LOG(WARNING) << "SPKI length mismatch";
         return false;
     }
     out->resize(SHA256_SIZE);
     unsigned int digest_len = 0;
     int ret = EVP_Digest(spki, spki_len, out->data(), &digest_len, EVP_sha256(), nullptr);
     if (ret != 1) {
-        ALOGW("Server cert digest extraction failed");
+        LOG(WARNING) << "Server cert digest extraction failed";
         return false;
     }
     if (digest_len != out->size()) {
-        ALOGW("Wrong digest length: %d", digest_len);
+        LOG(WARNING) << "Wrong digest length: " << digest_len;
         return false;
     }
     return true;
@@ -145,7 +145,7 @@ bool DnsTlsSocket::initialize() {
     //
     // For discussion of alternative, sustainable approaches see b/71909242.
     if (SSL_CTX_load_verify_locations(mSslCtx.get(), nullptr, kCaCertDir) != 1) {
-        ALOGE("Failed to load CA cert dir: %s", kCaCertDir);
+        LOG(ERROR) << "Failed to load CA cert dir: " << kCaCertDir;
         return false;
     }
 
@@ -176,11 +176,11 @@ bool DnsTlsSocket::initialize() {
 
 bssl::UniquePtr<SSL> DnsTlsSocket::sslConnect(int fd) {
     if (!mSslCtx) {
-        ALOGE("Internal error: context is null in sslConnect");
+        LOG(ERROR) << "Internal error: context is null in sslConnect";
         return nullptr;
     }
     if (!SSL_CTX_set_min_proto_version(mSslCtx.get(), TLS1_2_VERSION)) {
-        ALOGE("Failed to set minimum TLS version");
+        LOG(ERROR) << "Failed to set minimum TLS version";
         return nullptr;
     }
 
@@ -196,12 +196,12 @@ bssl::UniquePtr<SSL> DnsTlsSocket::sslConnect(int fd) {
 
     if (!mServer.name.empty()) {
         if (SSL_set_tlsext_host_name(ssl.get(), mServer.name.c_str()) != 1) {
-            ALOGE("Failed to set SNI to %s", mServer.name.c_str());
+            LOG(ERROR) << "ailed to set SNI to " << mServer.name;
             return nullptr;
         }
         X509_VERIFY_PARAM* param = SSL_get0_param(ssl.get());
         if (X509_VERIFY_PARAM_set1_host(param, mServer.name.data(), mServer.name.size()) != 1) {
-            ALOGE("Failed to set verify host param to %s", mServer.name.c_str());
+            LOG(ERROR) << "Failed to set verify host param to " << mServer.name;
             return nullptr;
         }
         // This will cause the handshake to fail if certificate verification fails.
@@ -210,41 +210,41 @@ bssl::UniquePtr<SSL> DnsTlsSocket::sslConnect(int fd) {
 
     bssl::UniquePtr<SSL_SESSION> session = mCache->getSession();
     if (session) {
-        ALOGV("Setting session");
+        LOG(DEBUG) << "Setting session";
         SSL_set_session(ssl.get(), session.get());
     } else {
-        ALOGV("No session available");
+        LOG(DEBUG) << "No session available";
     }
 
     for (;;) {
-        ALOGV("%u Calling SSL_connect", mMark);
+        LOG(DEBUG) << mMark << " Calling SSL_connect";
         int ret = SSL_connect(ssl.get());
-        ALOGV("%u SSL_connect returned %d", mMark, ret);
+        LOG(DEBUG) << mMark << " SSL_connect returned " << ret;
         if (ret == 1) break;  // SSL handshake complete;
 
         const int ssl_err = SSL_get_error(ssl.get(), ret);
         switch (ssl_err) {
             case SSL_ERROR_WANT_READ:
                 if (waitForReading(fd) != 1) {
-                    ALOGW("SSL_connect read error: %d", errno);
+                    LOG(WARNING) << "SSL_connect read error: " << errno;
                     return nullptr;
                 }
                 break;
             case SSL_ERROR_WANT_WRITE:
                 if (waitForWriting(fd) != 1) {
-                    ALOGW("SSL_connect write error");
+                    LOG(WARNING) << "SSL_connect write error";
                     return nullptr;
                 }
                 break;
             default:
-                ALOGW("SSL_connect error %d, errno=%d", ssl_err, errno);
+                LOG(WARNING) << "SSL_connect error " << ssl_err << ", errno=" << errno;
                 return nullptr;
         }
     }
 
     // TODO: Call SSL_shutdown before discarding the session if validation fails.
     if (!mServer.fingerprints.empty()) {
-        ALOGV("Checking DNS over TLS fingerprint");
+        LOG(DEBUG) << "Checking DNS over TLS fingerprint";
 
         // We only care that the chain is internally self-consistent, not that
         // it chains to a trusted root, so we can ignore some kinds of errors.
@@ -257,13 +257,13 @@ bssl::UniquePtr<SSL> DnsTlsSocket::sslConnect(int fd) {
             case X509_V_ERR_CERT_UNTRUSTED:
                 break;
             default:
-                ALOGW("Invalid certificate chain, error %d", verify_result);
+                LOG(WARNING) << "Invalid certificate chain, error " << verify_result;
                 return nullptr;
         }
 
         STACK_OF(X509) *chain = SSL_get_peer_cert_chain(ssl.get());
         if (!chain) {
-            ALOGW("Server has null certificate");
+            LOG(WARNING) << "Server has null certificate";
             return nullptr;
         }
         // Chain and its contents are owned by ssl, so we don't need to free explicitly.
@@ -274,7 +274,7 @@ bssl::UniquePtr<SSL> DnsTlsSocket::sslConnect(int fd) {
             X509* cert = sk_X509_value(chain, i);
             std::vector<uint8_t> digest;
             if (!getSPKIDigest(cert, &digest)) {
-                ALOGE("Digest computation failed");
+                LOG(ERROR) << "Digest computation failed";
                 return nullptr;
             }
 
@@ -285,14 +285,14 @@ bssl::UniquePtr<SSL> DnsTlsSocket::sslConnect(int fd) {
         }
 
         if (!matched) {
-            ALOGW("No matching fingerprint");
+            LOG(WARNING) << "No matching fingerprint";
             return nullptr;
         }
 
-        ALOGV("DNS over TLS fingerprint is correct");
+        LOG(DEBUG) << "DNS over TLS fingerprint is correct";
     }
 
-    ALOGV("%u handshake complete", mMark);
+    LOG(DEBUG) << mMark << " handshake complete";
 
     return ssl;
 }
@@ -306,7 +306,7 @@ void DnsTlsSocket::sslDisconnect() {
 }
 
 bool DnsTlsSocket::sslWrite(const Slice buffer) {
-    ALOGV("%u Writing %zu bytes", mMark, buffer.size());
+    LOG(DEBUG) << mMark << " Writing " << buffer.size() << " bytes";
     for (;;) {
         int ret = SSL_write(mSsl.get(), buffer.base(), buffer.size());
         if (ret == int(buffer.size())) break;  // SSL write complete;
@@ -316,19 +316,19 @@ bool DnsTlsSocket::sslWrite(const Slice buffer) {
             switch (ssl_err) {
                 case SSL_ERROR_WANT_WRITE:
                     if (waitForWriting(mSslFd.get()) != 1) {
-                        ALOGV("SSL_write error");
+                        LOG(DEBUG) << "SSL_write error";
                         return false;
                     }
                     continue;
                 case 0:
                     break;  // SSL write complete;
                 default:
-                    ALOGV("SSL_write error %d", ssl_err);
+                    LOG(DEBUG) << "SSL_write error " << ssl_err;
                     return false;
             }
         }
     }
-    ALOGV("%u Wrote %zu bytes", mMark, buffer.size());
+    LOG(DEBUG) << mMark << " Wrote " << buffer.size() << " bytes";
     return true;
 }
 
@@ -359,16 +359,16 @@ void DnsTlsSocket::loop() {
 
         const int s = TEMP_FAILURE_RETRY(poll(fds, std::size(fds), timeout_msecs));
         if (s == 0) {
-            ALOGV("Idle timeout");
+            LOG(DEBUG) << "Idle timeout";
             break;
         }
         if (s < 0) {
-            ALOGV("Poll failed: %d", errno);
+            LOG(DEBUG) << "Poll failed: " << errno;
             break;
         }
         if (fds[SSLFD].revents & (POLLIN | POLLERR | POLLHUP)) {
             if (!readResponse()) {
-                ALOGV("SSL remote close or read error.");
+                LOG(DEBUG) << "SSL remote close or read error.";
                 break;
             }
         }
@@ -376,16 +376,16 @@ void DnsTlsSocket::loop() {
             int64_t num_queries;
             ssize_t res = read(mEventFd.get(), &num_queries, sizeof(num_queries));
             if (res < 0) {
-                ALOGW("Error during eventfd read");
+                LOG(WARNING) << "Error during eventfd read";
                 break;
             } else if (res == 0) {
-                ALOGW("eventfd closed; disconnecting");
+                LOG(WARNING) << "eventfd closed; disconnecting";
                 break;
             } else if (res != sizeof(num_queries)) {
-                ALOGE("Int size mismatch: %zd != %zu", res, sizeof(num_queries));
+                LOG(ERROR) << "Int size mismatch: " << res << " != " << sizeof(num_queries);
                 break;
             } else if (num_queries < 0) {
-                ALOGV("Negative eventfd read indicates destructor-initiated shutdown");
+                LOG(DEBUG) << "Negative eventfd read indicates destructor-initiated shutdown";
                 break;
             }
             // Take ownership of all pending queries.  (q is always empty here.)
@@ -402,31 +402,31 @@ void DnsTlsSocket::loop() {
             q.pop_front();
         }
     }
-    ALOGV("Disconnecting");
+    LOG(DEBUG) << "Disconnecting";
     sslDisconnect();
-    ALOGV("Calling onClosed");
+    LOG(DEBUG) << "Calling onClosed";
     mObserver->onClosed();
-    ALOGV("Ending loop");
+    LOG(DEBUG) << "Ending loop";
 }
 
 DnsTlsSocket::~DnsTlsSocket() {
-    ALOGV("Destructor");
+    LOG(DEBUG) << "Destructor";
     // This will trigger an orderly shutdown in loop().
     requestLoopShutdown();
     {
         // Wait for the orderly shutdown to complete.
         std::lock_guard guard(mLock);
         if (mLoopThread && std::this_thread::get_id() == mLoopThread->get_id()) {
-            ALOGE("Violation of re-entrance precondition");
+            LOG(ERROR) << "Violation of re-entrance precondition";
             return;
         }
     }
     if (mLoopThread) {
-        ALOGV("Waiting for loop thread to terminate");
+        LOG(DEBUG) << "Waiting for loop thread to terminate";
         mLoopThread->join();
         mLoopThread.reset();
     }
-    ALOGV("Destructor completed");
+    LOG(DEBUG) << "Destructor completed";
 }
 
 bool DnsTlsSocket::query(uint16_t id, const Slice query) {
@@ -457,12 +457,12 @@ void DnsTlsSocket::requestLoopShutdown() {
 
 bool DnsTlsSocket::incrementEventFd(const int64_t count) {
     if (mEventFd == -1) {
-        ALOGE("eventfd is not initialized");
+        LOG(ERROR) << "eventfd is not initialized";
         return false;
     }
     ssize_t written = write(mEventFd.get(), &count, sizeof(count));
     if (written != sizeof(count)) {
-        ALOGE("Failed to increment eventfd by %" PRId64, count);
+        LOG(ERROR) << "Failed to increment eventfd by " << count;
         return false;
     }
     return true;
@@ -474,8 +474,9 @@ int DnsTlsSocket::sslRead(const Slice buffer, bool wait) {
     while (remaining > 0) {
         int ret = SSL_read(mSsl.get(), buffer.limit() - remaining, remaining);
         if (ret == 0) {
-            ALOGW_IF(remaining < buffer.size(), "SSL closed with %zu of %zu bytes remaining",
-                     remaining, buffer.size());
+            if (remaining < buffer.size())
+                LOG(WARNING) << "SSL closed with " << remaining << " of " << buffer.size()
+                             << " bytes remaining";
             return SSL_ERROR_ZERO_RETURN;
         }
 
@@ -483,12 +484,12 @@ int DnsTlsSocket::sslRead(const Slice buffer, bool wait) {
             const int ssl_err = SSL_get_error(mSsl.get(), ret);
             if (wait && ssl_err == SSL_ERROR_WANT_READ) {
                 if (waitForReading(mSslFd.get()) != 1) {
-                    ALOGV("Poll failed in sslRead: %d", errno);
+                    LOG(DEBUG) << "Poll failed in sslRead: " << errno;
                     return SSL_ERROR_SYSCALL;
                 }
                 continue;
             } else {
-                ALOGV("SSL_read error %d", ssl_err);
+                LOG(DEBUG) << "SSL_read error " << ssl_err;
                 return ssl_err;
             }
         }
@@ -503,16 +504,16 @@ bool DnsTlsSocket::sendQuery(const std::vector<uint8_t>& buf) {
     if (!sslWrite(netdutils::makeSlice(buf))) {
         return false;
     }
-    ALOGV("%u SSL_write complete", mMark);
+    LOG(DEBUG) << mMark << " SSL_write complete";
     return true;
 }
 
 bool DnsTlsSocket::readResponse() {
-    ALOGV("reading response");
+    LOG(DEBUG) << "reading response";
     uint8_t responseHeader[2];
     int err = sslRead(Slice(responseHeader, 2), false);
     if (err == SSL_ERROR_WANT_READ) {
-        ALOGV("Ignoring spurious wakeup from server");
+        LOG(DEBUG) << "Ignoring spurious wakeup from server";
         return true;
     }
     if (err != SSL_ERROR_NONE) {
@@ -522,10 +523,10 @@ bool DnsTlsSocket::readResponse() {
     // always invalid when truncated, so the response will be treated as an error.
     constexpr uint16_t MAX_SIZE = 8192;
     const uint16_t responseSize = (responseHeader[0] << 8) | responseHeader[1];
-    ALOGV("%u Expecting response of size %i", mMark, responseSize);
+    LOG(DEBUG) << mMark << " Expecting response of size " << responseSize;
     std::vector<uint8_t> response(std::min(responseSize, MAX_SIZE));
     if (sslRead(netdutils::makeSlice(response), true) != SSL_ERROR_NONE) {
-        ALOGV("%u Failed to read %zu bytes", mMark, response.size());
+        LOG(DEBUG) << mMark << " Failed to read " << response.size() << " bytes";
         return false;
     }
     uint16_t remainingBytes = responseSize - response.size();
@@ -533,12 +534,12 @@ bool DnsTlsSocket::readResponse() {
         constexpr uint16_t CHUNK_SIZE = 2048;
         std::vector<uint8_t> discard(std::min(remainingBytes, CHUNK_SIZE));
         if (sslRead(netdutils::makeSlice(discard), true) != SSL_ERROR_NONE) {
-            ALOGV("%u Failed to discard %zu bytes", mMark, discard.size());
+            LOG(DEBUG) << mMark << " Failed to discard " << discard.size() << " bytes";
             return false;
         }
         remainingBytes -= discard.size();
     }
-    ALOGV("%u SSL_read complete", mMark);
+    LOG(DEBUG) << mMark << " SSL_read complete";
 
     mObserver->onResponse(std::move(response));
     return true;
