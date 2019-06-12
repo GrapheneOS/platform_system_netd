@@ -125,10 +125,16 @@ do actual TLS.)
 
 ## Logging
 
-This code uses `ALOGV` throughout for low-priority logging, and does not use
-`ALOGD`.  `ALOGV` is disabled by default, unless activated by `#define LOG_NDEBUG 0`.
-(`ALOGD` is not disabled by default, requiring extra measures to avoid spamming the
-system log in production builds.)
+This code uses LOG(X) for logging. Log levels are VERBOSE,DEBUG,INFO,WARNING and ERROR.
+The default setting is WARNING and logs relate to WARNING and ERROR will be shown. If
+you want to enable the DEBUG level logs, using following command.
+adb shell service call dnsresolver 10 i32 1
+VERBOSE   0
+DEBUG     1
+INFO      2
+WARNING   3
+ERROR     4
+Verbose resolver logs could contain PII -- do NOT enable in production builds.
 
 ## Reference
  * [BoringSSL API docs](https://commondatastorage.googleapis.com/chromium-boringssl-docs/headers.html)

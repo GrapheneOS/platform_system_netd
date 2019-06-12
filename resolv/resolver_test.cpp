@@ -39,7 +39,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <utils/Log.h>
 
 #include <algorithm>
 #include <chrono>
@@ -990,9 +989,9 @@ TEST_F(ResolverTest, MaxServerPrune_Binder) {
     // ~DnsTlsFrontend() because the TLS server loop threads can't be terminated.
     // So, wait for private DNS validation done before stopping backend DNS servers.
     for (int i = 0; i < MAXNS; i++) {
-        ALOGI("Waiting for private DNS validation on %s.", tls[i]->listen_address().c_str());
+        LOG(INFO) << "Waiting for private DNS validation on " << tls[i]->listen_address() << ".";
         EXPECT_TRUE(tls[i]->waitForQueries(1, 5000));
-        ALOGI("private DNS validation on %s done.", tls[i]->listen_address().c_str());
+        LOG(INFO) << "private DNS validation on " << tls[i]->listen_address() << " done.";
     }
 
     std::vector<std::string> res_servers;
