@@ -33,8 +33,8 @@
 #include <vector>
 
 #define LOG_TAG "DNSResponder"
+#include <android-base/logging.h>
 #include <android-base/strings.h>
-#include <log/log.h>
 #include <netdutils/SocketOption.h>
 
 #include "NetdConstants.h"
@@ -49,14 +49,6 @@ std::string errno2str() {
     // PLOG is an option though it requires lots of changes from ALOGx() to LOG(x).
     return strerror_r(errno, error_msg, sizeof(error_msg));
 }
-
-#define APLOGI(fmt, ...) ALOGI(fmt ": [%d] %s", __VA_ARGS__, errno, errno2str().c_str())
-
-#if 0
-#define DBGLOG(fmt, ...) ALOGI(fmt, __VA_ARGS__)
-#else
-#define DBGLOG(fmt, ...)
-#endif
 
 std::string str2hex(const char* buffer, size_t len) {
     std::string str(len*2, '\0');
@@ -172,7 +164,7 @@ const char* DNSName::read(const char* buffer, const char* buffer_end) {
     do {
         cur = parseField(cur, buffer_end, &last);
         if (cur == nullptr) {
-            ALOGI("parsing failed at line %d", __LINE__);
+            LOG(ERROR) << "parsing failed at line " << __LINE__;
             return nullptr;
         }
     } while (!last);
@@ -185,17 +177,17 @@ char* DNSName::write(char* buffer, const char* buffer_end) const {
         size_t dot_pos = name.find('.', pos);
         if (dot_pos == std::string::npos) {
             // Sanity check, should never happen unless parseField is broken.
-            ALOGI("logic error: all names are expected to end with a '.'");
+            LOG(ERROR) << "logic error: all names are expected to end with a '.'";
             return nullptr;
         }
-        size_t len = dot_pos - pos;
+        const size_t len = dot_pos - pos;
         if (len >= 256) {
-            ALOGI("name component '%s' is %zu long, but max is 255",
-                    name.substr(pos, dot_pos - pos).c_str(), len);
+            LOG(ERROR) << "name component '" << name.substr(pos, dot_pos - pos) << "' is " << len
+                       << " long, but max is 255";
             return nullptr;
         }
         if (buffer_cur + sizeof(uint8_t) + len > buffer_end) {
-            ALOGI("buffer overflow at line %d", __LINE__);
+            LOG(ERROR) << "buffer overflow at line " << __LINE__;
             return nullptr;
         }
         *buffer_cur++ = len;
@@ -212,7 +204,7 @@ char* DNSName::write(char* buffer, const char* buffer_end) const {
 const char* DNSName::parseField(const char* buffer, const char* buffer_end,
                                 bool* last) {
     if (buffer + sizeof(uint8_t) > buffer_end) {
-        ALOGI("parsing failed at line %d", __LINE__);
+        LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
     unsigned field_type = *buffer >> 6;
@@ -225,17 +217,17 @@ const char* DNSName::parseField(const char* buffer, const char* buffer_end,
             return cur;
         }
         if (cur + ofs > buffer_end) {
-            ALOGI("parsing failed at line %d", __LINE__);
+            LOG(ERROR) << "parsing failed at line " << __LINE__;
             return nullptr;
         }
         name.append(cur, ofs);
         name.push_back('.');
         return cur + ofs;
     } else if (field_type == 3) {
-        ALOGI("name compression not implemented");
+        LOG(ERROR) << "name compression not implemented";
         return nullptr;
     }
-    ALOGI("invalid name field type");
+    LOG(ERROR) << "invalid name field type";
     return nullptr;
 }
 
@@ -251,11 +243,11 @@ struct DNSQuestion {
 const char* DNSQuestion::read(const char* buffer, const char* buffer_end) {
     const char* cur = qname.read(buffer, buffer_end);
     if (cur == nullptr) {
-        ALOGI("parsing failed at line %d", __LINE__);
+        LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
     if (cur + 2*sizeof(uint16_t) > buffer_end) {
-        ALOGI("parsing failed at line %d", __LINE__);
+        LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
     qtype = ntohs(*reinterpret_cast<const uint16_t*>(cur));
@@ -267,7 +259,7 @@ char* DNSQuestion::write(char* buffer, const char* buffer_end) const {
     char* buffer_cur = qname.write(buffer, buffer_end);
     if (buffer_cur == nullptr) return nullptr;
     if (buffer_cur + 2*sizeof(uint16_t) > buffer_end) {
-        ALOGI("buffer overflow on line %d", __LINE__);
+        LOG(ERROR) << "buffer overflow on line " << __LINE__;
         return nullptr;
     }
     *reinterpret_cast<uint16_t*>(buffer_cur) = htons(qtype);
@@ -309,17 +301,17 @@ private:
 const char* DNSRecord::read(const char* buffer, const char* buffer_end) {
     const char* cur = name.read(buffer, buffer_end);
     if (cur == nullptr) {
-        ALOGI("parsing failed at line %d", __LINE__);
+        LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
     unsigned rdlen = 0;
     cur = readIntFields(cur, buffer_end, &rdlen);
     if (cur == nullptr) {
-        ALOGI("parsing failed at line %d", __LINE__);
+        LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
     if (cur + rdlen > buffer_end) {
-        ALOGI("parsing failed at line %d", __LINE__);
+        LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
     rdata.assign(cur, cur + rdlen);
@@ -332,7 +324,7 @@ char* DNSRecord::write(char* buffer, const char* buffer_end) const {
     buffer_cur = writeIntFields(rdata.size(), buffer_cur, buffer_end);
     if (buffer_cur == nullptr) return nullptr;
     if (buffer_cur + rdata.size() > buffer_end) {
-        ALOGI("buffer overflow on line %d", __LINE__);
+        LOG(ERROR) << "buffer overflow on line " << __LINE__;
         return nullptr;
     }
     return std::copy(rdata.begin(), rdata.end(), buffer_cur);
@@ -348,7 +340,7 @@ std::string DNSRecord::toString() const {
 const char* DNSRecord::readIntFields(const char* buffer, const char* buffer_end,
                                      unsigned* rdlen) {
     if (buffer + sizeof(IntFields) > buffer_end ) {
-        ALOGI("parsing failed at line %d", __LINE__);
+        LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
     const auto& intfields = *reinterpret_cast<const IntFields*>(buffer);
@@ -362,7 +354,7 @@ const char* DNSRecord::readIntFields(const char* buffer, const char* buffer_end,
 char* DNSRecord::writeIntFields(unsigned rdlen, char* buffer,
                                 const char* buffer_end) const {
     if (buffer + sizeof(IntFields) > buffer_end ) {
-        ALOGI("buffer overflow on line %d", __LINE__);
+        LOG(ERROR) << "buffer overflow on line " << __LINE__;
         return nullptr;
     }
     auto& intfields = *reinterpret_cast<IntFields*>(buffer);
@@ -415,7 +407,7 @@ const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
     const char* cur = readHeader(buffer, buffer_end, &qdcount, &ancount,
                                  &nscount, &arcount);
     if (cur == nullptr) {
-        ALOGI("parsing failed at line %d", __LINE__);
+        LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
     if (qdcount) {
@@ -423,7 +415,7 @@ const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
         for (unsigned i = 0 ; i < qdcount ; ++i) {
             cur = questions[i].read(cur, buffer_end);
             if (cur == nullptr) {
-                ALOGI("parsing failed at line %d", __LINE__);
+                LOG(ERROR) << "parsing failed at line " << __LINE__;
                 return nullptr;
             }
         }
@@ -433,7 +425,7 @@ const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
         for (unsigned i = 0 ; i < ancount ; ++i) {
             cur = answers[i].read(cur, buffer_end);
             if (cur == nullptr) {
-                ALOGI("parsing failed at line %d", __LINE__);
+                LOG(ERROR) << "parsing failed at line " << __LINE__;
                 return nullptr;
             }
         }
@@ -443,7 +435,7 @@ const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
         for (unsigned i = 0 ; i < nscount ; ++i) {
             cur = authorities[i].read(cur, buffer_end);
             if (cur == nullptr) {
-                ALOGI("parsing failed at line %d", __LINE__);
+                LOG(ERROR) << "parsing failed at line " << __LINE__;
                 return nullptr;
             }
         }
@@ -453,7 +445,7 @@ const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
         for (unsigned i = 0 ; i < arcount ; ++i) {
             cur = additionals[i].read(cur, buffer_end);
             if (cur == nullptr) {
-                ALOGI("parsing failed at line %d", __LINE__);
+                LOG(ERROR) << "parsing failed at line " << __LINE__;
                 return nullptr;
             }
         }
@@ -463,7 +455,7 @@ const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
 
 char* DNSHeader::write(char* buffer, const char* buffer_end) const {
     if (buffer + sizeof(Header) > buffer_end) {
-        ALOGI("buffer overflow on line %d", __LINE__);
+        LOG(ERROR) << "buffer overflow on line " << __LINE__;
         return nullptr;
     }
     Header& header = *reinterpret_cast<Header*>(buffer);
@@ -548,9 +540,8 @@ void DNSResponder::addMapping(const std::string& name, ns_type type, const std::
     std::lock_guard lock(mappings_mutex_);
     auto it = mappings_.find(QueryKey(name, type));
     if (it != mappings_.end()) {
-        ALOGI("Overwriting mapping for (%s, %s), previous address %s, new "
-              "address %s",
-              name.c_str(), dnstype2str(type), it->second.c_str(), addr.c_str());
+        LOG(INFO) << "Overwriting mapping for (" << name << ", " << dnstype2str(type)
+                  << "), previous address " << it->second << " new address " << addr;
         it->second = addr;
         return;
     }
@@ -561,8 +552,8 @@ void DNSResponder::removeMapping(const std::string& name, ns_type type) {
     std::lock_guard lock(mappings_mutex_);
     auto it = mappings_.find(QueryKey(name, type));
     if (it != mappings_.end()) {
-        ALOGI("Cannot remove mapping mapping from (%s, %s), not present", name.c_str(),
-              dnstype2str(type));
+        LOG(ERROR) << "Cannot remove mapping mapping from (" << name << ", " << dnstype2str(type)
+                   << "), not present";
         return;
     }
     mappings_.erase(it);
@@ -582,7 +573,7 @@ bool DNSResponder::running() const {
 
 bool DNSResponder::startServer() {
     if (running()) {
-        ALOGI("server already running");
+        LOG(ERROR) << "server already running";
         return false;
     }
 
@@ -597,49 +588,49 @@ bool DNSResponder::startServer() {
                          &ai_hints, &ai_res);
     ScopedAddrinfo ai_res_cleanup(ai_res);
     if (rv) {
-        ALOGI("getaddrinfo(%s, %s) failed: %s", listen_address_.c_str(),
-            listen_service_.c_str(), gai_strerror(rv));
+        LOG(ERROR) << "getaddrinfo(" << listen_address_ << ", " << listen_service_
+                   << ") failed: " << gai_strerror(rv);
         return false;
     }
     for (const addrinfo* ai = ai_res ; ai ; ai = ai->ai_next) {
         socket_.reset(socket(ai->ai_family, ai->ai_socktype | SOCK_NONBLOCK, ai->ai_protocol));
         if (socket_.get() < 0) {
-            APLOGI("ignore creating socket %d failed", socket_.get());
+            PLOG(INFO) << "ignore creating socket " << socket_.get() << " failed";
             continue;
         }
         enableSockopt(socket_.get(), SOL_SOCKET, SO_REUSEPORT).ignoreError();
         enableSockopt(socket_.get(), SOL_SOCKET, SO_REUSEADDR).ignoreError();
         std::string host_str = addr2str(ai->ai_addr, ai->ai_addrlen);
         if (bind(socket_.get(), ai->ai_addr, ai->ai_addrlen)) {
-            APLOGI("failed to bind UDP %s:%s", host_str.c_str(), listen_service_.c_str());
+            LOG(INFO) << "failed to bind UDP " << host_str << ":" << listen_service_;
             continue;
         }
-        ALOGI("bound to UDP %s:%s", host_str.c_str(), listen_service_.c_str());
+        LOG(INFO) << "bound to UDP " << host_str << ":" << listen_service_;
         break;
     }
 
     // Set up eventfd socket.
     event_fd_.reset(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
     if (event_fd_.get() == -1) {
-        APLOGI("failed to create eventfd %d", event_fd_.get());
+        PLOG(ERROR) << "failed to create eventfd " << event_fd_.get();
         return false;
     }
 
     // Set up epoll socket.
     epoll_fd_.reset(epoll_create1(EPOLL_CLOEXEC));
     if (epoll_fd_.get() < 0) {
-        APLOGI("epoll_create1() failed on fd %d", epoll_fd_.get());
+        PLOG(ERROR) << "epoll_create1() failed on fd " << epoll_fd_.get();
         return false;
     }
 
-    ALOGI("adding socket %d to epoll", socket_.get());
+    LOG(INFO) << "adding socket " << socket_.get() << " to epoll";
     if (!addFd(socket_.get(), EPOLLIN)) {
-        ALOGE("failed to add the socket %d to epoll", socket_.get());
+        LOG(ERROR) << "failed to add the socket " << socket_.get() << " to epoll";
         return false;
     }
-    ALOGI("adding eventfd %d to epoll", event_fd_.get());
+    LOG(INFO) << "adding eventfd " << event_fd_.get() << " to epoll";
     if (!addFd(event_fd_.get(), EPOLLIN)) {
-        ALOGE("failed to add the eventfd %d to epoll", event_fd_.get());
+        LOG(ERROR) << "failed to add the eventfd " << event_fd_.get() << " to epoll";
         return false;
     }
 
@@ -647,24 +638,24 @@ bool DNSResponder::startServer() {
         std::lock_guard lock(update_mutex_);
         handler_thread_ = std::thread(&DNSResponder::requestHandler, this);
     }
-    ALOGI("server started successfully");
+    LOG(INFO) << "server started successfully";
     return true;
 }
 
 bool DNSResponder::stopServer() {
     std::lock_guard lock(update_mutex_);
     if (!running()) {
-        ALOGI("server not running");
+        LOG(ERROR) << "server not running";
         return false;
     }
-    ALOGI("stopping server");
+    LOG(INFO) << "stopping server";
     if (!sendToEventFd()) {
         return false;
     }
     handler_thread_.join();
     epoll_fd_.reset();
     socket_.reset();
-    ALOGI("server stopped successfully");
+    LOG(INFO) << "server stopped successfully";
     return true;
 }
 
@@ -692,7 +683,7 @@ void DNSResponder::requestHandler() {
     while (true) {
         int n = epoll_wait(epoll_fd_.get(), evs, EPOLL_MAX_EVENTS, -1);
         if (n <= 0) {
-            APLOGI("epoll_wait() failed, n=%d", n);
+            PLOG(ERROR) << "epoll_wait() failed, n=" << n;
             return;
         }
 
@@ -705,7 +696,7 @@ void DNSResponder::requestHandler() {
             } else if (fd == socket_.get() && (events & (EPOLLIN | EPOLLERR))) {
                 handleQuery();
             } else {
-                ALOGW("unexpected epoll events 0x%x on fd %d", events, fd);
+                LOG(WARNING) << "unexpected epoll events " << events << " on fd " << fd;
             }
         }
     }
@@ -714,44 +705,44 @@ void DNSResponder::requestHandler() {
 bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
                                     char* response, size_t* response_len)
                                     const {
-    DBGLOG("request: '%s'", str2hex(buffer, len).c_str());
+    LOG(DEBUG) << "request: '" << str2hex(buffer, len) << "'";
     const char* buffer_end = buffer + len;
     DNSHeader header;
     const char* cur = header.read(buffer, buffer_end);
     // TODO(imaipi): for now, unparsable messages are silently dropped, fix.
     if (cur == nullptr) {
-        ALOGI("failed to parse query");
+        LOG(ERROR) << "failed to parse query";
         return false;
     }
     if (header.qr) {
-        ALOGI("response received instead of a query");
+        LOG(ERROR) << "response received instead of a query";
         return false;
     }
     if (header.opcode != ns_opcode::ns_o_query) {
-        ALOGI("unsupported request opcode received");
+        LOG(INFO) << "unsupported request opcode received";
         return makeErrorResponse(&header, ns_rcode::ns_r_notimpl, response,
                                  response_len);
     }
     if (header.questions.empty()) {
-        ALOGI("no questions present");
+        LOG(INFO) << "no questions present";
         return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response,
                                  response_len);
     }
     if (!header.answers.empty()) {
-        ALOGI("already %zu answers present in query", header.answers.size());
+        LOG(INFO) << "already " << header.answers.size() << " answers present in query";
         return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response,
                                  response_len);
     }
 
     if (edns_ == Edns::FORMERR_UNCOND) {
-        ALOGI("force to return RCODE FORMERR");
+        LOG(INFO) << "force to return RCODE FORMERR";
         return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response, response_len);
     }
 
     if (!header.additionals.empty() && edns_ != Edns::ON) {
-        ALOGI("DNS request has an additional section (assumed EDNS). "
-              "Simulating an ancient (pre-EDNS) server, and returning %s",
-              edns_ == Edns::FORMERR_ON_EDNS ? "RCODE FORMERR." : "no response.");
+        LOG(INFO) << "DNS request has an additional section (assumed EDNS). Simulating an ancient "
+                     "(pre-EDNS) server, and returning "
+                  << (edns_ == Edns::FORMERR_ON_EDNS ? "RCODE FORMERR." : "no response.");
         if (edns_ == Edns::FORMERR_ON_EDNS) {
             return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response, response_len);
         }
@@ -770,11 +761,11 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
     auto constexpr bound = std::numeric_limits<unsigned>::max();
     if (arc4random_uniform(bound) > bound * response_probability_) {
         if (error_rcode_ < 0) {
-            ALOGI("Returning no response");
+            LOG(ERROR) << "Returning no response";
             return false;
         } else {
-            ALOGI("returning RCODE %d in accordance with probability distribution",
-                  static_cast<int>(error_rcode_));
+            LOG(INFO) << "returning RCODE " << static_cast<int>(error_rcode_)
+                      << " in accordance with probability distribution";
             return makeErrorResponse(&header, error_rcode_, response, response_len);
         }
     }
@@ -782,7 +773,7 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
     for (const DNSQuestion& question : header.questions) {
         if (question.qclass != ns_class::ns_c_in &&
             question.qclass != ns_class::ns_c_any) {
-            ALOGI("unsupported question class %u", question.qclass);
+            LOG(INFO) << "unsupported question class " << question.qclass;
             return makeErrorResponse(&header, ns_rcode::ns_r_notimpl, response,
                                      response_len);
         }
@@ -839,8 +830,8 @@ bool DNSResponder::addAnswerRecords(const DNSQuestion& question,
 
     if (answers->size() == 0) {
         // TODO(imaipi): handle correctly
-        ALOGI("no mapping found for %s %s, lazily refusing to add an answer",
-              question.qname.name.c_str(), dnstype2str(question.qtype));
+        LOG(INFO) << "no mapping found for " << question.qname.name << " "
+                  << dnstype2str(question.qtype) << ", lazily refusing to add an answer";
     }
 
     return true;
@@ -850,13 +841,13 @@ bool DNSResponder::fillAnswerRdata(const std::string& rdatastr, DNSRecord& recor
     if (record.rtype == ns_type::ns_t_a) {
         record.rdata.resize(4);
         if (inet_pton(AF_INET, rdatastr.c_str(), record.rdata.data()) != 1) {
-            ALOGI("inet_pton(AF_INET, %s) failed", rdatastr.c_str());
+            LOG(ERROR) << "inet_pton(AF_INET, " << rdatastr << ") failed";
             return false;
         }
     } else if (record.rtype == ns_type::ns_t_aaaa) {
         record.rdata.resize(16);
         if (inet_pton(AF_INET6, rdatastr.c_str(), record.rdata.data()) != 1) {
-            ALOGI("inet_pton(AF_INET6, %s) failed", rdatastr.c_str());
+            LOG(ERROR) << "inet_pton(AF_INET6, " << rdatastr << ") failed";
             return false;
         }
     } else if ((record.rtype == ns_type::ns_t_ptr) || (record.rtype == ns_type::ns_t_cname)) {
@@ -867,14 +858,14 @@ bool DNSResponder::fillAnswerRdata(const std::string& rdatastr, DNSRecord& recor
         // Generating PTRDNAME field(section 3.3.12) or CNAME field(section 3.3.1) in rfc1035.
         // The "name" should be an absolute domain name which ends in a dot.
         if (name.back() != delimiter) {
-            ALOGI("invalid absolute domain name");
+            LOG(ERROR) << "invalid absolute domain name";
             return false;
         }
         name.pop_back();  // remove the dot in tail
         for (const std::string& label : android::base::Split(name, {delimiter})) {
             // The length of label is limited to 63 octets or less. See RFC 1035 section 3.1.
             if (label.length() == 0 || label.length() > 63) {
-                ALOGI("invalid label length");
+                LOG(ERROR) << "invalid label length";
                 return false;
             }
 
@@ -885,12 +876,12 @@ bool DNSResponder::fillAnswerRdata(const std::string& rdatastr, DNSRecord& recor
 
         // The length of domain name is limited to 255 octets or less. See RFC 1035 section 3.1.
         if (rdata.size() > 255) {
-            ALOGI("invalid name length");
+            LOG(ERROR) << "invalid name length";
             return false;
         }
         record.rdata = move(rdata);
     } else {
-        ALOGI("unhandled qtype %s", dnstype2str(record.rtype));
+        LOG(ERROR) << "unhandled qtype " << dnstype2str(record.rtype);
         return false;
     }
     return true;
@@ -923,7 +914,7 @@ bool DNSResponder::addFd(int fd, uint32_t events) {
     ev.events = events;
     ev.data.fd = fd;
     if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, fd, &ev) < 0) {
-        APLOGI("epoll_ctl() for socket %d failed", fd);
+        PLOG(ERROR) << "epoll_ctl() for socket " << fd << " failed";
         return false;
     }
     return true;
@@ -938,10 +929,10 @@ void DNSResponder::handleQuery() {
         len = recvfrom(socket_.get(), buffer, sizeof(buffer), 0, (sockaddr*)&sa, &sa_len);
     } while (len < 0 && (errno == EAGAIN || errno == EINTR));
     if (len <= 0) {
-        APLOGI("recvfrom() failed, len=%zu", len);
+        PLOG(INFO) << "recvfrom() failed, len=" << len;
         return;
     }
-    DBGLOG("read %zd bytes", len);
+    LOG(DEBUG) << "read " << len << " bytes";
     std::lock_guard lock(cv_mutex_);
     char response[4096];
     size_t response_len = sizeof(response);
@@ -956,17 +947,17 @@ void DNSResponder::handleQuery() {
                      reinterpret_cast<const sockaddr*>(&sa), sa_len);
         std::string host_str = addr2str(reinterpret_cast<const sockaddr*>(&sa), sa_len);
         if (len > 0) {
-            DBGLOG("sent %zu bytes to %s", len, host_str.c_str());
+            LOG(DEBUG) << "sent " << len << " bytes to " << host_str;
         } else {
-            APLOGI("sendto() failed for %s", host_str.c_str());
+            PLOG(INFO) << "sendto() failed for " << host_str;
         }
         // Test that the response is actually a correct DNS message.
         const char* response_end = response + len;
         DNSHeader header;
         const char* cur = header.read(response, response_end);
-        if (cur == nullptr) ALOGW("response is flawed");
+        if (cur == nullptr) LOG(WARNING) << "response is flawed";
     } else {
-        ALOGW("not responding");
+        LOG(WARNING) << "not responding";
     }
     cv.notify_one();
     return;
@@ -975,7 +966,7 @@ void DNSResponder::handleQuery() {
 bool DNSResponder::sendToEventFd() {
     const uint64_t data = 1;
     if (const ssize_t rt = write(event_fd_.get(), &data, sizeof(data)); rt != sizeof(data)) {
-        APLOGI("failed to write eventfd, rt=%zd", rt);
+        PLOG(ERROR) << "failed to write eventfd, rt=" << rt;
         return false;
     }
     return true;
@@ -984,7 +975,7 @@ bool DNSResponder::sendToEventFd() {
 void DNSResponder::handleEventFd() {
     int64_t data;
     if (const ssize_t rt = read(event_fd_.get(), &data, sizeof(data)); rt != sizeof(data)) {
-        APLOGI("ignore reading eventfd failed, rt=%zd", rt);
+        PLOG(INFO) << "ignore reading eventfd failed, rt=" << rt;
     }
 }
 

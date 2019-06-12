@@ -15,7 +15,6 @@
  */
 
 #define LOG_TAG "resolv"
-//#define LOG_NDEBUG 0
 
 #include "DnsTlsTransport.h"
 
@@ -25,7 +24,7 @@
 #include "DnsTlsSocketFactory.h"
 #include "IDnsTlsSocketFactory.h"
 
-#include "log/log.h"
+#include <android-base/logging.h>
 
 namespace android {
 namespace net {
@@ -41,7 +40,7 @@ std::future<DnsTlsTransport::Result> DnsTlsTransport::query(const netdutils::Sli
     }
 
     if (!mSocket) {
-        ALOGV("No socket for query.  Opening socket and sending.");
+        LOG(DEBUG) << "No socket for query.  Opening socket and sending.";
         doConnect();
     } else {
         sendQuery(record->query);
@@ -60,21 +59,21 @@ bool DnsTlsTransport::sendQuery(const DnsTlsQueryMap::Query q) {
 }
 
 void DnsTlsTransport::doConnect() {
-    ALOGV("Constructing new socket");
+    LOG(DEBUG) << "Constructing new socket";
     mSocket = mFactory->createDnsTlsSocket(mServer, mMark, this, &mCache);
 
     if (mSocket) {
         auto queries = mQueries.getAll();
-        ALOGV("Initialization succeeded.  Reissuing %zu queries.", queries.size());
+        LOG(DEBUG) << "Initialization succeeded.  Reissuing " << queries.size() << " queries.";
         for(auto& q : queries) {
             if (!sendQuery(q)) {
                 break;
             }
         }
     } else {
-        ALOGV("Initialization failed.");
+        LOG(DEBUG) << "Initialization failed.";
         mSocket.reset();
-        ALOGV("Failing all pending queries.");
+        LOG(DEBUG) << "Failing all pending queries.";
         mQueries.clear();
     }
 }
@@ -110,19 +109,19 @@ void DnsTlsTransport::doReconnect() {
     }
     mQueries.cleanup();
     if (!mQueries.empty()) {
-        ALOGV("Fast reconnect to retry remaining queries");
+        LOG(DEBUG) << "Fast reconnect to retry remaining queries";
         doConnect();
     } else {
-        ALOGV("No pending queries.  Going idle.");
+        LOG(DEBUG) << "No pending queries.  Going idle.";
         mSocket.reset();
     }
 }
 
 DnsTlsTransport::~DnsTlsTransport() {
-    ALOGV("Destructor");
+    LOG(DEBUG) << "Destructor";
     {
         std::lock_guard guard(mLock);
-        ALOGV("Locked destruction procedure");
+        LOG(DEBUG) << "Locked destruction procedure";
         mQueries.clear();
         mClosing = true;
     }
@@ -130,21 +129,21 @@ DnsTlsTransport::~DnsTlsTransport() {
     // It's safe for that thread to run now because mClosing is true (and mQueries is empty),
     // but we need to wait for it to finish before allowing destruction to proceed.
     if (mReconnectThread) {
-        ALOGV("Waiting for reconnect thread to terminate");
+        LOG(DEBUG) << "Waiting for reconnect thread to terminate";
         mReconnectThread->join();
         mReconnectThread.reset();
     }
     // Ensure that the socket is destroyed, and can clean up its callback threads,
     // before any of this object's fields become invalid.
     mSocket.reset();
-    ALOGV("Destructor completed");
+    LOG(DEBUG) << "Destructor completed";
 }
 
 // static
 // TODO: Use this function to preheat the session cache.
 // That may require moving it to DnsTlsDispatcher.
 bool DnsTlsTransport::validate(const DnsTlsServer& server, unsigned netid, uint32_t mark) {
-    ALOGV("Beginning validation on %u", netid);
+    LOG(DEBUG) << "Beginning validation on " << netid;
     // Generate "<random>-dnsotls-ds.metric.gstatic.com", which we will lookup through |ss| in
     // order to prove that it is actually a working DNS over TLS server.
     static const char kDnsSafeChars[] =
@@ -180,33 +179,29 @@ bool DnsTlsTransport::validate(const DnsTlsServer& server, unsigned netid, uint3
     DnsTlsTransport transport(server, mark, &factory);
     auto r = transport.query(netdutils::Slice(query, qlen)).get();
     if (r.code != Response::success) {
-        ALOGV("query failed");
+        LOG(DEBUG) << "query failed";
         return false;
     }
 
     const std::vector<uint8_t>& recvbuf = r.response;
     if (recvbuf.size() < NS_HFIXEDSZ) {
-        ALOGW("short response: %d", replylen);
+        LOG(WARNING) << "short response: " << replylen;
         return false;
     }
 
     const int qdcount = (recvbuf[4] << 8) | recvbuf[5];
     if (qdcount != 1) {
-        ALOGW("reply query count != 1: %d", qdcount);
+        LOG(WARNING) << "reply query count != 1: " << qdcount;
         return false;
     }
 
     const int ancount = (recvbuf[6] << 8) | recvbuf[7];
-    ALOGV("%u answer count: %d", netid, ancount);
+    LOG(DEBUG) << netid << " answer count: " << ancount;
 
     // TODO: Further validate the response contents (check for valid AAAA record, ...).
     // Note that currently, integration tests rely on this function accepting a
     // response with zero records.
-#if 0
-    for (int i = 0; i < resplen; i++) {
-        ALOGD("recvbuf[%d] = %d %c", i, recvbuf[i], recvbuf[i]);
-    }
-#endif
+
     return true;
 }
 
