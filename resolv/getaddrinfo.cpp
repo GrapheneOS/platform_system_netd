@@ -786,19 +786,10 @@ static int ip6_str2scopeid(const char* scope, struct sockaddr_in6* sin6, u_int32
          * like-local scopes.
          */
         *scopeid = if_nametoindex(scope);
-        if (*scopeid == 0) goto trynumeric;
-        return 0;
+        if (*scopeid != 0) return 0;
     }
 
-    /* still unclear about literal, allow numeric only - placeholder */
-    if (IN6_IS_ADDR_SITELOCAL(a6) || IN6_IS_ADDR_MC_SITELOCAL(a6)) goto trynumeric;
-    if (IN6_IS_ADDR_MC_ORGLOCAL(a6))
-        goto trynumeric;
-    else
-        goto trynumeric; /* global */
-
-    /* try to convert to a numeric id as a last resort */
-trynumeric:
+    // try to convert to a numeric id as a last resort
     errno = 0;
     lscopeid = strtoul(scope, &ep, 10);
     *scopeid = (u_int32_t)(lscopeid & 0xffffffffUL);
