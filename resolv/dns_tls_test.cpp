@@ -15,9 +15,15 @@
  */
 
 #define LOG_TAG "resolv"
-#define LOG_NDEBUG 1  // Set to 0 to enable verbose debug logging
 
+#include <arpa/inet.h>
+
+#include <chrono>
+
+#include <android-base/logging.h>
+#include <android-base/macros.h>
 #include <gtest/gtest.h>
+#include <netdutils/Slice.h>
 
 #include "DnsTlsDispatcher.h"
 #include "DnsTlsQueryMap.h"
@@ -28,15 +34,7 @@
 #include "IDnsTlsSocket.h"
 #include "IDnsTlsSocketFactory.h"
 #include "IDnsTlsSocketObserver.h"
-
 #include "dns_responder/dns_tls_frontend.h"
-
-#include <chrono>
-#include <arpa/inet.h>
-#include <android-base/macros.h>
-#include <netdutils/Slice.h>
-
-#include "log/log.h"
 
 namespace android {
 namespace net {
@@ -61,7 +59,7 @@ static void parseServer(const char* server, in_port_t port, sockaddr_storage* pa
         sin6->sin6_port = htons(port);
         return;
     }
-    ALOGE("Failed to parse server address: %s", server);
+    LOG(ERROR) << "Failed to parse server address: " << server;
 }
 
 bytevec FINGERPRINT1 = { 1 };
@@ -224,7 +222,7 @@ class FakeSocketDelay : public IDnsTlsSocket {
     static bool sReverse;
 
     bool query(uint16_t id, const Slice query) override {
-        ALOGV("FakeSocketDelay got query with ID %d", int(id));
+        LOG(DEBUG) << "FakeSocketDelay got query with ID " << int(id);
         std::lock_guard guard(mLock);
         // Check for duplicate IDs.
         EXPECT_EQ(0U, mIds.count(id));
@@ -233,7 +231,7 @@ class FakeSocketDelay : public IDnsTlsSocket {
         // Store response.
         mResponses.push_back(make_echo(id, query));
 
-        ALOGV("Up to %zu out of %zu queries", mResponses.size(), sDelay);
+        LOG(DEBUG) << "Up to " << mResponses.size() << " out of " << sDelay << " queries";
         if (mResponses.size() == sDelay) {
             std::thread(&FakeSocketDelay::sendResponses, this).detach();
         }
@@ -463,31 +461,31 @@ class FakeSocketLimited : public IDnsTlsSocket {
         : mObserver(observer), mQueries(0) {}
     ~FakeSocketLimited() {
         {
-            ALOGV("~FakeSocketLimited acquiring mLock");
+            LOG(DEBUG) << "~FakeSocketLimited acquiring mLock";
             std::lock_guard guard(mLock);
-            ALOGV("~FakeSocketLimited acquired mLock");
+            LOG(DEBUG) << "~FakeSocketLimited acquired mLock";
             for (auto& thread : mThreads) {
-                ALOGV("~FakeSocketLimited joining response thread");
+                LOG(DEBUG) << "~FakeSocketLimited joining response thread";
                 thread.join();
-                ALOGV("~FakeSocketLimited joined response thread");
+                LOG(DEBUG) << "~FakeSocketLimited joined response thread";
             }
             mThreads.clear();
         }
 
         if (mCloser) {
-            ALOGV("~FakeSocketLimited joining closer thread");
+            LOG(DEBUG) << "~FakeSocketLimited joining closer thread";
             mCloser->join();
-            ALOGV("~FakeSocketLimited joined closer thread");
+            LOG(DEBUG) << "~FakeSocketLimited joined closer thread";
         }
     }
     bool query(uint16_t id, const Slice query) override {
-        ALOGV("FakeSocketLimited::query acquiring mLock");
+        LOG(DEBUG) << "FakeSocketLimited::query acquiring mLock";
         std::lock_guard guard(mLock);
-        ALOGV("FakeSocketLimited::query acquired mLock");
+        LOG(DEBUG) << "FakeSocketLimited::query acquired mLock";
         ++mQueries;
 
         if (mQueries <= sLimit) {
-            ALOGV("size %zu vs. limit of %zu", query.size(), sMaxSize);
+            LOG(DEBUG) << "size " << query.size() << " vs. limit of " << sMaxSize;
             if (query.size() <= sMaxSize) {
                 // Return the response immediately (asynchronously).
                 mThreads.emplace_back(&IDnsTlsSocketObserver::onResponse, mObserver, make_echo(id, query));
@@ -502,13 +500,13 @@ class FakeSocketLimited : public IDnsTlsSocket {
   private:
     void sendClose() {
         {
-            ALOGV("FakeSocketLimited::sendClose acquiring mLock");
+            LOG(DEBUG) << "FakeSocketLimited::sendClose acquiring mLock";
             std::lock_guard guard(mLock);
-            ALOGV("FakeSocketLimited::sendClose acquired mLock");
+            LOG(DEBUG) << "FakeSocketLimited::sendClose acquired mLock";
             for (auto& thread : mThreads) {
-                ALOGV("FakeSocketLimited::sendClose joining response thread");
+                LOG(DEBUG) << "FakeSocketLimited::sendClose joining response thread";
                 thread.join();
-                ALOGV("FakeSocketLimited::sendClose joined response thread");
+                LOG(DEBUG) << "FakeSocketLimited::sendClose joined response thread";
             }
             mThreads.clear();
         }
@@ -952,7 +950,7 @@ TEST(DnsTlsSocketTest, SlowDestructor) {
     socket.reset();
     auto after = std::chrono::steady_clock::now();
     auto delay = after - before;
-    ALOGV("Shutdown took %lld ns", delay / std::chrono::nanoseconds{1});
+    LOG(DEBUG) << "Shutdown took " << delay / std::chrono::nanoseconds{1} << "ns";
     EXPECT_TRUE(observer.closed);
     // Shutdown should complete in milliseconds, but if the shutdown signal is lost
     // it will wait for the timeout, which is expected to take 20seconds.

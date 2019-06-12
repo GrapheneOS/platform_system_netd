@@ -17,9 +17,8 @@
 #include "DnsTlsSessionCache.h"
 
 #define LOG_TAG "resolv"
-//#define LOG_NDEBUG 0
 
-#include "log/log.h"
+#include <android-base/logging.h>
 
 namespace android {
 namespace net {
@@ -39,16 +38,16 @@ void DnsTlsSessionCache::prepareSslContext(SSL_CTX* ssl_ctx) {
 // static
 int DnsTlsSessionCache::newSessionCallback(SSL* ssl, SSL_SESSION* session) {
     if (!ssl || !session) {
-        ALOGE("Null SSL object in new session callback");
+        LOG(ERROR) << "Null SSL object in new session callback";
         return 0;
     }
     DnsTlsSessionCache* cache = reinterpret_cast<DnsTlsSessionCache*>(
             SSL_get_ex_data(ssl, 0));
     if (!cache) {
-        ALOGE("null transport in new session callback");
+        LOG(ERROR) << "null transport in new session callback";
         return 0;
     }
-    ALOGV("Recording session");
+    LOG(DEBUG) << "Recording session";
     cache->recordSession(session);
     return 1;  // Increment the refcount of session.
 }
@@ -57,7 +56,7 @@ void DnsTlsSessionCache::recordSession(SSL_SESSION* session) {
     std::lock_guard guard(mLock);
     mSessions.emplace_front(session);
     if (mSessions.size() > kMaxSize) {
-        ALOGV("Too many sessions; trimming");
+        LOG(DEBUG) << "Too many sessions; trimming";
         mSessions.pop_back();
     }
 }
@@ -65,7 +64,7 @@ void DnsTlsSessionCache::recordSession(SSL_SESSION* session) {
 bssl::UniquePtr<SSL_SESSION> DnsTlsSessionCache::getSession() {
     std::lock_guard guard(mLock);
     if (mSessions.size() == 0) {
-        ALOGV("No known sessions");
+        LOG(DEBUG) << "No known sessions";
         return nullptr;
     }
     bssl::UniquePtr<SSL_SESSION> ret = std::move(mSessions.front());
