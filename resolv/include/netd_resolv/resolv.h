@@ -32,12 +32,6 @@
 
 #include <netinet/in.h>
 
-typedef union sockaddr_union {
-    struct sockaddr sa;
-    struct sockaddr_in sin;
-    struct sockaddr_in6 sin6;
-} sockaddr_union;
-
 /*
  * Passing NETID_UNSET as the netId causes system/netd/resolv/DnsProxyListener.cpp to
  * fill in the appropriate default netId for the query.

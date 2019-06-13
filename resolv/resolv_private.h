@@ -122,6 +122,13 @@ struct __res_state {
 
 typedef struct __res_state* res_state;
 
+// Holds either a sockaddr_in or a sockaddr_in6.
+typedef union sockaddr_union {
+    struct sockaddr sa;
+    struct sockaddr_in sin;
+    struct sockaddr_in6 sin6;
+} sockaddr_union;
+
 /* Retrieve a local copy of the stats for the given netid. The buffer must have space for
  * MAXNS __resolver_stats. Returns the revision id of the resolvers used.
  */
