@@ -24,6 +24,7 @@
 #include <netdutils/BackoffSequence.h>
 #include <netdutils/DumpWriter.h>
 #include <netdutils/InternetAddresses.h>
+#include <netid_client.h>
 #include <thread>
 #include <utility>
 
@@ -32,7 +33,6 @@
 #include "DnsResolver.h"
 #include "getaddrinfo.h"
 #include "netd_resolv/resolv.h"
-#include "netid_client.h"
 
 namespace android {
 

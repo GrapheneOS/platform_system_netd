@@ -30,8 +30,6 @@
 #include <binder/IServiceManager.h>
 #include <binder/Status.h>
 #include <cutils/properties.h>
-#include <json/value.h>
-#include <json/writer.h>
 #include <log/log.h>
 #include <netdutils/DumpWriter.h>
 #include <utils/Errors.h>
