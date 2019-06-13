@@ -60,17 +60,6 @@ const uid_t INVALID_UID = static_cast<uid_t>(-1);
 constexpr char TCP_RMEM_PROC_FILE[] = "/proc/sys/net/ipv4/tcp_rmem";
 constexpr char TCP_WMEM_PROC_FILE[] = "/proc/sys/net/ipv4/tcp_wmem";
 
-struct AddrinfoDeleter {
-    void operator()(struct addrinfo* p) const {
-        if (p != nullptr) {
-            freeaddrinfo(p);
-        }
-    }
-};
-
-typedef std::unique_ptr<struct addrinfo, struct AddrinfoDeleter> ScopedAddrinfo;
-
-
 struct IfaddrsDeleter {
     void operator()(struct ifaddrs *p) const {
         if (p != nullptr) {

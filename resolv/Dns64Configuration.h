@@ -24,8 +24,8 @@
 #include <unordered_map>
 
 #include <android-base/thread_annotations.h>
-#include "netdutils/DumpWriter.h"
-#include "netdutils/InternetAddresses.h"
+#include <netdutils/DumpWriter.h>
+#include <netdutils/InternetAddresses.h>
 
 struct android_net_context;
 

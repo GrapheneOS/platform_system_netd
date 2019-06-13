@@ -29,11 +29,13 @@
 
 #define LOG_TAG "DnsTlsFrontend"
 #include <android-base/logging.h>
+#include <netdutils/InternetAddresses.h>
 #include <netdutils/SocketOption.h>
 
 #include "NetdConstants.h"  // SHA256_SIZE
 
 using android::netdutils::enableSockopt;
+using android::netdutils::ScopedAddrinfo;
 
 namespace {
 

@@ -21,17 +21,17 @@
 
 #include <android-base/logging.h>
 #include <netdb.h>
+#include <netdutils/BackoffSequence.h>
+#include <netdutils/DumpWriter.h>
+#include <netdutils/InternetAddresses.h>
 #include <thread>
 #include <utility>
 
 #include <arpa/inet.h>
 
 #include "DnsResolver.h"
-#include "NetdConstants.h"  // ScopedAddrinfo
 #include "getaddrinfo.h"
 #include "netd_resolv/resolv.h"
-#include "netdutils/BackoffSequence.h"
-#include "netdutils/DumpWriter.h"
 #include "netid_client.h"
 
 namespace android {
@@ -39,6 +39,7 @@ namespace android {
 using netdutils::DumpWriter;
 using netdutils::IPAddress;
 using netdutils::IPPrefix;
+using netdutils::ScopedAddrinfo;
 
 namespace net {
 

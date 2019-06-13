@@ -29,6 +29,9 @@
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
 #include <netdb.h>
+#include <netdutils/InternetAddresses.h>
+#include <netdutils/ResponseCode.h>
+#include <netdutils/SocketOption.h>
 #include <netinet/in.h>
 #include <openssl/base64.h>
 #include <poll.h> /* poll */
@@ -55,8 +58,6 @@
 #include "dns_responder/dns_responder_client.h"
 #include "dns_responder/dns_tls_frontend.h"
 #include "netd_resolv/params.h"  // MAXNS
-#include "netdutils/ResponseCode.h"
-#include "netdutils/SocketOption.h"
 #include "netid_client.h"  // NETID_UNSET
 #include "tests/dns_metrics_listener/dns_metrics_listener.h"
 #include "tests/resolv_test_utils.h"
@@ -78,6 +79,7 @@ using android::net::ResolverStats;
 using android::net::metrics::DnsMetricsListener;
 using android::netdutils::enableSockopt;
 using android::netdutils::ResponseCode;
+using android::netdutils::ScopedAddrinfo;
 
 // TODO: move into libnetdutils?
 namespace {
