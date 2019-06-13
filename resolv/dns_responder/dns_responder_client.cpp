@@ -18,8 +18,8 @@
 
 #include "dns_responder_client.h"
 
+#include <android-base/logging.h>
 #include <android-base/stringprintf.h>
-#include <utils/Log.h>
 
 #include "NetdClient.h"
 #include "binder/IServiceManager.h"
@@ -100,7 +100,7 @@ bool DnsResponderClient::SetResolversWithTls(const std::vector<std::string>& ser
     const auto& resolverParams = makeResolverParamsParcel(TEST_NETID, params, servers, domains,
                                                           name, tlsServers, fingerprints);
     const auto rv = mDnsResolvSrv->setResolverConfiguration(resolverParams);
-    if (!rv.isOk()) ALOGI("SetResolversWithTls() -> %s", rv.toString8().c_str());
+    if (!rv.isOk()) LOG(ERROR) << "SetResolversWithTls() -> " << rv.toString8();
     return rv.isOk();
 }
 

@@ -15,11 +15,10 @@
  */
 
 #define LOG_TAG "resolv"
-#define DBG 0
 
 #include "PrivateDnsConfiguration.h"
 
-#include <log/log.h>
+#include <android-base/logging.h>
 #include <netdb.h>
 #include <sys/socket.h>
 
@@ -44,7 +43,7 @@ bool parseServer(const char* server, sockaddr_storage* parsed) {
 
     int err = getaddrinfo(server, "853", &hints, &res);
     if (err != 0) {
-        ALOGW("Failed to parse server address (%s): %s", server, gai_strerror(err));
+        LOG(WARNING) << "Failed to parse server address (" << server << "): " << gai_strerror(err);
         return false;
     }
 
@@ -56,10 +55,8 @@ bool parseServer(const char* server, sockaddr_storage* parsed) {
 int PrivateDnsConfiguration::set(int32_t netId, uint32_t mark,
                                  const std::vector<std::string>& servers, const std::string& name,
                                  const std::set<std::vector<uint8_t>>& fingerprints) {
-    if (DBG) {
-        ALOGD("PrivateDnsConfiguration::set(%u, 0x%x, %zu, %s, %zu)", netId, mark, servers.size(),
-              name.c_str(), fingerprints.size());
-    }
+    LOG(VERBOSE) << "PrivateDnsConfiguration::set(" << netId << ", " << mark << ", "
+                 << servers.size() << ", " << name << ", " << fingerprints.size() << ")";
 
     const bool explicitlyConfigured = !name.empty() || !fingerprints.empty();
 
@@ -94,7 +91,7 @@ int PrivateDnsConfiguration::set(int32_t netId, uint32_t mark,
         bool added;
         std::tie(netPair, added) = mPrivateDnsTransports.emplace(netId, PrivateDnsTracker());
         if (!added) {
-            ALOGE("Memory error while recording private DNS for netId %d", netId);
+            LOG(ERROR) << "Memory error while recording private DNS for netId " << netId;
             return -ENOMEM;
         }
     }
@@ -161,9 +158,7 @@ void PrivateDnsConfiguration::getStatus(unsigned netId, ExternalPrivateDnsStatus
 }
 
 void PrivateDnsConfiguration::clear(unsigned netId) {
-    if (DBG) {
-        ALOGD("PrivateDnsConfiguration::clear(%u)", netId);
-    }
+    LOG(DEBUG) << "PrivateDnsConfiguration::clear(" << netId << ")";
     std::lock_guard guard(mPrivateDnsLock);
     mPrivateDnsModes.erase(netId);
     mPrivateDnsTransports.erase(netId);
@@ -172,15 +167,12 @@ void PrivateDnsConfiguration::clear(unsigned netId) {
 void PrivateDnsConfiguration::validatePrivateDnsProvider(const DnsTlsServer& server,
                                                          PrivateDnsTracker& tracker, unsigned netId,
                                                          uint32_t mark) REQUIRES(mPrivateDnsLock) {
-    if (DBG) {
-        ALOGD("validatePrivateDnsProvider(%s, %u)", addrToString(&server.ss).c_str(), netId);
-    }
+    LOG(VERBOSE) << "validatePrivateDnsProvider(" << addrToString(&server.ss) << ", " << netId
+                 << ")";
 
     tracker[server] = Validation::in_process;
-    if (DBG) {
-        ALOGD("Server %s marked as in_process.  Tracker now has size %zu",
-              addrToString(&server.ss).c_str(), tracker.size());
-    }
+    LOG(VERBOSE) << "Server " << addrToString(&server.ss)
+                 << " marked as in_process.  Tracker now has size " << tracker.size();
     // Note that capturing |server| and |netId| in this lambda create copies.
     std::thread validate_thread([this, server, netId, mark] {
         // cat /proc/sys/net/ipv4/tcp_syn_retries yields "6".
@@ -205,10 +197,8 @@ void PrivateDnsConfiguration::validatePrivateDnsProvider(const DnsTlsServer& ser
             // ::validate() is a blocking call that performs network operations.
             // It can take milliseconds to minutes, up to the SYN retry limit.
             const bool success = DnsTlsTransport::validate(server, netId, mark);
-            if (DBG) {
-                ALOGD("validateDnsTlsServer returned %d for %s", success,
-                      addrToString(&server.ss).c_str());
-            }
+            LOG(VERBOSE) << "validateDnsTlsServer returned " << success << " for "
+                         << addrToString(&server.ss);
 
             const bool needs_reeval = this->recordPrivateDnsValidation(server, netId, success);
             if (!needs_reeval) {
@@ -234,13 +224,13 @@ bool PrivateDnsConfiguration::recordPrivateDnsValidation(const DnsTlsServer& ser
 
     auto netPair = mPrivateDnsTransports.find(netId);
     if (netPair == mPrivateDnsTransports.end()) {
-        ALOGW("netId %u was erased during private DNS validation", netId);
+        LOG(WARNING) << "netId " << netId << " was erased during private DNS validation";
         return DONT_REEVALUATE;
     }
 
     const auto mode = mPrivateDnsModes.find(netId);
     if (mode == mPrivateDnsModes.end()) {
-        ALOGW("netId %u has no private DNS validation mode", netId);
+        LOG(WARNING) << "netId " << netId << " has no private DNS validation mode";
         return DONT_REEVALUATE;
     }
     const bool modeDoesReevaluation = (mode->second == PrivateDnsMode::STRICT);
@@ -251,15 +241,15 @@ bool PrivateDnsConfiguration::recordPrivateDnsValidation(const DnsTlsServer& ser
     auto& tracker = netPair->second;
     auto serverPair = tracker.find(server);
     if (serverPair == tracker.end()) {
-        ALOGW("Server %s was removed during private DNS validation",
-              addrToString(&server.ss).c_str());
+        LOG(WARNING) << "Server " << addrToString(&server.ss)
+                     << " was removed during private DNS validation";
         success = false;
         reevaluationStatus = DONT_REEVALUATE;
     } else if (!(serverPair->first == server)) {
         // TODO: It doesn't seem correct to overwrite the tracker entry for
         // |server| down below in this circumstance... Fix this.
-        ALOGW("Server %s was changed during private DNS validation",
-              addrToString(&server.ss).c_str());
+        LOG(WARNING) << "Server " << addrToString(&server.ss)
+                     << " was changed during private DNS validation";
         success = false;
         reevaluationStatus = DONT_REEVALUATE;
     }
@@ -270,30 +260,25 @@ bool PrivateDnsConfiguration::recordPrivateDnsValidation(const DnsTlsServer& ser
         for (const auto& it : listeners) {
             it->onPrivateDnsValidationEvent(netId, addrToString(&server.ss), server.name, success);
         }
-        if (DBG) {
-            ALOGD("Sent validation %s event on netId %u for %s with hostname %s",
-                  success ? "success" : "failure", netId, addrToString(&server.ss).c_str(),
-                  server.name.c_str());
-        }
+        LOG(VERBOSE) << "Sent validation " << (success ? "success" : "failure")
+                     << " event on netId " << netId << " for " << addrToString(&server.ss)
+                     << " with hostname " << server.name;
     } else {
-        ALOGE("Validation event not sent since no INetdEventListener receiver is available.");
+        LOG(ERROR)
+                << "Validation event not sent since no INetdEventListener receiver is available.";
     }
 
     if (success) {
         tracker[server] = Validation::success;
-        if (DBG) {
-            ALOGD("Validation succeeded for %s! Tracker now has %zu entries.",
-                  addrToString(&server.ss).c_str(), tracker.size());
-        }
+        LOG(VERBOSE) << "Validation succeeded for " << addrToString(&server.ss)
+                     << "! Tracker now has " << tracker.size() << " entries.";
     } else {
         // Validation failure is expected if a user is on a captive portal.
         // TODO: Trigger a second validation attempt after captive portal login
         // succeeds.
         tracker[server] = (reevaluationStatus == NEEDS_REEVALUATION) ? Validation::in_process
                                                                      : Validation::fail;
-        if (DBG) {
-            ALOGD("Validation failed for %s!", addrToString(&server.ss).c_str());
-        }
+        LOG(VERBOSE) << "Validation failed for " << addrToString(&server.ss) << "!";
     }
 
     return reevaluationStatus;
