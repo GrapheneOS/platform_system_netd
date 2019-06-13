@@ -28,9 +28,6 @@
 #include <netdutils/UidConstants.h>
 #include <private/android_filesystem_config.h>
 
-// Referred from SHA256_DIGEST_LENGTH in boringssl
-constexpr size_t SHA256_SIZE = 32;
-
 enum IptablesTarget { V4, V6, V4V6 };
 
 int execIptablesRestore(IptablesTarget target, const std::string& commands);

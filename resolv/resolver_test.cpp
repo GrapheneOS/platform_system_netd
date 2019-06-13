@@ -30,6 +30,7 @@
 #include <gtest/gtest.h>
 #include <netdb.h>
 #include <netdutils/InternetAddresses.h>
+#include <netdutils/NetworkConstants.h>  // SHA256_SIZE
 #include <netdutils/ResponseCode.h>
 #include <netdutils/SocketOption.h>
 #include <netinet/in.h>
@@ -50,7 +51,6 @@
 #include <thread>
 
 #include "NetdClient.h"
-#include "NetdConstants.h"
 #include "ResolverStats.h"
 #include "android/net/IDnsResolver.h"
 #include "binder/IServiceManager.h"
@@ -1485,7 +1485,7 @@ TEST_F(ResolverTest, TlsBypass) {
 
     const unsigned BYPASS_NETID = NETID_USE_LOCAL_NAMESERVERS | TEST_NETID;
 
-    const std::vector<uint8_t> NOOP_FINGERPRINT(SHA256_SIZE, 0U);
+    const std::vector<uint8_t> NOOP_FINGERPRINT(android::netdutils::SHA256_SIZE, 0U);
 
     const char ADDR4[] = "192.0.2.1";
     const char ADDR6[] = "2001:db8::1";
@@ -1619,7 +1619,7 @@ TEST_F(ResolverTest, TlsBypass) {
 }
 
 TEST_F(ResolverTest, StrictMode_NoTlsServers) {
-    const std::vector<uint8_t> NOOP_FINGERPRINT(SHA256_SIZE, 0U);
+    const std::vector<uint8_t> NOOP_FINGERPRINT(android::netdutils::SHA256_SIZE, 0U);
     constexpr char cleartext_addr[] = "127.0.0.53";
     const std::vector<std::string> servers = { cleartext_addr };
     constexpr char host_name[] = "strictmode.notlsips.example.com.";
@@ -2204,7 +2204,7 @@ TEST_F(ResolverTest, BrokenEdns) {
     const char STRICT[] = "strict";
     const char GETHOSTBYNAME[] = "gethostbyname";
     const char GETADDRINFO[] = "getaddrinfo";
-    const std::vector<uint8_t> NOOP_FINGERPRINT(SHA256_SIZE, 0U);
+    const std::vector<uint8_t> NOOP_FINGERPRINT(android::netdutils::SHA256_SIZE, 0U);
     const char ADDR4[] = "192.0.2.1";
     const char CLEARTEXT_ADDR[] = "127.0.0.53";
     const char CLEARTEXT_PORT[] = "53";

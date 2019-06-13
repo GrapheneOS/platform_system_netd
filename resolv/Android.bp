@@ -82,7 +82,6 @@ cc_library {
     ],
     include_dirs: [
         "system/netd/include",
-        "system/netd/server",
     ],
     export_include_dirs: ["include"],
     // TODO: pie in the sky: make this code clang-tidy clean
@@ -152,7 +151,6 @@ cc_test {
     ],
     include_dirs: [
         "system/netd/resolv/include",
-        "system/netd/server",
     ],
     shared_libs: [
         "libbase",

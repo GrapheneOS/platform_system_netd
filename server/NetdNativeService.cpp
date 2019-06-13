@@ -40,7 +40,6 @@
 #include "BinderUtil.h"
 #include "Controllers.h"
 #include "InterfaceController.h"
-#include "NetdConstants.h"  // SHA256_SIZE
 #include "NetdNativeService.h"
 #include "NetdPermissions.h"
 #include "OemNetdListener.h"

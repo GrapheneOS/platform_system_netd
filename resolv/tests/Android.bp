@@ -10,8 +10,6 @@ cc_test {
     include_dirs: [
         "system/netd/resolv",
         "system/netd/resolv/include",
-        // TODO: stop including NetdConstants.h, copy ScopedAddrinfo out
-        "system/netd/server",
     ],
     shared_libs: [
         "libbase",
