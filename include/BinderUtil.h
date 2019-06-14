@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
-#ifndef NETD_INCLUDE_BINDER_UTIL_H
-#define NETD_INCLUDE_BINDER_UTIL_H
+#pragma once
+
+#include <android-base/stringprintf.h>
+#include <json/value.h>
+#include <json/writer.h>
 
 #ifdef ANDROID_BINDER_STATUS_H
 #define IS_BINDER_OK(__ex__) (__ex__ == ::android::binder::Status::EX_NONE)
@@ -104,5 +107,3 @@ void binderCallLogFn(const Json::Value& logTransaction, const LogFn& logFn) {
             ::android::base::StringPrintf(" <%.2fms>", logTransaction["duration_ms"].asFloat()));
     logFn(output);
 }
-
-#endif /* NETD_INCLUDE_BINDER_UTIL_H */
