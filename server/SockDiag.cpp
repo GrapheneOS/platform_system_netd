@@ -33,9 +33,9 @@
 
 #include <android-base/strings.h>
 #include <log/log.h>
+#include <netdutils/InternetAddresses.h>
 #include <netdutils/Stopwatch.h>
 
-#include "NetdConstants.h"
 #include "Permission.h"
 
 #ifndef SOCK_DESTROY
@@ -46,6 +46,7 @@
 
 namespace android {
 
+using netdutils::ScopedAddrinfo;
 using netdutils::Stopwatch;
 
 namespace net {

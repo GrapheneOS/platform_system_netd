@@ -24,13 +24,13 @@
 
 #include <netdb.h>
 
+#include <Fwmark.h>
 #include <aidl/android/net/IDnsResolver.h>
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 
 #include "Dns64Configuration.h"
 #include "DnsResolver.h"
-#include "Fwmark.h"
 #include "PrivateDnsConfiguration.h"
 #include "ResolverEventReporter.h"
 #include "ResolverStats.h"
