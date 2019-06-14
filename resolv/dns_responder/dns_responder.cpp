@@ -821,7 +821,7 @@ bool DNSResponder::addAnswerRecords(const DNSQuestion& question,
                     .rclass = ns_class::ns_c_in,
                     .ttl = 5,  // seconds
             };
-            fillAnswerRdata(it->second, record);
+            if (!fillAnswerRdata(it->second, record)) return false;
             answers->push_back(std::move(record));
             if (rtype != ns_type::ns_t_cname) break;
             rname = it->second;
