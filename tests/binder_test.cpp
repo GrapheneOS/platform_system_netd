@@ -61,6 +61,7 @@
 #include "XfrmController.h"
 #include "android/net/INetd.h"
 #include "binder/IServiceManager.h"
+#include "netdutils/InternetAddresses.h"
 #include "netdutils/Stopwatch.h"
 #include "netdutils/Syscalls.h"
 #include "netid_client.h"  // NETID_UNSET
@@ -93,6 +94,7 @@ using android::net::InterfaceController;
 using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
+using android::netdutils::ScopedAddrinfo;
 using android::netdutils::sSyscalls;
 using android::netdutils::Stopwatch;
 

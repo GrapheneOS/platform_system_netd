@@ -21,20 +21,18 @@
 #include <set>
 #include <vector>
 
+#include <BinderUtil.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
-#include <json/value.h>
-#include <json/writer.h>
 #include <log/log.h>
 #include <netdutils/DumpWriter.h>
+#include <netdutils/NetworkConstants.h>  // SHA256_SIZE
 #include <openssl/base64.h>
 #include <private/android_filesystem_config.h>  // AID_SYSTEM
 
-#include "BinderUtil.h"
 #include "DnsResolver.h"
-#include "NetdConstants.h"    // SHA256_SIZE
 #include "NetdPermissions.h"  // PERM_*
 #include "ResolverEventReporter.h"
 #include "resolv_cache.h"
@@ -186,7 +184,7 @@ static std::vector<uint8_t> parseBase64(const std::string& input) {
     } else {
         decoded.clear();
     }
-    if (out_len != SHA256_SIZE) {
+    if (out_len != android::netdutils::SHA256_SIZE) {
         decoded.clear();
     }
     return decoded;
