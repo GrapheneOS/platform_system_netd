@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#ifndef NETDUTILS_INTERNETADDRESSES_H_
-#define NETDUTILS_INTERNETADDRESSES_H_
+#pragma once
 
+#include <netdb.h>
 #include <netinet/in.h>
 #include <stdint.h>
 #include <cstring>
@@ -103,6 +103,16 @@ static_assert(AF_INET6 <= std::numeric_limits<uint8_t>::max(), "AF_INET6 value t
 static_assert(sizeof(compact_ipdata) == 24U, "compact_ipdata unexpectedly large");
 
 }  // namespace internal_
+
+struct AddrinfoDeleter {
+    void operator()(struct addrinfo* p) const {
+        if (p != nullptr) {
+            freeaddrinfo(p);
+        }
+    }
+};
+
+typedef std::unique_ptr<struct addrinfo, struct AddrinfoDeleter> ScopedAddrinfo;
 
 inline bool usesScopedIds(const in6_addr& ipv6) {
     return (IN6_IS_ADDR_LINKLOCAL(&ipv6) || IN6_IS_ADDR_MC_LINKLOCAL(&ipv6));
@@ -291,5 +301,3 @@ class IPSockAddr {
 
 }  // namespace netdutils
 }  // namespace android
-
-#endif  // NETDUTILS_INTERNETADDRESSES_H_

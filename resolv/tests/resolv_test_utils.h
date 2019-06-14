@@ -23,7 +23,8 @@
 #include <string>
 #include <vector>
 
-#include "NetdConstants.h"
+#include <netdutils/InternetAddresses.h>
+
 #include "ResolverStats.h"
 
 #include "android/net/IDnsResolver.h"
@@ -37,9 +38,9 @@ size_t GetNumQueries(const test::DNSResponder& dns, const char* name);
 size_t GetNumQueriesForType(const test::DNSResponder& dns, ns_type type, const char* name);
 std::string ToString(const hostent* he);
 std::string ToString(const addrinfo* ai);
-std::string ToString(const ScopedAddrinfo& ai);
+std::string ToString(const android::netdutils::ScopedAddrinfo& ai);
 std::vector<std::string> ToStrings(const addrinfo* ai);
-std::vector<std::string> ToStrings(const ScopedAddrinfo& ai);
+std::vector<std::string> ToStrings(const android::netdutils::ScopedAddrinfo& ai);
 
 bool GetResolverInfo(android::net::IDnsResolver* dnsResolverService, unsigned netId,
                      std::vector<std::string>* servers, std::vector<std::string>* domains,

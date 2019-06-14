@@ -12,9 +12,6 @@ cc_library_static {
         "netd_aidl_interface-V2-cpp",
     ],
     static_libs: ["libutils"],
-    include_dirs: [
-        "system/netd/server",
-    ],
     srcs: [
         "dns_responder.cpp",
         "dns_responder_client.cpp",

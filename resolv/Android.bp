@@ -80,9 +80,8 @@ cc_library {
     shared_libs: [
         "libbinder_ndk",
     ],
-    include_dirs: [
-        "system/netd/include",
-        "system/netd/server",
+    header_libs: [
+        "libnetd_client_headers",
     ],
     export_include_dirs: ["include"],
     // TODO: pie in the sky: make this code clang-tidy clean
@@ -152,7 +151,6 @@ cc_test {
     ],
     include_dirs: [
         "system/netd/resolv/include",
-        "system/netd/server",
     ],
     shared_libs: [
         "libbase",

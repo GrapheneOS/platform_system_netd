@@ -35,11 +35,11 @@
 #define LOG_TAG "DNSResponder"
 #include <android-base/logging.h>
 #include <android-base/strings.h>
+#include <netdutils/InternetAddresses.h>
 #include <netdutils/SocketOption.h>
 
-#include "NetdConstants.h"
-
 using android::netdutils::enableSockopt;
+using android::netdutils::ScopedAddrinfo;
 
 namespace test {
 

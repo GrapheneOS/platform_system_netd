@@ -29,11 +29,12 @@
 
 #define LOG_TAG "DnsTlsFrontend"
 #include <android-base/logging.h>
+#include <netdutils/InternetAddresses.h>
+#include <netdutils/NetworkConstants.h>  // SHA256_SIZE
 #include <netdutils/SocketOption.h>
 
-#include "NetdConstants.h"  // SHA256_SIZE
-
 using android::netdutils::enableSockopt;
+using android::netdutils::ScopedAddrinfo;
 
 namespace {
 
@@ -46,7 +47,7 @@ bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
         LOG(ERROR) << "SPKI length mismatch";
         return false;
     }
-    out->resize(SHA256_SIZE);
+    out->resize(android::netdutils::SHA256_SIZE);
     unsigned int digest_len = 0;
     int ret = EVP_Digest(spki, spki_len, out->data(), &digest_len, EVP_sha256(), nullptr);
     if (ret != 1) {
