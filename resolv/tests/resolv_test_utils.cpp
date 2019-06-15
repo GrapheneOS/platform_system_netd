@@ -19,7 +19,10 @@
 
 #include <arpa/inet.h>
 
+#include <netdutils/InternetAddresses.h>
+
 using android::net::ResolverStats;
+using android::netdutils::ScopedAddrinfo;
 
 std::string ToString(const hostent* he) {
     if (he == nullptr) return "<null>";

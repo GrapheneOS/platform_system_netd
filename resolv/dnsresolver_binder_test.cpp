@@ -29,13 +29,13 @@
 #include <binder/IServiceManager.h>
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
+#include <netdutils/NetworkConstants.h>  // SHA256_SIZE
 #include <netdutils/Stopwatch.h>
 #include <openssl/base64.h>
 
 #include "tests/dns_metrics_listener/base_metrics_listener.h"
 #include "tests/dns_metrics_listener/test_metrics.h"
 
-#include "NetdConstants.h"  // SHA256_SIZE
 #include "ResolverStats.h"
 #include "dns_responder.h"
 #include "dns_responder_client.h"
@@ -251,9 +251,9 @@ TEST_F(DnsResolverBinderTest, RegisterEventListener_onDnsEvent) {
 
 TEST_F(DnsResolverBinderTest, SetResolverConfiguration_Tls) {
     const std::vector<std::string> LOCALLY_ASSIGNED_DNS{"8.8.8.8", "2001:4860:4860::8888"};
-    std::vector<uint8_t> fp(SHA256_SIZE);
+    std::vector<uint8_t> fp(android::netdutils::SHA256_SIZE);
     std::vector<uint8_t> short_fp(1);
-    std::vector<uint8_t> long_fp(SHA256_SIZE + 1);
+    std::vector<uint8_t> long_fp(android::netdutils::SHA256_SIZE + 1);
     std::vector<std::string> test_domains;
     std::vector<int> test_params = {300, 25, 8, 8};
     static const struct TestData {
