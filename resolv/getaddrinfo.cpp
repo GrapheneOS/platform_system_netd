@@ -267,80 +267,67 @@ int getaddrinfo_numeric(const char* hostname, const char* servname, addrinfo hin
     return android_getaddrinfofornetcontext(hostname, servname, &hints, &netcontext, result);
 }
 
-int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
-                                     const struct addrinfo* hints,
-                                     const struct android_net_context* netcontext,
-                                     struct addrinfo** res) {
-    struct addrinfo sentinel = {};
-    struct addrinfo* cur = &sentinel;
-    int error = 0;
+namespace {
 
+int validateHints(const addrinfo* _Nonnull hints) {
+    if (!hints) return EAI_BADHINTS;
+
+    // error check for hints
+    if (hints->ai_addrlen || hints->ai_canonname || hints->ai_addr || hints->ai_next) {
+        return EAI_BADHINTS;
+    }
+    if (hints->ai_flags & ~AI_MASK) {
+        return EAI_BADFLAGS;
+    }
+    if (!(hints->ai_family == PF_UNSPEC || hints->ai_family == PF_INET ||
+          hints->ai_family == PF_INET6)) {
+        return EAI_FAMILY;
+    }
+
+    if (hints->ai_socktype == ANY || hints->ai_protocol == ANY) return 0;
+
+    // if both socktype/protocol are specified, check if they are meaningful combination.
+    for (const Explore& ex : explore_options) {
+        if (hints->ai_family != ex.e_af) continue;
+        if (ex.e_socktype == ANY) continue;
+        if (ex.e_protocol == ANY) continue;
+        if (hints->ai_socktype == ex.e_socktype && hints->ai_protocol != ex.e_protocol) {
+            return EAI_BADHINTS;
+        }
+    }
+
+    return 0;
+}
+
+}  // namespace
+
+int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
+                                     const addrinfo* hints, const android_net_context* netcontext,
+                                     addrinfo** res) {
     // hostname is allowed to be nullptr
     // servname is allowed to be nullptr
     // hints is allowed to be nullptr
     assert(res != nullptr);
     assert(netcontext != nullptr);
 
-    struct addrinfo ai = {
-            .ai_flags = 0,
-            .ai_family = PF_UNSPEC,
-            .ai_socktype = ANY,
-            .ai_protocol = ANY,
-            .ai_addrlen = 0,
-            .ai_canonname = nullptr,
-            .ai_addr = nullptr,
-            .ai_next = nullptr,
-    };
+    addrinfo sentinel = {};
+    addrinfo* cur = &sentinel;
+    int error = 0;
 
     do {
-        if (hostname == NULL && servname == NULL) {
+        if (hostname == nullptr && servname == nullptr) {
             error = EAI_NONAME;
             break;
         }
-        if (hints) {
-            /* error check for hints */
-            if (hints->ai_addrlen || hints->ai_canonname || hints->ai_addr || hints->ai_next) {
-                error = EAI_BADHINTS;
-                break;
-            }
-            if (hints->ai_flags & ~AI_MASK) {
-                error = EAI_BADFLAGS;
-                break;
-            }
 
-            if (!(hints->ai_family == PF_UNSPEC || hints->ai_family == PF_INET ||
-                  hints->ai_family == PF_INET6)) {
-                error = EAI_FAMILY;
-                break;
-            }
+        if (hints && (error = validateHints(hints))) break;
+        addrinfo ai = hints ? *hints : addrinfo{};
 
-            ai = *hints;
-
-            /*
-             * if both socktype/protocol are specified, check if they
-             * are meaningful combination.
-             */
-            if (ai.ai_socktype != ANY && ai.ai_protocol != ANY) {
-                for (const Explore& ex : explore_options) {
-                    if (ai.ai_family != ex.e_af) continue;
-                    if (ex.e_socktype == ANY) continue;
-                    if (ex.e_protocol == ANY) continue;
-                    if (ai.ai_socktype == ex.e_socktype && ai.ai_protocol != ex.e_protocol) {
-                        error = EAI_BADHINTS;
-                        break;
-                    }
-                }
-                if (error) break;
-            }
-        }
-
-        /*
-         * Check for special cases:
-         * (1) numeric servname is disallowed if socktype/protocol are left unspecified.
-         * (2) servname is disallowed for raw and other inet{,6} sockets.
-         */
+        // Check for special cases:
+        // (1) numeric servname is disallowed if socktype/protocol are left unspecified.
+        // (2) servname is disallowed for raw and other inet{,6} sockets.
         if (MATCH_FAMILY(ai.ai_family, PF_INET, 1) || MATCH_FAMILY(ai.ai_family, PF_INET6, 1)) {
-            struct addrinfo tmp = ai;
+            addrinfo tmp = ai;
             if (tmp.ai_family == PF_UNSPEC) {
                 tmp.ai_family = PF_INET6;
             }
@@ -357,7 +344,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
             if (!MATCH(ai.ai_socktype, ex.e_socktype, WILD_SOCKTYPE(ex))) continue;
             if (!MATCH(ai.ai_protocol, ex.e_protocol, WILD_PROTOCOL(ex))) continue;
 
-            struct addrinfo tmp = ai;
+            addrinfo tmp = ai;
             if (tmp.ai_family == PF_UNSPEC) tmp.ai_family = ex.e_af;
             if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
             if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
@@ -375,11 +362,8 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
         }
         if (error) break;
 
-        /*
-         * XXX
-         * If numeric representation of AF1 can be interpreted as FQDN
-         * representation of AF2, we need to think again about the code below.
-         */
+        // If numeric representation of AF1 can be interpreted as FQDN
+        // representation of AF2, we need to think again about the code below.
         if (sentinel.ai_next) break;
 
         if (hostname == nullptr) {
@@ -391,37 +375,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
             break;
         }
 
-        /*
-         * hostname as alphabetical name.
-         * We would like to prefer AF_INET6 over AF_INET, so we'll make a outer loop by AFs.
-         */
-        for (const Explore& ex : explore_options) {
-            // Require exact match for family field
-            if (ai.ai_family != ex.e_af) continue;
-
-            if (!MATCH(ai.ai_socktype, ex.e_socktype, WILD_SOCKTYPE(ex))) {
-                continue;
-            }
-            if (!MATCH(ai.ai_protocol, ex.e_protocol, WILD_PROTOCOL(ex))) {
-                continue;
-            }
-
-            struct addrinfo tmp = ai;
-            if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
-            if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
-
-            LOG(DEBUG) << __func__ << ": explore_fqdn(): ai_family=" << tmp.ai_family
-                       << " ai_socktype=" << tmp.ai_socktype << " ai_protocol=" << tmp.ai_protocol;
-            error = explore_fqdn(&tmp, hostname, servname, &cur->ai_next, netcontext);
-
-            while (cur->ai_next) cur = cur->ai_next;
-        }
-
-        if (sentinel.ai_next) {
-            error = 0;
-        } else if (error == 0) {
-            error = EAI_FAIL;
-        }
+        return resolv_getaddrinfo(hostname, servname, hints, netcontext, res);
     } while (0);
 
     if (error) {
@@ -433,38 +387,85 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
     return error;
 }
 
+int resolv_getaddrinfo(const char* _Nonnull hostname, const char* servname, const addrinfo* hints,
+                       const android_net_context* _Nonnull netcontext, addrinfo** _Nonnull res) {
+    if (hostname == nullptr && servname == nullptr) return EAI_NONAME;
+    if (hostname == nullptr) return EAI_NODATA;
+
+    // hostname is allowed to be nullptr
+    // servname is allowed to be nullptr
+    // hints is allowed to be nullptr
+    assert(res != nullptr);
+    assert(netcontext != nullptr);
+
+    int error = EAI_FAIL;
+    if (hints && (error = validateHints(hints))) {
+        *res = nullptr;
+        return error;
+    }
+
+    addrinfo ai = hints ? *hints : addrinfo{};
+    addrinfo sentinel = {};
+    addrinfo* cur = &sentinel;
+    // hostname as alphanumeric name.
+    // We would like to prefer AF_INET6 over AF_INET, so we'll make a outer loop by AFs.
+    for (const Explore& ex : explore_options) {
+        // Require exact match for family field
+        if (ai.ai_family != ex.e_af) continue;
+
+        if (!MATCH(ai.ai_socktype, ex.e_socktype, WILD_SOCKTYPE(ex))) continue;
+
+        if (!MATCH(ai.ai_protocol, ex.e_protocol, WILD_PROTOCOL(ex))) continue;
+
+        addrinfo tmp = ai;
+        if (tmp.ai_socktype == ANY && ex.e_socktype != ANY) tmp.ai_socktype = ex.e_socktype;
+        if (tmp.ai_protocol == ANY && ex.e_protocol != ANY) tmp.ai_protocol = ex.e_protocol;
+
+        LOG(DEBUG) << __func__ << ": explore_fqdn(): ai_family=" << tmp.ai_family
+                   << " ai_socktype=" << tmp.ai_socktype << " ai_protocol=" << tmp.ai_protocol;
+        error = explore_fqdn(&tmp, hostname, servname, &cur->ai_next, netcontext);
+
+        while (cur->ai_next) cur = cur->ai_next;
+    }
+
+    if ((*res = sentinel.ai_next)) return 0;
+
+    freeaddrinfo(sentinel.ai_next);
+    *res = nullptr;
+    return error;
+}
+
 // FQDN hostname, DNS lookup
-static int explore_fqdn(const struct addrinfo* pai, const char* hostname, const char* servname,
-                        struct addrinfo** res, const struct android_net_context* netcontext) {
-    struct addrinfo* result;
+static int explore_fqdn(const addrinfo* pai, const char* hostname, const char* servname,
+                        addrinfo** res, const android_net_context* netcontext) {
+    assert(pai != nullptr);
+    // hostname may be nullptr
+    // servname may be nullptr
+    assert(res != nullptr);
+
+    addrinfo* result = nullptr;
     int error = 0;
 
-    assert(pai != NULL);
-    /* hostname may be NULL */
-    /* servname may be NULL */
-    assert(res != NULL);
-
-    result = NULL;
-
-    // If the servname does not match socktype/protocol, ignore it.
-    if (get_portmatch(pai, servname) != 0) return 0;
+    // If the servname does not match socktype/protocol, return error code.
+    if ((error = get_portmatch(pai, servname))) return error;
 
     if (!files_getaddrinfo(hostname, pai, &result)) {
         error = dns_getaddrinfo(hostname, pai, netcontext, &result);
     }
-    if (!error) {
-        struct addrinfo* cur;
-        for (cur = result; cur; cur = cur->ai_next) {
-            GET_PORT(cur, servname);
-            /* canonname should be filled already */
-        }
-        *res = result;
-        return 0;
+    if (error) {
+        freeaddrinfo(result);
+        return error;
     }
 
-free:
-    freeaddrinfo(result);
-    return error;
+    for (addrinfo* cur = result; cur; cur = cur->ai_next) {
+        // canonname should be filled already
+        if ((error = get_port(cur, servname, 0))) {
+            freeaddrinfo(result);
+            return error;
+        }
+    }
+    *res = result;
+    return 0;
 }
 
 /*

@@ -112,18 +112,18 @@ class TestBase : public ::testing::Test {
     static constexpr char kBadCharInTheMiddleOfLabelHost[] = "hello.ex^ample.com.";
 };
 
-class GetAddrInfoForNetContextTest : public TestBase {};
+class ResolvGetAddrInfoTest : public TestBase {};
 class GetHostByNameForNetContextTest : public TestBase {};
 
-TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
-    // Both null "netcontext" and null "res" of android_getaddrinfofornetcontext() are not tested
+TEST_F(ResolvGetAddrInfoTest, InvalidParameters) {
+    // Both null "netcontext" and null "res" of resolv_getaddrinfo() are not tested
     // here because they are checked by assert() without returning any error number.
 
     // Invalid hostname and servname.
     // Both hostname and servname are null pointers. Expect error number EAI_NONAME.
     struct addrinfo* result = nullptr;
-    int rv = android_getaddrinfofornetcontext(nullptr /*hostname*/, nullptr /*servname*/,
-                                              nullptr /*hints*/, &mNetcontext, &result);
+    int rv = resolv_getaddrinfo(nullptr /*hostname*/, nullptr /*servname*/, nullptr /*hints*/,
+                                &mNetcontext, &result);
     EXPECT_EQ(EAI_NONAME, rv);
     if (result) {
         freeaddrinfo(result);
@@ -178,8 +178,7 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
                 .ai_next = config.ai_next,
         };
 
-        rv = android_getaddrinfofornetcontext("localhost", nullptr /*servname*/, &hints,
-                                              &mNetcontext, &result);
+        rv = resolv_getaddrinfo("localhost", nullptr /*servname*/, &hints, &mNetcontext, &result);
         EXPECT_EQ(config.expected_eai_error, rv);
 
         if (result) {
@@ -189,7 +188,7 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
     }
 }
 
-TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_Family) {
+TEST_F(ResolvGetAddrInfoTest, InvalidParameters_Family) {
     for (int family = 0; family < AF_MAX; ++family) {
         if (family == AF_UNSPEC || family == AF_INET || family == AF_INET6) {
             continue;  // skip supported family
@@ -201,15 +200,15 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_Family) {
                 .ai_family = family,  // unsupported family
         };
 
-        int rv = android_getaddrinfofornetcontext("localhost", nullptr /*servname*/, &hints,
-                                                  &mNetcontext, &result);
+        int rv = resolv_getaddrinfo("localhost", nullptr /*servname*/, &hints, &mNetcontext,
+                                    &result);
         EXPECT_EQ(EAI_FAMILY, rv);
 
         if (result) freeaddrinfo(result);
     }
 }
 
-TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_MeaningfulSocktypeAndProtocolCombination) {
+TEST_F(ResolvGetAddrInfoTest, InvalidParameters_MeaningfulSocktypeAndProtocolCombination) {
     static const int families[] = {PF_INET, PF_INET6, PF_UNSPEC};
     // Skip to test socket type SOCK_RAW in meaningful combination (explore_options[]) of
     // system\netd\resolv\getaddrinfo.cpp. In explore_options[], the socket type SOCK_RAW always
@@ -248,8 +247,8 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_MeaningfulSocktypeAndProt
                         .ai_socktype = socktype,
                 };
 
-                int rv = android_getaddrinfofornetcontext("localhost", nullptr /*servname*/, &hints,
-                                                          &mNetcontext, &result);
+                int rv = resolv_getaddrinfo("localhost", nullptr /*servname*/, &hints, &mNetcontext,
+                                            &result);
                 EXPECT_EQ(EAI_BADHINTS, rv);
 
                 if (result) freeaddrinfo(result);
@@ -258,7 +257,7 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_MeaningfulSocktypeAndProt
     }
 }
 
-TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_PortNameAndNumber) {
+TEST_F(ResolvGetAddrInfoTest, InvalidParameters_PortNameAndNumber) {
     constexpr char http_portno[] = "80";
     constexpr char invalid_portno[] = "65536";  // out of valid port range from 0 to 65535
     constexpr char http_portname[] = "http";
@@ -280,18 +279,6 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_PortNameAndNumber) {
             {0, AF_INET, SOCK_RAW /*bad*/, http_portno, EAI_SERVICE},
             {0, AF_INET6, SOCK_RAW /*bad*/, http_portno, EAI_SERVICE},
             {0, AF_UNSPEC, SOCK_RAW /*bad*/, http_portno, EAI_SERVICE},
-            {0, AF_INET, SOCK_RDM /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_INET6, SOCK_RDM /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_UNSPEC, SOCK_RDM /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_INET, SOCK_SEQPACKET /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_INET6, SOCK_SEQPACKET /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_UNSPEC, SOCK_SEQPACKET /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_INET, SOCK_DCCP /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_INET6, SOCK_DCCP /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_UNSPEC, SOCK_DCCP /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_INET, SOCK_PACKET /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_INET6, SOCK_PACKET /*bad*/, http_portno, EAI_SOCKTYPE},
-            {0, AF_UNSPEC, SOCK_PACKET /*bad*/, http_portno, EAI_SOCKTYPE},
             {0, AF_INET, ANY, invalid_portno /*bad*/, EAI_SERVICE},
             {0, AF_INET, SOCK_STREAM, invalid_portno /*bad*/, EAI_SERVICE},
             {0, AF_INET, SOCK_DGRAM, invalid_portno /*bad*/, EAI_SERVICE},
@@ -332,15 +319,14 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_PortNameAndNumber) {
         };
 
         struct addrinfo* result = nullptr;
-        int rv = android_getaddrinfofornetcontext("localhost", config.servname, &hints,
-                                                  &mNetcontext, &result);
+        int rv = resolv_getaddrinfo("localhost", config.servname, &hints, &mNetcontext, &result);
         EXPECT_EQ(config.expected_eai_error, rv);
 
         if (result) freeaddrinfo(result);
     }
 }
 
-TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname_NoData) {
+TEST_F(ResolvGetAddrInfoTest, AlphabeticalHostname_NoData) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
     constexpr char v4_host_name[] = "v4only.example.com.";
@@ -356,7 +342,7 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname_NoData) {
     // Want AAAA answer but DNS server has A answer only.
     struct addrinfo* result = nullptr;
     const addrinfo hints = {.ai_family = AF_INET6};
-    int rv = android_getaddrinfofornetcontext("v4only", nullptr, &hints, &mNetcontext, &result);
+    int rv = resolv_getaddrinfo("v4only", nullptr, &hints, &mNetcontext, &result);
     EXPECT_LE(1U, GetNumQueries(dns, v4_host_name));
     EXPECT_EQ(nullptr, result);
     EXPECT_EQ(EAI_NODATA, rv);
@@ -364,7 +350,7 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname_NoData) {
     if (result) freeaddrinfo(result);
 }
 
-TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname) {
+TEST_F(ResolvGetAddrInfoTest, AlphabeticalHostname) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "sawadee.example.com.";
@@ -394,8 +380,7 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname) {
 
         struct addrinfo* result = nullptr;
         const struct addrinfo hints = {.ai_family = config.ai_family};
-        int rv =
-                android_getaddrinfofornetcontext("sawadee", nullptr, &hints, &mNetcontext, &result);
+        int rv = resolv_getaddrinfo("sawadee", nullptr, &hints, &mNetcontext, &result);
         EXPECT_EQ(0, rv);
         EXPECT_TRUE(result != nullptr);
         EXPECT_EQ(1U, GetNumQueries(dns, host_name));
@@ -405,7 +390,7 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname) {
     }
 }
 
-TEST_F(GetAddrInfoForNetContextTest, IllegalHostname) {
+TEST_F(ResolvGetAddrInfoTest, IllegalHostname) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
 
@@ -442,8 +427,7 @@ TEST_F(GetAddrInfoForNetContextTest, IllegalHostname) {
 
             addrinfo* res = nullptr;
             const addrinfo hints = {.ai_family = family};
-            int rv =
-                    android_getaddrinfofornetcontext(hostname, nullptr, &hints, &mNetcontext, &res);
+            int rv = resolv_getaddrinfo(hostname, nullptr, &hints, &mNetcontext, &res);
             ScopedAddrinfo result(res);
             EXPECT_EQ(nullptr, result);
             EXPECT_EQ(EAI_FAIL, rv);
@@ -451,7 +435,7 @@ TEST_F(GetAddrInfoForNetContextTest, IllegalHostname) {
     }
 }
 
-TEST_F(GetAddrInfoForNetContextTest, ServerResponseError) {
+TEST_F(ResolvGetAddrInfoTest, ServerResponseError) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "hello.example.com.";
@@ -486,8 +470,7 @@ TEST_F(GetAddrInfoForNetContextTest, ServerResponseError) {
 
         struct addrinfo* result = nullptr;
         const struct addrinfo hints = {.ai_family = AF_UNSPEC};
-        int rv =
-                android_getaddrinfofornetcontext(host_name, nullptr, &hints, &mNetcontext, &result);
+        int rv = resolv_getaddrinfo(host_name, nullptr, &hints, &mNetcontext, &result);
         EXPECT_EQ(config.expected_eai_error, rv);
 
         if (result) freeaddrinfo(result);
@@ -495,7 +478,7 @@ TEST_F(GetAddrInfoForNetContextTest, ServerResponseError) {
 }
 
 // TODO: Add private DNS server timeout test.
-TEST_F(GetAddrInfoForNetContextTest, ServerTimeout) {
+TEST_F(ResolvGetAddrInfoTest, ServerTimeout) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
     constexpr char host_name[] = "hello.example.com.";
@@ -510,13 +493,13 @@ TEST_F(GetAddrInfoForNetContextTest, ServerTimeout) {
 
     struct addrinfo* result = nullptr;
     const struct addrinfo hints = {.ai_family = AF_UNSPEC};
-    int rv = android_getaddrinfofornetcontext("hello", nullptr, &hints, &mNetcontext, &result);
+    int rv = resolv_getaddrinfo("hello", nullptr, &hints, &mNetcontext, &result);
     EXPECT_EQ(NETD_RESOLV_TIMEOUT, rv);
 
     if (result) freeaddrinfo(result);
 }
 
-TEST_F(GetAddrInfoForNetContextTest, CnamesNoIpAddress) {
+TEST_F(ResolvGetAddrInfoTest, CnamesNoIpAddress) {
     constexpr char ACNAME[] = "acname";  // expect a cname in answer
     constexpr char CNAMES[] = "cnames";  // expect cname chain in answer
 
@@ -553,14 +536,14 @@ TEST_F(GetAddrInfoForNetContextTest, CnamesNoIpAddress) {
         addrinfo* res = nullptr;
         const addrinfo hints = {.ai_family = config.family};
 
-        int rv = android_getaddrinfofornetcontext(config.name, nullptr, &hints, &mNetcontext, &res);
+        int rv = resolv_getaddrinfo(config.name, nullptr, &hints, &mNetcontext, &res);
         ScopedAddrinfo result(res);
         EXPECT_EQ(nullptr, result);
         EXPECT_EQ(EAI_FAIL, rv);
     }
 }
 
-TEST_F(GetAddrInfoForNetContextTest, CnamesBrokenChainByIllegalCname) {
+TEST_F(ResolvGetAddrInfoTest, CnamesBrokenChainByIllegalCname) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
 
@@ -609,8 +592,7 @@ TEST_F(GetAddrInfoForNetContextTest, CnamesBrokenChainByIllegalCname) {
 
             addrinfo* res = nullptr;
             const addrinfo hints = {.ai_family = family};
-            int rv = android_getaddrinfofornetcontext(config.name, nullptr, &hints, &mNetcontext,
-                                                      &res);
+            int rv = resolv_getaddrinfo(config.name, nullptr, &hints, &mNetcontext, &res);
             ScopedAddrinfo result(res);
             EXPECT_EQ(nullptr, result);
             EXPECT_EQ(EAI_FAIL, rv);
@@ -618,7 +600,7 @@ TEST_F(GetAddrInfoForNetContextTest, CnamesBrokenChainByIllegalCname) {
     }
 }
 
-TEST_F(GetAddrInfoForNetContextTest, CnamesInfiniteLoop) {
+TEST_F(ResolvGetAddrInfoTest, CnamesInfiniteLoop) {
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_srv[] = "53";
 
@@ -637,7 +619,7 @@ TEST_F(GetAddrInfoForNetContextTest, CnamesInfiniteLoop) {
         addrinfo* res = nullptr;
         const addrinfo hints = {.ai_family = family};
 
-        int rv = android_getaddrinfofornetcontext("hello", nullptr, &hints, &mNetcontext, &res);
+        int rv = resolv_getaddrinfo("hello", nullptr, &hints, &mNetcontext, &res);
         ScopedAddrinfo result(res);
         EXPECT_EQ(nullptr, result);
         EXPECT_EQ(EAI_FAIL, rv);
@@ -922,16 +904,14 @@ TEST_F(GetHostByNameForNetContextTest, CnamesInfiniteLoop) {
     }
 }
 
-// Note that local host file function, files_getaddrinfo(), of android_getaddrinfofornetcontext()
+// Note that local host file function, files_getaddrinfo(), of resolv_getaddrinfo()
 // is not tested because it only returns a boolean (success or failure) without any error number.
 
 // TODO: Simplify the DNS server configuration, DNSResponder and resolv_set_nameservers_for_net, as
 //       ResolverTest does.
 // TODO: Use the most modern style std::size() to get array size but sizeof(x)/sizeof(x[0]).
 // TODO: Use ScopedAddrinfo to handle addrinfo pointers.
-// TODO: Add test for android_getaddrinfofornetcontext().
-//       - Invalid hostname.
-//           - NULL hostname, or numeric hostname.
+// TODO: Add test for resolv_getaddrinfo().
 //       - DNS response message parsing.
 //           - Unexpected type of resource record (RR).
 //           - Invalid length CNAME, or QNAME.

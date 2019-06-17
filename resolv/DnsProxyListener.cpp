@@ -650,7 +650,7 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     int32_t rv = 0;
     NetworkDnsEventReported dnsEvent;
     if (queryLimiter.start(uid)) {
-        rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, &result);
+        rv = resolv_getaddrinfo(mHost, mService, mHints, &mNetContext, &result);
         queryLimiter.finish(uid);
     } else {
         // Note that this error code is currently not passed down to the client.
