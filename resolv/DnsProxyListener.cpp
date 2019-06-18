@@ -620,8 +620,7 @@ void DnsProxyListener::GetAddrInfoHandler::doDns64Synthesis(int32_t* rv, addrinf
             mHints->ai_family = AF_INET;
             // Don't need to do freeaddrinfo(res) before starting new DNS lookup because previous
             // DNS lookup is failed with error EAI_NODATA.
-            *rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, res,
-                                                   event);
+            *rv = resolv_getaddrinfo(mHost, mService, mHints, &mNetContext, res, event);
             queryLimiter.finish(uid);
             if (*rv) {
                 *rv = EAI_NODATA;  // return original error code
