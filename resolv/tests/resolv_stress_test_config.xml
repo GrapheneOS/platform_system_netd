@@ -20,6 +20,7 @@
         <option name="cleanup" value="true" />
         <option name="push" value="resolv_stress_test->/data/local/tmp/resolv_stress_test" />
     </target_preparer>
+    <target_preparer class="com.android.tradefed.targetprep.RootTargetPreparer"/>
 
     <test class="com.android.tradefed.testtype.GTest" >
         <option name="native-test-device-path" value="/data/local/tmp" />
