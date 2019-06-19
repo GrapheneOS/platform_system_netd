@@ -94,9 +94,6 @@
 #include "res_state_ext.h"
 #include "resolv_private.h"
 
-
-static void res_setoptions(res_state, const char*, const char*);
-
 /*
  * Resolver state default settings.
  */
@@ -190,7 +187,6 @@ int res_vinit(res_state statp, int preinit) {
         for (pp = statp->dnsrch; *pp; pp++) LOG(DEBUG) << "\t" << *pp;
     }
 
-    if ((cp = getenv("RES_OPTIONS")) != NULL) res_setoptions(statp, cp, "env");
     if (nserv > 0) {
         statp->nscount = nserv;
         statp->options |= RES_INIT;
@@ -198,75 +194,6 @@ int res_vinit(res_state statp, int preinit) {
     return (0);
 }
 
-static void res_setoptions(res_state statp, const char* options, const char* source) {
-    const char* cp = options;
-    int i;
-    res_state_ext* ext = statp->_u._ext.ext;
-
-    LOG(DEBUG) << "res_setoptions(\"" << options << "\", \"" << source << "\")...";
-
-    while (*cp) {
-        /* skip leading and inner runs of spaces */
-        while (*cp == ' ' || *cp == '\t') cp++;
-        /* search for and process individual options */
-        if (!strncmp(cp, "ndots:", sizeof("ndots:") - 1)) {
-            i = atoi(cp + sizeof("ndots:") - 1);
-            if (i <= RES_MAXNDOTS)
-                statp->ndots = i;
-            else
-                statp->ndots = RES_MAXNDOTS;
-            LOG(DEBUG) << "\tndots=" << statp->ndots;
-
-        } else if (!strncmp(cp, "debug", sizeof("debug") - 1)) {
-            if (!(statp->options & RES_DEBUG)) {
-                LOG(DEBUG) << "res_setoptions(\"" << options << "\", \"" << source << "\")..";
-                statp->options |= RES_DEBUG;
-            }
-            LOG(DEBUG) << "\tdebug";
-
-        } else if (!strncmp(cp, "no_tld_query", sizeof("no_tld_query") - 1) ||
-                   !strncmp(cp, "no-tld-query", sizeof("no-tld-query") - 1)) {
-            statp->options |= RES_NOTLDQUERY;
-        } else if (!strncmp(cp, "inet6", sizeof("inet6") - 1)) {
-            statp->options |= RES_USE_INET6;
-        } else if (!strncmp(cp, "rotate", sizeof("rotate") - 1)) {
-            statp->options |= RES_ROTATE;
-        } else if (!strncmp(cp, "no-check-names", sizeof("no-check-names") - 1)) {
-            statp->options |= RES_NOCHECKNAME;
-        }
-        else if (!strncmp(cp, "edns0", sizeof("edns0") - 1)) {
-            statp->options |= RES_USE_EDNS0;
-        }
-        else if (!strncmp(cp, "dname", sizeof("dname") - 1)) {
-            statp->options |= RES_USE_DNAME;
-        } else if (!strncmp(cp, "nibble:", sizeof("nibble:") - 1)) {
-            if (ext == NULL) goto skip;
-            cp += sizeof("nibble:") - 1;
-            i = MIN(strcspn(cp, " \t"), sizeof(ext->nsuffix) - 1);
-            strncpy(ext->nsuffix, cp, (size_t) i);
-            ext->nsuffix[i] = '\0';
-        } else if (!strncmp(cp, "nibble2:", sizeof("nibble2:") - 1)) {
-            if (ext == NULL) goto skip;
-            cp += sizeof("nibble2:") - 1;
-            i = MIN(strcspn(cp, " \t"), sizeof(ext->nsuffix2) - 1);
-            strncpy(ext->nsuffix2, cp, (size_t) i);
-            ext->nsuffix2[i] = '\0';
-        } else if (!strncmp(cp, "v6revmode:", sizeof("v6revmode:") - 1)) {
-            cp += sizeof("v6revmode:") - 1;
-            /* "nibble" and "bitstring" used to be valid */
-            if (!strncmp(cp, "single", sizeof("single") - 1)) {
-                statp->options |= RES_NO_NIBBLE2;
-            } else if (!strncmp(cp, "both", sizeof("both") - 1)) {
-                statp->options &= ~RES_NO_NIBBLE2;
-            }
-        } else {
-            /* XXX - print a warning here? */
-        }
-    skip:
-        /* skip to next run of spaces */
-        while (*cp && *cp != ' ' && *cp != '\t') cp++;
-    }
-}
 
 /*
  * This routine is for closing the socket if a virtual circuit is used and
