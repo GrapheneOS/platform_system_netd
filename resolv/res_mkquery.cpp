@@ -123,7 +123,7 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
     hp = (HEADER*) (void*) buf;
     hp->id = htons(arc4random_uniform(65536));
     hp->opcode = op;
-    hp->rd = (statp->options & RES_RECURSE) != 0U;
+    hp->rd = true;
     hp->ad = (statp->options & RES_USE_DNSSEC) != 0U;
     hp->rcode = NOERROR;
     cp = buf + HFIXEDSZ;

@@ -122,8 +122,7 @@ static int send_vc(res_state, res_params* params, const u_char*, int, u_char*, i
                    time_t*, int*, int*);
 static int send_dg(res_state, res_params* params, const u_char*, int, u_char*, int, int*, int, int*,
                    int*, time_t*, int*, int*);
-static void Aerror(const res_state, const char*, int, const struct sockaddr*, int);
-static void Perror(const res_state, const char*, int);
+static void dump_error(const char*, const struct sockaddr*, int);
 
 static int sock_eq(struct sockaddr*, struct sockaddr*);
 static int connect_with_timeout(int sock, const struct sockaddr* nsap, socklen_t salen,
@@ -385,7 +384,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     LOG(DEBUG) << __func__;
     res_pquery(buf, buflen);
 
-    v_circuit = (statp->options & RES_USEVC) || buflen > PACKETSZ;
+    v_circuit = buflen > PACKETSZ;
     gotsomewhere = 0;
     terrno = ETIMEDOUT;
 
@@ -462,34 +461,6 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             statp->_u._ext.ext->nsaddrs[ns].sin = statp->nsaddr_list[ns];
         }
         statp->_u._ext.nscount = statp->nscount;
-    }
-
-    /*
-     * Some resolvers want to even out the load on their nameservers.
-     * Note that RES_BLAST overrides RES_ROTATE.
-     */
-    if ((statp->options & RES_ROTATE) != 0U && (statp->options & RES_BLAST) == 0U) {
-        sockaddr_union inu;
-        struct sockaddr_in ina;
-        int lastns = statp->nscount - 1;
-        int fd;
-        u_int16_t nstime;
-
-        if (statp->_u._ext.ext != NULL) inu = statp->_u._ext.ext->nsaddrs[0];
-        ina = statp->nsaddr_list[0];
-        fd = statp->_u._ext.nssocks[0];
-        nstime = statp->_u._ext.nstimes[0];
-        for (int ns = 0; ns < lastns; ns++) {
-            if (statp->_u._ext.ext != NULL)
-                statp->_u._ext.ext->nsaddrs[ns] = statp->_u._ext.ext->nsaddrs[ns + 1];
-            statp->nsaddr_list[ns] = statp->nsaddr_list[ns + 1];
-            statp->_u._ext.nssocks[ns] = statp->_u._ext.nssocks[ns + 1];
-            statp->_u._ext.nstimes[ns] = statp->_u._ext.nstimes[ns + 1];
-        }
-        if (statp->_u._ext.ext != NULL) statp->_u._ext.ext->nsaddrs[lastns] = inu;
-        statp->nsaddr_list[lastns] = ina;
-        statp->_u._ext.nssocks[lastns] = fd;
-        statp->_u._ext.nstimes[lastns] = nstime;
     }
 
     res_stats stats[MAXNS];
@@ -619,15 +590,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             if (cache_status == RESOLV_CACHE_NOTFOUND) {
                 _resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
             }
-            /*
-             * If we have temporarily opened a virtual circuit,
-             * or if we haven't been asked to keep a socket open,
-             * close the socket.
-             */
-            if ((v_circuit && (statp->options & RES_USEVC) == 0U) ||
-                (statp->options & RES_STAYOPEN) == 0U) {
-                res_nclose(statp);
-            }
+            res_nclose(statp);
             return (resplen);
         next_ns:;
         }  // for each ns
@@ -750,11 +713,11 @@ same_ns:
                 case EPROTONOSUPPORT:
                 case EPFNOSUPPORT:
                 case EAFNOSUPPORT:
-                    Perror(statp, "socket(vc)", errno);
+                    PLOG(DEBUG) << __func__ << ": socket(vc): ";
                     return 0;
                 default:
                     *terrno = errno;
-                    Perror(statp, "socket(vc)", errno);
+                    PLOG(DEBUG) << __func__ << ": socket(vc): ";
                     return -1;
             }
         }
@@ -763,21 +726,21 @@ same_ns:
             if (setsockopt(statp->_vcsock, SOL_SOCKET, SO_MARK, &statp->_mark,
                            sizeof(statp->_mark)) < 0) {
                 *terrno = errno;
-                Perror(statp, "setsockopt", errno);
+                PLOG(DEBUG) << __func__ << ": setsockopt: ";
                 return -1;
             }
         }
         errno = 0;
         if (random_bind(statp->_vcsock, nsap->sa_family) < 0) {
             *terrno = errno;
-            Aerror(statp, "bind/vc", errno, nsap, nsaplen);
+            dump_error("bind/vc", nsap, nsaplen);
             res_nclose(statp);
             return (0);
         }
         if (connect_with_timeout(statp->_vcsock, nsap, (socklen_t) nsaplen,
                                  get_timeout(statp, params, ns)) < 0) {
             *terrno = errno;
-            Aerror(statp, "connect/vc", errno, nsap, nsaplen);
+            dump_error("connect/vc", nsap, nsaplen);
             res_nclose(statp);
             /*
              * The way connect_with_timeout() is implemented prevents us from reliably
@@ -801,7 +764,7 @@ same_ns:
     iov[1] = evConsIovec((void*) buf, (size_t) buflen);
     if (writev(statp->_vcsock, iov, 2) != (INT16SZ + buflen)) {
         *terrno = errno;
-        Perror(statp, "write failed", errno);
+        PLOG(DEBUG) << __func__ << ": write failed: ";
         res_nclose(statp);
         return (0);
     }
@@ -817,7 +780,7 @@ read_len:
     }
     if (n <= 0) {
         *terrno = errno;
-        Perror(statp, "read failed", errno);
+        PLOG(DEBUG) << __func__ << ": read failed: ";
         res_nclose(statp);
         /*
          * A long running process might get its TCP
@@ -859,7 +822,7 @@ read_len:
     }
     if (n <= 0) {
         *terrno = errno;
-        Perror(statp, "read(vc)", errno);
+        PLOG(DEBUG) << __func__ << ": read(vc): ";
         res_nclose(statp);
         return (0);
     }
@@ -992,11 +955,11 @@ static int send_dg(res_state statp, res_params* params, const u_char* buf, int b
                 case EPROTONOSUPPORT:
                 case EPFNOSUPPORT:
                 case EAFNOSUPPORT:
-                    Perror(statp, "socket(dg)", errno);
+                    PLOG(DEBUG) << __func__ << ": socket(dg): ";
                     return (0);
                 default:
                     *terrno = errno;
-                    Perror(statp, "socket(dg)", errno);
+                    PLOG(DEBUG) << __func__ << ": socket(dg): ";
                     return (-1);
             }
         }
@@ -1022,12 +985,12 @@ static int send_dg(res_state statp, res_params* params, const u_char* buf, int b
          * the absence of a nameserver without timing out.
          */
         if (random_bind(statp->_u._ext.nssocks[ns], nsap->sa_family) < 0) {
-            Aerror(statp, "bind(dg)", errno, nsap, nsaplen);
+            dump_error("bind(dg)", nsap, nsaplen);
             res_nclose(statp);
             return (0);
         }
         if (connect(statp->_u._ext.nssocks[ns], nsap, (socklen_t) nsaplen) < 0) {
-            Aerror(statp, "connect(dg)", errno, nsap, nsaplen);
+            dump_error("connect(dg)", nsap, nsaplen);
             res_nclose(statp);
             return (0);
         }
@@ -1037,13 +1000,13 @@ static int send_dg(res_state statp, res_params* params, const u_char* buf, int b
     s = statp->_u._ext.nssocks[ns];
 #ifndef CANNOT_CONNECT_DGRAM
     if (send(s, (const char*) buf, (size_t) buflen, 0) != buflen) {
-        Perror(statp, "send", errno);
+        PLOG(DEBUG) << __func__ << ": send: ";
         res_nclose(statp);
         return 0;
     }
 #else  /* !CANNOT_CONNECT_DGRAM */
     if (sendto(s, (const char*) buf, buflen, 0, nsap, nsaplen) != buflen) {
-        Aerror(statp, "sendto", errno, nsap, nsaplen);
+        dump_error("sendto", nsap, nsaplen);
         res_nclose(statp);
         return 0;
     }
@@ -1063,7 +1026,7 @@ retry:
         return 0;
     }
     if (n < 0) {
-        Perror(statp, "poll", errno);
+        PLOG(DEBUG) << __func__ << ": poll: ";
         res_nclose(statp);
         return 0;
     }
@@ -1072,7 +1035,7 @@ retry:
     resplen = recvfrom(s, (char*) ans, (size_t) anssiz, 0, (struct sockaddr*) (void*) &from,
                        &fromlen);
     if (resplen <= 0) {
-        Perror(statp, "recvfrom", errno);
+        PLOG(DEBUG) << __func__ << ": recvfrom: ";
         res_nclose(statp);
         return 0;
     }
@@ -1096,8 +1059,7 @@ retry:
         res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
-    if (!(statp->options & RES_INSECURE1) &&
-        !res_ourserver_p(statp, (struct sockaddr*) (void*) &from)) {
+    if (!res_ourserver_p(statp, (struct sockaddr*)(void*)&from)) {
         /*
          * response from wrong server? ignore it.
          * XXX - potential security hazard could
@@ -1120,8 +1082,7 @@ retry:
         res_nclose(statp);
         return 0;
     }
-    if (!(statp->options & RES_INSECURE2) &&
-        !res_queriesmatch(buf, buf + buflen, ans, ans + anssiz)) {
+    if (!res_queriesmatch(buf, buf + buflen, ans, ans + anssiz)) {
         /*
          * response contains wrong query? ignore it.
          * XXX - potential security hazard could
@@ -1140,7 +1101,7 @@ retry:
         *rcode = anhp->rcode;
         return 0;
     }
-    if (!(statp->options & RES_IGNTC) && anhp->tc) {
+    if (anhp->tc) {
         /*
          * To get the rest of answer,
          * use TCP with same server.
@@ -1160,31 +1121,20 @@ retry:
     return resplen;
 }
 
-static void Aerror(const res_state statp, const char* string, int error,
-                   const struct sockaddr* address, int alen) {
-    const int save = errno;
+static void dump_error(const char* str, const struct sockaddr* address, int alen) {
     char hbuf[NI_MAXHOST];
     char sbuf[NI_MAXSERV];
     constexpr int niflags = NI_NUMERICHOST | NI_NUMERICSERV;
 
-    if ((statp->options & RES_DEBUG) != 0U) {
-        if (getnameinfo(address, (socklen_t) alen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf),
-                        niflags)) {
-            strncpy(hbuf, "?", sizeof(hbuf) - 1);
-            hbuf[sizeof(hbuf) - 1] = '\0';
-            strncpy(sbuf, "?", sizeof(sbuf) - 1);
-            sbuf[sizeof(sbuf) - 1] = '\0';
-        }
-        LOG(DEBUG) << __func__ << ": " << string << " ([" << hbuf << "]." << sbuf
-                   << "): " << strerror(error);
-    }
-    errno = save;
-}
+    if (!WOULD_LOG(DEBUG)) return;
 
-static void Perror(const res_state statp, const char* string, int error) {
-    if ((statp->options & RES_DEBUG) != 0U) {
-        LOG(DEBUG) << __func__ << ": " << string << ": " << strerror(error);
+    if (getnameinfo(address, (socklen_t)alen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), niflags)) {
+        strncpy(hbuf, "?", sizeof(hbuf) - 1);
+        hbuf[sizeof(hbuf) - 1] = '\0';
+        strncpy(sbuf, "?", sizeof(sbuf) - 1);
+        sbuf[sizeof(sbuf) - 1] = '\0';
     }
+    PLOG(DEBUG) << __func__ << ": " << str << " ([" << hbuf << "]." << sbuf << "): ";
 }
 
 static int sock_eq(struct sockaddr* a, struct sockaddr* b) {

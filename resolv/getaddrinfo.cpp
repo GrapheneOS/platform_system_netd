@@ -1659,7 +1659,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
     const char *cp, *const *domain;
     HEADER* hp;
     u_int dots;
-    int trailing_dot, ret, saved_herrno;
+    int ret, saved_herrno;
     int got_nodata = 0, got_servfail = 0, tried_as_is = 0;
 
     assert(name != NULL);
@@ -1671,8 +1671,7 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
     *herrno = HOST_NOT_FOUND; /* default, if we never query */
     dots = 0;
     for (cp = name; *cp; cp++) dots += (*cp == '.');
-    trailing_dot = 0;
-    if (cp > name && *--cp == '.') trailing_dot++;
+    const bool trailing_dot = (cp > name && *--cp == '.') ? true : false;
 
     /*
      * If there are dots in the name already, let's just give it a try
@@ -1688,12 +1687,10 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
 
     /*
      * We do at least one level of search if
-     *	- there is no dot and RES_DEFNAME is set, or
-     *	- there is at least one dot, there is no trailing dot,
-     *	  and RES_DNSRCH is set.
+     *	- there is no dot, or
+     *	- there is at least one dot and there is no trailing dot.
      */
-    if ((!dots && (res->options & RES_DEFNAMES)) ||
-        (dots && !trailing_dot && (res->options & RES_DNSRCH))) {
+    if ((!dots) || (dots && !trailing_dot)) {
         int done = 0;
 
         /* Unfortunately we need to set stuff up before
@@ -1742,11 +1739,6 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
                     /* anything else implies that we're done */
                     done++;
             }
-            /*
-             * if we got here for some reason other than DNSRCH,
-             * we only wanted one iteration of the loop, so stop.
-             */
-            if (!(res->options & RES_DNSRCH)) done++;
         }
     }
 
