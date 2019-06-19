@@ -313,7 +313,7 @@ TEST_F(ResolverTest, GetHostByName_localhost) {
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
 
     // The hosts file also contains ip6-localhost, but gethostbyname() won't
-    // return it unless the RES_USE_INET6 option is set. This would be easy to
+    // return it. This would be easy to
     // change, but there's no point in changing the legacy behavior; new code
     // should be calling getaddrinfo() anyway.
     // So we check the legacy behavior, which results in amusing A-record
