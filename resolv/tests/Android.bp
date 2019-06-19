@@ -1,6 +1,8 @@
 cc_test {
     name: "resolv_stress_test",
     test_suites: ["device-tests"],
+    // This won't work with test_config
+    // require_root: true,
     test_config: "resolv_stress_test_config.xml",
     defaults: ["netd_defaults"],
     srcs: [
