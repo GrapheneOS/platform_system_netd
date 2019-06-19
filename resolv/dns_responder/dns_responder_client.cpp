@@ -156,6 +156,9 @@ void DnsResponderClient::SetUp() {
     // binder setup
     auto binder = android::defaultServiceManager()->getService(android::String16("netd"));
     mNetdSrv = android::interface_cast<android::net::INetd>(binder);
+    if (mNetdSrv == nullptr) {
+        LOG(FATAL) << "Can't connect to service 'netd'. Missing root privileges? uid=" << getuid();
+    }
 
     auto resolvBinder =
             android::defaultServiceManager()->getService(android::String16("dnsresolver"));
