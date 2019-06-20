@@ -26,7 +26,6 @@
 #include <android-base/strings.h>
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
-#include <log/log.h>
 #include <netdutils/DumpWriter.h>
 #include <netdutils/NetworkConstants.h>  // SHA256_SIZE
 #include <openssl/base64.h>
