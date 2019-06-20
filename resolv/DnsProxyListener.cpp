@@ -164,7 +164,7 @@ void maybeFixupNetContext(android_net_context* ctx) {
         // DNS-over-TLS is in use as an indicator for when to use more modern
         // DNS resolution mechanics.
         if (queryingViaTls(ctx->dns_netid)) {
-            ctx->flags |= NET_CONTEXT_FLAG_USE_EDNS;
+            ctx->flags |= NET_CONTEXT_FLAG_USE_DNS_OVER_TLS | NET_CONTEXT_FLAG_USE_EDNS;
         }
     }
 }
