@@ -71,7 +71,6 @@ cc_test {
         "libprocessgroup",
         "libssl",
         "libutils",
-        "libqtaguid",
     ],
     static_libs: [
         "libcap",
@@ -80,6 +79,7 @@ cc_test {
         "libbpf_android",
         "libnetdbpf",
         "libnetdutils",
+        "libqtaguid",
         "netd_aidl_interface-cpp",
         "netd_event_listener_interface-cpp",
         "oemnetd_aidl_interface-cpp",
