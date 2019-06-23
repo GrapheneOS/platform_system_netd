@@ -154,8 +154,7 @@ bool Dns64Configuration::doRfc7050PrefixDiscovery(const android_net_context& net
     // ourselves, which means we also bypass all the special netcontext flag
     // handling and the resolver event logging.
     struct addrinfo* res = nullptr;
-    const int status =
-            android_getaddrinfofornetcontext(kIPv4OnlyHost, nullptr, &hints, &netcontext, &res);
+    const int status = resolv_getaddrinfo(kIPv4OnlyHost, nullptr, &hints, &netcontext, &res);
     ScopedAddrinfo result(res);
     if (status != 0) {
         LOG(WARNING) << "(" << cfg->netId << ", " << cfg->discoveryId << ") plat_prefix/dns("

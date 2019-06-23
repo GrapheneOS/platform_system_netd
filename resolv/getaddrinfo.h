@@ -20,6 +20,10 @@
 
 struct addrinfo;
 
+int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
+                                     const addrinfo* hints, const android_net_context* netcontext,
+                                     addrinfo** res);
+
 // This is the DNS proxy entry point for getaddrinfo().
-int android_getaddrinfofornetcontext(const char*, const char*, const addrinfo*,
-                                     const android_net_context*, addrinfo**);
+int resolv_getaddrinfo(const char* hostname, const char* servname, const addrinfo* hints,
+                       const android_net_context* netcontext, addrinfo** res);
