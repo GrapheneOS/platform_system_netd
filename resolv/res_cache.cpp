@@ -91,17 +91,17 @@ constexpr bool kDumpData = false;
  *     this will initialize the cache on first usage. the result can be NULL
  *     if the cache is disabled.
  *
- *   - the client calls _resolv_cache_lookup() before performing a query
+ *   - the client calls resolv_cache_lookup() before performing a query
  *
  *     if the function returns RESOLV_CACHE_FOUND, a copy of the answer data
  *     has been copied into the client-provided answer buffer.
  *
  *     if the function returns RESOLV_CACHE_NOTFOUND, the client should perform
- *     a request normally, *then* call _resolv_cache_add() to add the received
+ *     a request normally, *then* call resolv_cache_add() to add the received
  *     answer to the cache.
  *
  *     if the function returns RESOLV_CACHE_UNSUPPORTED, the client should
- *     perform a request normally, and *not* call _resolv_cache_add()
+ *     perform a request normally, and *not* call resolv_cache_add()
  *
  *     note that RESOLV_CACHE_UNSUPPORTED is also returned if the answer buffer
  *     is too short to accomodate the cached result.
@@ -538,7 +538,7 @@ static int _dnsPacket_checkQuery(DnsPacket* packet) {
      * - there is no point for a query packet sent to a server
      *   to have the TC bit set, but the implementation might
      *   set the bit in the query buffer for its own needs
-     *   between a _resolv_cache_lookup and a
+     *   between a resolv_cache_lookup and a
      *   _resolv_cache_add. We should not freak out if this
      *   is the case.
      *
@@ -1407,9 +1407,8 @@ static void _cache_remove_expired(Cache* cache) {
 // gets a resolv_cache_info associated with a network, or NULL if not found
 static resolv_cache_info* find_cache_info_locked(unsigned netid) REQUIRES(cache_mutex);
 
-ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int querylen,
-                                       void* answer, int answersize, int* answerlen,
-                                       uint32_t flags) {
+ResolvCacheStatus resolv_cache_lookup(unsigned netid, const void* query, int querylen, void* answer,
+                                      int answersize, int* answerlen, uint32_t flags) {
     // Skip cache lookup, return RESOLV_CACHE_NOTFOUND directly so that it is
     // possible to cache the answer of this query.
     // If ANDROID_RESOLV_NO_CACHE_STORE is set, return RESOLV_CACHE_SKIP to skip possible cache
@@ -1435,7 +1434,7 @@ ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int qu
     std::unique_lock lock(cache_mutex);
     ScopedAssumeLocked assume_lock(cache_mutex);
     cache = find_named_cache_locked(netid);
-    if (cache == NULL) {
+    if (cache == nullptr) {
         return RESOLV_CACHE_UNSUPPORTED;
     }
 
@@ -1512,8 +1511,8 @@ ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int qu
     return RESOLV_CACHE_FOUND;
 }
 
-void _resolv_cache_add(unsigned netid, const void* query, int querylen, const void* answer,
-                       int answerlen) {
+int resolv_cache_add(unsigned netid, const void* query, int querylen, const void* answer,
+                     int answerlen) {
     Entry key[1];
     Entry* e;
     Entry** lookup;
@@ -1524,14 +1523,14 @@ void _resolv_cache_add(unsigned netid, const void* query, int querylen, const vo
      */
     if (!entry_init_key(key, query, querylen)) {
         LOG(INFO) << __func__ << ": passed invalid query?";
-        return;
+        return -EINVAL;
     }
 
     std::lock_guard guard(cache_mutex);
 
     cache = find_named_cache_locked(netid);
-    if (cache == NULL) {
-        return;
+    if (cache == nullptr) {
+        return -ENONET;
     }
 
     LOG(INFO) << __func__ << ": query:";
@@ -1549,7 +1548,7 @@ void _resolv_cache_add(unsigned netid, const void* query, int querylen, const vo
     if (e != NULL) {
         LOG(INFO) << __func__ << ": ALREADY IN CACHE (" << e << ") ? IGNORING ADD";
         _cache_notify_waiting_tid_locked(cache, key);
-        return;
+        return -EEXIST;
     }
 
     if (cache->num_entries >= cache->max_entries) {
@@ -1563,7 +1562,7 @@ void _resolv_cache_add(unsigned netid, const void* query, int querylen, const vo
         if (e != NULL) {
             LOG(INFO) << __func__ << ": ALREADY IN CACHE (" << e << ") ? IGNORING ADD";
             _cache_notify_waiting_tid_locked(cache, key);
-            return;
+            return -EEXIST;
         }
     }
 
@@ -1578,6 +1577,8 @@ void _resolv_cache_add(unsigned netid, const void* query, int querylen, const vo
 
     cache_dump_mru(cache);
     _cache_notify_waiting_tid_locked(cache, key);
+
+    return 0;
 }
 
 // Head of the list of caches.
@@ -1676,8 +1677,8 @@ static void insert_cache_info_locked(struct resolv_cache_info* cache_info) {
 
 static resolv_cache* find_named_cache_locked(unsigned netid) {
     resolv_cache_info* info = find_cache_info_locked(netid);
-    if (info != NULL) return info->cache;
-    return NULL;
+    if (info != nullptr) return info->cache;
+    return nullptr;
 }
 
 static resolv_cache_info* find_cache_info_locked(unsigned netid) {
@@ -2021,4 +2022,44 @@ void _resolv_cache_add_resolver_stats_sample(unsigned netid, int revision_id, in
     if (info && info->revision_id == revision_id) {
         _res_cache_add_stats_sample_locked(&info->nsstats[ns], sample, max_samples);
     }
+}
+
+bool has_named_cache(unsigned netid) {
+    std::lock_guard guard(cache_mutex);
+    return find_named_cache_locked(netid) != nullptr;
+}
+
+int resolv_cache_get_expiration(unsigned netid, const std::vector<char> query, time_t* expiration) {
+    Entry key;
+    Entry** lookup;
+    Entry* e;
+    Cache* cache;
+    *expiration = -1;
+
+    // A malfored query is not allowed.
+    if (!entry_init_key(&key, query.data(), query.size())) {
+        LOG(WARNING) << __func__ << ": unsupported query";
+        return -EINVAL;
+    }
+
+    // lookup cache.
+    std::lock_guard guard(cache_mutex);
+    if (cache = find_named_cache_locked(netid); cache == nullptr) {
+        LOG(WARNING) << __func__ << ": cache not created in the network " << netid;
+        return -ENONET;
+    }
+    lookup = _cache_lookup_p(cache, &key);
+    e = *lookup;
+    if (e == NULL) {
+        LOG(WARNING) << __func__ << ": not in cache";
+        return -ENODATA;
+    }
+
+    if (_time_now() >= e->expires) {
+        LOG(WARNING) << __func__ << ": entry expired";
+        return -ENODATA;
+    }
+
+    *expiration = e->expires;
+    return 0;
 }
