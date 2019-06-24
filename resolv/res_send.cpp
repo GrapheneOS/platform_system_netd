@@ -389,7 +389,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     terrno = ETIMEDOUT;
 
     int anslen = 0;
-    cache_status = _resolv_cache_lookup(statp->netid, buf, buflen, ans, anssiz, &anslen, flags);
+    cache_status = resolv_cache_lookup(statp->netid, buf, buflen, ans, anssiz, &anslen, flags);
 
     if (cache_status == RESOLV_CACHE_FOUND) {
         HEADER* hp = (HEADER*)(void*)ans;
@@ -510,7 +510,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                                        Slice(ans, anssiz), rcode, &fallback);
                 if (resplen > 0) {
                     if (cache_status == RESOLV_CACHE_NOTFOUND) {
-                        _resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
+                        resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
                     }
                     return resplen;
                 }
@@ -588,7 +588,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
 
             if (cache_status == RESOLV_CACHE_NOTFOUND) {
-                _resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
+                resolv_cache_add(statp->netid, buf, buflen, ans, resplen);
             }
             res_nclose(statp);
             return (resplen);
