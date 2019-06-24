@@ -33,9 +33,78 @@
 
 namespace test {
 
-struct DNSHeader;
-struct DNSQuestion;
-struct DNSRecord;
+struct DNSName {
+    std::string name;
+    const char* read(const char* buffer, const char* buffer_end);
+    char* write(char* buffer, const char* buffer_end) const;
+
+  private:
+    const char* parseField(const char* buffer, const char* buffer_end, bool* last);
+};
+
+struct DNSQuestion {
+    DNSName qname;
+    unsigned qtype;
+    unsigned qclass;
+    const char* read(const char* buffer, const char* buffer_end);
+    char* write(char* buffer, const char* buffer_end) const;
+    std::string toString() const;
+};
+
+struct DNSRecord {
+    DNSName name;
+    unsigned rtype;
+    unsigned rclass;
+    unsigned ttl;
+    std::vector<char> rdata;
+    const char* read(const char* buffer, const char* buffer_end);
+    char* write(char* buffer, const char* buffer_end) const;
+    std::string toString() const;
+
+  private:
+    struct IntFields {
+        uint16_t rtype;
+        uint16_t rclass;
+        uint32_t ttl;
+        uint16_t rdlen;
+    } __attribute__((__packed__));
+
+    const char* readIntFields(const char* buffer, const char* buffer_end, unsigned* rdlen);
+    char* writeIntFields(unsigned rdlen, char* buffer, const char* buffer_end) const;
+};
+
+struct DNSHeader {
+    unsigned id;
+    bool ra;
+    uint8_t rcode;
+    bool qr;
+    uint8_t opcode;
+    bool aa;
+    bool tr;
+    bool rd;
+    bool ad;
+    std::vector<DNSQuestion> questions;
+    std::vector<DNSRecord> answers;
+    std::vector<DNSRecord> authorities;
+    std::vector<DNSRecord> additionals;
+    const char* read(const char* buffer, const char* buffer_end);
+    char* write(char* buffer, const char* buffer_end) const;
+    std::string toString() const;
+
+  private:
+    struct Header {
+        uint16_t id;
+        uint8_t flags0;
+        uint8_t flags1;
+        uint16_t qdcount;
+        uint16_t ancount;
+        uint16_t nscount;
+        uint16_t arcount;
+    } __attribute__((__packed__));
+
+    const char* readHeader(const char* buffer, const char* buffer_end, unsigned* qdcount,
+                           unsigned* ancount, unsigned* nscount, unsigned* arcount);
+};
 
 inline const std::string kDefaultListenAddr = "127.0.0.3";
 inline const std::string kDefaultListenService = "53";
@@ -78,6 +147,7 @@ class DNSResponder {
     std::condition_variable& getCv() { return cv; }
     std::mutex& getCvMutex() { return cv_mutex_; }
     void setDeferredResp(bool deferred_resp);
+    static bool fillAnswerRdata(const std::string& rdatastr, DNSRecord& record);
 
   private:
     // Key used for accessing mappings.
@@ -112,8 +182,6 @@ class DNSResponder {
                           char* response, size_t* response_len) const;
 
     bool addAnswerRecords(const DNSQuestion& question, std::vector<DNSRecord>* answers) const;
-
-    bool fillAnswerRdata(const std::string& rdatastr, DNSRecord& record) const;
 
     bool generateErrorResponse(DNSHeader* header, ns_rcode rcode,
                                char* response, size_t* response_len) const;
