@@ -798,7 +798,8 @@ bool DNSResponder::addAnswerRecords(const DNSQuestion& question,
     std::string rname = question.qname.name;
     std::vector<int> rtypes;
 
-    if (question.qtype == ns_type::ns_t_a || question.qtype == ns_type::ns_t_aaaa)
+    if (question.qtype == ns_type::ns_t_a || question.qtype == ns_type::ns_t_aaaa ||
+        question.qtype == ns_type::ns_t_ptr)
         rtypes.push_back(ns_type::ns_t_cname);
     rtypes.push_back(question.qtype);
     for (int rtype : rtypes) {
