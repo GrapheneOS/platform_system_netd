@@ -102,7 +102,7 @@ class ResolverTest : public ::testing::Test {
         // Note that |mDnsClient| is not used for getting binder service in this static function.
         // The reason is that wants to keep |mDnsClient| as a non-static data member. |mDnsClient|
         // which sets up device network configuration could be independent from every test.
-        // TODO: Perhaps add a static function in class DnsResponderClient to get binder service.
+        // TODO: Perhaps add a static function in resolv_test_utils.{cpp,h} to get binder service.
         auto resolvBinder =
                 android::defaultServiceManager()->getService(android::String16("dnsresolver"));
         auto resolvService = android::interface_cast<android::net::IDnsResolver>(resolvBinder);
@@ -137,7 +137,7 @@ class ResolverTest : public ::testing::Test {
         // Moreover, continuing testing may have no meaningful after Netd death. Therefore, the
         // death recipient aborts process by GTEST_LOG_(FATAL) once Netd died.
         void binderDied(const android::wp<android::IBinder>& /*who*/) override {
-            constexpr char errorMessage[] = "Netd service died";
+            constexpr char errorMessage[] = "Netd died";
             LOG(ERROR) << errorMessage;
             GTEST_LOG_(FATAL) << errorMessage;
         }
@@ -2874,6 +2874,38 @@ TEST_F(ResolverTest, GetHostByAddr_ReverseDns64QueryFromHostFile) {
     EXPECT_EQ(result_str, host_name);
 }
 
+TEST_F(ResolverTest, GetHostByAddr_cnamesClasslessReverseDelegation) {
+    // IPv4 addresses in the subnet with notation '/' or '-'.
+    constexpr char addr_slash[] = "192.0.2.1";
+    constexpr char addr_hyphen[] = "192.0.3.1";
+
+    // Used to verify DNS reverse query for classless reverse lookup zone. See detail in RFC 2317
+    // section 4.
+    const static std::vector<DnsRecord> records = {
+            // The records for reverse querying "192.0.2.1" in the subnet with notation '/'.
+            {"1.2.0.192.in-addr.arpa.", ns_type::ns_t_cname, "1.0/25.2.0.192.in-addr.arpa."},
+            {"1.0/25.2.0.192.in-addr.arpa.", ns_type::ns_t_ptr, kHelloExampleCom},
+
+            // The records for reverse querying "192.0.3.1" in the subnet with notation '-'.
+            {"1.3.0.192.in-addr.arpa.", ns_type::ns_t_cname, "1.0-127.3.0.192.in-addr.arpa."},
+            {"1.0-127.3.0.192.in-addr.arpa.", ns_type::ns_t_ptr, kHelloExampleCom},
+    };
+
+    test::DNSResponder dns;
+    StartDns(dns, records);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
+
+    for (const auto& address : {addr_slash, addr_hyphen}) {
+        SCOPED_TRACE(address);
+
+        in_addr v4addr;
+        ASSERT_TRUE(inet_pton(AF_INET, address, &v4addr));
+        hostent* result = gethostbyaddr(&v4addr, sizeof(v4addr), AF_INET);
+        ASSERT_TRUE(result != nullptr);
+        EXPECT_STREQ("hello.example.com", result->h_name);
+    }
+}
+
 TEST_F(ResolverTest, GetNameInfo_ReverseDnsQueryWithHavingNat64Prefix) {
     constexpr char listen_addr[] = "::1";
     constexpr char dns64_name[] = "ipv4only.arpa.";
@@ -3061,6 +3093,40 @@ TEST_F(ResolverTest, GetNameInfo_ReverseDns64QueryFromHostFile) {
 
     std::string result_str = host;
     EXPECT_EQ(result_str, host_name);
+}
+
+TEST_F(ResolverTest, GetNameInfo_cnamesClasslessReverseDelegation) {
+    // IPv4 addresses in the subnet with notation '/' or '-'.
+    constexpr char addr_slash[] = "192.0.2.1";
+    constexpr char addr_hyphen[] = "192.0.3.1";
+
+    // Used to verify DNS reverse query for classless reverse lookup zone. See detail in RFC 2317
+    // section 4.
+    const static std::vector<DnsRecord> records = {
+            // The records for reverse querying "192.0.2.1" in the subnet with notation '/'.
+            {"1.2.0.192.in-addr.arpa.", ns_type::ns_t_cname, "1.0/25.2.0.192.in-addr.arpa."},
+            {"1.0/25.2.0.192.in-addr.arpa.", ns_type::ns_t_ptr, kHelloExampleCom},
+
+            // The records for reverse querying "192.0.3.1" in the subnet with notation '-'.
+            {"1.3.0.192.in-addr.arpa.", ns_type::ns_t_cname, "1.0-127.3.0.192.in-addr.arpa."},
+            {"1.0-127.3.0.192.in-addr.arpa.", ns_type::ns_t_ptr, kHelloExampleCom},
+    };
+
+    test::DNSResponder dns;
+    StartDns(dns, records);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
+
+    for (const auto& address : {addr_slash, addr_hyphen}) {
+        SCOPED_TRACE(address);
+
+        char host[NI_MAXHOST];
+        sockaddr_in sin = {.sin_family = AF_INET};
+        ASSERT_TRUE(inet_pton(AF_INET, address, &sin.sin_addr));
+        int rv = getnameinfo((const sockaddr*)&sin, sizeof(sin), host, sizeof(host), nullptr, 0,
+                             NI_NAMEREQD);
+        ASSERT_EQ(0, rv);
+        EXPECT_STREQ("hello.example.com", host);
+    }
 }
 
 TEST_F(ResolverTest, GetHostByName2_Dns64Synthesize) {
