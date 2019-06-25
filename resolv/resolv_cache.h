@@ -35,6 +35,7 @@
 #include <vector>
 
 struct __res_state;
+struct resolv_cache;
 
 /* sets the name server addresses to the provided res_state structure. The
  * name servers are retrieved from the cache which is associated
@@ -51,15 +52,13 @@ typedef enum {
     RESOLV_CACHE_SKIP         /* Don't do anything on cache */
 } ResolvCacheStatus;
 
-ResolvCacheStatus _resolv_cache_lookup(unsigned netid, const void* query, int querylen,
-                                       void* answer, int answersize, int* answerlen,
-                                       uint32_t flags);
+ResolvCacheStatus resolv_cache_lookup(unsigned netid, const void* query, int querylen, void* answer,
+                                      int answersize, int* answerlen, uint32_t flags);
 
-/* add a (query,answer) to the cache, only call if _resolv_cache_lookup
- * did return RESOLV_CACHE_NOTFOUND
- */
-void _resolv_cache_add(unsigned netid, const void* query, int querylen, const void* answer,
-                       int answerlen);
+// add a (query,answer) to the cache. If the pair has been in the cache, no new entry will be added
+// in the cache.
+int resolv_cache_add(unsigned netid, const void* query, int querylen, const void* answer,
+                     int answerlen);
 
 /* Notify the cache a request failed */
 void _resolv_cache_query_failed(unsigned netid, const void* query, int querylen, uint32_t flags);
@@ -73,3 +72,12 @@ int resolv_create_cache_for_net(unsigned netid);
 
 // Deletes the cache associated with the given network.
 void resolv_delete_cache_for_net(unsigned netid);
+
+// For test only.
+// Return true if the cache is existent in the given network, false otherwise.
+bool has_named_cache(unsigned netid);
+
+// For test only.
+// Get the expiration time of a cache entry. Return 0 on success; otherwise, an negative error is
+// returned if the expiration time can't be acquired.
+int resolv_cache_get_expiration(unsigned netid, const std::vector<char> query, time_t* expiration);
