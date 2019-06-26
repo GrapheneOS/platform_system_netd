@@ -144,6 +144,7 @@ cc_test {
     test_suites: ["device-tests"],
     require_root: true,
     defaults: ["netd_defaults"],
+    tidy: false,  // cuts test build time by > 1m30s
     srcs: [
         "dns_responder/dns_responder.cpp",
         "dnsresolver_binder_test.cpp",
