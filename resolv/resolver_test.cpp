@@ -25,6 +25,7 @@
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <binder/ProcessState.h>
+#include <bpf/BpfUtils.h>
 #include <cutils/sockets.h>
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
@@ -59,6 +60,7 @@
 #include "dns_responder/dns_tls_frontend.h"
 #include "netd_resolv/params.h"  // MAXNS
 #include "netid_client.h"  // NETID_UNSET
+#include "test_utils.h"
 #include "tests/dns_metrics_listener/dns_metrics_listener.h"
 #include "tests/resolv_test_utils.h"
 
@@ -3372,14 +3374,13 @@ void expectDnsNetIdEquals(unsigned netId) {
     EXPECT_EQ(netId, static_cast<unsigned>(dnsNetId));
 }
 
-void expectDnsNetIdIsDefaultNetwork(android::net::INetd* netdService) {
+void expectDnsNetIdIsDefaultNetwork(INetd* netdService) {
     int currentNetid;
     EXPECT_TRUE(netdService->networkGetDefault(&currentNetid).isOk());
     expectDnsNetIdEquals(currentNetid);
 }
 
-void expectDnsNetIdWithVpn(android::net::INetd* netdService, unsigned vpnNetId,
-                           unsigned expectedNetId) {
+void expectDnsNetIdWithVpn(INetd* netdService, unsigned vpnNetId, unsigned expectedNetId) {
     EXPECT_TRUE(netdService->networkCreateVpn(vpnNetId, false /* secure */).isOk());
     uid_t uid = getuid();
     // Add uid to VPN
@@ -3446,6 +3447,10 @@ TEST_F(ResolverTest, getDnsNetId) {
 }
 
 TEST_F(ResolverTest, BlockDnsQueryWithUidRule) {
+    // This test relies on blocking traffic on loopback, which xt_qtaguid does not do.
+    // See aosp/358413 and b/34444781 for why.
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
     constexpr char listen_addr1[] = "127.0.0.4";
     constexpr char listen_addr2[] = "::1";
     constexpr char host_name[] = "howdy.example.com.";
@@ -3453,6 +3458,7 @@ TEST_F(ResolverTest, BlockDnsQueryWithUidRule) {
             {host_name, ns_type::ns_t_a, "1.2.3.4"},
             {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
     };
+    INetd* netdService = mDnsClient.netdService();
 
     test::DNSResponder dns1(listen_addr1);
     test::DNSResponder dns2(listen_addr2);
@@ -3464,8 +3470,14 @@ TEST_F(ResolverTest, BlockDnsQueryWithUidRule) {
     dns1.clearQueries();
     dns2.clearQueries();
 
-    // Add drop Rule for Uid
-    EXPECT_TRUE(mDnsClient.netdService()
+    // Add drop rule for TEST_UID. Also enable the standby chain because it might not be enabled.
+    // Unfortunately we cannot use FIREWALL_CHAIN_NONE, or custom iptables rules, for this purpose
+    // because netd calls fchown() on the DNS query sockets, and "iptables -m owner" matches the
+    // UID of the socket creator, not the UID set by fchown().
+    //
+    // TODO: migrate FIREWALL_CHAIN_NONE to eBPF as well.
+    EXPECT_TRUE(netdService->firewallEnableChildChain(INetd::FIREWALL_CHAIN_STANDBY, true).isOk());
+    EXPECT_TRUE(netdService
                         ->firewallSetUidRule(INetd::FIREWALL_CHAIN_STANDBY, TEST_UID,
                                              INetd::FIREWALL_RULE_DENY)
                         .isOk());
@@ -3494,9 +3506,10 @@ TEST_F(ResolverTest, BlockDnsQueryWithUidRule) {
     // Restore uid
     EXPECT_TRUE(seteuid(suid) == 0);
 
-    // Remove drop Rule for Uid
-    EXPECT_TRUE(mDnsClient.netdService()
+    // Remove drop rule for TEST_UID, and disable the standby chain.
+    EXPECT_TRUE(netdService
                         ->firewallSetUidRule(INetd::FIREWALL_CHAIN_STANDBY, TEST_UID,
                                              INetd::FIREWALL_RULE_ALLOW)
                         .isOk());
+    EXPECT_TRUE(netdService->firewallEnableChildChain(INetd::FIREWALL_CHAIN_STANDBY, false).isOk());
 }

@@ -155,6 +155,7 @@ cc_test {
         "system/netd/resolv/include",
     ],
     shared_libs: [
+        "libbpf_android",
         "libbase",
         "libbinder",
         "libcrypto",
@@ -168,6 +169,7 @@ cc_test {
         "libnetd_test_dnsresponder",
         "libnetd_test_metrics_listener",
         "libnetd_test_tun_interface",
+        "libnetd_test_utils",
         "libnetdutils",
         "netd_aidl_interface-V2-cpp",
         "netd_event_listener_interface-V1-cpp",
