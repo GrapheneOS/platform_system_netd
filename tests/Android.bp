@@ -52,6 +52,7 @@ cc_test {
     test_suites: ["device-tests"],
     require_root: true,
     defaults: ["netd_defaults"],
+    tidy: false,  // cuts test build time by almost 1 minute
     srcs: [
         ":netd_integration_test_shared",
         "binder_test.cpp",
