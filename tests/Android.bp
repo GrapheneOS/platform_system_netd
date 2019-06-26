@@ -47,6 +47,17 @@ cc_test_library {
     ],
 }
 
+cc_test_library {
+    name: "libnetd_test_utils",
+    srcs: [
+        "test_utils.cpp"
+    ],
+    export_include_dirs: ["."],
+    shared_libs: [
+        "libbase",
+    ],
+}
+
 cc_test {
     name: "netd_integration_test",
     test_suites: ["device-tests"],
@@ -77,6 +88,7 @@ cc_test {
         "libcap",
         "libnetd_test_tun_interface",
         "libnetd_test_unsol_service",
+        "libnetd_test_utils",
         "libbpf_android",
         "libnetdbpf",
         "libnetdutils",
