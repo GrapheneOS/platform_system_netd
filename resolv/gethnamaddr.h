@@ -18,10 +18,12 @@
 
 #include <netdb.h>               // struct hostent
 #include "netd_resolv/resolv.h"  // struct android_net_context
+#include "stats.pb.h"
 
 // This is the entry point for the gethostbyname() family of legacy calls.
-int android_gethostbynamefornetcontext(const char*, int, const android_net_context*, hostent**);
+int android_gethostbynamefornetcontext(const char*, int, const android_net_context*, hostent**,
+                                       android::net::NetworkDnsEventReported*);
 
 // This is the entry point for the gethostbyaddr() family of legacy calls.
 int android_gethostbyaddrfornetcontext(const void*, socklen_t, int, const android_net_context*,
-                                       hostent**);
+                                       hostent**, android::net::NetworkDnsEventReported*);
