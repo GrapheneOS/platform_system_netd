@@ -8,15 +8,11 @@
     ],
     "postsubmit": [
         { "name": "libnetdbpf_test",
-          "keywords": ["netd-device-kernel-4.14"]},
+          "keywords": ["netd-device-kernel-4.9", "netd-device-kernel-4.14"]},
         { "name": "netd_integration_test",
-          "keywords": ["netd-device-kernel-4.14"]},
+          "keywords": ["netd-device-kernel-4.9", "netd-device-kernel-4.14"]},
         { "name": "netd_unit_test",
-          "keywords": ["netd-device-kernel-4.14"]},
-        { "name": "netdclient_test",
-          "keywords": ["netd-device-kernel-4.14"]},
-        { "name": "netdutils_test",
-          "keywords": ["netd-device-kernel-4.14"]}
+          "keywords": ["netd-device-kernel-4.9", "netd-device-kernel-4.14"]}
     ],
     "imports": [
         { "path": "system/netd/resolv" }
