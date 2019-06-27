@@ -57,6 +57,8 @@ std::string addrToString(const sockaddr_storage* addr) {
 
 const char* getPrivateDnsModeString(PrivateDnsMode mode) {
     switch (mode) {
+        case PrivateDnsMode::UNKNOWN:
+            return "UNKNOWN";
         case PrivateDnsMode::OFF:
             return "OFF";
         case PrivateDnsMode::OPPORTUNISTIC:
@@ -357,8 +359,7 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
         mDns64Configuration.dump(dw, netId);
         ExternalPrivateDnsStatus privateDnsStatus = {PrivateDnsMode::OFF, 0, {}};
         gPrivateDnsConfiguration.getStatus(netId, &privateDnsStatus);
-        dw.println("Private DNS mode: %s",
-                   getPrivateDnsModeString(static_cast<PrivateDnsMode>(privateDnsStatus.mode)));
+        dw.println("Private DNS mode: %s", getPrivateDnsModeString(privateDnsStatus.mode));
         if (!privateDnsStatus.numServers) {
             dw.println("No Private DNS servers configured");
         } else {

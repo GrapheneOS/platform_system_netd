@@ -216,6 +216,8 @@ cc_test {
         "libnetd_resolv",
         "libnetd_test_dnsresponder",
         "libnetdutils",
+        "libprotobuf-cpp-lite",
         "server_configurable_flags",
+        "stats_proto",
     ],
 }
