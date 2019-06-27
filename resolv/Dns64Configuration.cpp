@@ -33,9 +33,11 @@
 #include "DnsResolver.h"
 #include "getaddrinfo.h"
 #include "netd_resolv/resolv.h"
+#include "stats.pb.h"
 
 namespace android {
 
+using android::net::NetworkDnsEventReported;
 using netdutils::DumpWriter;
 using netdutils::IPAddress;
 using netdutils::IPPrefix;
@@ -154,7 +156,9 @@ bool Dns64Configuration::doRfc7050PrefixDiscovery(const android_net_context& net
     // ourselves, which means we also bypass all the special netcontext flag
     // handling and the resolver event logging.
     struct addrinfo* res = nullptr;
-    const int status = resolv_getaddrinfo(kIPv4OnlyHost, nullptr, &hints, &netcontext, &res);
+    NetworkDnsEventReported event;
+    const int status =
+            resolv_getaddrinfo(kIPv4OnlyHost, nullptr, &hints, &netcontext, &res, &event);
     ScopedAddrinfo result(res);
     if (status != 0) {
         LOG(WARNING) << "(" << cfg->netId << ", " << cfg->discoveryId << ") plat_prefix/dns("
