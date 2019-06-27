@@ -29,6 +29,11 @@
 using android::base::StringPrintf;
 
 int randomUid() {
+    // Pick a random UID consisting of:
+    // - Random user profile (0 - 6)
+    // - Random app ID starting from 12000 (FIRST_APPLICATION_UID + 2000). This ensures no conflicts
+    //   with existing app UIDs unless the user has installed more than 2000 apps, and is still less
+    //   than LAST_APPLICATION_UID (19999).
     return 100000 * arc4random_uniform(7) + 12000 + arc4random_uniform(3000);
 }
 
