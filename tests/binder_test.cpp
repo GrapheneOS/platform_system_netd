@@ -64,9 +64,9 @@
 #include "netdutils/Stopwatch.h"
 #include "netdutils/Syscalls.h"
 #include "netid_client.h"  // NETID_UNSET
+#include "test_utils.h"
 #include "tun_interface.h"
 
-#define IP_PATH "/system/bin/ip"
 #define IP6TABLES_PATH "/system/bin/ip6tables"
 #define IPTABLES_PATH "/system/bin/iptables"
 #define TUN_DEV "/dev/tun"
@@ -183,57 +183,6 @@ TEST_F(BinderTest, IsAlive) {
     bool isAlive = false;
     mNetd->isAlive(&isAlive);
     ASSERT_TRUE(isAlive);
-}
-
-static int randomUid() {
-    return 100000 * arc4random_uniform(7) + 10000 + arc4random_uniform(5000);
-}
-
-static std::vector<std::string> runCommand(const std::string& command) {
-    std::vector<std::string> lines;
-    FILE *f = popen(command.c_str(), "r");  // NOLINT(cert-env33-c)
-    if (f == nullptr) {
-        perror("popen");
-        return lines;
-    }
-
-    char *line = nullptr;
-    size_t bufsize = 0;
-    ssize_t linelen = 0;
-    while ((linelen = getline(&line, &bufsize, f)) >= 0) {
-        lines.push_back(std::string(line, linelen));
-        free(line);
-        line = nullptr;
-    }
-
-    pclose(f);
-    return lines;
-}
-
-static std::vector<std::string> listIpRules(const char *ipVersion) {
-    std::string command = StringPrintf("%s %s rule list", IP_PATH, ipVersion);
-    return runCommand(command);
-}
-
-static std::vector<std::string> listIptablesRule(const char *binary, const char *chainName) {
-    std::string command = StringPrintf("%s -w -n -L %s", binary, chainName);
-    return runCommand(command);
-}
-
-static int iptablesRuleLineLength(const char *binary, const char *chainName) {
-    return listIptablesRule(binary, chainName).size();
-}
-
-static bool iptablesRuleExists(const char *binary,
-                               const char *chainName,
-                               const std::string& expectedRule) {
-    std::vector<std::string> rules = listIptablesRule(binary, chainName);
-    for (const auto& rule : rules) {
-        if(rule.find(expectedRule) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static bool iptablesNoSocketAllowRuleExists(const char *chainName){
@@ -1658,21 +1607,6 @@ TEST_F(BinderTest, BandwidthManipulateSpecialApp) {
 }
 
 namespace {
-
-std::vector<std::string> listIpRoutes(const char* ipVersion, const char* table) {
-    std::string command = StringPrintf("%s %s route ls table %s", IP_PATH, ipVersion, table);
-    return runCommand(command);
-}
-
-bool ipRouteExists(const char* ipVersion, const char* table, const std::string& ipRoute) {
-    std::vector<std::string> routes = listIpRoutes(ipVersion, table);
-    for (const auto& route : routes) {
-        if (route.find(ipRoute) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
-}
 
 std::string ipRouteString(const std::string& ifName, const std::string& dst,
                           const std::string& nextHop) {

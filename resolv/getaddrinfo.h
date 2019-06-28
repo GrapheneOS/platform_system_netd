@@ -17,13 +17,15 @@
 #pragma once
 
 #include "netd_resolv/resolv.h"  // struct android_net_context
+#include "stats.pb.h"
 
 struct addrinfo;
 
 int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
                                      const addrinfo* hints, const android_net_context* netcontext,
-                                     addrinfo** res);
+                                     addrinfo** res, android::net::NetworkDnsEventReported*);
 
 // This is the DNS proxy entry point for getaddrinfo().
 int resolv_getaddrinfo(const char* hostname, const char* servname, const addrinfo* hints,
-                       const android_net_context* netcontext, addrinfo** res);
+                       const android_net_context* netcontext, addrinfo** res,
+                       android::net::NetworkDnsEventReported*);
