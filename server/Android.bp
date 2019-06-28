@@ -236,6 +236,7 @@ cc_test {
         "libgmock",
         "libnetd_server",
         "libnetd_test_tun_interface",
+        "libqtaguid",
     ],
     shared_libs: [
         "libbase",
@@ -247,7 +248,6 @@ cc_test {
         "libnetdbpf",
         "libnetdutils",
         "libnetutils",
-        "libqtaguid",
         "libsysutils",
         "libutils",
         "netd_aidl_interface-V2-cpp",
