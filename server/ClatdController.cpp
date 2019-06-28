@@ -37,6 +37,7 @@
 
 #include "android-base/properties.h"
 #include "android-base/scopeguard.h"
+#include "android-base/stringprintf.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
 #include "netdbpf/bpf_shared.h"
@@ -60,6 +61,7 @@ static const char* kV4AddrString = "192.0.0.4";
 static const in_addr kV4Addr = {inet_addr(kV4AddrString)};
 static const int kV4AddrLen = 29;
 
+using android::base::StringPrintf;
 using android::base::unique_fd;
 using android::bpf::BpfMap;
 using android::netdutils::DumpWriter;
@@ -313,6 +315,18 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
     // success
 }
 
+void ClatdController::maybeSetIptablesDropRule(bool add, const char* pfx96Str, const char* v6Str) {
+    if (mClatEbpfMode == ClatEbpfDisabled) return;
+
+    std::string cmd = StringPrintf(
+            "*raw\n"
+            "%s %s -s %s/96 -d %s -j DROP\n"
+            "COMMIT\n",
+            (add ? "-A" : "-D"), LOCAL_RAW_PREROUTING, pfx96Str, v6Str);
+
+    iptablesRestoreFunction(V6, cmd);
+}
+
 void ClatdController::maybeStopBpf(const ClatdTracker& tracker) {
     if (mClatEbpfMode == ClatEbpfDisabled) return;
 
@@ -507,14 +521,17 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
         return -res;
     }
 
-    // 11. actually perform vfork/dup2/execve
+    // 11. If necessary, add the drop rule for iptables.
+    maybeSetIptablesDropRule(true, tracker.pfx96String, tracker.v6Str);
+
+    // 12. actually perform vfork/dup2/execve
     res = posix_spawn(&tracker.pid, kClatdPath, &fa, &attr, (char* const*)args, nullptr);
     if (res) {
         ALOGE("posix_spawn failed (%s)", strerror(res));
         return -res;
     }
 
-    // 12. configure eBPF offload - if possible
+    // 13. configure eBPF offload - if possible
     maybeStartBpf(tracker);
 
     mClatdTrackers[interface] = tracker;
@@ -539,6 +556,8 @@ int ClatdController::stopClatd(const std::string& interface) {
 
     kill(tracker->pid, SIGTERM);
     waitpid(tracker->pid, nullptr, 0);
+
+    maybeSetIptablesDropRule(false, tracker->pfx96String, tracker->v6Str);
     mClatdTrackers.erase(interface);
 
     ALOGD("clatd on %s stopped", interface.c_str());
@@ -598,6 +617,7 @@ void ClatdController::dump(DumpWriter& dw) {
 }
 
 auto ClatdController::isIpv4AddressFreeFunc = isIpv4AddressFree;
+auto ClatdController::iptablesRestoreFunction = execIptablesRestore;
 
 }  // namespace net
 }  // namespace android
