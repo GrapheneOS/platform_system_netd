@@ -9,9 +9,9 @@ cc_test {
         "resolv_stress_test.cpp",
         "resolv_test_utils.cpp",
     ],
-    include_dirs: [
-        "system/netd/resolv",
-        "system/netd/resolv/include",
+    header_libs: [
+        "libnetd_resolv_headers",
+        "libnetd_resolv_internal_headers",
     ],
     shared_libs: [
         "libbase",
