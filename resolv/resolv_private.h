@@ -89,6 +89,7 @@ struct res_state_ext;
 
 struct __res_state {
     unsigned netid;                        /* NetId: cache key and socket mark */
+    uid_t uid;                             /* uid of the app that sent the DNS lookup */
     u_long options;                        /* option flags - see below. */
     int nscount;                           /* number of name srvers */
     struct sockaddr_in nsaddr_list[MAXNS]; /* address of name server */
