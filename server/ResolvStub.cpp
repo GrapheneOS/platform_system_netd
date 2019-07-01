@@ -42,8 +42,6 @@ struct ResolvStub RESOLV_STUB;
 
 inline constexpr char APEX_LIB64_DIR[] = "/apex/com.android.resolv/lib64";
 inline constexpr char APEX_LIB_DIR[] = "/apex/com.android.resolv/lib";
-inline constexpr char SYSTEM_APEX_LIB64_DIR[] = "/system/apex/com.android.resolv/lib64";
-inline constexpr char SYSTEM_APEX_LIB_DIR[] = "/system/apex/com.android.resolv/lib";
 inline constexpr char LIBNAME[] = "libnetd_resolv.so";
 
 template <typename FunctionType>
@@ -59,8 +57,7 @@ static void resolvStubInitFunction(void* handle, const char* symbol, FunctionTyp
 int resolv_stub_init() {
     void* netdResolvHandle;
 
-    for (const auto& dir :
-         {APEX_LIB64_DIR, APEX_LIB_DIR, SYSTEM_APEX_LIB64_DIR, SYSTEM_APEX_LIB_DIR}) {
+    for (const auto& dir : {APEX_LIB64_DIR, APEX_LIB_DIR}) {
         std::string path = std::string(dir) + "/" + LIBNAME;
         netdResolvHandle = dlopen(path.c_str(), RTLD_NOW);
         if (netdResolvHandle != nullptr) {
