@@ -26,6 +26,7 @@
 #include <openssl/sha.h>
 #include <sys/eventfd.h>
 #include <sys/poll.h>
+#include <unistd.h>
 #include <algorithm>
 
 #include "DnsTlsSessionCache.h"
@@ -34,6 +35,7 @@
 #include <android-base/logging.h>
 
 #include "netdutils/SocketOption.h"
+#include "private/android_filesystem_config.h"  // AID_DNS
 
 namespace android {
 
@@ -78,6 +80,10 @@ Status DnsTlsSocket::tcpConnect() {
     if (mSslFd.get() == -1) {
         LOG(ERROR) << "Failed to create socket";
         return Status(errno);
+    }
+
+    if (fchown(mSslFd.get(), AID_DNS, -1) == -1) {
+        LOG(WARNING) << "Failed to chown socket: %s" << strerror(errno);
     }
 
     const socklen_t len = sizeof(mMark);
