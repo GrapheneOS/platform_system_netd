@@ -23,10 +23,11 @@ cc_benchmark {
     include_dirs: [
         "system/netd/include",
         "system/netd/client",
-        "system/netd/resolv/include",
         "system/netd/server",
         "system/netd/server/binder",
-        "system/netd/resolv/dns_responder",
+    ],
+    header_libs: [
+        "libnetd_resolv_headers",
     ],
     srcs: [
         "main.cpp",
