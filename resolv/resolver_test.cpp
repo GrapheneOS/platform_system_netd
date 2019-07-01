@@ -25,6 +25,7 @@
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
 #include <binder/ProcessState.h>
+#include <bpf/BpfUtils.h>
 #include <cutils/sockets.h>
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
@@ -59,12 +60,16 @@
 #include "dns_responder/dns_tls_frontend.h"
 #include "netd_resolv/params.h"  // MAXNS
 #include "netid_client.h"  // NETID_UNSET
+#include "test_utils.h"
 #include "tests/dns_metrics_listener/dns_metrics_listener.h"
 #include "tests/resolv_test_utils.h"
 
 // Valid VPN netId range is 100 ~ 65535
 constexpr int TEST_VPN_NETID = 65502;
 constexpr int MAXPACKET = (8 * 1024);
+
+// Use maximum reserved appId for applications to avoid conflict with existing uids.
+static const int TEST_UID = 99999;
 
 // Semi-public Bionic hook used by the NDK (frameworks/base/native/android/net.c)
 // Tested here for convenience.
@@ -75,6 +80,7 @@ extern "C" int android_getaddrinfofornet(const char* hostname, const char* servn
 using android::base::ParseInt;
 using android::base::StringPrintf;
 using android::base::unique_fd;
+using android::net::INetd;
 using android::net::ResolverStats;
 using android::net::metrics::DnsMetricsListener;
 using android::netdutils::enableSockopt;
@@ -3368,14 +3374,13 @@ void expectDnsNetIdEquals(unsigned netId) {
     EXPECT_EQ(netId, static_cast<unsigned>(dnsNetId));
 }
 
-void expectDnsNetIdIsDefaultNetwork(android::net::INetd* netdService) {
+void expectDnsNetIdIsDefaultNetwork(INetd* netdService) {
     int currentNetid;
     EXPECT_TRUE(netdService->networkGetDefault(&currentNetid).isOk());
     expectDnsNetIdEquals(currentNetid);
 }
 
-void expectDnsNetIdWithVpn(android::net::INetd* netdService, unsigned vpnNetId,
-                           unsigned expectedNetId) {
+void expectDnsNetIdWithVpn(INetd* netdService, unsigned vpnNetId, unsigned expectedNetId) {
     EXPECT_TRUE(netdService->networkCreateVpn(vpnNetId, false /* secure */).isOk());
     uid_t uid = getuid();
     // Add uid to VPN
@@ -3439,4 +3444,72 @@ TEST_F(ResolverTest, getDnsNetId) {
     sendCommand(fd, "getdnsnetidNotSupported");
     // Keep in sync with FrameworkListener.cpp (500, "Command not recognized")
     EXPECT_EQ(500, readResponseCode(fd));
+}
+
+TEST_F(ResolverTest, BlockDnsQueryWithUidRule) {
+    // This test relies on blocking traffic on loopback, which xt_qtaguid does not do.
+    // See aosp/358413 and b/34444781 for why.
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    constexpr char listen_addr1[] = "127.0.0.4";
+    constexpr char listen_addr2[] = "::1";
+    constexpr char host_name[] = "howdy.example.com.";
+    const std::vector<DnsRecord> records = {
+            {host_name, ns_type::ns_t_a, "1.2.3.4"},
+            {host_name, ns_type::ns_t_aaaa, "::1.2.3.4"},
+    };
+    INetd* netdService = mDnsClient.netdService();
+
+    test::DNSResponder dns1(listen_addr1);
+    test::DNSResponder dns2(listen_addr2);
+    StartDns(dns1, records);
+    StartDns(dns2, records);
+
+    std::vector<std::string> servers = {listen_addr1, listen_addr2};
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers));
+    dns1.clearQueries();
+    dns2.clearQueries();
+
+    // Add drop rule for TEST_UID. Also enable the standby chain because it might not be enabled.
+    // Unfortunately we cannot use FIREWALL_CHAIN_NONE, or custom iptables rules, for this purpose
+    // because netd calls fchown() on the DNS query sockets, and "iptables -m owner" matches the
+    // UID of the socket creator, not the UID set by fchown().
+    //
+    // TODO: migrate FIREWALL_CHAIN_NONE to eBPF as well.
+    EXPECT_TRUE(netdService->firewallEnableChildChain(INetd::FIREWALL_CHAIN_STANDBY, true).isOk());
+    EXPECT_TRUE(netdService
+                        ->firewallSetUidRule(INetd::FIREWALL_CHAIN_STANDBY, TEST_UID,
+                                             INetd::FIREWALL_RULE_DENY)
+                        .isOk());
+
+    // Save uid
+    int suid = getuid();
+
+    // Switch to TEST_UID
+    EXPECT_TRUE(seteuid(TEST_UID) == 0);
+
+    // Dns Query
+    int fd1 = resNetworkQuery(TEST_NETID, host_name, ns_c_in, ns_t_a, 0);
+    int fd2 = resNetworkQuery(TEST_NETID, host_name, ns_c_in, ns_t_aaaa, 0);
+    EXPECT_TRUE(fd1 != -1);
+    EXPECT_TRUE(fd2 != -1);
+
+    uint8_t buf[MAXPACKET] = {};
+    int rcode;
+    int res = getAsyncResponse(fd2, &rcode, buf, MAXPACKET);
+    EXPECT_EQ(-ECONNREFUSED, res);
+
+    memset(buf, 0, MAXPACKET);
+    res = getAsyncResponse(fd1, &rcode, buf, MAXPACKET);
+    EXPECT_EQ(-ECONNREFUSED, res);
+
+    // Restore uid
+    EXPECT_TRUE(seteuid(suid) == 0);
+
+    // Remove drop rule for TEST_UID, and disable the standby chain.
+    EXPECT_TRUE(netdService
+                        ->firewallSetUidRule(INetd::FIREWALL_CHAIN_STANDBY, TEST_UID,
+                                             INetd::FIREWALL_RULE_ALLOW)
+                        .isOk());
+    EXPECT_TRUE(netdService->firewallEnableChildChain(INetd::FIREWALL_CHAIN_STANDBY, false).isOk());
 }

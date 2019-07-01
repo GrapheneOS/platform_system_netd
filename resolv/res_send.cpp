@@ -772,7 +772,9 @@ same_ns:
                     return -1;
             }
         }
-        fchown(statp->_vcsock, AID_DNS, -1);
+        if (fchown(statp->_vcsock, statp->uid, -1) == -1) {
+            PLOG(WARNING) << __func__ << ": Failed to chown socket";
+        }
         if (statp->_mark != MARK_UNSET) {
             if (setsockopt(statp->_vcsock, SOL_SOCKET, SO_MARK, &statp->_mark,
                            sizeof(statp->_mark)) < 0) {
@@ -1015,7 +1017,9 @@ static int send_dg(res_state statp, res_params* params, const u_char* buf, int b
             }
         }
 
-        fchown(statp->_u._ext.nssocks[ns], AID_DNS, -1);
+        if (fchown(statp->_u._ext.nssocks[ns], statp->uid, -1) == -1) {
+            PLOG(WARNING) << __func__ << ": Failed to chown socket";
+        }
         if (statp->_mark != MARK_UNSET) {
             if (setsockopt(statp->_u._ext.nssocks[ns], SOL_SOCKET, SO_MARK, &(statp->_mark),
                            sizeof(statp->_mark)) < 0) {
