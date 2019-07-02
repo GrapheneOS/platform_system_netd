@@ -313,6 +313,7 @@ void res_setnetcontext(res_state statp, const struct android_net_context* netcon
                        android::net::NetworkDnsEventReported* _Nonnull event) {
     if (statp != NULL) {
         statp->netid = netcontext->dns_netid;
+        statp->uid = netcontext->uid;
         statp->_mark = netcontext->dns_mark;
         if (netcontext->flags & NET_CONTEXT_FLAG_USE_EDNS) {
             statp->options |= RES_USE_EDNS0 | RES_USE_DNSSEC;

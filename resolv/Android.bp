@@ -3,6 +3,16 @@ cc_library_headers {
     export_include_dirs: ["include"],
 }
 
+//For the test to use
+//TODO: 1. Need to Refactor ResolverStats related code(ex: ResolverController::getDnsInfo).
+//         Then removing this library header file.
+//      2. Change the imports path in netd/TEST_MAPPING after migrating from
+//         system/netd/resolv to packages/modules/resolv.
+cc_library_headers {
+    name: "libnetd_resolv_internal_headers",
+    export_include_dirs: ["."],
+}
+
 aidl_interface {
     name: "dnsresolver_aidl_interface",
     local_include_dir: "binder",
@@ -151,10 +161,11 @@ cc_test {
         "resolver_test.cpp",
         "tests/resolv_test_utils.cpp",
     ],
-    include_dirs: [
-        "system/netd/resolv/include",
+    header_libs: [
+        "libnetd_resolv_headers",
     ],
     shared_libs: [
+        "libbpf_android",
         "libbase",
         "libbinder",
         "libcrypto",
@@ -168,6 +179,7 @@ cc_test {
         "libnetd_test_dnsresponder",
         "libnetd_test_metrics_listener",
         "libnetd_test_tun_interface",
+        "libnetd_test_utils",
         "libnetdutils",
         "netd_aidl_interface-V2-cpp",
         "netd_event_listener_interface-V1-cpp",
@@ -183,6 +195,8 @@ cc_test {
 cc_test {
     name: "resolv_unit_test",
     test_suites: ["device-tests"],
+    require_root: true,
+    //TODO:  drop root privileges and make it be an real unit test.
     defaults: ["netd_defaults"],
     srcs: [
         "dns_tls_test.cpp",
