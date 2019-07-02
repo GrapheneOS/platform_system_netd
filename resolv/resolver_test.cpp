@@ -547,6 +547,25 @@ TEST_F(ResolverTest, GetAddrInfo_localhost) {
     EXPECT_EQ(kIp6LocalHostAddr, ToString(result));
 }
 
+TEST_F(ResolverTest, GetAddrInfo_InvalidSocketType) {
+    test::DNSResponder dns;
+    StartDns(dns, {{kHelloExampleCom, ns_type::ns_t_a, "1.2.3.5"}});
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork());
+
+    // TODO: Test other invalid socket types.
+    const addrinfo hints = {
+            .ai_family = AF_UNSPEC,
+            .ai_protocol = 0,  // any protocol
+            .ai_socktype = SOCK_PACKET,
+    };
+    addrinfo* result = nullptr;
+    // This is a valid hint, but the query won't be sent because the socket type is
+    // not supported.
+    EXPECT_EQ(EAI_NODATA, getaddrinfo("hello", nullptr, &hints, &result));
+    ScopedAddrinfo result_cleanup(result);
+    EXPECT_EQ(nullptr, result);
+}
+
 // Verify if the resolver correctly handle multiple queries simultaneously
 // step 1: set dns server#1 into deferred responding mode.
 // step 2: thread#1 query "hello.example.com." --> resolver send query to server#1.
