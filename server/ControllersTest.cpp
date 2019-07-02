@@ -96,6 +96,8 @@ TEST_F(ControllersTest, TestInitIptablesRules) {
              "*raw\n"
              ":PREROUTING -\n"
              "-F PREROUTING\n"
+             ":clat_raw_PREROUTING -\n"
+             "-A PREROUTING -j clat_raw_PREROUTING\n"
              ":bw_raw_PREROUTING -\n"
              "-A PREROUTING -j bw_raw_PREROUTING\n"
              ":idletimer_raw_PREROUTING -\n"
