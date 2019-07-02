@@ -289,6 +289,17 @@ int validateHints(const addrinfo* _Nonnull hints) {
         return EAI_FAMILY;
     }
 
+    // Socket types which are not in explore_options.
+    switch (hints->ai_socktype) {
+        case SOCK_RAW:
+        case SOCK_DGRAM:
+        case SOCK_STREAM:
+        case ANY:
+            break;
+        default:
+            return EAI_SOCKTYPE;
+    }
+
     if (hints->ai_socktype == ANY || hints->ai_protocol == ANY) return 0;
 
     // if both socktype/protocol are specified, check if they are meaningful combination.
@@ -399,7 +410,6 @@ int resolv_getaddrinfo(const char* _Nonnull hostname, const char* servname, cons
     if (hostname == nullptr && servname == nullptr) return EAI_NONAME;
     if (hostname == nullptr) return EAI_NODATA;
 
-    // hostname is allowed to be nullptr
     // servname is allowed to be nullptr
     // hints is allowed to be nullptr
     assert(res != nullptr);
@@ -436,11 +446,13 @@ int resolv_getaddrinfo(const char* _Nonnull hostname, const char* servname, cons
         while (cur->ai_next) cur = cur->ai_next;
     }
 
+    // Propagate the last error from explore_fqdn(), but only when *all* attempts failed.
     if ((*res = sentinel.ai_next)) return 0;
 
+    // TODO: consider removing freeaddrinfo.
     freeaddrinfo(sentinel.ai_next);
     *res = nullptr;
-    return error;
+    return (error == 0) ? EAI_FAIL : error;
 }
 
 // FQDN hostname, DNS lookup
