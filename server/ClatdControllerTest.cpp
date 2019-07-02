@@ -31,6 +31,8 @@ extern "C" {
 }
 
 #include "ClatdController.h"
+#include "IptablesBaseTest.h"
+#include "NetworkController.h"
 #include "tun_interface.h"
 
 static const char kIPv4LocalAddr[] = "192.0.0.4";
@@ -57,11 +59,21 @@ bool only10Free(in_addr_t addr) {
     return (ntohl(addr) & 0xff) == 10;
 }
 
-class ClatdControllerTest : public ::testing::Test {
+class ClatdControllerTest : public IptablesBaseTest {
   public:
+    ClatdControllerTest() : mClatdCtrl(nullptr) {
+        ClatdController::iptablesRestoreFunction = fakeExecIptablesRestore;
+    }
+
     void SetUp() { resetIpv4AddressFreeFunc(); }
 
   protected:
+    ClatdController mClatdCtrl;
+    bool isEbpfDisabled() { return mClatdCtrl.getEbpfMode() == ClatdController::ClatEbpfDisabled; }
+    void maybeSetIptablesDropRule(bool a, const char* b, const char* c) {
+        std::lock_guard guard(mClatdCtrl.mutex);
+        return mClatdCtrl.maybeSetIptablesDropRule(a, b, c);
+    }
     void setIpv4AddressFreeFunc(bool (*func)(in_addr_t)) {
         ClatdController::isIpv4AddressFreeFunc = func;
     }
@@ -173,6 +185,28 @@ TEST_F(ClatdControllerTest, MakeChecksumNeutral) {
     }
     EXPECT_LE(3190000, onebits);
     EXPECT_GE(3210000, onebits);
+}
+
+TEST_F(ClatdControllerTest, AddRemoveIptablesRule) {
+    if (isEbpfDisabled()) return;
+
+    ExpectedIptablesCommands expected = {
+            {V6,
+             "*raw\n"
+             "-A clat_raw_PREROUTING -s 64:ff9b::/96 -d 2001:db8::1:2:3:4 -j DROP\n"
+             "COMMIT\n"},
+    };
+    maybeSetIptablesDropRule(true, "64:ff9b::", "2001:db8::1:2:3:4");
+    expectIptablesRestoreCommands(expected);
+
+    expected = {
+            {V6,
+             "*raw\n"
+             "-D clat_raw_PREROUTING -s 64:ff9b::/96 -d 2001:db8::a:b:c:d -j DROP\n"
+             "COMMIT\n"},
+    };
+    maybeSetIptablesDropRule(false, "64:ff9b::", "2001:db8::a:b:c:d");
+    expectIptablesRestoreCommands(expected);
 }
 
 }  // namespace net
