@@ -28,11 +28,6 @@ cc_library {
         "system/netd/libnetdutils/include",
     ],
     defaults: ["netd_defaults"],
-    product_variables: {
-        debuggable: {
-            cflags: ["-DNETD_CLIENT_DEBUGGABLE_BUILD"],
-        }
-    }
 }
 
 cc_test {
