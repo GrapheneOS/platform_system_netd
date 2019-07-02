@@ -73,6 +73,7 @@ static const std::vector<const char*> FILTER_OUTPUT = {
 };
 
 static const std::vector<const char*> RAW_PREROUTING = {
+        ClatdController::LOCAL_RAW_PREROUTING,
         BandwidthController::LOCAL_RAW_PREROUTING,
         IdletimerController::LOCAL_RAW_PREROUTING,
         TetherController::LOCAL_RAW_PREROUTING,
