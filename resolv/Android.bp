@@ -70,22 +70,22 @@ cc_library {
     // on system ABIs
     stl: "libc++_static",
     static_libs: [
+        "dnsresolver_aidl_interface-V2-ndk_platform",
         "libbase",
         "libcrypto",
         "libcutils",
         "libjsoncpp",
         "liblog",
         "libnetdutils",
+        "libprotobuf-cpp-lite",
         "libssl",
         "libstatslog_resolv",
         "libstatssocket",
         "libsysutils",
-        "libutils",
+        "libutils",  // Used by libstatslog_resolv
         "netd_event_listener_interface-V1-ndk_platform",
-        "dnsresolver_aidl_interface-V2-ndk_platform",
         "server_configurable_flags",
         "stats_proto",
-        "libprotobuf-cpp-lite",
     ],
     shared_libs: [
         "libbinder_ndk",
@@ -145,7 +145,6 @@ cc_library_static {
         "libcutils",
         "liblog",
         "libstatssocket",
-        "libutils",
     ],
 }
 
