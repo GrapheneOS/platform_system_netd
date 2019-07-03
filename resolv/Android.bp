@@ -74,7 +74,7 @@ cc_library {
         "libcrypto",
         "libcutils",
         "libjsoncpp",
-        "liblog",
+        "liblog", //Used by libstatslog_resolv
         "libnetdutils",
         "libssl",
         "libstatslog_resolv",
@@ -143,7 +143,6 @@ cc_library_static {
     export_generated_headers: ["statslog_resolv.h"],
     static_libs: [
         "libcutils",
-        "liblog",
         "libstatssocket",
         "libutils",
     ],
@@ -168,7 +167,6 @@ cc_test {
         "libbase",
         "libbinder",
         "libcrypto",
-        "liblog",
         "libnetd_client",
         "libssl",
         "libutils",
@@ -204,7 +202,6 @@ cc_test {
     shared_libs: [
         "libbase",
         "libcrypto",
-        "liblog",
         "libssl",
     ],
     static_libs: [
