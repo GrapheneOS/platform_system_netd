@@ -52,6 +52,8 @@ class ClatdController {
 
     void dump(netdutils::DumpWriter& dw) EXCLUDES(mutex);
 
+    static constexpr const char LOCAL_RAW_PREROUTING[] = "clat_raw_PREROUTING";
+
   private:
     struct ClatdTracker {
         pid_t pid = -1;
@@ -91,17 +93,25 @@ class ClatdController {
         ClatEbpfEnabled,   // >=4.9 kernel && >=Q api shipping level -- must work
     };
     eClatEbpfMode mClatEbpfMode GUARDED_BY(mutex);
+    eClatEbpfMode getEbpfMode() EXCLUDES(mutex) {
+        std::lock_guard guard(mutex);
+        return mClatEbpfMode;
+    }
+
     base::unique_fd mNetlinkFd GUARDED_BY(mutex);
     bpf::BpfMap<ClatIngressKey, ClatIngressValue> mClatIngressMap GUARDED_BY(mutex);
 
     void maybeStartBpf(const ClatdTracker& tracker) REQUIRES(mutex);
     void maybeStopBpf(const ClatdTracker& tracker) REQUIRES(mutex);
+    void maybeSetIptablesDropRule(bool add, const char* pfx96Str, const char* v6Str)
+            REQUIRES(mutex);
 
     // For testing.
     friend class ClatdControllerTest;
 
     static bool (*isIpv4AddressFreeFunc)(in_addr_t);
     static bool isIpv4AddressFree(in_addr_t addr);
+    static int (*iptablesRestoreFunction)(IptablesTarget target, const std::string& commands);
 };
 
 }  // namespace net
