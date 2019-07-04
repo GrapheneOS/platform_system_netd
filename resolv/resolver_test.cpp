@@ -968,6 +968,92 @@ TEST_F(ResolverTest, SearchPathChange) {
     EXPECT_EQ("2001:db8::1:13", ToString(result));
 }
 
+namespace {
+
+std::vector<std::string> getResolverDomains(android::net::IDnsResolver* dnsResolverService,
+                                            unsigned netId) {
+    std::vector<std::string> res_servers;
+    std::vector<std::string> res_domains;
+    std::vector<std::string> res_tls_servers;
+    res_params res_params;
+    std::vector<ResolverStats> res_stats;
+    int wait_for_pending_req_timeout_count;
+    GetResolverInfo(dnsResolverService, netId, &res_servers, &res_domains, &res_tls_servers,
+                    &res_params, &res_stats, &wait_for_pending_req_timeout_count);
+    return res_domains;
+}
+
+}  // namespace
+
+TEST_F(ResolverTest, SearchPathPrune) {
+    constexpr size_t DUPLICATED_DOMAIN_NUM = 3;
+    constexpr char listen_addr[] = "127.0.0.13";
+    constexpr char domian_name1[] = "domain13.org.";
+    constexpr char domian_name2[] = "domain14.org.";
+    constexpr char host_name1[] = "test13.domain13.org.";
+    constexpr char host_name2[] = "test14.domain14.org.";
+    std::vector<std::string> servers = {listen_addr};
+
+    std::vector<std::string> testDomains1;
+    std::vector<std::string> testDomains2;
+    // Domain length should be <= 255
+    // Max number of domains in search path is 6
+    for (size_t i = 0; i < MAXDNSRCH + 1; i++) {
+        // Fill up with invalid domain
+        testDomains1.push_back(std::string(300, i + '0'));
+        // Fill up with valid but duplicated domain
+        testDomains2.push_back(StringPrintf("domain%zu.org", i % DUPLICATED_DOMAIN_NUM));
+    }
+
+    // Add valid domain used for query.
+    testDomains1.push_back(domian_name1);
+
+    // Add valid domain twice used for query.
+    testDomains2.push_back(domian_name2);
+    testDomains2.push_back(domian_name2);
+
+    const std::vector<DnsRecord> records = {
+            {host_name1, ns_type::ns_t_aaaa, "2001:db8::13"},
+            {host_name2, ns_type::ns_t_aaaa, "2001:db8::1:13"},
+    };
+    test::DNSResponder dns(listen_addr);
+    StartDns(dns, records);
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, testDomains1));
+
+    const addrinfo hints = {.ai_family = AF_INET6};
+    ScopedAddrinfo result = safe_getaddrinfo("test13", nullptr, &hints);
+
+    EXPECT_TRUE(result != nullptr);
+
+    EXPECT_EQ(1U, dns.queries().size());
+    EXPECT_EQ(1U, GetNumQueries(dns, host_name1));
+    EXPECT_EQ("2001:db8::13", ToString(result));
+
+    const auto& res_domains1 = getResolverDomains(mDnsClient.resolvService(), TEST_NETID);
+    // Expect 1 valid domain, invalid domains are removed.
+    ASSERT_EQ(1U, res_domains1.size());
+    EXPECT_EQ(domian_name1, res_domains1[0]);
+
+    dns.clearQueries();
+
+    ASSERT_TRUE(mDnsClient.SetResolversForNetwork(servers, testDomains2));
+
+    result = safe_getaddrinfo("test14", nullptr, &hints);
+    EXPECT_TRUE(result != nullptr);
+
+    // (3 domains * 2 retries) + 1 success query = 7
+    EXPECT_EQ(7U, dns.queries().size());
+    EXPECT_EQ(1U, GetNumQueries(dns, host_name2));
+    EXPECT_EQ("2001:db8::1:13", ToString(result));
+
+    const auto& res_domains2 = getResolverDomains(mDnsClient.resolvService(), TEST_NETID);
+    // Expect 4 valid domain, duplicate domains are removed.
+    EXPECT_EQ(DUPLICATED_DOMAIN_NUM + 1U, res_domains2.size());
+    EXPECT_THAT(
+            std::vector<std::string>({"domain0.org", "domain1.org", "domain2.org", domian_name2}),
+            testing::ElementsAreArray(res_domains2));
+}
+
 static std::string base64Encode(const std::vector<uint8_t>& input) {
     size_t out_len;
     EXPECT_EQ(1, EVP_EncodedLength(&out_len, input.size()));

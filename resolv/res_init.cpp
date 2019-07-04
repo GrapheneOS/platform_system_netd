@@ -125,11 +125,7 @@ int res_ninit(res_state statp) {
 
 /* This function has to be reachable by res_data.c but not publicly. */
 int res_vinit(res_state statp, int preinit) {
-    char *cp, **pp;
-    char buf[BUFSIZ];
     int nserv = 0; /* number of nameserver records read from file */
-    int havesearch = 0;
-    int dots;
     sockaddr_union u[2];
 
     if ((statp->options & RES_INIT) != 0U) res_ndestroy(statp);
@@ -161,31 +157,6 @@ int res_vinit(res_state statp, int preinit) {
     }
     statp->nsort = 0;
     res_setservers(statp, u, nserv);
-
-    if (statp->defdname[0] == 0 && gethostname(buf, sizeof(statp->defdname) - 1) == 0 &&
-        (cp = strchr(buf, '.')) != NULL)
-        strcpy(statp->defdname, cp + 1);
-
-    /* find components of local domain that might be searched */
-    if (havesearch == 0) {
-        pp = statp->dnsrch;
-        *pp++ = statp->defdname;
-        *pp = NULL;
-
-        dots = 0;
-        for (cp = statp->defdname; *cp; cp++) dots += (*cp == '.');
-
-        cp = statp->defdname;
-        while (pp < statp->dnsrch + MAXDFLSRCH) {
-            if (dots < LOCALDOMAINPARTS) break;
-            cp = strchr(cp, '.') + 1; /* we know there is one */
-            *pp++ = cp;
-            dots--;
-        }
-        *pp = NULL;
-        LOG(DEBUG) << __func__ << ": dnsrch list:";
-        for (pp = statp->dnsrch; *pp; pp++) LOG(DEBUG) << "\t" << *pp;
-    }
 
     if (nserv > 0) {
         statp->nscount = nserv;
