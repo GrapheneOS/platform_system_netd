@@ -35,7 +35,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <algorithm>
 #include <mutex>
+#include <set>
+#include <vector>
 
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
@@ -46,6 +49,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/parseint.h>
+#include <android-base/strings.h>
 #include <android-base/thread_annotations.h>
 #include <android/multinetwork.h>  // ResNsendFlags
 
@@ -1142,8 +1146,7 @@ struct resolv_cache_info {
     int revision_id;  // # times the nameservers have been replaced
     res_params params;
     struct res_stats nsstats[MAXNS];
-    char defdname[MAXDNSRCHPATH];
-    int dnsrch_offset[MAXDNSRCH + 1];  // offsets into defdname
+    std::vector<std::string> search_domains;
     int wait_for_pending_req_timeout_count;
 };
 
@@ -1719,12 +1722,35 @@ static void resolv_set_experiment_params(res_params* params) {
     }
 }
 
-int resolv_set_nameservers_for_net(unsigned netid, const char** servers, const int numservers,
-                                   const char* domains, const res_params* params) {
-    char* cp;
-    int* offset;
-    struct addrinfo* nsaddrinfo[MAXNS];
+int resolv_set_nameservers(unsigned netid, const char** servers, int numservers,
+                           const char* domains, const res_params* params) {
+    return resolv_set_nameservers(netid, servers, numservers, android::base::Split(domains, " "),
+                                  params);
+}
 
+namespace {
+
+// Returns valid domains without duplicates which are limited to max size |MAXDNSRCH|.
+std::vector<std::string> filter_domains(const std::vector<std::string>& domains) {
+    std::set<std::string> tmp_set;
+    std::vector<std::string> res;
+
+    std::copy_if(domains.begin(), domains.end(), std::back_inserter(res),
+                 [&tmp_set](const std::string& str) {
+                     return !(str.size() > MAXDNSRCHPATH - 1) && (tmp_set.insert(str).second);
+                 });
+    if (res.size() > MAXDNSRCH) {
+        LOG(WARNING) << __func__ << ": valid domains=" << res.size()
+                     << ", but MAXDNSRCH=" << MAXDNSRCH;
+        res.resize(MAXDNSRCH);
+    }
+    return res;
+}
+
+}  // namespace
+
+int resolv_set_nameservers(unsigned netid, const char** servers, int numservers,
+                           const std::vector<std::string>& domains, const res_params* params) {
     if (numservers > MAXNS) {
         LOG(ERROR) << __func__ << ": numservers=" << numservers << ", MAXNS=" << MAXNS;
         return E2BIG;
@@ -1732,6 +1758,8 @@ int resolv_set_nameservers_for_net(unsigned netid, const char** servers, const i
 
     // Parse the addresses before actually locking or changing any state, in case there is an error.
     // As a side effect this also reduces the time the lock is kept.
+    // TODO: find a better way to replace addrinfo*, something like std::vector<SafeAddrinfo>
+    addrinfo* nsaddrinfo[MAXNS];
     char sbuf[NI_MAXSERV];
     snprintf(sbuf, sizeof(sbuf), "%u", NAMESERVER_PORT);
     for (int i = 0; i < numservers; i++) {
@@ -1795,31 +1823,9 @@ int resolv_set_nameservers_for_net(unsigned netid, const char** servers, const i
         }
     }
 
-    // Always update the search paths, since determining whether they actually changed is
-    // complex due to the zero-padding, and probably not worth the effort. Cache-flushing
-    // however is not necessary, since the stored cache entries do contain the domain, not
-    // just the host name.
-    strlcpy(cache_info->defdname, domains, sizeof(cache_info->defdname));
-    if ((cp = strchr(cache_info->defdname, '\n')) != NULL) *cp = '\0';
-    LOG(INFO) << __func__ << ": domains=\"" << cache_info->defdname << "\"";
-
-    cp = cache_info->defdname;
-    offset = cache_info->dnsrch_offset;
-    while (offset < cache_info->dnsrch_offset + MAXDNSRCH) {
-        while (*cp == ' ' || *cp == '\t') /* skip leading white space */
-            cp++;
-        if (*cp == '\0') /* stop if nothing more to do */
-            break;
-        *offset++ = cp - cache_info->defdname; /* record this search domain */
-        while (*cp) {                          /* zero-terminate it */
-            if (*cp == ' ' || *cp == '\t') {
-                *cp++ = '\0';
-                break;
-            }
-            cp++;
-        }
-    }
-    *offset = -1; /* cache_info->dnsrch_offset has MAXDNSRCH+1 items */
+    // Always update the search paths. Cache-flushing however is not necessary,
+    // since the stored cache entries do contain the domain, not just the host name.
+    cache_info->search_domains = filter_domains(domains);
 
     return 0;
 }
@@ -1899,15 +1905,7 @@ void _resolv_populate_res_for_net(res_state statp) {
             }
         }
         statp->nscount = nserv;
-        // now do search domains.  Note that we cache the offsets as this code runs alot
-        // but the setting/offset-computer only runs when set/changed
-        // WARNING: Don't use str*cpy() here, this string contains zeroes.
-        memcpy(statp->defdname, info->defdname, sizeof(statp->defdname));
-        char** pp = statp->dnsrch;
-        int* p = info->dnsrch_offset;
-        while (pp < statp->dnsrch + MAXDNSRCH && *p != -1) {
-            *pp++ = &statp->defdname[0] + *p++;
-        }
+        statp->search_domains = info->search_domains;
     }
 }
 
@@ -1979,17 +1977,9 @@ int android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
             memcpy(&servers[i], info->nsaddrinfo[i]->ai_addr, info->nsaddrinfo[i]->ai_addrlen);
             stats[i] = info->nsstats[i];
         }
-        for (i = 0; i < MAXDNSRCH; i++) {
-            const char* cur_domain = info->defdname + info->dnsrch_offset[i];
-            // dnsrch_offset[i] can either be -1 or point to an empty string to indicate the end
-            // of the search offsets. Checking for < 0 is not strictly necessary, but safer.
-            // TODO: Pass in a search domain array instead of a string to
-            // resolv_set_nameservers_for_net() and make this double check unnecessary.
-            if (info->dnsrch_offset[i] < 0 ||
-                ((size_t) info->dnsrch_offset[i]) >= sizeof(info->defdname) || !cur_domain[0]) {
-                break;
-            }
-            strlcpy(domains[i], cur_domain, MAXDNSRCHPATH);
+
+        for (i = 0; i < static_cast<int>(info->search_domains.size()); i++) {
+            strlcpy(domains[i], info->search_domains[i].c_str(), MAXDNSRCHPATH);
         }
         *dcount = i;
         *params = info->params;
