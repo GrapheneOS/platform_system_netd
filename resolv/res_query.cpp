@@ -207,7 +207,7 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
                 int* herrno)                       /* legacy and extended
                                                       h_errno NETD_RESOLV_H_ERRNO_EXT_* */
 {
-    const char *cp, *const *domain;
+    const char* cp;
     HEADER* hp = (HEADER*) (void*) answer;
     u_int dots;
     int ret, saved_herrno;
@@ -251,12 +251,10 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
          */
         _resolv_populate_res_for_net(statp);
 
-        for (domain = (const char* const*) statp->dnsrch; *domain && !done; domain++) {
+        for (const auto& domain : statp->search_domains) {
+            if (domain == "." || domain == "") ++root_on_list;
 
-            if (domain[0][0] == '\0' || (domain[0][0] == '.' && domain[0][1] == '\0'))
-                root_on_list++;
-
-            ret = res_nquerydomain(statp, name, *domain, cl, type, answer, anslen, herrno);
+            ret = res_nquerydomain(statp, name, domain.c_str(), cl, type, answer, anslen, herrno);
             if (ret > 0) return ret;
 
             /*
@@ -295,7 +293,6 @@ int res_nsearch(res_state statp, const char* name, /* domain name */
                     /* anything else implies that we're done */
                     done++;
             }
-
         }
     }
 

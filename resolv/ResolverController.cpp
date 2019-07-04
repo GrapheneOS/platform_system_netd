@@ -228,9 +228,7 @@ int ResolverController::setResolverConfiguration(
         server_ptrs.push_back(resolverParams.servers[i].c_str());
     }
 
-    std::string domains_str = android::base::Join(resolverParams.domains, " ");
-
-    // TODO: Change resolv_set_nameservers_for_net() to use ResolverParamsParcel directly.
+    // TODO: Change resolv_set_nameservers() to use ResolverParamsParcel directly.
     res_params res_params = {};
     res_params.sample_validity = resolverParams.sampleValiditySeconds;
     res_params.success_threshold = resolverParams.successThreshold;
@@ -240,10 +238,10 @@ int ResolverController::setResolverConfiguration(
     res_params.retry_count = resolverParams.retryCount;
 
     LOG(VERBOSE) << "setDnsServers netId = " << resolverParams.netId
-                 << ", numservers = " << resolverParams.domains.size();
+                 << ", numservers = " << resolverParams.servers.size();
 
-    return -resolv_set_nameservers_for_net(resolverParams.netId, server_ptrs.data(),
-                                           server_ptrs.size(), domains_str.c_str(), &res_params);
+    return -resolv_set_nameservers(resolverParams.netId, server_ptrs.data(), server_ptrs.size(),
+                                   resolverParams.domains, &res_params);
 }
 
 int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>* servers,
