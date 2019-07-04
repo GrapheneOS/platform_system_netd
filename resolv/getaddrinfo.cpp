@@ -1679,7 +1679,7 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
  * is detected.  Error code, if any, is left in *herrno.
  */
 static int res_searchN(const char* name, res_target* target, res_state res, int* herrno) {
-    const char *cp, *const *domain;
+    const char* cp;
     HEADER* hp;
     u_int dots;
     int ret, saved_herrno;
@@ -1722,8 +1722,8 @@ static int res_searchN(const char* name, res_target* target, res_state res, int*
          */
         _resolv_populate_res_for_net(res);
 
-        for (domain = (const char* const*) res->dnsrch; *domain && !done; domain++) {
-            ret = res_querydomainN(name, *domain, target, res, herrno);
+        for (const auto& domain : res->search_domains) {
+            ret = res_querydomainN(name, domain.c_str(), target, res, herrno);
             if (ret > 0) return ret;
 
             /*
