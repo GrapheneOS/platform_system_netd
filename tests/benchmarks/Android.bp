@@ -9,10 +9,10 @@ cc_benchmark {
         "liblog",
         "libnetd_client",
         "libnetdutils",
+        "libutils",
     ],
     static_libs: [
         "libnetd_test_dnsresponder",
-        "libutils",
         "dnsresolver_aidl_interface-cpp",
         "netd_aidl_interface-cpp",
         "netd_event_listener_interface-cpp",
@@ -43,9 +43,6 @@ cc_benchmark {
         "libbase",
         "libbpf_android",
         "libnetdutils",
-    ],
-    static_libs: [
-        "libutils",
     ],
     srcs: [
         "bpf_benchmark.cpp",
