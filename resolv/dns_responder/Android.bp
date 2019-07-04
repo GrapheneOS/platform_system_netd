@@ -4,7 +4,6 @@ cc_library_static {
     shared_libs: [
         "libbase",
         "libbinder",
-        "liblog",
         "libnetd_client",
         "libnetdutils",
         "libssl",
