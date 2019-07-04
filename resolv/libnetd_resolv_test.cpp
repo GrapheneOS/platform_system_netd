@@ -368,8 +368,8 @@ TEST_F(ResolvGetAddrInfoTest, AlphabeticalHostname_NoData) {
     dns.addMapping(v4_host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
     dns.clearQueries();
 
     // Want AAAA answer but DNS server has A answer only.
@@ -395,8 +395,8 @@ TEST_F(ResolvGetAddrInfoTest, AlphabeticalHostname) {
     dns.addMapping(host_name, ns_type::ns_t_aaaa, v6addr);
     ASSERT_TRUE(dns.startServer());
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     static const struct TestConfig {
         int ai_family;
@@ -430,8 +430,8 @@ TEST_F(ResolvGetAddrInfoTest, IllegalHostname) {
     ASSERT_TRUE(dns.startServer());
 
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     // Illegal hostname is verified by res_hnok() in system/netd/resolv/res_comp.cpp.
     static constexpr char const* illegalHostnames[] = {
@@ -497,8 +497,8 @@ TEST_F(ResolvGetAddrInfoTest, ServerResponseError) {
         dns.setResponseProbability(0.0);  // always ignore requests and response preset rcode
         ASSERT_TRUE(dns.startServer());
         const char* servers[] = {listen_addr};
-        ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                    mDefaultSearchDomains, &mDefaultParams_Binder));
+        ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                            mDefaultSearchDomains, &mDefaultParams_Binder));
 
         addrinfo* result = nullptr;
         const addrinfo hints = {.ai_family = AF_UNSPEC};
@@ -519,8 +519,8 @@ TEST_F(ResolvGetAddrInfoTest, ServerTimeout) {
     dns.setResponseProbability(0.0);  // always ignore requests and don't response
     ASSERT_TRUE(dns.startServer());
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     addrinfo* result = nullptr;
     const addrinfo hints = {.ai_family = AF_UNSPEC};
@@ -543,8 +543,8 @@ TEST_F(ResolvGetAddrInfoTest, CnamesNoIpAddress) {
     ASSERT_TRUE(dns.startServer());
 
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     static const struct TestConfig {
         const char* name;
@@ -582,8 +582,8 @@ TEST_F(ResolvGetAddrInfoTest, CnamesBrokenChainByIllegalCname) {
     ASSERT_TRUE(dns.startServer());
 
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     static const struct TestConfig {
         const char* name;
@@ -642,8 +642,8 @@ TEST_F(ResolvGetAddrInfoTest, CnamesInfiniteLoop) {
     ASSERT_TRUE(dns.startServer());
 
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     for (const auto& family : {AF_INET, AF_INET6, AF_UNSPEC}) {
         SCOPED_TRACE(StringPrintf("family: %d", family));
@@ -670,8 +670,8 @@ TEST_F(GetHostByNameForNetContextTest, AlphabeticalHostname) {
     dns.addMapping(host_name, ns_type::ns_t_aaaa, v6addr);
     ASSERT_TRUE(dns.startServer());
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     static const struct TestConfig {
         int ai_family;
@@ -704,8 +704,8 @@ TEST_F(GetHostByNameForNetContextTest, IllegalHostname) {
     ASSERT_TRUE(dns.startServer());
 
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     // Illegal hostname is verified by res_hnok() in system/netd/resolv/res_comp.cpp.
     static constexpr char const* illegalHostnames[] = {
@@ -749,8 +749,8 @@ TEST_F(GetHostByNameForNetContextTest, NoData) {
     dns.addMapping(v4_host_name, ns_type::ns_t_a, "1.2.3.3");
     ASSERT_TRUE(dns.startServer());
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
     dns.clearQueries();
 
     // Want AAAA answer but DNS server has A answer only.
@@ -793,8 +793,8 @@ TEST_F(GetHostByNameForNetContextTest, ServerResponseError) {
         dns.setResponseProbability(0.0);  // always ignore requests and response preset rcode
         ASSERT_TRUE(dns.startServer());
         const char* servers[] = {listen_addr};
-        ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                    mDefaultSearchDomains, &mDefaultParams_Binder));
+        ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                            mDefaultSearchDomains, &mDefaultParams_Binder));
 
         hostent* hp = nullptr;
         NetworkDnsEventReported event;
@@ -814,8 +814,8 @@ TEST_F(GetHostByNameForNetContextTest, ServerTimeout) {
     dns.setResponseProbability(0.0);  // always ignore requests and don't response
     ASSERT_TRUE(dns.startServer());
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     hostent* hp = nullptr;
     NetworkDnsEventReported event;
@@ -836,8 +836,8 @@ TEST_F(GetHostByNameForNetContextTest, CnamesNoIpAddress) {
     ASSERT_TRUE(dns.startServer());
 
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     static const struct TestConfig {
         const char* name;
@@ -870,8 +870,8 @@ TEST_F(GetHostByNameForNetContextTest, CnamesBrokenChainByIllegalCname) {
     ASSERT_TRUE(dns.startServer());
 
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     static const struct TestConfig {
         const char* name;
@@ -929,8 +929,8 @@ TEST_F(GetHostByNameForNetContextTest, CnamesInfiniteLoop) {
     ASSERT_TRUE(dns.startServer());
 
     const char* servers[] = {listen_addr};
-    ASSERT_EQ(0, resolv_set_nameservers_for_net(TEST_NETID, servers, std::size(servers),
-                                                mDefaultSearchDomains, &mDefaultParams_Binder));
+    ASSERT_EQ(0, resolv_set_nameservers(TEST_NETID, servers, std::size(servers),
+                                        mDefaultSearchDomains, &mDefaultParams_Binder));
 
     for (const auto& family : {AF_INET, AF_INET6}) {
         SCOPED_TRACE(StringPrintf("family: %d", family));
@@ -946,7 +946,7 @@ TEST_F(GetHostByNameForNetContextTest, CnamesInfiniteLoop) {
 // Note that local host file function, files_getaddrinfo(), of resolv_getaddrinfo()
 // is not tested because it only returns a boolean (success or failure) without any error number.
 
-// TODO: Simplify the DNS server configuration, DNSResponder and resolv_set_nameservers_for_net, as
+// TODO: Simplify the DNS server configuration, DNSResponder and resolv_set_nameservers, as
 //       ResolverTest does.
 // TODO: Add test for resolv_getaddrinfo().
 //       - DNS response message parsing.

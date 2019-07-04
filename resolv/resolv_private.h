@@ -59,6 +59,7 @@
 #include <resolv.h>
 #include <time.h>
 #include <string>
+#include <vector>
 
 #include "netd_resolv/params.h"
 #include "netd_resolv/resolv.h"
@@ -76,9 +77,6 @@
 /*
  * Global defines and variables for resolver stub.
  */
-#define MAXDFLSRCH 3       /* # default domain levels to try */
-#define LOCALDOMAINPARTS 2 /* min levels in name that is "local" */
-
 #define RES_TIMEOUT 5000 /* min. milliseconds between retries */
 #define MAXRESOLVSORT 10  /* number of net to sort on */
 #define RES_MAXNDOTS 15   /* should reflect bit field size */
@@ -88,17 +86,16 @@
 struct res_state_ext;
 
 struct __res_state {
-    unsigned netid;                        /* NetId: cache key and socket mark */
-    uid_t uid;                             /* uid of the app that sent the DNS lookup */
-    u_long options;                        /* option flags - see below. */
-    int nscount;                           /* number of name srvers */
-    struct sockaddr_in nsaddr_list[MAXNS]; /* address of name server */
-#define nsaddr nsaddr_list[0]              /* for backward compatibility */
-    u_short id;                            /* current message id */
-    char* dnsrch[MAXDNSRCH + 1];           /* components of domain to search */
-    char defdname[256];                    /* default domain (deprecated) */
-    unsigned ndots : 4;                    /* threshold for initial abs. query */
-    unsigned nsort : 4;                    /* number of elements in sort_list[] */
+    unsigned netid;                           // NetId: cache key and socket mark
+    uid_t uid;                                // uid of the app that sent the DNS lookup
+    u_long options;                           // option flags - see below.
+    int nscount;                              // number of name srvers
+    struct sockaddr_in nsaddr_list[MAXNS];    // address of name server
+#define nsaddr nsaddr_list[0]                 // for backward compatibility
+    u_short id;                               // current message id
+    std::vector<std::string> search_domains;  // domains to search
+    unsigned ndots : 4;                       // threshold for initial abs. query
+    unsigned nsort : 4;                       // number of elements in sort_list[]
     char unused[3];
     struct {
         struct in_addr addr;
