@@ -168,12 +168,6 @@ class ResolverTest : public ::testing::Test {
 
     DnsResponderClient mDnsClient;
 
-    static constexpr char kLocalHost[] = "localhost";
-    static constexpr char kLocalHostAddr[] = "127.0.0.1";
-    static constexpr char kIp6LocalHost[] = "ip6-localhost";
-    static constexpr char kIp6LocalHostAddr[] = "::1";
-    static constexpr char kHelloExampleCom[] = "hello.example.com.";
-
     // Use a shared static DNS listener for all tests to avoid registering lots of listeners
     // which may be released late until process terminated. Currently, registered DNS listener
     // is removed by binder death notification which is fired when the process hosting an
@@ -555,7 +549,7 @@ TEST_F(ResolverTest, GetAddrInfo_InvalidSocketType) {
     // TODO: Test other invalid socket types.
     const addrinfo hints = {
             .ai_family = AF_UNSPEC,
-            .ai_protocol = 0,  // any protocol
+            .ai_protocol = ANY,
             .ai_socktype = SOCK_PACKET,
     };
     addrinfo* result = nullptr;
