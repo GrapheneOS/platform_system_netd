@@ -16,8 +16,6 @@ cc_test {
     shared_libs: [
         "libbase",
         "libbinder",
-        // TODO: remove it after making dns_responder use LOG(*) instead of ALOG*
-        "liblog",
         "libnetd_client",
         "libutils",
     ],

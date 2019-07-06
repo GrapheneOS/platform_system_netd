@@ -70,22 +70,22 @@ cc_library {
     // on system ABIs
     stl: "libc++_static",
     static_libs: [
+        "dnsresolver_aidl_interface-V2-ndk_platform",
         "libbase",
         "libcrypto",
         "libcutils",
         "libjsoncpp",
-        "liblog",
+        "liblog", //Used by libstatslog_resolv
         "libnetdutils",
+        "libprotobuf-cpp-lite",
         "libssl",
         "libstatslog_resolv",
         "libstatssocket",
         "libsysutils",
-        "libutils",
+        "libutils",  // Used by libstatslog_resolv
         "netd_event_listener_interface-V1-ndk_platform",
-        "dnsresolver_aidl_interface-V2-ndk_platform",
         "server_configurable_flags",
         "stats_proto",
-        "libprotobuf-cpp-lite",
     ],
     shared_libs: [
         "libbinder_ndk",
@@ -143,9 +143,7 @@ cc_library_static {
     export_generated_headers: ["statslog_resolv.h"],
     static_libs: [
         "libcutils",
-        "liblog",
         "libstatssocket",
-        "libutils",
     ],
 }
 
@@ -169,7 +167,6 @@ cc_test {
         "libbase",
         "libbinder",
         "libcrypto",
-        "liblog",
         "libnetd_client",
         "libssl",
         "libutils",
@@ -206,7 +203,6 @@ cc_test {
     shared_libs: [
         "libbase",
         "libcrypto",
-        "liblog",
         "libssl",
     ],
     static_libs: [

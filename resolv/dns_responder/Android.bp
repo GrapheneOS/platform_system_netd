@@ -4,14 +4,13 @@ cc_library_static {
     shared_libs: [
         "libbase",
         "libbinder",
-        "liblog",
         "libnetd_client",
         "libnetdutils",
         "libssl",
+        "libutils",
         "dnsresolver_aidl_interface-V2-cpp",
         "netd_aidl_interface-V2-cpp",
     ],
-    static_libs: ["libutils"],
     srcs: [
         "dns_responder.cpp",
         "dns_responder_client.cpp",
