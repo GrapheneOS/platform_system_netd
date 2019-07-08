@@ -32,7 +32,9 @@
 #include "DnsTlsSessionCache.h"
 #include "IDnsTlsSocketObserver.h"
 
+#include <Fwmark.h>
 #include <android-base/logging.h>
+#include <android-base/stringprintf.h>
 
 #include "netdutils/SocketOption.h"
 #include "private/android_filesystem_config.h"  // AID_DNS
@@ -61,6 +63,13 @@ int waitForWriting(int fd) {
     struct pollfd fds = { .fd = fd, .events = POLLOUT };
     const int ret = TEMP_FAILURE_RETRY(poll(&fds, 1, -1));
     return ret;
+}
+
+std::string markToFwmarkString(unsigned mMark) {
+    Fwmark mark;
+    mark.intValue = mMark;
+    return android::base::StringPrintf("%d, %d, %d, %d, %d", mark.netId, mark.explicitlySelected,
+                                       mark.protectedFromVpn, mark.permission, mark.uidBillingDone);
 }
 
 }  // namespace
@@ -223,27 +232,28 @@ bssl::UniquePtr<SSL> DnsTlsSocket::sslConnect(int fd) {
     }
 
     for (;;) {
-        LOG(DEBUG) << mMark << " Calling SSL_connect";
+        LOG(DEBUG) << " Calling SSL_connect with " << markToFwmarkString(mMark);
         int ret = SSL_connect(ssl.get());
-        LOG(DEBUG) << mMark << " SSL_connect returned " << ret;
+        LOG(DEBUG) << " SSL_connect returned " << ret << " with " << markToFwmarkString(mMark);
         if (ret == 1) break;  // SSL handshake complete;
 
         const int ssl_err = SSL_get_error(ssl.get(), ret);
         switch (ssl_err) {
             case SSL_ERROR_WANT_READ:
                 if (waitForReading(fd) != 1) {
-                    LOG(WARNING) << "SSL_connect read error: " << errno;
+                    PLOG(WARNING) << "SSL_connect read error, " << markToFwmarkString(mMark);
                     return nullptr;
                 }
                 break;
             case SSL_ERROR_WANT_WRITE:
                 if (waitForWriting(fd) != 1) {
-                    LOG(WARNING) << "SSL_connect write error";
+                    PLOG(WARNING) << "SSL_connect write error, " << markToFwmarkString(mMark);
                     return nullptr;
                 }
                 break;
             default:
-                LOG(WARNING) << "SSL_connect error " << ssl_err << ", errno=" << errno;
+                PLOG(WARNING) << "SSL_connect ssl error =" << ssl_err << ", "
+                              << markToFwmarkString(mMark);
                 return nullptr;
         }
     }
