@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <mutex>
 #include <set>
+#include <string>
 #include <vector>
 
 #include <arpa/inet.h>
@@ -542,9 +543,8 @@ static int _dnsPacket_checkQuery(DnsPacket* packet) {
      * - there is no point for a query packet sent to a server
      *   to have the TC bit set, but the implementation might
      *   set the bit in the query buffer for its own needs
-     *   between a resolv_cache_lookup and a
-     *   _resolv_cache_add. We should not freak out if this
-     *   is the case.
+     *   between a resolv_cache_lookup and a resolv_cache_add.
+     *   We should not freak out if this is the case.
      *
      * - we consider that the result from a query might depend on
      *   the RD, AD, and CD bits, so these bits
@@ -1141,8 +1141,8 @@ struct resolv_cache_info {
     Cache* cache;
     struct resolv_cache_info* next;
     int nscount;
-    char* nameservers[MAXNS];
-    struct addrinfo* nsaddrinfo[MAXNS];
+    std::vector<std::string> nameservers;
+    struct addrinfo* nsaddrinfo[MAXNS];  // TODO: Use struct sockaddr_storage.
     int revision_id;  // # times the nameservers have been replaced
     res_params params;
     struct res_stats nsstats[MAXNS];
@@ -1317,7 +1317,7 @@ static void cache_dump_mru(Cache* cache) {
  * So, the caller must check '*result' to check for success/failure.
  *
  * The main idea is that the result can later be used directly in
- * calls to _resolv_cache_add or _resolv_cache_remove as the 'lookup'
+ * calls to resolv_cache_add or _resolv_cache_remove as the 'lookup'
  * parameter. This makes the code simpler and avoids re-searching
  * for the key position in the htable.
  *
@@ -1593,10 +1593,9 @@ static void insert_cache_info_locked(resolv_cache_info* cache_info);
 static resolv_cache_info* create_cache_info();
 // empty the nameservers set for the named cache
 static void free_nameservers_locked(resolv_cache_info* cache_info);
-// return 1 if the provided list of name servers differs from the list of name servers
-// currently attached to the provided cache_info
-static int resolv_is_nameservers_equal_locked(resolv_cache_info* cache_info, const char** servers,
-                                              int numservers);
+// Order-insensitive comparison for the two set of servers.
+static bool resolv_is_nameservers_equal(const std::vector<std::string>& oldServers,
+                                        const std::vector<std::string>& newServers);
 // clears the stats samples contained withing the given cache_info
 static void res_cache_clear_stats_locked(resolv_cache_info* cache_info);
 
@@ -1697,15 +1696,6 @@ static resolv_cache_info* find_cache_info_locked(unsigned netid) {
     return cache_info;
 }
 
-static void resolv_set_default_params(res_params* params) {
-    params->sample_validity = NSSAMPLE_VALIDITY;
-    params->success_threshold = SUCCESS_THRESHOLD;
-    params->min_samples = 0;
-    params->max_samples = 0;
-    params->base_timeout_msec = 0;  // 0 = legacy algorithm
-    params->retry_count = 0;
-}
-
 static void resolv_set_experiment_params(res_params* params) {
     using android::base::ParseInt;
     using server_configurable_flags::GetServerConfigurableFlag;
@@ -1720,12 +1710,6 @@ static void resolv_set_experiment_params(res_params* params) {
         ParseInt(GetServerConfigurableFlag("netd_native", "retransmission_time_interval", ""),
                  &params->base_timeout_msec);
     }
-}
-
-int resolv_set_nameservers(unsigned netid, const char** servers, int numservers,
-                           const char* domains, const res_params* params) {
-    return resolv_set_nameservers(netid, servers, numservers, android::base::Split(domains, " "),
-                                  params);
 }
 
 namespace {
@@ -1747,56 +1731,59 @@ std::vector<std::string> filter_domains(const std::vector<std::string>& domains)
     return res;
 }
 
+std::vector<std::string> filter_nameservers(const std::vector<std::string>& servers) {
+    std::vector<std::string> res = servers;
+    if (res.size() > MAXNS) {
+        LOG(WARNING) << __func__ << ": too many servers: " << res.size();
+        res.resize(MAXNS);
+    }
+    return res;
+}
+
 }  // namespace
 
-int resolv_set_nameservers(unsigned netid, const char** servers, int numservers,
-                           const std::vector<std::string>& domains, const res_params* params) {
-    if (numservers > MAXNS) {
-        LOG(ERROR) << __func__ << ": numservers=" << numservers << ", MAXNS=" << MAXNS;
-        return E2BIG;
-    }
+int resolv_set_nameservers(unsigned netid, const std::vector<std::string>& servers,
+                           const std::vector<std::string>& domains, const res_params& params) {
+    std::vector<std::string> nameservers = filter_nameservers(servers);
+    const int numservers = static_cast<int>(nameservers.size());
+
+    LOG(INFO) << __func__ << ": netId = " << netid << ", numservers = " << numservers;
 
     // Parse the addresses before actually locking or changing any state, in case there is an error.
     // As a side effect this also reduces the time the lock is kept.
     // TODO: find a better way to replace addrinfo*, something like std::vector<SafeAddrinfo>
     addrinfo* nsaddrinfo[MAXNS];
-    char sbuf[NI_MAXSERV];
-    snprintf(sbuf, sizeof(sbuf), "%u", NAMESERVER_PORT);
     for (int i = 0; i < numservers; i++) {
         // The addrinfo structures allocated here are freed in free_nameservers_locked().
         const addrinfo hints = {
                 .ai_family = AF_UNSPEC, .ai_socktype = SOCK_DGRAM, .ai_flags = AI_NUMERICHOST};
-        int rt = getaddrinfo_numeric(servers[i], sbuf, hints, &nsaddrinfo[i]);
+        const int rt = getaddrinfo_numeric(nameservers[i].c_str(), "53", hints, &nsaddrinfo[i]);
         if (rt != 0) {
             for (int j = 0; j < i; j++) {
                 freeaddrinfo(nsaddrinfo[j]);
             }
-            LOG(INFO) << __func__ << ": getaddrinfo_numeric(" << servers[i]
+            LOG(INFO) << __func__ << ": getaddrinfo_numeric(" << nameservers[i]
                       << ") = " << gai_strerror(rt);
-            return EINVAL;
+            return -EINVAL;
         }
     }
 
     std::lock_guard guard(cache_mutex);
-
     resolv_cache_info* cache_info = find_cache_info_locked(netid);
 
-    if (cache_info == NULL) return ENONET;
+    if (cache_info == nullptr) return -ENONET;
 
     uint8_t old_max_samples = cache_info->params.max_samples;
-    if (params != NULL) {
-        cache_info->params = *params;
-    } else {
-        resolv_set_default_params(&cache_info->params);
-    }
+    cache_info->params = params;
     resolv_set_experiment_params(&cache_info->params);
-    if (!resolv_is_nameservers_equal_locked(cache_info, servers, numservers)) {
+    if (!resolv_is_nameservers_equal(cache_info->nameservers, nameservers)) {
         // free current before adding new
         free_nameservers_locked(cache_info);
+        cache_info->nameservers = std::move(nameservers);
         for (int i = 0; i < numservers; i++) {
             cache_info->nsaddrinfo[i] = nsaddrinfo[i];
-            cache_info->nameservers[i] = strdup(servers[i]);
-            LOG(INFO) << __func__ << ": netid = " << netid << ", addr = " << servers[i];
+            LOG(INFO) << __func__ << ": netid = " << netid
+                      << ", addr = " << cache_info->nameservers[i];
         }
         cache_info->nscount = numservers;
 
@@ -1830,37 +1817,23 @@ int resolv_set_nameservers(unsigned netid, const char** servers, int numservers,
     return 0;
 }
 
-static int resolv_is_nameservers_equal_locked(resolv_cache_info* cache_info, const char** servers,
-                                              int numservers) {
-    if (cache_info->nscount != numservers) {
-        return 0;
-    }
+static bool resolv_is_nameservers_equal(const std::vector<std::string>& oldServers,
+                                        const std::vector<std::string>& newServers) {
+    const std::set<std::string> olds(oldServers.begin(), oldServers.end());
+    const std::set<std::string> news(newServers.begin(), newServers.end());
 
-    // Compare each name server against current name servers.
     // TODO: this is incorrect if the list of current or previous nameservers
     // contains duplicates. This does not really matter because the framework
     // filters out duplicates, but we should probably fix it. It's also
     // insensitive to the order of the nameservers; we should probably fix that
     // too.
-    for (int i = 0; i < numservers; i++) {
-        for (int j = 0;; j++) {
-            if (j >= numservers) {
-                return 0;
-            }
-            if (strcmp(cache_info->nameservers[i], servers[j]) == 0) {
-                break;
-            }
-        }
-    }
-
-    return 1;
+    return olds == news;
 }
 
 static void free_nameservers_locked(resolv_cache_info* cache_info) {
     int i;
     for (i = 0; i < cache_info->nscount; i++) {
-        free(cache_info->nameservers[i]);
-        cache_info->nameservers[i] = NULL;
+        cache_info->nameservers.clear();
         if (cache_info->nsaddrinfo[i] != NULL) {
             freeaddrinfo(cache_info->nsaddrinfo[i]);
             cache_info->nsaddrinfo[i] = NULL;
@@ -2019,27 +1992,26 @@ bool has_named_cache(unsigned netid) {
     return find_named_cache_locked(netid) != nullptr;
 }
 
-int resolv_cache_get_expiration(unsigned netid, const std::vector<char> query, time_t* expiration) {
+int resolv_cache_get_expiration(unsigned netid, const std::vector<char>& query,
+                                time_t* expiration) {
     Entry key;
-    Entry** lookup;
-    Entry* e;
-    Cache* cache;
     *expiration = -1;
 
-    // A malfored query is not allowed.
+    // A malformed query is not allowed.
     if (!entry_init_key(&key, query.data(), query.size())) {
         LOG(WARNING) << __func__ << ": unsupported query";
         return -EINVAL;
     }
 
     // lookup cache.
+    Cache* cache;
     std::lock_guard guard(cache_mutex);
     if (cache = find_named_cache_locked(netid); cache == nullptr) {
         LOG(WARNING) << __func__ << ": cache not created in the network " << netid;
         return -ENONET;
     }
-    lookup = _cache_lookup_p(cache, &key);
-    e = *lookup;
+    Entry** lookup = _cache_lookup_p(cache, &key);
+    Entry* e = *lookup;
     if (e == NULL) {
         LOG(WARNING) << __func__ << ": not in cache";
         return -ENODATA;
