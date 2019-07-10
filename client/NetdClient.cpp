@@ -132,7 +132,7 @@ int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
     const int connectErrno = errno;
     const unsigned latencyMs = lround(s.timeTaken());
     // Send an ON_CONNECT_COMPLETE command that includes sockaddr and connect latency for reporting
-    if (shouldSetFwmark && FwmarkClient::shouldReportConnectComplete(addr->sa_family)) {
+    if (shouldSetFwmark) {
         FwmarkConnectInfo connectInfo(ret == 0 ? 0 : connectErrno, latencyMs, addr);
         // TODO: get the netId from the socket mark once we have continuous benchmark runs
         FwmarkCommand command = {FwmarkCommand::ON_CONNECT_COMPLETE, /* netId (ignored) */ 0,
