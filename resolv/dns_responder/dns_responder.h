@@ -119,6 +119,10 @@ class DNSResponder {
     DNSResponder(std::string listen_address = kDefaultListenAddr,
                  std::string listen_service = kDefaultListenService,
                  ns_rcode error_rcode = ns_rcode::ns_r_servfail);
+
+    DNSResponder(ns_rcode error_rcode)
+        : DNSResponder(kDefaultListenAddr, kDefaultListenService, error_rcode){};
+
     ~DNSResponder();
 
     enum class Edns : uint8_t {

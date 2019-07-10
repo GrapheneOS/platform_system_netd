@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <ctime>
@@ -26,6 +27,7 @@
 #include <android/multinetwork.h>
 
 #include "dns_responder/dns_responder.h"
+#include "netd_resolv/stats.h"
 #include "resolv_cache.h"
 #include "resolv_private.h"
 
@@ -44,6 +46,18 @@ namespace {
 struct CacheEntry {
     std::vector<char> query;
     std::vector<char> answer;
+};
+
+struct SetupParams {
+    std::vector<std::string> servers;
+    std::vector<std::string> domains;
+    res_params params;
+};
+
+struct CacheStats {
+    SetupParams setup;
+    std::vector<res_stats> stats;
+    int pendingReqTimeoutCount;
 };
 
 std::vector<char> makeQuery(int op, const char* qname, int qclass, int qtype) {
@@ -80,10 +94,39 @@ time_t currentTime() {
     return std::time(nullptr);
 }
 
+std::string addrToString(const sockaddr_storage* addr) {
+    char out[INET6_ADDRSTRLEN] = {0};
+    getnameinfo((const sockaddr*)addr, sizeof(sockaddr_storage), out, INET6_ADDRSTRLEN, nullptr, 0,
+                NI_NUMERICHOST);
+    return std::string(out);
+}
+
+// Comparison for res_stats. Simply check the count in the cache test.
+bool operator==(const res_stats& a, const res_stats& b) {
+    return std::tie(a.sample_count, a.sample_next) == std::tie(b.sample_count, b.sample_next);
+}
+
+// Comparison for res_params.
+bool operator==(const res_params& a, const res_params& b) {
+    return std::tie(a.sample_validity, a.success_threshold, a.min_samples, a.max_samples,
+                    a.base_timeout_msec, a.retry_count) ==
+           std::tie(b.sample_validity, b.success_threshold, b.min_samples, b.max_samples,
+                    b.base_timeout_msec, b.retry_count);
+}
+
 }  // namespace
 
 class ResolvCacheTest : public ::testing::Test {
   protected:
+    static constexpr res_params kParams = {
+            .sample_validity = 300,
+            .success_threshold = 25,
+            .min_samples = 8,
+            .max_samples = 8,
+            .base_timeout_msec = 1000,
+            .retry_count = 2,
+    };
+
     ResolvCacheTest() {
         // Store the default one and conceal 10000+ lines of resolver cache logs.
         defaultLogSeverity = android::base::SetMinimumLogSeverity(
@@ -142,6 +185,45 @@ class ResolvCacheTest : public ::testing::Test {
 
     void cacheQueryFailed(uint32_t netId, const CacheEntry& ce, uint32_t flags) {
         _resolv_cache_query_failed(netId, ce.query.data(), ce.query.size(), flags);
+    }
+
+    int cacheSetupResolver(uint32_t netId, const SetupParams& setup) {
+        return resolv_set_nameservers(netId, setup.servers, setup.domains, setup.params);
+    }
+
+    void expectCacheStats(const std::string& msg, uint32_t netId, const CacheStats& expected) {
+        int nscount = -1;
+        sockaddr_storage servers[MAXNS];
+        int dcount = -1;
+        char domains[MAXDNSRCH][MAXDNSRCHPATH];
+        res_stats stats[MAXNS];
+        res_params params = {};
+        int res_wait_for_pending_req_timeout_count;
+        android_net_res_stats_get_info_for_net(netId, &nscount, servers, &dcount, domains, &params,
+                                               stats, &res_wait_for_pending_req_timeout_count);
+
+        // Server checking.
+        EXPECT_EQ(nscount, static_cast<int>(expected.setup.servers.size())) << msg;
+        for (int i = 0; i < nscount; i++) {
+            EXPECT_EQ(addrToString(&servers[i]), expected.setup.servers[i]) << msg;
+        }
+
+        // Domain checking
+        EXPECT_EQ(dcount, static_cast<int>(expected.setup.domains.size())) << msg;
+        for (int i = 0; i < dcount; i++) {
+            EXPECT_EQ(std::string(domains[i]), expected.setup.domains[i]) << msg;
+        }
+
+        // res_params checking.
+        EXPECT_TRUE(params == expected.setup.params) << msg;
+
+        // res_stats checking.
+        for (size_t i = 0; i < expected.stats.size(); i++) {
+            EXPECT_TRUE(stats[i] == expected.stats[i]) << msg;
+        }
+
+        // wait_for_pending_req_timeout_count checking.
+        EXPECT_EQ(res_wait_for_pending_req_timeout_count, expected.pendingReqTimeoutCount) << msg;
     }
 
     CacheEntry makeCacheEntry(int op, const char* qname, int qclass, int qtype, const char* rdata,
@@ -509,6 +591,124 @@ TEST_F(ResolvCacheTest, CacheFull) {
     EXPECT_EQ(0, cacheAdd(TEST_NETID, ce4));
     EXPECT_TRUE(cacheLookup(RESOLV_CACHE_FOUND, TEST_NETID, ce4));
     EXPECT_TRUE(cacheLookup(RESOLV_CACHE_NOTFOUND, TEST_NETID, ce1));
+}
+
+TEST_F(ResolvCacheTest, ResolverSetup) {
+    const SetupParams setup = {
+            .servers = {"127.0.0.1", "::127.0.0.2", "fe80::3"},
+            .domains = {"domain1.com", "domain2.com"},
+            .params = kParams,
+    };
+
+    // Failed to setup resolver because of the cache not created.
+    EXPECT_EQ(-ENONET, cacheSetupResolver(TEST_NETID, setup));
+    EXPECT_FALSE(resolv_has_nameservers(TEST_NETID));
+
+    // The cache is created now.
+    EXPECT_EQ(0, cacheCreate(TEST_NETID));
+    EXPECT_EQ(0, cacheSetupResolver(TEST_NETID, setup));
+    EXPECT_TRUE(resolv_has_nameservers(TEST_NETID));
+}
+
+TEST_F(ResolvCacheTest, ResolverSetup_InvalidNameServers) {
+    EXPECT_EQ(0, cacheCreate(TEST_NETID));
+    const std::string invalidServers[]{
+            "127.A.b.1",
+            "127.^.0",
+            "::^:1",
+            "",
+    };
+    SetupParams setup = {
+            .servers = {},
+            .domains = {"domain1.com"},
+            .params = kParams,
+    };
+
+    // Failed to setup resolver because of invalid name servers.
+    for (const auto& server : invalidServers) {
+        SCOPED_TRACE(server);
+        setup.servers = {"127.0.0.1", server, "127.0.0.2"};
+        EXPECT_EQ(-EINVAL, cacheSetupResolver(TEST_NETID, setup));
+        EXPECT_FALSE(resolv_has_nameservers(TEST_NETID));
+    }
+}
+
+TEST_F(ResolvCacheTest, ResolverSetup_DropDomain) {
+    EXPECT_EQ(0, cacheCreate(TEST_NETID));
+
+    // Setup with one domain which is too long.
+    const std::vector<std::string> servers = {"127.0.0.1", "fe80::1"};
+    const std::string domainTooLong(MAXDNSRCHPATH, '1');
+    const std::string validDomain1(MAXDNSRCHPATH - 1, '2');
+    const std::string validDomain2(MAXDNSRCHPATH - 1, '3');
+    SetupParams setup = {
+            .servers = servers,
+            .domains = {},
+            .params = kParams,
+    };
+    CacheStats expect = {
+            .setup = setup,
+            .stats = {},
+            .pendingReqTimeoutCount = 0,
+    };
+
+    // Overlength domains are dropped.
+    setup.domains = {validDomain1, domainTooLong, validDomain2};
+    expect.setup.domains = {validDomain1, validDomain2};
+    EXPECT_EQ(0, cacheSetupResolver(TEST_NETID, setup));
+    EXPECT_TRUE(resolv_has_nameservers(TEST_NETID));
+    expectCacheStats("ResolverSetup_Domains drop overlength", TEST_NETID, expect);
+
+    // Duplicate domains are dropped.
+    setup.domains = {validDomain1, validDomain2, validDomain1, validDomain2};
+    expect.setup.domains = {validDomain1, validDomain2};
+    EXPECT_EQ(0, cacheSetupResolver(TEST_NETID, setup));
+    EXPECT_TRUE(resolv_has_nameservers(TEST_NETID));
+    expectCacheStats("ResolverSetup_Domains drop duplicates", TEST_NETID, expect);
+}
+
+TEST_F(ResolvCacheTest, ResolverSetup_Prune) {
+    EXPECT_EQ(0, cacheCreate(TEST_NETID));
+    const std::vector<std::string> servers = {"127.0.0.1", "::127.0.0.2", "fe80::1", "fe80::2",
+                                              "fe80::3"};
+    const std::vector<std::string> domains = {"d1.com", "d2.com", "d3.com", "d4.com",
+                                              "d5.com", "d6.com", "d7.com"};
+    const SetupParams setup = {
+            .servers = servers,
+            .domains = domains,
+            .params = kParams,
+    };
+
+    EXPECT_EQ(0, cacheSetupResolver(TEST_NETID, setup));
+    EXPECT_TRUE(resolv_has_nameservers(TEST_NETID));
+
+    const CacheStats cacheStats = {
+            .setup = {.servers = std::vector(servers.begin(), servers.begin() + MAXNS),
+                      .domains = std::vector(domains.begin(), domains.begin() + MAXDNSRCH),
+                      .params = setup.params},
+            .stats = {},
+            .pendingReqTimeoutCount = 0,
+    };
+    expectCacheStats("ResolverSetup_Prune", TEST_NETID, cacheStats);
+}
+
+TEST_F(ResolvCacheTest, GetStats) {
+    EXPECT_EQ(0, cacheCreate(TEST_NETID));
+    const SetupParams setup = {
+            .servers = {"127.0.0.1", "::127.0.0.2", "fe80::3"},
+            .domains = {"domain1.com", "domain2.com"},
+            .params = kParams,
+    };
+
+    EXPECT_EQ(0, cacheSetupResolver(TEST_NETID, setup));
+    EXPECT_TRUE(resolv_has_nameservers(TEST_NETID));
+
+    const CacheStats cacheStats = {
+            .setup = setup,
+            .stats = {},
+            .pendingReqTimeoutCount = 0,
+    };
+    expectCacheStats("GetStats", TEST_NETID, cacheStats);
 }
 
 // TODO: Tests for struct resolv_cache_info, including:
