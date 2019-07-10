@@ -221,14 +221,6 @@ int ResolverController::setResolverConfiguration(
         return err;
     }
 
-    // Convert network-assigned server list to bionic's format.
-    const size_t serverCount = std::min<size_t>(MAXNS, resolverParams.servers.size());
-    std::vector<const char*> server_ptrs;
-    for (size_t i = 0; i < serverCount; ++i) {
-        server_ptrs.push_back(resolverParams.servers[i].c_str());
-    }
-
-    // TODO: Change resolv_set_nameservers() to use ResolverParamsParcel directly.
     res_params res_params = {};
     res_params.sample_validity = resolverParams.sampleValiditySeconds;
     res_params.success_threshold = resolverParams.successThreshold;
@@ -237,11 +229,8 @@ int ResolverController::setResolverConfiguration(
     res_params.base_timeout_msec = resolverParams.baseTimeoutMsec;
     res_params.retry_count = resolverParams.retryCount;
 
-    LOG(VERBOSE) << "setDnsServers netId = " << resolverParams.netId
-                 << ", numservers = " << resolverParams.servers.size();
-
-    return -resolv_set_nameservers(resolverParams.netId, server_ptrs.data(), server_ptrs.size(),
-                                   resolverParams.domains, &res_params);
+    return -resolv_set_nameservers(resolverParams.netId, resolverParams.servers,
+                                   resolverParams.domains, res_params);
 }
 
 int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>* servers,
