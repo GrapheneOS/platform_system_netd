@@ -31,8 +31,6 @@ struct res_params;
 namespace android {
 namespace net {
 
-struct ResolverStats;
-
 class ResolverController {
   public:
     ResolverController();

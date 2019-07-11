@@ -256,7 +256,7 @@ static int have_ipv4(unsigned mark, uid_t uid) {
 }
 
 // Internal version of getaddrinfo(), but limited to AI_NUMERICHOST.
-// NOTE: also called by resolv_set_nameservers_for_net().
+// NOTE: also called by resolv_set_nameservers().
 int getaddrinfo_numeric(const char* hostname, const char* servname, addrinfo hints,
                         addrinfo** result) {
     hints.ai_flags = AI_NUMERICHOST;
