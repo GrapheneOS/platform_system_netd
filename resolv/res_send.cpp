@@ -1027,18 +1027,10 @@ static int send_dg(res_state statp, res_params* params, const u_char* buf, int b
                 return -1;
             }
         }
-#ifndef CANNOT_CONNECT_DGRAM
-        /*
-         * On a 4.3BSD+ machine (client and server,
-         * actually), sending to a nameserver datagram
-         * port with no nameserver will cause an
-         * ICMP port unreachable message to be returned.
-         * If our datagram socket is "connected" to the
-         * server, we get an ECONNREFUSED error on the next
-         * socket operation, and select returns if the
-         * error message is received.  We can thus detect
-         * the absence of a nameserver without timing out.
-         */
+        // Use a "connected" datagram socket to receive an ECONNREFUSED error
+        // on the next socket operation when the server responds with an
+        // ICMP port-unreachable error. This way we can detect the absence of
+        // a nameserver without timing out.
         if (random_bind(statp->_u._ext.nssocks[ns], nsap->sa_family) < 0) {
             dump_error("bind(dg)", nsap, nsaplen);
             res_nclose(statp);
@@ -1049,23 +1041,14 @@ static int send_dg(res_state statp, res_params* params, const u_char* buf, int b
             res_nclose(statp);
             return (0);
         }
-#endif /* !CANNOT_CONNECT_DGRAM */
         LOG(DEBUG) << __func__ << ": new DG socket";
     }
     s = statp->_u._ext.nssocks[ns];
-#ifndef CANNOT_CONNECT_DGRAM
     if (send(s, (const char*) buf, (size_t) buflen, 0) != buflen) {
         PLOG(DEBUG) << __func__ << ": send: ";
         res_nclose(statp);
         return 0;
     }
-#else  /* !CANNOT_CONNECT_DGRAM */
-    if (sendto(s, (const char*) buf, buflen, 0, nsap, nsaplen) != buflen) {
-        dump_error("sendto", nsap, nsaplen);
-        res_nclose(statp);
-        return 0;
-    }
-#endif /* !CANNOT_CONNECT_DGRAM */
 
     // Wait for reply.
     timeout = get_timeout(statp, params, ns);
