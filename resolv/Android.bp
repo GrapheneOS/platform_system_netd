@@ -160,6 +160,7 @@ cc_library_static {
 cc_test {
     name: "resolv_integration_test",
     test_suites: ["device-tests"],
+    require_root: true,
     defaults: ["netd_defaults"],
     srcs: [
         "dns_responder/dns_responder.cpp",

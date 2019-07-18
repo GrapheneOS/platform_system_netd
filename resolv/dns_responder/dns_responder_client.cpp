@@ -17,6 +17,7 @@
 #define LOG_TAG "dns_responder_client"
 #include "dns_responder_client.h"
 
+#include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 #include <utils/Log.h>
 
@@ -152,6 +153,9 @@ void DnsResponderClient::SetUp() {
     // binder setup
     auto binder = android::defaultServiceManager()->getService(android::String16("netd"));
     mNetdSrv = android::interface_cast<android::net::INetd>(binder);
+    if (mNetdSrv == nullptr) {
+        LOG(FATAL) << "Can't connect to service 'netd'. Missing root privileges? uid=" << getuid();
+    }
 
     auto resolvBinder =
             android::defaultServiceManager()->getService(android::String16("dnsresolver"));
