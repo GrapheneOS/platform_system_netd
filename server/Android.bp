@@ -209,6 +209,7 @@ cc_test {
     name: "netd_unit_test",
     defaults: ["netd_defaults"],
     test_suites: ["device-tests"],
+    require_root: true,
     include_dirs: [
         "system/netd/include",
         "system/netd/server/binder",

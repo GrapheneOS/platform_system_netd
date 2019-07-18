@@ -67,6 +67,7 @@ class DnsResolverBinderTest : public ::testing::Test {
         if (binder != nullptr) {
             mDnsResolver = android::interface_cast<IDnsResolver>(binder);
         }
+        // This could happen when the test isn't running as root, or if netd isn't running.
         assert(nullptr != mDnsResolver.get());
         // Create cache for test
         mDnsResolver->createNetworkCache(TEST_NETID);
