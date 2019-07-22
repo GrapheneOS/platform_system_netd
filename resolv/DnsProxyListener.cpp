@@ -311,11 +311,11 @@ void reportDnsEvent(int eventType, const android_net_context& netContext, int la
     const std::string& dnsQueryStats = event.dns_query_events().SerializeAsString();
     stats::BytesField dnsQueryBytesField{dnsQueryStats.c_str(), dnsQueryStats.size()};
     event.set_return_code(static_cast<ReturnCode>(returnCode));
-    android::net::stats::stats_write(android::net::stats::NETWORK_DNS_EVENT_REPORTED,
-                                     event.event_type(), event.return_code(),
-                                     event.latency_micros(), event.hints_ai_flags(),
-                                     event.res_nsend_flags(), event.network_type(),
-                                     event.private_dns_modes(), dnsQueryBytesField);
+    android::net::stats::stats_write(
+            android::net::stats::NETWORK_DNS_EVENT_REPORTED, event.event_type(),
+            event.return_code(), event.latency_micros(), event.hints_ai_flags(),
+            event.res_nsend_flags(), event.network_type(), event.private_dns_modes(),
+            dnsQueryBytesField, event.sampling_rate_denom());
 
     const auto& listeners = ResolverEventReporter::getInstance().getListeners();
     if (listeners.size() == 0) {
