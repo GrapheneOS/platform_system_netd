@@ -205,14 +205,17 @@ cc_test {
     srcs: [
         "dns_tls_test.cpp",
         "libnetd_resolv_test.cpp",
+        "res_cache_test.cpp",
     ],
     shared_libs: [
         "libbase",
         "libcrypto",
+        "libcutils",
         "liblog",
         "libssl",
     ],
     static_libs: [
+        "libgmock",
         "libnetd_resolv",
         "libnetd_test_dnsresponder",
         "libnetdutils",

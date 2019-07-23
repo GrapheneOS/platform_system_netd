@@ -319,6 +319,8 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
         if (servers.empty()) {
             dw.println("No DNS servers defined");
         } else {
+            dw.println("DnsEvent subsampling map: " +
+                       android::base::Join(resolv_cache_dump_subsampling_map(netId), ' '));
             dw.println(
                     "DNS servers: # IP (total, successes, errors, timeouts, internal errors, "
                     "RTT avg, last sample)");
