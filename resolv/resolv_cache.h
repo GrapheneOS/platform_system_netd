@@ -32,10 +32,13 @@
 
 #include <stddef.h>
 
+#include <unordered_map>
 #include <vector>
 
 struct __res_state;
 struct resolv_cache;
+
+constexpr int DNSEVENT_SUBSAMPLING_MAP_DEFAULT_KEY = -1;
 
 /* sets the name server addresses to the provided res_state structure. The
  * name servers are retrieved from the cache which is associated
@@ -43,6 +46,9 @@ struct resolv_cache;
 void _resolv_populate_res_for_net(struct __res_state* statp);
 
 std::vector<unsigned> resolv_list_caches();
+
+std::vector<std::string> resolv_cache_dump_subsampling_map(unsigned netid);
+uint32_t resolv_cache_get_subsampling_denom(unsigned netid, int return_code);
 
 typedef enum {
     RESOLV_CACHE_UNSUPPORTED, /* the cache can't handle that kind of queries */
