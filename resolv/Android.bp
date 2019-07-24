@@ -203,9 +203,11 @@ cc_test {
     shared_libs: [
         "libbase",
         "libcrypto",
+        "libcutils",
         "libssl",
     ],
     static_libs: [
+        "libgmock",
         "libnetd_resolv",
         "libnetd_test_dnsresponder",
         "libnetdutils",
