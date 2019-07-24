@@ -26,10 +26,10 @@
 #include <android-base/stringprintf.h>
 #include <android/multinetwork.h>
 
-#include "dns_responder/dns_responder.h"
 #include "netd_resolv/stats.h"
 #include "resolv_cache.h"
 #include "resolv_private.h"
+#include "tests/dns_responder/dns_responder.h"
 
 using namespace std::chrono_literals;
 

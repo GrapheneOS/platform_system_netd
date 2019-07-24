@@ -154,7 +154,7 @@ cc_test {
     defaults: ["netd_defaults"],
     tidy: false,  // cuts test build time by > 1m30s
     srcs: [
-        "dns_responder/dns_responder.cpp",
+        "tests/dns_responder/dns_responder.cpp",
         "dnsresolver_binder_test.cpp",
         "resolver_test.cpp",
         "tests/resolv_test_utils.cpp",
