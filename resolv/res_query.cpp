@@ -119,12 +119,15 @@ int res_nquery(res_state statp, const char* name,  // domain name
     bool retried = false;
 
 again:
-    hp->rcode = NOERROR; /* default */
+    hp->rcode = NOERROR;  // default
 
     LOG(DEBUG) << __func__ << ": (" << cl << ", " << type << ")";
 
     n = res_nmkquery(statp, QUERY, name, cl, type, NULL, 0, NULL, buf, sizeof(buf));
-    if (n > 0 && (statp->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0U && !retried)
+    if (n > 0 &&
+        (statp->netcontext_flags &
+         (NET_CONTEXT_FLAG_USE_DNS_OVER_TLS | NET_CONTEXT_FLAG_USE_EDNS)) &&
+        !retried)
         n = res_nopt(statp, n, buf, sizeof(buf), anslen);
     if (n <= 0) {
         LOG(DEBUG) << __func__ << ": mkquery failed";
@@ -133,8 +136,11 @@ again:
     }
     n = res_nsend(statp, buf, n, answer, anslen, &rcode, 0);
     if (n < 0) {
-        /* if the query choked with EDNS0, retry without EDNS0 */
-        if ((statp->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0U &&
+        // If the query choked with EDNS0, retry without EDNS0 that when the server
+        // has no response, resovler won't retry and do nothing. Even fallback to UDP,
+        // we also has the same symptom if EDNS is enabled.
+        if ((statp->netcontext_flags &
+             (NET_CONTEXT_FLAG_USE_DNS_OVER_TLS | NET_CONTEXT_FLAG_USE_EDNS)) &&
             (statp->_flags & RES_F_EDNS0ERR) && !retried) {
             LOG(DEBUG) << __func__ << ": retry without EDNS0";
             retried = true;

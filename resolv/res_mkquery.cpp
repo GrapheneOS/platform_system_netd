@@ -124,7 +124,7 @@ int res_nmkquery(res_state statp, int op,    /* opcode of query */
     hp->id = htons(arc4random_uniform(65536));
     hp->opcode = op;
     hp->rd = true;
-    hp->ad = (statp->options & RES_USE_DNSSEC) != 0U;
+    hp->ad = (statp->netcontext_flags & NET_CONTEXT_FLAG_USE_DNS_OVER_TLS) != 0U;
     hp->rcode = NOERROR;
     cp = buf + HFIXEDSZ;
     ep = buf + buflen;
@@ -220,7 +220,7 @@ int res_nopt(res_state statp, int n0, /* current offset in buffer */
     cp += INT16SZ;
     *cp++ = NOERROR; /* extended RCODE */
     *cp++ = 0;       /* EDNS version */
-    if (statp->options & RES_USE_DNSSEC) {
+    if (statp->netcontext_flags & NET_CONTEXT_FLAG_USE_DNS_OVER_TLS) {
         LOG(DEBUG) << __func__ << ": ENDS0 DNSSEC";
         flags |= NS_OPT_DNSSEC_OK;
     }
