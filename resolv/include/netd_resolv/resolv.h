@@ -73,6 +73,7 @@ struct android_net_context {
 #define NET_CONTEXT_INVALID_UID ((uid_t) -1)
 #define NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS 0x00000001
 #define NET_CONTEXT_FLAG_USE_EDNS 0x00000002
+#define NET_CONTEXT_FLAG_USE_DNS_OVER_TLS 0x00000004
 
 // TODO: investigate having the resolver check permissions itself, either by adding support to
 // libbinder_ndk or by converting IPermissionController into a stable AIDL interface.

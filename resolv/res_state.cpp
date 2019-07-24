@@ -99,9 +99,6 @@ static _res_thread* res_thread_get(void) {
     }
     pthread_setspecific(_res_key, rt);
 
-    /* Reset the state, note that res_ninit() can now properly reset
-     * an existing state without leaking memory.
-     */
     LOG(VERBOSE) << __func__ << ": tid=" << gettid() << ", rt=" << rt
                  << " setting DNS state (options=" << rt->_nres->options << ")";
     if (res_ninit(rt->_nres) < 0) {
