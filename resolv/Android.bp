@@ -157,7 +157,6 @@ cc_test {
         "dns_responder/dns_responder.cpp",
         "dnsresolver_binder_test.cpp",
         "resolver_test.cpp",
-        "tests/resolv_test_utils.cpp",
     ],
     header_libs: [
         "libnetd_resolv_headers",
@@ -175,6 +174,7 @@ cc_test {
         "libgmock",
         "libnetd_test_dnsresponder",
         "libnetd_test_metrics_listener",
+        "libnetd_test_resolv_utils",
         "libnetd_test_tun_interface",
         "libnetd_test_utils",
         "libnetdutils",
@@ -199,7 +199,6 @@ cc_test {
         "dns_tls_test.cpp",
         "libnetd_resolv_test.cpp",
         "res_cache_test.cpp",
-        "tests/resolv_test_utils.cpp",
     ],
     shared_libs: [
         "libbase",
@@ -212,6 +211,7 @@ cc_test {
         "libgmock",
         "libnetd_resolv",
         "libnetd_test_dnsresponder",
+        "libnetd_test_resolv_utils",
         "libnetdutils",
         "libprotobuf-cpp-lite",
         "server_configurable_flags",
