@@ -36,16 +36,15 @@ using android::net::INetd;
 using android::net::ResolverParamsParcel;
 
 void DnsResponderClient::SetupMappings(unsigned num_hosts, const std::vector<std::string>& domains,
-        std::vector<Mapping>* mappings) {
+                                       std::vector<Mapping>* mappings) {
     mappings->resize(num_hosts * domains.size());
     auto mappings_it = mappings->begin();
-    for (unsigned i = 0 ; i < num_hosts ; ++i) {
+    for (unsigned i = 0; i < num_hosts; ++i) {
         for (const auto& domain : domains) {
             mappings_it->host = StringPrintf("host%u", i);
-            mappings_it->entry = StringPrintf("%s.%s.", mappings_it->host.c_str(),
-                    domain.c_str());
-            mappings_it->ip4 = StringPrintf("192.0.2.%u", i%253 + 1);
-            mappings_it->ip6 = StringPrintf("2001:db8::%x", i%65534 + 1);
+            mappings_it->entry = StringPrintf("%s.%s.", mappings_it->host.c_str(), domain.c_str());
+            mappings_it->ip4 = StringPrintf("192.0.2.%u", i % 253 + 1);
+            mappings_it->ip6 = StringPrintf("2001:db8::%x", i % 65534 + 1);
             ++mappings_it;
         }
     }
@@ -86,7 +85,8 @@ static ResolverParamsParcel makeResolverParamsParcel(
 }
 
 bool DnsResponderClient::SetResolversForNetwork(const std::vector<std::string>& servers,
-        const std::vector<std::string>& domains, const std::vector<int>& params) {
+                                                const std::vector<std::string>& domains,
+                                                const std::vector<int>& params) {
     const auto& resolverParams =
             makeResolverParamsParcel(TEST_NETID, params, servers, domains, "", {}, {});
     const auto rv = mDnsResolvSrv->setResolverConfiguration(resolverParams);
@@ -94,9 +94,11 @@ bool DnsResponderClient::SetResolversForNetwork(const std::vector<std::string>& 
 }
 
 bool DnsResponderClient::SetResolversWithTls(const std::vector<std::string>& servers,
-        const std::vector<std::string>& domains, const std::vector<int>& params,
-        const std::vector<std::string>& tlsServers,
-        const std::string& name, const std::vector<std::string>& fingerprints) {
+                                             const std::vector<std::string>& domains,
+                                             const std::vector<int>& params,
+                                             const std::vector<std::string>& tlsServers,
+                                             const std::string& name,
+                                             const std::vector<std::string>& fingerprints) {
     const auto& resolverParams = makeResolverParamsParcel(TEST_NETID, params, servers, domains,
                                                           name, tlsServers, fingerprints);
     const auto rv = mDnsResolvSrv->setResolverConfiguration(resolverParams);
@@ -105,12 +107,12 @@ bool DnsResponderClient::SetResolversWithTls(const std::vector<std::string>& ser
 }
 
 void DnsResponderClient::SetupDNSServers(unsigned num_servers, const std::vector<Mapping>& mappings,
-        std::vector<std::unique_ptr<test::DNSResponder>>* dns,
-        std::vector<std::string>* servers) {
+                                         std::vector<std::unique_ptr<test::DNSResponder>>* dns,
+                                         std::vector<std::string>* servers) {
     const char* listen_srv = "53";
     dns->resize(num_servers);
     servers->resize(num_servers);
-    for (unsigned i = 0 ; i < num_servers ; ++i) {
+    for (unsigned i = 0; i < num_servers; ++i) {
         auto& server = (*servers)[i];
         auto& d = (*dns)[i];
         server = StringPrintf("127.0.0.%u", i + 100);

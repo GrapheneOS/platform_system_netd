@@ -34,7 +34,7 @@
 #include "IDnsTlsSocket.h"
 #include "IDnsTlsSocketFactory.h"
 #include "IDnsTlsSocketObserver.h"
-#include "dns_responder/dns_tls_frontend.h"
+#include "tests/dns_responder/dns_tls_frontend.h"
 
 namespace android {
 namespace net {

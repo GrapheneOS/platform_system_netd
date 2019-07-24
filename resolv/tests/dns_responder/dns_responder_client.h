@@ -37,7 +37,7 @@ inline const std::vector<int> kDefaultParams = {
 };
 
 class DnsResponderClient {
-public:
+  public:
     struct Mapping {
         std::string host;
         std::string entry;
@@ -48,37 +48,34 @@ public:
     virtual ~DnsResponderClient() = default;
 
     static void SetupMappings(unsigned num_hosts, const std::vector<std::string>& domains,
-            std::vector<Mapping>* mappings);
+                              std::vector<Mapping>* mappings);
 
     bool SetResolversForNetwork(const std::vector<std::string>& servers = kDefaultServers,
                                 const std::vector<std::string>& domains = kDefaultSearchDomains,
                                 const std::vector<int>& params = kDefaultParams);
 
     bool SetResolversForNetwork(const std::vector<std::string>& servers,
-            const std::vector<std::string>& searchDomains,
-            const std::string& params);
+                                const std::vector<std::string>& searchDomains,
+                                const std::string& params);
 
     bool SetResolversWithTls(const std::vector<std::string>& servers,
-            const std::vector<std::string>& searchDomains,
-            const std::vector<int>& params,
-            const std::string& name,
-            const std::vector<std::string>& fingerprints) {
+                             const std::vector<std::string>& searchDomains,
+                             const std::vector<int>& params, const std::string& name,
+                             const std::vector<std::string>& fingerprints) {
         // Pass servers as both network-assigned and TLS servers.  Tests can
         // determine on which server and by which protocol queries arrived.
-        return SetResolversWithTls(servers, searchDomains, params,
-                                   servers, name, fingerprints);
+        return SetResolversWithTls(servers, searchDomains, params, servers, name, fingerprints);
     }
 
     bool SetResolversWithTls(const std::vector<std::string>& servers,
-            const std::vector<std::string>& searchDomains,
-            const std::vector<int>& params,
-            const std::vector<std::string>& tlsServers,
-            const std::string& name,
-            const std::vector<std::string>& fingerprints);
+                             const std::vector<std::string>& searchDomains,
+                             const std::vector<int>& params,
+                             const std::vector<std::string>& tlsServers, const std::string& name,
+                             const std::vector<std::string>& fingerprints);
 
     static void SetupDNSServers(unsigned num_servers, const std::vector<Mapping>& mappings,
-            std::vector<std::unique_ptr<test::DNSResponder>>* dns,
-            std::vector<std::string>* servers);
+                                std::vector<std::unique_ptr<test::DNSResponder>>* dns,
+                                std::vector<std::string>* servers);
 
     int SetupOemNetwork();
 
