@@ -94,48 +94,17 @@
 #include "res_state_ext.h"
 #include "resolv_private.h"
 
-/*
- * Resolver state default settings.
- */
-
-/*
- * Set up default settings.  If the configuration file exist, the values
- * there will have precedence.  Otherwise, the server address is set to
- * INADDR_ANY and the default domain name comes from the gethostname().
- *
- * An interrim version of this code (BIND 4.9, pre-4.4BSD) used 127.0.0.1
- * rather than INADDR_ANY ("0.0.0.0") as the default name server address
- * since it was noted that INADDR_ANY actually meant ``the first interface
- * you "ifconfig"'d at boot time'' and if this was a SLIP or PPP interface,
- * it had to be "up" in order for you to reach your own name server.  It
- * was later decided that since the recommended practice is to always
- * install local static routes through 127.0.0.1 for all your network
- * interfaces, that we could solve this problem without a code change.
- *
- * The configuration file should always be used, since it is the only way
- * to specify a default domain.  If you are running a server on your local
- * machine, you should say "nameserver 0.0.0.0" or "nameserver 127.0.0.1"
- * in the configuration file.
- *
- * Return 0 if completes successfully, -1 on error
- */
+// Set up Resolver state default settings.
+// Note that res_ninit() is called with an initialized res_state,
+// the memories it allocated must be freed after the task is done.
+// Or memory leak will happen.
 int res_ninit(res_state statp) {
-    return res_vinit(statp, 0);
-}
-
-/* This function has to be reachable by res_data.c but not publicly. */
-int res_vinit(res_state statp, int preinit) {
-    int nserv = 0; /* number of nameserver records read from file */
+    int nserv = 0;  // number of nameserver records
     sockaddr_union u[2];
 
-    if ((statp->options & RES_INIT) != 0U) res_ndestroy(statp);
-
-    if (!preinit) {
-        statp->netid = NETID_UNSET;
-        statp->options = RES_DEFAULT;
-        statp->id = arc4random_uniform(65536);
-        statp->_mark = MARK_UNSET;
-    }
+    statp->netid = NETID_UNSET;
+    statp->id = arc4random_uniform(65536);
+    statp->_mark = MARK_UNSET;
 
     memset(u, 0, sizeof(u));
     u[nserv].sin.sin_addr.s_addr = INADDR_ANY;
@@ -148,7 +117,7 @@ int res_vinit(res_state statp, int preinit) {
     statp->_flags = 0;
     statp->_u._ext.nscount = 0;
     statp->_u._ext.ext = (res_state_ext*) malloc(sizeof(*statp->_u._ext.ext));
-    statp->use_local_nameserver = false;
+    statp->netcontext_flags = 0;
     if (statp->_u._ext.ext != NULL) {
         memset(statp->_u._ext.ext, 0, sizeof(*statp->_u._ext.ext));
         statp->_u._ext.ext->nsaddrs[0].sin = statp->nsaddr;
@@ -160,7 +129,6 @@ int res_vinit(res_state statp, int preinit) {
 
     if (nserv > 0) {
         statp->nscount = nserv;
-        statp->options |= RES_INIT;
     }
     return (0);
 }
@@ -192,7 +160,6 @@ void res_nclose(res_state statp) {
 void res_ndestroy(res_state statp) {
     res_nclose(statp);
     if (statp->_u._ext.ext != NULL) free(statp->_u._ext.ext);
-    statp->options &= ~RES_INIT;
     statp->_u._ext.ext = NULL;
 }
 
@@ -282,16 +249,11 @@ int res_getservers(res_state statp, sockaddr_union* set, int cnt) {
 
 void res_setnetcontext(res_state statp, const struct android_net_context* netcontext,
                        android::net::NetworkDnsEventReported* _Nonnull event) {
-    if (statp != NULL) {
+    if (statp != nullptr) {
         statp->netid = netcontext->dns_netid;
         statp->uid = netcontext->uid;
         statp->_mark = netcontext->dns_mark;
-        if (netcontext->flags & NET_CONTEXT_FLAG_USE_EDNS) {
-            statp->options |= RES_USE_EDNS0 | RES_USE_DNSSEC;
-        }
-        if (netcontext->flags & NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS) {
-            statp->use_local_nameserver = true;
-        }
+        statp->netcontext_flags = netcontext->flags;
         statp->event = event;
     }
 }
