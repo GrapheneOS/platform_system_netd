@@ -62,9 +62,8 @@ bool getSPKIDigest(const X509* cert, std::vector<uint8_t>* out) {
 }
 
 std::string addr2str(const sockaddr* sa, socklen_t sa_len) {
-    char host_str[NI_MAXHOST] = { 0 };
-    int rv = getnameinfo(sa, sa_len, host_str, sizeof(host_str), nullptr, 0,
-                         NI_NUMERICHOST);
+    char host_str[NI_MAXHOST] = {0};
+    int rv = getnameinfo(sa, sa_len, host_str, sizeof(host_str), nullptr, 0, NI_NUMERICHOST);
     if (rv == 0) return std::string(host_str);
     return std::string();
 }
@@ -95,7 +94,7 @@ bssl::UniquePtr<EVP_PKEY> make_private_key() {
         LOG(ERROR) << "EVP_PKEY_new failed";
         return nullptr;
     }
-    if(!EVP_PKEY_assign_RSA(privkey.get(), rsa.get())) {
+    if (!EVP_PKEY_assign_RSA(privkey.get(), rsa.get())) {
         LOG(ERROR) << "EVP_PKEY_assign_RSA failed";
         return nullptr;
     }
@@ -128,7 +127,7 @@ bssl::UniquePtr<X509> make_cert(EVP_PKEY* privkey, EVP_PKEY* parent_key) {
     return cert;
 }
 
-}
+}  // namespace
 
 namespace test {
 
@@ -164,7 +163,7 @@ bool DnsTlsFrontend::startServer() {
         LOG(ERROR) << "SSL_CTX_use_certificate failed";
         return false;
     }
-    if (SSL_CTX_use_PrivateKey(ctx_.get(), keys[0].get()) <= 0 ) {
+    if (SSL_CTX_use_PrivateKey(ctx_.get(), keys[0].get()) <= 0) {
         LOG(ERROR) << "SSL_CTX_use_PrivateKey failed";
         return false;
     }
@@ -184,13 +183,10 @@ bool DnsTlsFrontend::startServer() {
 
     // Set up TCP server socket for clients.
     addrinfo frontend_ai_hints{
-        .ai_family = AF_UNSPEC,
-        .ai_socktype = SOCK_STREAM,
-        .ai_flags = AI_PASSIVE
-    };
+            .ai_family = AF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_flags = AI_PASSIVE};
     addrinfo* frontend_ai_res = nullptr;
-    int rv = getaddrinfo(listen_address_.c_str(), listen_service_.c_str(),
-                         &frontend_ai_hints, &frontend_ai_res);
+    int rv = getaddrinfo(listen_address_.c_str(), listen_service_.c_str(), &frontend_ai_hints,
+                         &frontend_ai_res);
     ScopedAddrinfo frontend_ai_res_cleanup(frontend_ai_res);
     if (rv) {
         LOG(ERROR) << "frontend getaddrinfo(" << listen_address_.c_str() << ", "
@@ -198,7 +194,7 @@ bool DnsTlsFrontend::startServer() {
         return false;
     }
 
-    for (const addrinfo* ai = frontend_ai_res ; ai ; ai = ai->ai_next) {
+    for (const addrinfo* ai = frontend_ai_res; ai; ai = ai->ai_next) {
         android::base::unique_fd s(socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol));
         if (s.get() < 0) {
             PLOG(INFO) << "ignore creating socket failed " << s.get();
@@ -223,13 +219,10 @@ bool DnsTlsFrontend::startServer() {
     }
 
     // Set up UDP client socket to backend.
-    addrinfo backend_ai_hints{
-        .ai_family = AF_UNSPEC,
-        .ai_socktype = SOCK_DGRAM
-    };
+    addrinfo backend_ai_hints{.ai_family = AF_UNSPEC, .ai_socktype = SOCK_DGRAM};
     addrinfo* backend_ai_res = nullptr;
-    rv = getaddrinfo(backend_address_.c_str(), backend_service_.c_str(),
-                         &backend_ai_hints, &backend_ai_res);
+    rv = getaddrinfo(backend_address_.c_str(), backend_service_.c_str(), &backend_ai_hints,
+                     &backend_ai_res);
     ScopedAddrinfo backend_ai_res_cleanup(backend_ai_res);
     if (rv) {
         LOG(ERROR) << "backend getaddrinfo(" << listen_address_.c_str() << ", "
