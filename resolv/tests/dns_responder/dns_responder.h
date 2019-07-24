@@ -127,9 +127,9 @@ class DNSResponder {
 
     enum class Edns : uint8_t {
         ON,
-        FORMERR_ON_EDNS, // DNS server not supporting EDNS will reply FORMERR.
-        FORMERR_UNCOND,  // DNS server reply FORMERR unconditionally
-        DROP             // DNS server not supporting EDNS will not do any response.
+        FORMERR_ON_EDNS,  // DNS server not supporting EDNS will reply FORMERR.
+        FORMERR_UNCOND,   // DNS server reply FORMERR unconditionally
+        DROP              // DNS server not supporting EDNS will not do any response.
     };
 
     void addMapping(const std::string& name, ns_type type, const std::string& addr);
@@ -139,12 +139,8 @@ class DNSResponder {
     bool running() const;
     bool startServer();
     bool stopServer();
-    const std::string& listen_address() const {
-        return listen_address_;
-    }
-    const std::string& listen_service() const {
-        return listen_service_;
-    }
+    const std::string& listen_address() const { return listen_address_; }
+    const std::string& listen_service() const { return listen_service_; }
     std::vector<std::pair<std::string, ns_type>> queries() const;
     std::string dumpQueries() const;
     void clearQueries();
@@ -160,10 +156,8 @@ class DNSResponder {
         unsigned type;
 
         QueryKey(std::string n, unsigned t) : name(move(n)), type(t) {}
-        bool operator == (const QueryKey& o) const {
-            return name == o.name && type == o.type;
-        }
-        bool operator < (const QueryKey& o) const {
+        bool operator==(const QueryKey& o) const { return name == o.name && type == o.type; }
+        bool operator<(const QueryKey& o) const {
             if (name < o.name) return true;
             if (name > o.name) return false;
             return type < o.type;
@@ -171,9 +165,8 @@ class DNSResponder {
     };
 
     struct QueryKeyHash {
-        size_t operator() (const QueryKey& key) const {
-            return std::hash<std::string>()(key.name) +
-                   static_cast<size_t>(key.type);
+        size_t operator()(const QueryKey& key) const {
+            return std::hash<std::string>()(key.name) + static_cast<size_t>(key.type);
         }
     };
 
@@ -182,13 +175,13 @@ class DNSResponder {
     // Parses and generates a response message for incoming DNS requests.
     // Returns false to ignore the request, which might be due to either parsing error
     // or unresponsiveness.
-    bool handleDNSRequest(const char* buffer, ssize_t buffer_len,
-                          char* response, size_t* response_len) const;
+    bool handleDNSRequest(const char* buffer, ssize_t buffer_len, char* response,
+                          size_t* response_len) const;
 
     bool addAnswerRecords(const DNSQuestion& question, std::vector<DNSRecord>* answers) const;
 
-    bool generateErrorResponse(DNSHeader* header, ns_rcode rcode,
-                               char* response, size_t* response_len) const;
+    bool generateErrorResponse(DNSHeader* header, ns_rcode rcode, char* response,
+                               size_t* response_len) const;
     bool makeErrorResponse(DNSHeader* header, ns_rcode rcode, char* response,
                            size_t* response_len) const;
 
@@ -225,12 +218,10 @@ class DNSResponder {
 
     // Mappings from (name, type) to registered response and the
     // mutex protecting them.
-    std::unordered_map<QueryKey, std::string, QueryKeyHash> mappings_
-        GUARDED_BY(mappings_mutex_);
+    std::unordered_map<QueryKey, std::string, QueryKeyHash> mappings_ GUARDED_BY(mappings_mutex_);
     mutable std::mutex mappings_mutex_;
     // Query names received so far and the corresponding mutex.
-    mutable std::vector<std::pair<std::string, ns_type>> queries_
-        GUARDED_BY(queries_mutex_);
+    mutable std::vector<std::pair<std::string, ns_type>> queries_ GUARDED_BY(queries_mutex_);
     mutable std::mutex queries_mutex_;
     // Socket on which the server is listening.
     android::base::unique_fd socket_;

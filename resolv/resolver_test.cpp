@@ -55,13 +55,13 @@
 #include "ResolverStats.h"
 #include "android/net/IDnsResolver.h"
 #include "binder/IServiceManager.h"
-#include "dns_responder/dns_responder.h"
-#include "dns_responder/dns_responder_client.h"
-#include "dns_responder/dns_tls_frontend.h"
 #include "netd_resolv/params.h"  // MAXNS
-#include "netid_client.h"  // NETID_UNSET
+#include "netid_client.h"        // NETID_UNSET
 #include "test_utils.h"
 #include "tests/dns_metrics_listener/dns_metrics_listener.h"
+#include "tests/dns_responder/dns_responder.h"
+#include "tests/dns_responder/dns_responder_client.h"
+#include "tests/dns_responder/dns_tls_frontend.h"
 #include "tests/resolv_test_utils.h"
 
 // Valid VPN netId range is 100 ~ 65535
