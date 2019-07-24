@@ -1614,7 +1614,10 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
         LOG(DEBUG) << __func__ << ": (" << cl << ", " << type << ")";
 
         n = res_nmkquery(res, QUERY, name, cl, type, NULL, 0, NULL, buf, sizeof(buf));
-        if (n > 0 && (res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 && !retried)
+        if (n > 0 &&
+            (res->netcontext_flags &
+             (NET_CONTEXT_FLAG_USE_DNS_OVER_TLS | NET_CONTEXT_FLAG_USE_EDNS)) &&
+            !retried)  // TODO:  remove the retry flag and provide a sufficient test coverage.
             n = res_nopt(res, n, buf, sizeof(buf), anslen);
         if (n <= 0) {
             LOG(ERROR) << __func__ << ": res_nmkquery failed";
@@ -1626,9 +1629,12 @@ static int res_queryN(const char* name, res_target* target, res_state res, int* 
         if (n < 0 || hp->rcode != NOERROR || ntohs(hp->ancount) == 0) {
             // Record rcode from DNS response header only if no timeout.
             // Keep rcode timeout for reporting later if any.
-            if (rcode != RCODE_TIMEOUT) rcode = hp->rcode; /* record most recent error */
-            /* if the query choked with EDNS0, retry without EDNS0 */
-            if ((res->options & (RES_USE_EDNS0 | RES_USE_DNSSEC)) != 0 &&
+            if (rcode != RCODE_TIMEOUT) rcode = hp->rcode;  // record most recent error
+            // if the query choked with EDNS0, retry without EDNS0 that when the server
+            // has no response, resovler won't retry and do nothing. Even fallback to UDP,
+            // we also has the same symptom if EDNS is enabled.
+            if ((res->netcontext_flags &
+                 (NET_CONTEXT_FLAG_USE_DNS_OVER_TLS | NET_CONTEXT_FLAG_USE_EDNS)) &&
                 (res->_flags & RES_F_EDNS0ERR) && !retried) {
                 LOG(DEBUG) << __func__ << ": retry without EDNS0";
                 retried = true;

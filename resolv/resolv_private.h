@@ -116,8 +116,8 @@ struct __res_state {
         } _ext;
     } _u;
     struct res_static rstatic[1];
-    bool use_local_nameserver; /* DNS-over-TLS bypass */
     android::net::NetworkDnsEventReported* event;
+    uint32_t netcontext_flags;
 };
 
 typedef struct __res_state* res_state;
@@ -151,15 +151,6 @@ void _res_stats_set_sample(res_sample* sample, time_t now, int rcode, int rtt);
 // Flags for res_state->_flags
 #define RES_F_VC 0x00000001        // socket is TCP
 #define RES_F_EDNS0ERR 0x00000004  // EDNS0 caused errors
-
-/*
- * Resolver options (keep these in synch with res_debug.c, please)
- */
-#define RES_INIT 0x00000001           /* address initialized */
-#define RES_USE_DNSSEC 0x00200000     /* use DNSSEC using OK bit in OPT */
-#define RES_USE_EDNS0 0x40000000  /* use EDNS0 if configured */
-
-#define RES_DEFAULT 0
 
 /*
  * Error code extending h_errno codes defined in bionic/libc/include/netdb.h.
@@ -205,7 +196,6 @@ int res_nmkquery(res_state, int, const char*, int, int, const u_char*, int, cons
 int res_nsend(res_state, const u_char*, int, u_char*, int, int*, uint32_t);
 void res_nclose(res_state);
 int res_nopt(res_state, int, u_char*, int, int);
-int res_vinit(res_state, int);
 void res_ndestroy(res_state);
 void res_setservers(res_state, const sockaddr_union*, int);
 int res_getservers(res_state, sockaddr_union*, int);
