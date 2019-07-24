@@ -44,27 +44,26 @@ using android::netdutils::ScopedAddrinfo;
 namespace test {
 
 std::string errno2str() {
-    char error_msg[512] = { 0 };
+    char error_msg[512] = {0};
     // It actually calls __gnu_strerror_r() which returns the type |char*| rather than |int|.
     // PLOG is an option though it requires lots of changes from ALOGx() to LOG(x).
     return strerror_r(errno, error_msg, sizeof(error_msg));
 }
 
 std::string str2hex(const char* buffer, size_t len) {
-    std::string str(len*2, '\0');
-    for (size_t i = 0 ; i < len ; ++i) {
+    std::string str(len * 2, '\0');
+    for (size_t i = 0; i < len; ++i) {
         static const char* hex = "0123456789ABCDEF";
         uint8_t c = buffer[i];
-        str[i*2] = hex[c >> 4];
-        str[i*2 + 1] = hex[c & 0x0F];
+        str[i * 2] = hex[c >> 4];
+        str[i * 2 + 1] = hex[c & 0x0F];
     }
     return str;
 }
 
 std::string addr2str(const sockaddr* sa, socklen_t sa_len) {
-    char host_str[NI_MAXHOST] = { 0 };
-    int rv = getnameinfo(sa, sa_len, host_str, sizeof(host_str), nullptr, 0,
-                         NI_NUMERICHOST);
+    char host_str[NI_MAXHOST] = {0};
+    int rv = getnameinfo(sa, sa_len, host_str, sizeof(host_str), nullptr, 0, NI_NUMERICHOST);
     if (rv == 0) return std::string(host_str);
     return std::string();
 }
@@ -73,73 +72,69 @@ std::string addr2str(const sockaddr* sa, socklen_t sa_len) {
 
 const char* dnstype2str(unsigned dnstype) {
     static std::unordered_map<unsigned, const char*> kTypeStrs = {
-        { ns_type::ns_t_a, "A" },
-        { ns_type::ns_t_ns, "NS" },
-        { ns_type::ns_t_md, "MD" },
-        { ns_type::ns_t_mf, "MF" },
-        { ns_type::ns_t_cname, "CNAME" },
-        { ns_type::ns_t_soa, "SOA" },
-        { ns_type::ns_t_mb, "MB" },
-        { ns_type::ns_t_mb, "MG" },
-        { ns_type::ns_t_mr, "MR" },
-        { ns_type::ns_t_null, "NULL" },
-        { ns_type::ns_t_wks, "WKS" },
-        { ns_type::ns_t_ptr, "PTR" },
-        { ns_type::ns_t_hinfo, "HINFO" },
-        { ns_type::ns_t_minfo, "MINFO" },
-        { ns_type::ns_t_mx, "MX" },
-        { ns_type::ns_t_txt, "TXT" },
-        { ns_type::ns_t_rp, "RP" },
-        { ns_type::ns_t_afsdb, "AFSDB" },
-        { ns_type::ns_t_x25, "X25" },
-        { ns_type::ns_t_isdn, "ISDN" },
-        { ns_type::ns_t_rt, "RT" },
-        { ns_type::ns_t_nsap, "NSAP" },
-        { ns_type::ns_t_nsap_ptr, "NSAP-PTR" },
-        { ns_type::ns_t_sig, "SIG" },
-        { ns_type::ns_t_key, "KEY" },
-        { ns_type::ns_t_px, "PX" },
-        { ns_type::ns_t_gpos, "GPOS" },
-        { ns_type::ns_t_aaaa, "AAAA" },
-        { ns_type::ns_t_loc, "LOC" },
-        { ns_type::ns_t_nxt, "NXT" },
-        { ns_type::ns_t_eid, "EID" },
-        { ns_type::ns_t_nimloc, "NIMLOC" },
-        { ns_type::ns_t_srv, "SRV" },
-        { ns_type::ns_t_naptr, "NAPTR" },
-        { ns_type::ns_t_kx, "KX" },
-        { ns_type::ns_t_cert, "CERT" },
-        { ns_type::ns_t_a6, "A6" },
-        { ns_type::ns_t_dname, "DNAME" },
-        { ns_type::ns_t_sink, "SINK" },
-        { ns_type::ns_t_opt, "OPT" },
-        { ns_type::ns_t_apl, "APL" },
-        { ns_type::ns_t_tkey, "TKEY" },
-        { ns_type::ns_t_tsig, "TSIG" },
-        { ns_type::ns_t_ixfr, "IXFR" },
-        { ns_type::ns_t_axfr, "AXFR" },
-        { ns_type::ns_t_mailb, "MAILB" },
-        { ns_type::ns_t_maila, "MAILA" },
-        { ns_type::ns_t_any, "ANY" },
-        { ns_type::ns_t_zxfr, "ZXFR" },
+            {ns_type::ns_t_a, "A"},
+            {ns_type::ns_t_ns, "NS"},
+            {ns_type::ns_t_md, "MD"},
+            {ns_type::ns_t_mf, "MF"},
+            {ns_type::ns_t_cname, "CNAME"},
+            {ns_type::ns_t_soa, "SOA"},
+            {ns_type::ns_t_mb, "MB"},
+            {ns_type::ns_t_mb, "MG"},
+            {ns_type::ns_t_mr, "MR"},
+            {ns_type::ns_t_null, "NULL"},
+            {ns_type::ns_t_wks, "WKS"},
+            {ns_type::ns_t_ptr, "PTR"},
+            {ns_type::ns_t_hinfo, "HINFO"},
+            {ns_type::ns_t_minfo, "MINFO"},
+            {ns_type::ns_t_mx, "MX"},
+            {ns_type::ns_t_txt, "TXT"},
+            {ns_type::ns_t_rp, "RP"},
+            {ns_type::ns_t_afsdb, "AFSDB"},
+            {ns_type::ns_t_x25, "X25"},
+            {ns_type::ns_t_isdn, "ISDN"},
+            {ns_type::ns_t_rt, "RT"},
+            {ns_type::ns_t_nsap, "NSAP"},
+            {ns_type::ns_t_nsap_ptr, "NSAP-PTR"},
+            {ns_type::ns_t_sig, "SIG"},
+            {ns_type::ns_t_key, "KEY"},
+            {ns_type::ns_t_px, "PX"},
+            {ns_type::ns_t_gpos, "GPOS"},
+            {ns_type::ns_t_aaaa, "AAAA"},
+            {ns_type::ns_t_loc, "LOC"},
+            {ns_type::ns_t_nxt, "NXT"},
+            {ns_type::ns_t_eid, "EID"},
+            {ns_type::ns_t_nimloc, "NIMLOC"},
+            {ns_type::ns_t_srv, "SRV"},
+            {ns_type::ns_t_naptr, "NAPTR"},
+            {ns_type::ns_t_kx, "KX"},
+            {ns_type::ns_t_cert, "CERT"},
+            {ns_type::ns_t_a6, "A6"},
+            {ns_type::ns_t_dname, "DNAME"},
+            {ns_type::ns_t_sink, "SINK"},
+            {ns_type::ns_t_opt, "OPT"},
+            {ns_type::ns_t_apl, "APL"},
+            {ns_type::ns_t_tkey, "TKEY"},
+            {ns_type::ns_t_tsig, "TSIG"},
+            {ns_type::ns_t_ixfr, "IXFR"},
+            {ns_type::ns_t_axfr, "AXFR"},
+            {ns_type::ns_t_mailb, "MAILB"},
+            {ns_type::ns_t_maila, "MAILA"},
+            {ns_type::ns_t_any, "ANY"},
+            {ns_type::ns_t_zxfr, "ZXFR"},
     };
     auto it = kTypeStrs.find(dnstype);
-    static const char* kUnknownStr{ "UNKNOWN" };
+    static const char* kUnknownStr{"UNKNOWN"};
     if (it == kTypeStrs.end()) return kUnknownStr;
     return it->second;
 }
 
 const char* dnsclass2str(unsigned dnsclass) {
     static std::unordered_map<unsigned, const char*> kClassStrs = {
-        { ns_class::ns_c_in , "Internet" },
-        { 2, "CSNet" },
-        { ns_class::ns_c_chaos, "ChaosNet" },
-        { ns_class::ns_c_hs, "Hesiod" },
-        { ns_class::ns_c_none, "none" },
-        { ns_class::ns_c_any, "any" }
-    };
+            {ns_class::ns_c_in, "Internet"},    {2, "CSNet"},
+            {ns_class::ns_c_chaos, "ChaosNet"}, {ns_class::ns_c_hs, "Hesiod"},
+            {ns_class::ns_c_none, "none"},      {ns_class::ns_c_any, "any"}};
     auto it = kClassStrs.find(dnsclass);
-    static const char* kUnknownStr{ "UNKNOWN" };
+    static const char* kUnknownStr{"UNKNOWN"};
     if (it == kClassStrs.end()) return kUnknownStr;
     return it->second;
 }
@@ -159,7 +154,7 @@ const char* DNSName::read(const char* buffer, const char* buffer_end) {
 
 char* DNSName::write(char* buffer, const char* buffer_end) const {
     char* buffer_cur = buffer;
-    for (size_t pos = 0 ; pos < name.size() ; ) {
+    for (size_t pos = 0; pos < name.size();) {
         size_t dot_pos = name.find('.', pos);
         if (dot_pos == std::string::npos) {
             // Sanity check, should never happen unless parseField is broken.
@@ -177,8 +172,7 @@ char* DNSName::write(char* buffer, const char* buffer_end) const {
             return nullptr;
         }
         *buffer_cur++ = len;
-        buffer_cur = std::copy(std::next(name.begin(), pos),
-                               std::next(name.begin(), dot_pos),
+        buffer_cur = std::copy(std::next(name.begin(), pos), std::next(name.begin(), dot_pos),
                                buffer_cur);
         pos = dot_pos + 1;
     }
@@ -222,19 +216,19 @@ const char* DNSQuestion::read(const char* buffer, const char* buffer_end) {
         LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
-    if (cur + 2*sizeof(uint16_t) > buffer_end) {
+    if (cur + 2 * sizeof(uint16_t) > buffer_end) {
         LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
     qtype = ntohs(*reinterpret_cast<const uint16_t*>(cur));
     qclass = ntohs(*reinterpret_cast<const uint16_t*>(cur + sizeof(uint16_t)));
-    return cur + 2*sizeof(uint16_t);
+    return cur + 2 * sizeof(uint16_t);
 }
 
 char* DNSQuestion::write(char* buffer, const char* buffer_end) const {
     char* buffer_cur = qname.write(buffer, buffer_end);
     if (buffer_cur == nullptr) return nullptr;
-    if (buffer_cur + 2*sizeof(uint16_t) > buffer_end) {
+    if (buffer_cur + 2 * sizeof(uint16_t) > buffer_end) {
         LOG(ERROR) << "buffer overflow on line " << __LINE__;
         return nullptr;
     }
@@ -289,9 +283,8 @@ std::string DNSRecord::toString() const {
     return std::string(buffer, len);
 }
 
-const char* DNSRecord::readIntFields(const char* buffer, const char* buffer_end,
-                                     unsigned* rdlen) {
-    if (buffer + sizeof(IntFields) > buffer_end ) {
+const char* DNSRecord::readIntFields(const char* buffer, const char* buffer_end, unsigned* rdlen) {
+    if (buffer + sizeof(IntFields) > buffer_end) {
         LOG(ERROR) << "parsing failed at line " << __LINE__;
         return nullptr;
     }
@@ -303,9 +296,8 @@ const char* DNSRecord::readIntFields(const char* buffer, const char* buffer_end,
     return buffer + sizeof(IntFields);
 }
 
-char* DNSRecord::writeIntFields(unsigned rdlen, char* buffer,
-                                const char* buffer_end) const {
-    if (buffer + sizeof(IntFields) > buffer_end ) {
+char* DNSRecord::writeIntFields(unsigned rdlen, char* buffer, const char* buffer_end) const {
+    if (buffer + sizeof(IntFields) > buffer_end) {
         LOG(ERROR) << "buffer overflow on line " << __LINE__;
         return nullptr;
     }
@@ -329,7 +321,7 @@ const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
     }
     if (qdcount) {
         questions.resize(qdcount);
-        for (unsigned i = 0 ; i < qdcount ; ++i) {
+        for (unsigned i = 0; i < qdcount; ++i) {
             cur = questions[i].read(cur, buffer_end);
             if (cur == nullptr) {
                 LOG(ERROR) << "parsing failed at line " << __LINE__;
@@ -339,7 +331,7 @@ const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
     }
     if (ancount) {
         answers.resize(ancount);
-        for (unsigned i = 0 ; i < ancount ; ++i) {
+        for (unsigned i = 0; i < ancount; ++i) {
             cur = answers[i].read(cur, buffer_end);
             if (cur == nullptr) {
                 LOG(ERROR) << "parsing failed at line " << __LINE__;
@@ -349,7 +341,7 @@ const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
     }
     if (nscount) {
         authorities.resize(nscount);
-        for (unsigned i = 0 ; i < nscount ; ++i) {
+        for (unsigned i = 0; i < nscount; ++i) {
             cur = authorities[i].read(cur, buffer_end);
             if (cur == nullptr) {
                 LOG(ERROR) << "parsing failed at line " << __LINE__;
@@ -359,7 +351,7 @@ const char* DNSHeader::read(const char* buffer, const char* buffer_end) {
     }
     if (arcount) {
         additionals.resize(arcount);
-        for (unsigned i = 0 ; i < arcount ; ++i) {
+        for (unsigned i = 0; i < arcount; ++i) {
             cur = additionals[i].read(cur, buffer_end);
             if (cur == nullptr) {
                 LOG(ERROR) << "parsing failed at line " << __LINE__;
@@ -415,11 +407,9 @@ std::string DNSHeader::toString() const {
     return std::string();
 }
 
-const char* DNSHeader::readHeader(const char* buffer, const char* buffer_end,
-                                  unsigned* qdcount, unsigned* ancount,
-                                  unsigned* nscount, unsigned* arcount) {
-    if (buffer + sizeof(Header) > buffer_end)
-        return nullptr;
+const char* DNSHeader::readHeader(const char* buffer, const char* buffer_end, unsigned* qdcount,
+                                  unsigned* ancount, unsigned* nscount, unsigned* arcount) {
+    if (buffer + sizeof(Header) > buffer_end) return nullptr;
     const auto& header = *reinterpret_cast<const Header*>(buffer);
     // bytes 0-1
     id = ntohs(header.id);
@@ -495,21 +485,16 @@ bool DNSResponder::startServer() {
     }
 
     // Set up UDP socket.
-    addrinfo ai_hints{
-        .ai_family = AF_UNSPEC,
-        .ai_socktype = SOCK_DGRAM,
-        .ai_flags = AI_PASSIVE
-    };
+    addrinfo ai_hints{.ai_family = AF_UNSPEC, .ai_socktype = SOCK_DGRAM, .ai_flags = AI_PASSIVE};
     addrinfo* ai_res = nullptr;
-    int rv = getaddrinfo(listen_address_.c_str(), listen_service_.c_str(),
-                         &ai_hints, &ai_res);
+    int rv = getaddrinfo(listen_address_.c_str(), listen_service_.c_str(), &ai_hints, &ai_res);
     ScopedAddrinfo ai_res_cleanup(ai_res);
     if (rv) {
         LOG(ERROR) << "getaddrinfo(" << listen_address_ << ", " << listen_service_
                    << ") failed: " << gai_strerror(rv);
         return false;
     }
-    for (const addrinfo* ai = ai_res ; ai ; ai = ai->ai_next) {
+    for (const addrinfo* ai = ai_res; ai; ai = ai->ai_next) {
         socket_.reset(socket(ai->ai_family, ai->ai_socktype | SOCK_NONBLOCK, ai->ai_protocol));
         if (socket_.get() < 0) {
             PLOG(INFO) << "ignore creating socket " << socket_.get() << " failed";
@@ -576,7 +561,7 @@ bool DNSResponder::stopServer() {
     return true;
 }
 
-std::vector<std::pair<std::string, ns_type >> DNSResponder::queries() const {
+std::vector<std::pair<std::string, ns_type>> DNSResponder::queries() const {
     std::lock_guard lock(queries_mutex_);
     return queries_;
 }
@@ -619,9 +604,8 @@ void DNSResponder::requestHandler() {
     }
 }
 
-bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
-                                    char* response, size_t* response_len)
-                                    const {
+bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len, char* response,
+                                    size_t* response_len) const {
     LOG(DEBUG) << "request: '" << str2hex(buffer, len) << "'";
     const char* buffer_end = buffer + len;
     DNSHeader header;
@@ -637,18 +621,15 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
     }
     if (header.opcode != ns_opcode::ns_o_query) {
         LOG(INFO) << "unsupported request opcode received";
-        return makeErrorResponse(&header, ns_rcode::ns_r_notimpl, response,
-                                 response_len);
+        return makeErrorResponse(&header, ns_rcode::ns_r_notimpl, response, response_len);
     }
     if (header.questions.empty()) {
         LOG(INFO) << "no questions present";
-        return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response,
-                                 response_len);
+        return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response, response_len);
     }
     if (!header.answers.empty()) {
         LOG(INFO) << "already " << header.answers.size() << " answers present in query";
-        return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response,
-                                 response_len);
+        return makeErrorResponse(&header, ns_rcode::ns_r_formerr, response, response_len);
     }
 
     if (edns_ == Edns::FORMERR_UNCOND) {
@@ -669,8 +650,7 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
     {
         std::lock_guard lock(queries_mutex_);
         for (const DNSQuestion& question : header.questions) {
-            queries_.push_back(make_pair(question.qname.name,
-                                         ns_type(question.qtype)));
+            queries_.push_back(make_pair(question.qname.name, ns_type(question.qtype)));
         }
     }
 
@@ -688,11 +668,9 @@ bool DNSResponder::handleDNSRequest(const char* buffer, ssize_t len,
     }
 
     for (const DNSQuestion& question : header.questions) {
-        if (question.qclass != ns_class::ns_c_in &&
-            question.qclass != ns_class::ns_c_any) {
+        if (question.qclass != ns_class::ns_c_in && question.qclass != ns_class::ns_c_any) {
             LOG(INFO) << "unsupported question class " << question.qclass;
-            return makeErrorResponse(&header, ns_rcode::ns_r_notimpl, response,
-                                     response_len);
+            return makeErrorResponse(&header, ns_rcode::ns_r_notimpl, response, response_len);
         }
 
         if (!addAnswerRecords(question, &header.answers)) {
@@ -805,9 +783,8 @@ bool DNSResponder::fillAnswerRdata(const std::string& rdatastr, DNSRecord& recor
     return true;
 }
 
-bool DNSResponder::makeErrorResponse(DNSHeader* header, ns_rcode rcode,
-                                     char* response, size_t* response_len)
-                                     const {
+bool DNSResponder::makeErrorResponse(DNSHeader* header, ns_rcode rcode, char* response,
+                                     size_t* response_len) const {
     header->answers.clear();
     header->authorities.clear();
     header->additionals.clear();
