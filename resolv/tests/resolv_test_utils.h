@@ -34,6 +34,22 @@
 // TODO: make this dynamic and stop depending on implementation details.
 constexpr int TEST_NETID = 30;
 
+// Specifying 0 in ai_socktype or ai_protocol of struct addrinfo indicates that any type or
+// protocol can be returned by getaddrinfo().
+constexpr unsigned int ANY = 0;
+
+static constexpr char kLocalHost[] = "localhost";
+static constexpr char kLocalHostAddr[] = "127.0.0.1";
+static constexpr char kIp6LocalHost[] = "ip6-localhost";
+static constexpr char kIp6LocalHostAddr[] = "::1";
+static constexpr char kHelloExampleCom[] = "hello.example.com.";
+
+// Illegal hostnames
+static constexpr char kBadCharAfterPeriodHost[] = "hello.example.^com.";
+static constexpr char kBadCharBeforePeriodHost[] = "hello.example^.com.";
+static constexpr char kBadCharAtTheEndHost[] = "hello.example.com^.";
+static constexpr char kBadCharInTheMiddleOfLabelHost[] = "hello.ex^ample.com.";
+
 size_t GetNumQueries(const test::DNSResponder& dns, const char* name);
 size_t GetNumQueriesForType(const test::DNSResponder& dns, ns_type type, const char* name);
 std::string ToString(const hostent* he);
