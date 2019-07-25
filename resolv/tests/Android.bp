@@ -1,3 +1,24 @@
+cc_test_library {
+    name: "libnetd_test_resolv_utils",
+    defaults: ["netd_defaults"],
+    srcs: [
+        "resolv_test_utils.cpp",
+    ],
+    header_libs: [
+        "libnetd_resolv_headers",
+        "libnetd_resolv_internal_headers",
+    ],
+    shared_libs: [
+        "libbase",
+        "libutils",
+    ],
+    static_libs: [
+        "libnetd_test_dnsresponder",
+        "libnetdutils",
+        "dnsresolver_aidl_interface-V2-cpp",
+    ],
+}
+
 cc_test {
     name: "resolv_stress_test",
     test_suites: ["device-tests"],
@@ -7,7 +28,6 @@ cc_test {
     defaults: ["netd_defaults"],
     srcs: [
         "resolv_stress_test.cpp",
-        "resolv_test_utils.cpp",
     ],
     header_libs: [
         "libnetd_resolv_headers",
@@ -22,6 +42,7 @@ cc_test {
     static_libs: [
         "libgmock",
         "libnetd_test_dnsresponder",
+        "libnetd_test_resolv_utils",
         "libnetdutils",
         "netd_aidl_interface-V2-cpp",
         "dnsresolver_aidl_interface-V2-cpp",
