@@ -45,18 +45,10 @@ class DnsTlsFrontend {
           listen_service_(listen_service),
           backend_address_(backend_address),
           backend_service_(backend_service) {}
-    ~DnsTlsFrontend() {
-        stopServer();
-    }
-    const std::string& listen_address() const {
-        return listen_address_;
-    }
-    const std::string& listen_service() const {
-        return listen_service_;
-    }
-    bool running() const {
-        return socket_ != -1;
-    }
+    ~DnsTlsFrontend() { stopServer(); }
+    const std::string& listen_address() const { return listen_address_; }
+    const std::string& listen_service() const { return listen_service_; }
+    bool running() const { return socket_ != -1; }
     bool startServer();
     bool stopServer();
     int queries() const { return queries_; }

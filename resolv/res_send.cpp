@@ -534,7 +534,7 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
             // TODO: Since we expect there is only one DNS server being queried here while this
             // function tries to query all of private DNS servers. Consider moving it to other
             // reasonable place. In addition, maybe add stats for private DNS.
-            if (!statp->use_local_nameserver) {
+            if (!(statp->netcontext_flags & NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS)) {
                 bool fallback = false;
                 resplen = res_tls_send(statp, Slice(const_cast<u_char*>(buf), buflen),
                                        Slice(ans, anssiz), rcode, &fallback);
@@ -1124,7 +1124,7 @@ retry:
         res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
         goto retry;
     }
-    if (anhp->rcode == FORMERR && (statp->options & RES_USE_EDNS0) != 0U) {
+    if (anhp->rcode == FORMERR && (statp->netcontext_flags & NET_CONTEXT_FLAG_USE_EDNS)) {
         /*
          * Do not retry if the server do not understand EDNS0.
          * The case has to be captured here, as FORMERR packet do not
