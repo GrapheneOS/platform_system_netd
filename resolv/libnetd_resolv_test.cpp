@@ -28,15 +28,9 @@
 #include "gethnamaddr.h"
 #include "resolv_cache.h"
 #include "stats.pb.h"
+#include "tests/resolv_test_utils.h"
 
 #define NAME(variable) #variable
-
-// TODO: make this dynamic and stop depending on implementation details.
-constexpr unsigned int TEST_NETID = 30;
-
-// Specifying 0 in ai_socktype or ai_protocol of struct addrinfo indicates that any type or
-// protocol can be returned by getaddrinfo().
-constexpr unsigned int ANY = 0;
 
 namespace android {
 namespace net {
@@ -56,38 +50,6 @@ class TestBase : public ::testing::Test {
     void TearDown() override {
         // Delete cache for test
         resolv_delete_cache_for_net(TEST_NETID);
-    }
-
-    static std::string ToString(const hostent* he) {
-        if (he == nullptr) return "<null>";
-        char buffer[INET6_ADDRSTRLEN];
-        if (!inet_ntop(he->h_addrtype, he->h_addr_list[0], buffer, sizeof(buffer))) {
-            return "<invalid>";
-        }
-        return buffer;
-    }
-
-    static std::string ToString(const addrinfo* ai) {
-        if (!ai) return "<null>";
-        for (const auto* aip = ai; aip != nullptr; aip = aip->ai_next) {
-            char host[NI_MAXHOST];
-            int rv = getnameinfo(aip->ai_addr, aip->ai_addrlen, host, sizeof(host), nullptr, 0,
-                                 NI_NUMERICHOST);
-            if (rv != 0) return gai_strerror(rv);
-            return host;
-        }
-        return "<invalid>";
-    }
-
-    size_t GetNumQueries(const test::DNSResponder& dns, const char* name) const {
-        auto queries = dns.queries();
-        size_t found = 0;
-        for (const auto& p : queries) {
-            if (p.first == name) {
-                ++found;
-            }
-        }
-        return found;
     }
 
     int setResolvers() {
@@ -111,12 +73,6 @@ class TestBase : public ::testing::Test {
             .dns_mark = MARK_UNSET,
             .uid = NET_CONTEXT_INVALID_UID,
     };
-
-    // Illegal hostnames
-    static constexpr char kBadCharAfterPeriodHost[] = "hello.example.^com.";
-    static constexpr char kBadCharBeforePeriodHost[] = "hello.example^.com.";
-    static constexpr char kBadCharAtTheEndHost[] = "hello.example.com^.";
-    static constexpr char kBadCharInTheMiddleOfLabelHost[] = "hello.ex^ample.com.";
 };
 
 class ResolvGetAddrInfoTest : public TestBase {};
