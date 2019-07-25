@@ -15,6 +15,6 @@
           "keywords": ["netd-device-kernel-4.9", "netd-device-kernel-4.14"]}
     ],
     "imports": [
-        { "path": "system/netd/resolv" }
+        { "path": "packages/modules/DnsResolver" }
     ]
 }
