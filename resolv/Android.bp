@@ -199,6 +199,7 @@ cc_test {
         "dns_tls_test.cpp",
         "libnetd_resolv_test.cpp",
         "res_cache_test.cpp",
+        "tests/resolv_test_utils.cpp",
     ],
     shared_libs: [
         "libbase",
@@ -207,6 +208,7 @@ cc_test {
         "libssl",
     ],
     static_libs: [
+        "dnsresolver_aidl_interface-V2-cpp",
         "libgmock",
         "libnetd_resolv",
         "libnetd_test_dnsresponder",
