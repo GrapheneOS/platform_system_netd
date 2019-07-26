@@ -383,7 +383,8 @@ int res_getservers(res_state statp, sockaddr_union* set, int cnt) {
     return (statp->nscount);
 }
 
-void res_setnetcontext(res_state statp, const struct android_net_context* netcontext) {
+void res_setnetcontext(res_state statp, const struct android_net_context* netcontext,
+                       android::net::NetworkDnsEventReported* _Nonnull event) {
     if (statp != NULL) {
         statp->netid = netcontext->dns_netid;
         statp->_mark = netcontext->dns_mark;
@@ -393,5 +394,6 @@ void res_setnetcontext(res_state statp, const struct android_net_context* netcon
         if (netcontext->flags & NET_CONTEXT_FLAG_USE_LOCAL_NAMESERVERS) {
             statp->use_local_nameserver = true;
         }
+        statp->event = event;
     }
 }

@@ -64,6 +64,7 @@
 #include "netd_resolv/resolv.h"
 #include "netd_resolv/stats.h"
 #include "resolv_static.h"
+#include "stats.pb.h"
 
 // Linux defines MAXHOSTNAMELEN as 64, while the domain name limit in
 // RFC 1034 and RFC 1035 is 255 octets.
@@ -118,6 +119,7 @@ struct __res_state {
     } _u;
     struct res_static rstatic[1];
     bool use_local_nameserver; /* DNS-over-TLS bypass */
+    android::net::NetworkDnsEventReported* event;
 };
 
 typedef struct __res_state* res_state;
@@ -226,7 +228,8 @@ void res_setservers(res_state, const sockaddr_union*, int);
 int res_getservers(res_state, sockaddr_union*, int);
 
 struct android_net_context; /* forward */
-void res_setnetcontext(res_state, const struct android_net_context*);
+void res_setnetcontext(res_state, const struct android_net_context*,
+                       android::net::NetworkDnsEventReported* event);
 
 int getaddrinfo_numeric(const char* hostname, const char* servname, addrinfo hints,
                         addrinfo** result);
@@ -236,5 +239,17 @@ int herrnoToAiErrno(int herrno);
 
 // switch resolver log severity
 android::base::LogSeverity logSeverityStrToEnum(const std::string& logSeverityStr);
+
+template <typename Dest>
+Dest saturate_cast(int64_t x) {
+    using DestLimits = std::numeric_limits<Dest>;
+    if (x > DestLimits::max()) return DestLimits::max();
+    if (x < DestLimits::min()) return DestLimits::min();
+    return static_cast<Dest>(x);
+}
+
+android::net::NsType getQueryType(const uint8_t* msg, size_t msgLen);
+
+android::net::IpVersion ipFamilyToIPVersion(int ipFamily);
 
 #endif  // NETD_RESOLV_PRIVATE_H
