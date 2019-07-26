@@ -32,7 +32,6 @@
 #define LOG_TAG "DnsProxyListener"
 
 #include <algorithm>
-#include <list>
 #include <vector>
 
 #include <android-base/stringprintf.h>
@@ -57,6 +56,7 @@
 #include "gethnamaddr.h"
 #include "netd_resolv/stats.h"  // RCODE_TIMEOUT
 #include "res_send.h"
+#include "resolv_cache.h"
 #include "resolv_private.h"
 #include "stats.pb.h"
 
@@ -305,17 +305,28 @@ void initDnsEvent(NetworkDnsEventReported* event) {
     event->set_res_nsend_flags(-1);
 }
 
+// Return 0 if the event should not be logged.
+// Otherwise, return subsampling_denom
+uint32_t getDnsEventSubsamplingRate(int netid, int returnCode) {
+    uint32_t subsampling_denom = resolv_cache_get_subsampling_denom(netid, returnCode);
+    if (subsampling_denom == 0) return 0;
+    // Sample the event with a chance of 1 / denom.
+    return (arc4random_uniform(subsampling_denom) == 0) ? subsampling_denom : 0;
+}
+
 void reportDnsEvent(int eventType, const android_net_context& netContext, int latencyUs,
                     int returnCode, NetworkDnsEventReported& event, const std::string& query_name,
                     const std::vector<std::string>& ip_addrs = {}, int total_ip_addr_count = 0) {
-    const std::string& dnsQueryStats = event.dns_query_events().SerializeAsString();
-    stats::BytesField dnsQueryBytesField{dnsQueryStats.c_str(), dnsQueryStats.size()};
-    event.set_return_code(static_cast<ReturnCode>(returnCode));
-    android::net::stats::stats_write(
-            android::net::stats::NETWORK_DNS_EVENT_REPORTED, event.event_type(),
-            event.return_code(), event.latency_micros(), event.hints_ai_flags(),
-            event.res_nsend_flags(), event.network_type(), event.private_dns_modes(),
-            dnsQueryBytesField, event.sampling_rate_denom());
+    if (uint32_t rate = getDnsEventSubsamplingRate(netContext.dns_netid, returnCode)) {
+        const std::string& dnsQueryStats = event.dns_query_events().SerializeAsString();
+        stats::BytesField dnsQueryBytesField{dnsQueryStats.c_str(), dnsQueryStats.size()};
+        event.set_return_code(static_cast<ReturnCode>(returnCode));
+        android::net::stats::stats_write(android::net::stats::NETWORK_DNS_EVENT_REPORTED,
+                                         event.event_type(), event.return_code(),
+                                         event.latency_micros(), event.hints_ai_flags(),
+                                         event.res_nsend_flags(), event.network_type(),
+                                         event.private_dns_modes(), dnsQueryBytesField, rate);
+    }
 
     const auto& listeners = ResolverEventReporter::getInstance().getListeners();
     if (listeners.size() == 0) {
