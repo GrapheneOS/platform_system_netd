@@ -1198,13 +1198,25 @@ static int sock_eq(struct sockaddr* a, struct sockaddr* b) {
     }
 }
 
+PrivateDnsModes convertEnumType(PrivateDnsMode privateDnsmode) {
+    switch (privateDnsmode) {
+        case PrivateDnsMode::OFF:
+            return PrivateDnsModes::PDM_OFF;
+        case PrivateDnsMode::OPPORTUNISTIC:
+            return PrivateDnsModes::PDM_OPPORTUNISTIC;
+        case PrivateDnsMode::STRICT:
+            return PrivateDnsModes::PDM_STRICT;
+    }
+    return PrivateDnsModes::PDM_UNKNOWN;
+}
+
 static int res_tls_send(res_state statp, const Slice query, const Slice answer, int* rcode,
                         bool* fallback) {
     int resplen = 0;
     const unsigned netId = statp->netid;
 
     PrivateDnsStatus privateDnsStatus = gPrivateDnsConfiguration.getStatus(netId);
-    statp->event->set_private_dns_modes(static_cast<PrivateDnsModes>(privateDnsStatus.mode));
+    statp->event->set_private_dns_modes(convertEnumType(privateDnsStatus.mode));
 
     if (privateDnsStatus.mode == PrivateDnsMode::OFF) {
         *fallback = true;
