@@ -57,8 +57,6 @@ std::string addrToString(const sockaddr_storage* addr) {
 
 const char* getPrivateDnsModeString(PrivateDnsMode mode) {
     switch (mode) {
-        case PrivateDnsMode::UNKNOWN:
-            return "UNKNOWN";
         case PrivateDnsMode::OFF:
             return "OFF";
         case PrivateDnsMode::OPPORTUNISTIC:
