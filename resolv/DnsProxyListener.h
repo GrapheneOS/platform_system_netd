@@ -28,6 +28,8 @@ struct hostent;
 namespace android {
 namespace net {
 
+class NetworkDnsEventReported;
+
 class DnsProxyListener : public FrameworkListener {
   public:
     DnsProxyListener();
@@ -54,7 +56,7 @@ class DnsProxyListener : public FrameworkListener {
         void run();
 
       private:
-        void doDns64Synthesis(int32_t* rv, addrinfo** res);
+        void doDns64Synthesis(int32_t* rv, addrinfo** res, NetworkDnsEventReported* event);
 
         SocketClient* mClient;  // ref counted
         char* mHost;            // owned. TODO: convert to std::string.
@@ -80,7 +82,7 @@ class DnsProxyListener : public FrameworkListener {
         void run();
 
       private:
-        void doDns64Synthesis(int32_t* rv, hostent** hpp);
+        void doDns64Synthesis(int32_t* rv, hostent** hpp, NetworkDnsEventReported* event);
 
         SocketClient* mClient;  // ref counted
         char* mName;            // owned. TODO: convert to std::string.
@@ -105,7 +107,7 @@ class DnsProxyListener : public FrameworkListener {
         void run();
 
       private:
-        void doDns64ReverseLookup(hostent** hpp);
+        void doDns64ReverseLookup(hostent** hpp, NetworkDnsEventReported* event);
 
         SocketClient* mClient;  // ref counted
         void* mAddress;         // address to lookup; owned
