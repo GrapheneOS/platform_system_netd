@@ -26,6 +26,7 @@
 #include "getaddrinfo.h"
 #include "gethnamaddr.h"
 #include "resolv_cache.h"
+#include "stats.pb.h"
 
 // TODO: make this dynamic and stop depending on implementation details.
 constexpr unsigned int TEST_NETID = 30;
@@ -38,6 +39,8 @@ using android::base::StringPrintf;
 
 namespace android {
 namespace net {
+
+using android::net::NetworkDnsEventReported;
 
 // Minimize class ResolverTest to be class TestBase because class TestBase doesn't need all member
 // functions of class ResolverTest and class DnsResponderClient.
@@ -112,8 +115,9 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
     // Invalid hostname and servname.
     // Both hostname and servname are null pointers. Expect error number EAI_NONAME.
     struct addrinfo* result = nullptr;
+    NetworkDnsEventReported event;
     int rv = android_getaddrinfofornetcontext(nullptr /*hostname*/, nullptr /*servname*/,
-                                              nullptr /*hints*/, &mNetcontext, &result);
+                                              nullptr /*hints*/, &mNetcontext, &result, &event);
     EXPECT_EQ(EAI_NONAME, rv);
     if (result) {
         freeaddrinfo(result);
@@ -167,8 +171,9 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters) {
                 .ai_next = config.ai_next,
         };
 
+        NetworkDnsEventReported event;
         rv = android_getaddrinfofornetcontext("localhost", nullptr /*servname*/, &hints,
-                                              &mNetcontext, &result);
+                                              &mNetcontext, &result, &event);
         EXPECT_EQ(config.expected_errorno, rv);
 
         if (result) {
@@ -190,8 +195,9 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_Family) {
                 .ai_family = family,  // unsupported family
         };
 
+        NetworkDnsEventReported event;
         int rv = android_getaddrinfofornetcontext("localhost", nullptr /*servname*/, &hints,
-                                                  &mNetcontext, &result);
+                                                  &mNetcontext, &result, &event);
         EXPECT_EQ(EAI_FAMILY, rv);
 
         if (result) freeaddrinfo(result);
@@ -237,8 +243,9 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_MeaningfulSocktypeAndProt
                         .ai_socktype = socktype,
                 };
 
+                NetworkDnsEventReported event;
                 int rv = android_getaddrinfofornetcontext("localhost", nullptr /*servname*/, &hints,
-                                                          &mNetcontext, &result);
+                                                          &mNetcontext, &result, &event);
                 EXPECT_EQ(EAI_BADHINTS, rv);
 
                 if (result) freeaddrinfo(result);
@@ -320,8 +327,9 @@ TEST_F(GetAddrInfoForNetContextTest, InvalidParameters_PortNameAndNumber) {
         };
 
         struct addrinfo* result = nullptr;
+        NetworkDnsEventReported event;
         int rv = android_getaddrinfofornetcontext("localhost", config.servname, &hints,
-                                                  &mNetcontext, &result);
+                                                  &mNetcontext, &result, &event);
         EXPECT_EQ(config.expected_errorno, rv);
 
         if (result) freeaddrinfo(result);
@@ -344,7 +352,9 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname_NoData) {
     // Want AAAA answer but DNS server has A answer only.
     struct addrinfo* result = nullptr;
     const addrinfo hints = {.ai_family = AF_INET6};
-    int rv = android_getaddrinfofornetcontext("v4only", nullptr, &hints, &mNetcontext, &result);
+    NetworkDnsEventReported event;
+    int rv = android_getaddrinfofornetcontext("v4only", nullptr, &hints, &mNetcontext, &result,
+                                              &event);
     EXPECT_LE(1U, GetNumQueries(dns, v4_host_name));
     EXPECT_TRUE(result == nullptr);
     EXPECT_EQ(EAI_NODATA, rv);
@@ -382,8 +392,9 @@ TEST_F(GetAddrInfoForNetContextTest, AlphabeticalHostname) {
 
         struct addrinfo* result = nullptr;
         const struct addrinfo hints = {.ai_family = config.ai_family};
-        int rv =
-                android_getaddrinfofornetcontext("sawadee", nullptr, &hints, &mNetcontext, &result);
+        NetworkDnsEventReported event;
+        int rv = android_getaddrinfofornetcontext("sawadee", nullptr, &hints, &mNetcontext, &result,
+                                                  &event);
         EXPECT_EQ(0, rv);
         EXPECT_TRUE(result != nullptr);
         EXPECT_EQ(1U, GetNumQueries(dns, host_name));
@@ -429,8 +440,9 @@ TEST_F(GetAddrInfoForNetContextTest, ServerResponseError) {
 
         struct addrinfo* result = nullptr;
         const struct addrinfo hints = {.ai_family = AF_UNSPEC};
-        int rv =
-                android_getaddrinfofornetcontext(host_name, nullptr, &hints, &mNetcontext, &result);
+        NetworkDnsEventReported event;
+        int rv = android_getaddrinfofornetcontext(host_name, nullptr, &hints, &mNetcontext, &result,
+                                                  &event);
         EXPECT_EQ(config.expected_errorno, rv);
 
         if (result) freeaddrinfo(result);
@@ -453,7 +465,9 @@ TEST_F(GetAddrInfoForNetContextTest, ServerTimeout) {
 
     struct addrinfo* result = nullptr;
     const struct addrinfo hints = {.ai_family = AF_UNSPEC};
-    int rv = android_getaddrinfofornetcontext("hello", nullptr, &hints, &mNetcontext, &result);
+    NetworkDnsEventReported event;
+    int rv = android_getaddrinfofornetcontext("hello", nullptr, &hints, &mNetcontext, &result,
+                                              &event);
     EXPECT_EQ(NETD_RESOLV_TIMEOUT, rv);
 
     if (result) freeaddrinfo(result);
@@ -488,8 +502,9 @@ TEST_F(GetHostByNameForNetContextTest, AlphabeticalHostname) {
         dns.clearQueries();
 
         struct hostent* hp = nullptr;
+        NetworkDnsEventReported event;
         int rv = android_gethostbynamefornetcontext("jiababuei", config.ai_family, &mNetcontext,
-                                                    &hp);
+                                                    &hp, &event);
         EXPECT_EQ(0, rv);
         EXPECT_TRUE(hp != nullptr);
         EXPECT_EQ(1U, GetNumQueries(dns, host_name));
@@ -512,7 +527,8 @@ TEST_F(GetHostByNameForNetContextTest, NoData) {
 
     // Want AAAA answer but DNS server has A answer only.
     struct hostent* hp = nullptr;
-    int rv = android_gethostbynamefornetcontext("v4only", AF_INET6, &mNetcontext, &hp);
+    NetworkDnsEventReported event;
+    int rv = android_gethostbynamefornetcontext("v4only", AF_INET6, &mNetcontext, &hp, &event);
     EXPECT_LE(1U, GetNumQueries(dns, v4_host_name));
     EXPECT_TRUE(hp == nullptr);
     EXPECT_EQ(EAI_NODATA, rv);
@@ -555,7 +571,8 @@ TEST_F(GetHostByNameForNetContextTest, ServerResponseError) {
                                                     mDefaultSearchDomains, &mDefaultParams_Binder));
 
         struct hostent* hp = nullptr;
-        int rv = android_gethostbynamefornetcontext(host_name, AF_INET, &mNetcontext, &hp);
+        NetworkDnsEventReported event;
+        int rv = android_gethostbynamefornetcontext(host_name, AF_INET, &mNetcontext, &hp, &event);
         EXPECT_TRUE(hp == nullptr);
         EXPECT_EQ(config.expected_errorno, rv);
     }
@@ -576,7 +593,8 @@ TEST_F(GetHostByNameForNetContextTest, ServerTimeout) {
                                                 mDefaultSearchDomains, &mDefaultParams_Binder));
 
     struct hostent* hp = nullptr;
-    int rv = android_gethostbynamefornetcontext(host_name, AF_INET, &mNetcontext, &hp);
+    NetworkDnsEventReported event;
+    int rv = android_gethostbynamefornetcontext(host_name, AF_INET, &mNetcontext, &hp, &event);
     EXPECT_EQ(NETD_RESOLV_TIMEOUT, rv);
 }
 

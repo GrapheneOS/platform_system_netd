@@ -317,6 +317,8 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
         if (servers.empty()) {
             dw.println("No DNS servers defined");
         } else {
+            dw.println("DnsEvent subsampling map: " +
+                       android::base::Join(resolv_cache_dump_subsampling_map(netId), ' '));
             dw.println(
                     "DNS servers: # IP (total, successes, errors, timeouts, internal errors, "
                     "RTT avg, last sample)");
@@ -357,8 +359,7 @@ void ResolverController::dump(DumpWriter& dw, unsigned netId) {
         mDns64Configuration.dump(dw, netId);
         ExternalPrivateDnsStatus privateDnsStatus = {PrivateDnsMode::OFF, 0, {}};
         gPrivateDnsConfiguration.getStatus(netId, &privateDnsStatus);
-        dw.println("Private DNS mode: %s",
-                   getPrivateDnsModeString(static_cast<PrivateDnsMode>(privateDnsStatus.mode)));
+        dw.println("Private DNS mode: %s", getPrivateDnsModeString(privateDnsStatus.mode));
         if (!privateDnsStatus.numServers) {
             dw.println("No Private DNS servers configured");
         } else {

@@ -101,6 +101,7 @@
 #include <android/multinetwork.h>  // ResNsendFlags
 
 #include <netdutils/Slice.h>
+#include <netdutils/Stopwatch.h>
 #include "DnsTlsDispatcher.h"
 #include "DnsTlsTransport.h"
 #include "PrivateDnsConfiguration.h"
@@ -110,10 +111,13 @@
 #include "res_state_ext.h"
 #include "resolv_cache.h"
 #include "resolv_private.h"
+#include "stats.pb.h"
 
 // TODO: use the namespace something like android::netd_resolv for libnetd_resolv
 using namespace android::net;
+using android::net::NetworkDnsEventReported;
 using android::netdutils::Slice;
+using android::netdutils::Stopwatch;
 
 static DnsTlsDispatcher sDnsTlsDispatcher;
 
@@ -133,11 +137,29 @@ static int retrying_poll(const int sock, short events, const struct timespec* fi
 static int res_tls_send(res_state, const Slice query, const Slice answer, int* rcode,
                         bool* fallback);
 
-/* BIONIC-BEGIN: implement source port randomization */
+NsType getQueryType(const uint8_t* msg, size_t msgLen) {
+    ns_msg handle;
+    ns_rr rr;
+    if (ns_initparse((const uint8_t*)msg, msgLen, &handle) < 0 ||
+        ns_parserr(&handle, ns_s_qd, 0, &rr) < 0) {
+        return NS_T_INVALID;
+    }
+    return static_cast<NsType>(ns_rr_type(rr));
+}
+
+IpVersion ipFamilyToIPVersion(const int ipFamily) {
+    switch (ipFamily) {
+        case AF_INET:
+            return IV_IPV4;
+        case AF_INET6:
+            return IV_IPV6;
+        default:
+            return IV_UNKNOWN;
+    }
+}
 
 // BEGIN: Code copied from ISC eventlib
 // TODO: move away from this code
-
 #define BILLION 1000000000
 
 static struct timespec evConsTime(time_t sec, long nsec) {
@@ -201,6 +223,7 @@ static struct iovec evConsIovec(void* buf, size_t cnt) {
 
 // END: Code copied from ISC eventlib
 
+/* BIONIC-BEGIN: implement source port randomization */
 static int random_bind(int s, int family) {
     sockaddr_union u;
     int j;
@@ -373,6 +396,10 @@ int res_queriesmatch(const u_char* buf1, const u_char* eom1, const u_char* buf2,
     return (1);
 }
 
+static DnsQueryEvent* addDnsQueryEvent(NetworkDnsEventReported* event) {
+    return event->mutable_dns_query_events()->add_dns_query_event();
+}
+
 int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int anssiz, int* rcode,
               uint32_t flags) {
     int gotsomewhere, terrno, v_circuit, resplen, n;
@@ -391,11 +418,15 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
     terrno = ETIMEDOUT;
 
     int anslen = 0;
+    Stopwatch cache_stopwatch;
     cache_status = _resolv_cache_lookup(statp->netid, buf, buflen, ans, anssiz, &anslen, flags);
-
+    const int32_t cacheLatencyUs = saturate_cast<int32_t>(cache_stopwatch.timeTakenUs());
     if (cache_status == RESOLV_CACHE_FOUND) {
         HEADER* hp = (HEADER*)(void*)ans;
         *rcode = hp->rcode;
+        DnsQueryEvent* dnsQueryEvent = addDnsQueryEvent(statp->event);
+        dnsQueryEvent->set_latency_micros(cacheLatencyUs);
+        dnsQueryEvent->set_cache_hit(static_cast<CacheStatus>(cache_status));
         return anslen;
     } else if (cache_status != RESOLV_CACHE_UNSUPPORTED) {
         // had a cache miss for a known network, so populate the thread private
@@ -522,12 +553,11 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
 
         for (int ns = 0; ns < statp->nscount; ns++) {
             if (!usable_servers[ns]) continue;
-            struct sockaddr* nsap;
             int nsaplen;
             time_t now = 0;
             int delay = 0;
             *rcode = RCODE_INTERNAL_ERROR;
-            nsap = get_nsaddr(statp, (size_t) ns);
+            const sockaddr* nsap = get_nsaddr(statp, ns);
             nsaplen = get_salen(nsap);
 
         same_ns:
@@ -551,13 +581,16 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
                 }
             }
 
-            [[maybe_unused]] static const int niflags = NI_NUMERICHOST | NI_NUMERICSERV;
-            [[maybe_unused]] char abuf[NI_MAXHOST];
+            static const int niflags = NI_NUMERICHOST | NI_NUMERICSERV;
+            char abuf[NI_MAXHOST];
+            DnsQueryEvent* dnsQueryEvent = addDnsQueryEvent(statp->event);
+            dnsQueryEvent->set_cache_hit(static_cast<CacheStatus>(cache_status));
 
             if (getnameinfo(nsap, (socklen_t)nsaplen, abuf, sizeof(abuf), NULL, 0, niflags) == 0)
                 LOG(DEBUG) << __func__ << ": Querying server (# " << ns + 1
                            << ") address = " << abuf;
 
+            Stopwatch query_stopwatch;
             if (v_circuit) {
                 /* Use VC; at most one attempt per server. */
                 bool shouldRecordStats = (attempt == 0);
@@ -565,6 +598,15 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
 
                 n = send_vc(statp, &params, buf, buflen, ans, anssiz, &terrno, ns, &now, rcode,
                             &delay);
+
+                dnsQueryEvent->set_latency_micros(
+                        saturate_cast<int32_t>(query_stopwatch.timeTakenUs()));
+                dnsQueryEvent->set_dns_server_index(ns);
+                dnsQueryEvent->set_ip_version(ipFamilyToIPVersion(nsap->sa_family));
+                dnsQueryEvent->set_retry_times(attempt);
+                dnsQueryEvent->set_rcode(static_cast<NsRcode>(*rcode));
+                dnsQueryEvent->set_protocol(PROTO_TCP);
+                dnsQueryEvent->set_type(getQueryType(buf, buflen));
 
                 /*
                  * Only record stats the first time we try a query. This ensures that
@@ -593,6 +635,15 @@ int res_nsend(res_state statp, const u_char* buf, int buflen, u_char* ans, int a
 
                 n = send_dg(statp, &params, buf, buflen, ans, anssiz, &terrno, ns, &v_circuit,
                             &gotsomewhere, &now, rcode, &delay);
+
+                dnsQueryEvent->set_latency_micros(
+                        saturate_cast<int32_t>(query_stopwatch.timeTakenUs()));
+                dnsQueryEvent->set_dns_server_index(ns);
+                dnsQueryEvent->set_ip_version(ipFamilyToIPVersion(nsap->sa_family));
+                dnsQueryEvent->set_retry_times(attempt);
+                dnsQueryEvent->set_rcode(static_cast<NsRcode>(*rcode));
+                dnsQueryEvent->set_protocol(PROTO_UDP);
+                dnsQueryEvent->set_type(getQueryType(buf, buflen));
 
                 /* Only record stats the first time we try a query. See above. */
                 if (attempt == 0) {
@@ -1211,13 +1262,25 @@ static int sock_eq(struct sockaddr* a, struct sockaddr* b) {
     }
 }
 
+PrivateDnsModes convertEnumType(PrivateDnsMode privateDnsmode) {
+    switch (privateDnsmode) {
+        case PrivateDnsMode::OFF:
+            return PrivateDnsModes::PDM_OFF;
+        case PrivateDnsMode::OPPORTUNISTIC:
+            return PrivateDnsModes::PDM_OPPORTUNISTIC;
+        case PrivateDnsMode::STRICT:
+            return PrivateDnsModes::PDM_STRICT;
+    }
+    return PrivateDnsModes::PDM_UNKNOWN;
+}
+
 static int res_tls_send(res_state statp, const Slice query, const Slice answer, int* rcode,
                         bool* fallback) {
     int resplen = 0;
     const unsigned netId = statp->netid;
-    const unsigned mark = statp->_mark;
 
     PrivateDnsStatus privateDnsStatus = gPrivateDnsConfiguration.getStatus(netId);
+    statp->event->set_private_dns_modes(convertEnumType(privateDnsStatus.mode));
 
     if (privateDnsStatus.mode == PrivateDnsMode::OFF) {
         *fallback = true;
@@ -1256,7 +1319,7 @@ static int res_tls_send(res_state statp, const Slice query, const Slice answer, 
 
     LOG(INFO) << __func__ << ": performing query over TLS";
 
-    const auto response = sDnsTlsDispatcher.query(privateDnsStatus.validatedServers, mark, query,
+    const auto response = sDnsTlsDispatcher.query(privateDnsStatus.validatedServers, statp, query,
                                                   answer, &resplen);
 
     LOG(INFO) << __func__ << ": TLS query result: " << static_cast<int>(response);
@@ -1298,9 +1361,11 @@ static int res_tls_send(res_state statp, const Slice query, const Slice answer, 
 }
 
 int resolv_res_nsend(const android_net_context* netContext, const uint8_t* msg, int msgLen,
-                     uint8_t* ans, int ansLen, int* rcode, uint32_t flags) {
+                     uint8_t* ans, int ansLen, int* rcode, uint32_t flags,
+                     NetworkDnsEventReported* event) {
+    assert(event != nullptr);
     res_state res = res_get_state();
-    res_setnetcontext(res, netContext);
+    res_setnetcontext(res, netContext, event);
     _resolv_populate_res_for_net(res);
     *rcode = NOERROR;
     return res_nsend(res, msg, msgLen, ans, ansLen, rcode, flags);

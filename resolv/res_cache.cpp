@@ -36,7 +36,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
 #include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
@@ -47,6 +51,8 @@
 
 #include <android-base/logging.h>
 #include <android-base/parseint.h>
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <android-base/thread_annotations.h>
 #include <android/multinetwork.h>  // ResNsendFlags
 
@@ -1146,6 +1152,8 @@ struct resolv_cache_info {
     char defdname[MAXDNSRCHPATH];
     int dnsrch_offset[MAXDNSRCH + 1];  // offsets into defdname
     int wait_for_pending_req_timeout_count;
+    // Map format: ReturnCode:rate_denom
+    std::unordered_map<int, uint32_t> dns_event_subsampling_map;
 };
 
 // A helper class for the Clang Thread Safety Analysis to deal with
@@ -1604,6 +1612,49 @@ bool resolv_has_nameservers(unsigned netid) {
     return (info != nullptr) && (info->nscount > 0);
 }
 
+namespace {
+
+// Map format: ReturnCode:rate_denom
+// if the ReturnCode is not associated with any rate_denom, use default
+// Sampling rate varies by return code; events to log are chosen randomly, with a
+// probability proportional to the sampling rate.
+constexpr const char DEFAULT_SUBSAMPLING_MAP[] = "default:1 0:100 7:10";
+
+std::unordered_map<int, uint32_t> resolv_get_dns_event_subsampling_map() {
+    using android::base::ParseInt;
+    using android::base::ParseUint;
+    using android::base::Split;
+    using server_configurable_flags::GetServerConfigurableFlag;
+    std::unordered_map<int, uint32_t> sampling_rate_map{};
+    std::vector<std::string> subsampling_vector =
+            Split(GetServerConfigurableFlag("netd_native", "dns_event_subsample_map",
+                                            DEFAULT_SUBSAMPLING_MAP),
+                  " ");
+    for (const auto& pair : subsampling_vector) {
+        std::vector<std::string> rate_denom = Split(pair, ":");
+        int return_code;
+        uint32_t denom;
+        if (rate_denom.size() != 2) {
+            LOG(ERROR) << __func__ << ": invalid subsampling_pair = " << pair;
+            continue;
+        }
+        if (rate_denom[0] == "default") {
+            return_code = DNSEVENT_SUBSAMPLING_MAP_DEFAULT_KEY;
+        } else if (!ParseInt(rate_denom[0], &return_code)) {
+            LOG(ERROR) << __func__ << ": parse subsampling_pair failed = " << pair;
+            continue;
+        }
+        if (!ParseUint(rate_denom[1], &denom)) {
+            LOG(ERROR) << __func__ << ": parse subsampling_pair failed = " << pair;
+            continue;
+        }
+        sampling_rate_map[return_code] = denom;
+    }
+    return sampling_rate_map;
+}
+
+}  // namespace
+
 static int resolv_create_cache_for_net_locked(unsigned netid) {
     resolv_cache* cache = find_named_cache_locked(netid);
     // Should not happen
@@ -1621,6 +1672,7 @@ static int resolv_create_cache_for_net_locked(unsigned netid) {
     }
     cache_info->cache = cache;
     cache_info->netid = netid;
+    cache_info->dns_event_subsampling_map = resolv_get_dns_event_subsampling_map();
     insert_cache_info_locked(cache_info);
 
     return 0;
@@ -1998,6 +2050,42 @@ int android_net_res_stats_get_info_for_net(unsigned netid, int* nscount,
     }
 
     return revision_id;
+}
+
+std::vector<std::string> resolv_cache_dump_subsampling_map(unsigned netid) {
+    using android::base::StringPrintf;
+    std::lock_guard guard(cache_mutex);
+    resolv_cache_info* cache_info = find_cache_info_locked(netid);
+    if (cache_info == nullptr) return {};
+    std::vector<std::string> result;
+    for (const auto& pair : cache_info->dns_event_subsampling_map) {
+        result.push_back(StringPrintf("%s:%d",
+                                      (pair.first == DNSEVENT_SUBSAMPLING_MAP_DEFAULT_KEY)
+                                              ? "default"
+                                              : std::to_string(pair.first).c_str(),
+                                      pair.second));
+    }
+    return result;
+}
+
+// Decides whether an event should be sampled using a random number generator and
+// a sampling factor derived from the netid and the return code.
+//
+// Returns the subsampling rate if the event should be sampled, or 0 if it should be discarded.
+uint32_t resolv_cache_get_subsampling_denom(unsigned netid, int return_code) {
+    std::lock_guard guard(cache_mutex);
+    resolv_cache_info* cache_info = find_cache_info_locked(netid);
+    if (cache_info == nullptr) return 0;  // Don't log anything at all.
+    const auto& subsampling_map = cache_info->dns_event_subsampling_map;
+    auto search_returnCode = subsampling_map.find(return_code);
+    uint32_t denom;
+    if (search_returnCode != subsampling_map.end()) {
+        denom = search_returnCode->second;
+    } else {
+        auto search_default = subsampling_map.find(DNSEVENT_SUBSAMPLING_MAP_DEFAULT_KEY);
+        denom = (search_default == subsampling_map.end()) ? 0 : search_default->second;
+    }
+    return denom;
 }
 
 int resolv_cache_get_resolver_stats(unsigned netid, res_params* params, res_stats stats[MAXNS]) {

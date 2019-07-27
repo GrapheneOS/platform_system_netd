@@ -63,6 +63,8 @@
 
 #define ANY 0
 
+using android::net::NetworkDnsEventReported;
+
 const char in_addrany[] = {0, 0, 0, 0};
 const char in_loopback[] = {127, 0, 0, 1};
 const char in6_addrany[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -125,7 +127,7 @@ struct res_target {
 
 static int str2number(const char*);
 static int explore_fqdn(const struct addrinfo*, const char*, const char*, struct addrinfo**,
-                        const struct android_net_context*);
+                        const struct android_net_context*, NetworkDnsEventReported* event);
 static int explore_null(const struct addrinfo*, const char*, struct addrinfo**);
 static int explore_numeric(const struct addrinfo*, const char*, const char*, struct addrinfo**,
                            const char*);
@@ -141,7 +143,8 @@ static int ip6_str2scopeid(const char*, struct sockaddr_in6*, u_int32_t*);
 static struct addrinfo* getanswer(const querybuf*, int, const char*, int, const struct addrinfo*,
                                   int* herrno);
 static int dns_getaddrinfo(const char* name, const addrinfo* pai,
-                           const android_net_context* netcontext, addrinfo** rv);
+                           const android_net_context* netcontext, addrinfo** rv,
+                           NetworkDnsEventReported* event);
 static void _sethtent(FILE**);
 static void _endhtent(FILE**);
 static struct addrinfo* _gethtent(FILE**, const char*, const struct addrinfo*);
@@ -265,13 +268,15 @@ int getaddrinfo_numeric(const char* hostname, const char* servname, addrinfo hin
             .dns_mark = MARK_UNSET,
             .uid = NET_CONTEXT_INVALID_UID,
     };
-    return android_getaddrinfofornetcontext(hostname, servname, &hints, &netcontext, result);
+    NetworkDnsEventReported event;
+    return android_getaddrinfofornetcontext(hostname, servname, &hints, &netcontext, result,
+                                            &event);
 }
 
 int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
                                      const struct addrinfo* hints,
                                      const struct android_net_context* netcontext,
-                                     struct addrinfo** res) {
+                                     struct addrinfo** res, NetworkDnsEventReported* event) {
     struct addrinfo sentinel = {};
     struct addrinfo* cur = &sentinel;
     int error = 0;
@@ -281,6 +286,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
     // hints is allowed to be nullptr
     assert(res != nullptr);
     assert(netcontext != nullptr);
+    assert(event != nullptr);
 
     struct addrinfo ai = {
             .ai_flags = 0,
@@ -413,7 +419,7 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
 
             LOG(DEBUG) << __func__ << ": explore_fqdn(): ai_family=" << tmp.ai_family
                        << " ai_socktype=" << tmp.ai_socktype << " ai_protocol=" << tmp.ai_protocol;
-            error = explore_fqdn(&tmp, hostname, servname, &cur->ai_next, netcontext);
+            error = explore_fqdn(&tmp, hostname, servname, &cur->ai_next, netcontext, event);
 
             while (cur->ai_next) cur = cur->ai_next;
         }
@@ -436,7 +442,8 @@ int android_getaddrinfofornetcontext(const char* hostname, const char* servname,
 
 // FQDN hostname, DNS lookup
 static int explore_fqdn(const struct addrinfo* pai, const char* hostname, const char* servname,
-                        struct addrinfo** res, const struct android_net_context* netcontext) {
+                        struct addrinfo** res, const struct android_net_context* netcontext,
+                        NetworkDnsEventReported* event) {
     struct addrinfo* result;
     int error = 0;
 
@@ -451,7 +458,7 @@ static int explore_fqdn(const struct addrinfo* pai, const char* hostname, const 
     if (get_portmatch(pai, servname) != 0) return 0;
 
     if (!files_getaddrinfo(hostname, pai, &result)) {
-        error = dns_getaddrinfo(hostname, pai, netcontext, &result);
+        error = dns_getaddrinfo(hostname, pai, netcontext, &result, event);
     }
     if (!error) {
         struct addrinfo* cur;
@@ -1379,7 +1386,8 @@ error:
 }
 
 static int dns_getaddrinfo(const char* name, const addrinfo* pai,
-                           const android_net_context* netcontext, addrinfo** rv) {
+                           const android_net_context* netcontext, addrinfo** rv,
+                           NetworkDnsEventReported* event) {
     res_target q = {};
     res_target q2 = {};
 
@@ -1441,7 +1449,7 @@ static int dns_getaddrinfo(const char* name, const addrinfo* pai,
      * fully populate the thread private data here, but if we get down there
      * and have a cache hit that would be wasted, so we do the rest there on miss
      */
-    res_setnetcontext(res, netcontext);
+    res_setnetcontext(res, netcontext, event);
 
     int he;
     if (res_searchN(name, &q, res, &he) < 0) {
