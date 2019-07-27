@@ -1,7 +1,0 @@
-{
-    "presubmit": [
-        { "name": "resolv_integration_test" },
-        { "name": "resolv_unit_test" },
-        { "name": "resolv_stress_test" }
-    ]
-}
