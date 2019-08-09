@@ -289,9 +289,9 @@ Status InterfaceController::setIPv6AddrGenMode(const std::string& interface, int
 
     switch (mode) {
         case INetd::IPV6_ADDR_GEN_MODE_EUI64:
-            // Ignore return value. If /proc/.../stable_secret is
+            // Ignore return value. If /proc/.../addr_gen_mode is
             // missing we're probably in EUI64 mode already.
-            writeValueToPath(ipv6_proc_path, interface.c_str(), "stable_secret", "");
+            writeValueToPath(ipv6_proc_path, interface.c_str(), "addr_gen_mode", "0");
             break;
         case INetd::IPV6_ADDR_GEN_MODE_STABLE_PRIVACY: {
             return enableStablePrivacyAddresses(interface, getProperty, setProperty);
