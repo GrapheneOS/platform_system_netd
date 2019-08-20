@@ -190,8 +190,15 @@ const std::set<std::string>& TetherController::getIpfwdRequesterList() const {
     return mForwardingRequests;
 }
 
-int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
-    if (mDaemonPid != 0) {
+int TetherController::startTethering(bool usingLegacyDnsProxy, int num_addrs, char** dhcp_ranges) {
+    if (!usingLegacyDnsProxy && num_addrs == 0) {
+        // Both DHCP and DnsProxy are disabled, we don't need to start dnsmasq
+        configureForTethering(true);
+        mIsTetheringStarted = true;
+        return 0;
+    }
+
+    if (mIsTetheringStarted) {
         ALOGE("Tethering already started");
         errno = EBUSY;
         return -errno;
@@ -230,8 +237,11 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
             kDnsmasqUsername,
     };
 
-    // DHCP server will be disabled if num_addrs == 0 and no --dhcp-range is
-    // passed.
+    if (!usingLegacyDnsProxy) {
+        argVector.push_back("--port=0");
+    }
+
+    // DHCP server will be disabled if num_addrs == 0 and no --dhcp-range is passed.
     for (int addrIndex = 0; addrIndex < num_addrs; addrIndex += 2) {
         argVector.push_back(StringPrintf("--dhcp-range=%s,%s,1h", dhcp_ranges[addrIndex],
                                          dhcp_ranges[addrIndex + 1]));
@@ -286,6 +296,7 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
     mDaemonPid = pid;
     mDaemonFd = pipeWrite.release();
     configureForTethering(true);
+    mIsTetheringStarted = true;
     applyDnsInterfaces();
     ALOGD("Tethering services running");
 
@@ -301,7 +312,8 @@ std::vector<char*> TetherController::toCstrVec(const std::vector<std::string>& a
     return addrsCstrVec;
 }
 
-int TetherController::startTethering(const std::vector<std::string>& dhcpRanges) {
+int TetherController::startTethering(bool usingLegacyDnsProxy,
+                                     const std::vector<std::string>& dhcpRanges) {
     struct in_addr v4_addr;
     for (const auto& dhcpRange : dhcpRanges) {
         if (!inet_aton(dhcpRange.c_str(), &v4_addr)) {
@@ -309,14 +321,20 @@ int TetherController::startTethering(const std::vector<std::string>& dhcpRanges)
         }
     }
     auto dhcp_ranges = toCstrVec(dhcpRanges);
-    return startTethering(dhcp_ranges.size(), dhcp_ranges.data());
+    return startTethering(usingLegacyDnsProxy, dhcp_ranges.size(), dhcp_ranges.data());
 }
 
 int TetherController::stopTethering() {
     configureForTethering(false);
 
-    if (mDaemonPid == 0) {
+    if (!mIsTetheringStarted) {
         ALOGE("Tethering already stopped");
+        return 0;
+    }
+
+    mIsTetheringStarted = false;
+    // dnsmasq is not started
+    if (mDaemonPid == 0) {
         return 0;
     }
 
@@ -333,7 +351,7 @@ int TetherController::stopTethering() {
 }
 
 bool TetherController::isTetheringStarted() {
-    return (mDaemonPid == 0 ? false : true);
+    return mIsTetheringStarted;
 }
 
 // dnsmasq can't parse commands larger than this due to the fixed-size buffer
