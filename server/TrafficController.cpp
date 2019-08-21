@@ -846,7 +846,7 @@ void TrafficController::setPermissionForUids(int permission, const std::vector<u
             mPrivilegedUser.erase(uid);
             if (mBpfLevel > BpfLevel::NONE) {
                 Status ret = mUidPermissionMap.deleteValue(uid);
-                if (!isOk(ret) && ret.code() != ENONET) {
+                if (!isOk(ret) && ret.code() != ENOENT) {
                     ALOGE("Failed to clean up the permission for %u: %s", uid,
                           strerror(ret.code()));
                 }
