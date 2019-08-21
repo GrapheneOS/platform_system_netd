@@ -45,8 +45,7 @@ using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 using android::net::UidRangeParcel;
 
-namespace android {
-namespace net {
+namespace android::net {
 
 auto RouteController::iptablesRestoreCommandFunction = execIptablesRestoreCommand;
 
@@ -103,7 +102,7 @@ const mode_t RT_TABLES_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 06
 
 // Avoids "non-constant-expression cannot be narrowed from type 'unsigned int' to 'unsigned short'"
 // warnings when using RTA_LENGTH(x) inside static initializers (even when x is already uint16_t).
-constexpr uint16_t U16_RTA_LENGTH(uint16_t x) {
+static constexpr uint16_t U16_RTA_LENGTH(uint16_t x) {
     return RTA_LENGTH(x);
 }
 
@@ -123,12 +122,12 @@ uint8_t PADDING_BUFFER[RTA_ALIGNTO] = {0, 0, 0, 0};
 
 // END CONSTANTS ----------------------------------------------------------------------------------
 
-const char *actionName(uint16_t action) {
+static const char* actionName(uint16_t action) {
     static const char *ops[4] = {"adding", "deleting", "getting", "???"};
     return ops[action % 4];
 }
 
-const char *familyName(uint8_t family) {
+static const char* familyName(uint8_t family) {
     switch (family) {
         case AF_INET: return "IPv4";
         case AF_INET6: return "IPv6";
@@ -238,9 +237,10 @@ int padInterfaceName(const char* input, char* name, size_t* length, uint16_t* pa
 //   range (inclusive). Otherwise, the rule matches packets from all UIDs.
 //
 // Returns 0 on success or negative errno on failure.
-WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint8_t ruleType,
-                                    uint32_t table, uint32_t fwmark, uint32_t mask, const char* iif,
-                                    const char* oif, uid_t uidStart, uid_t uidEnd) {
+[[nodiscard]] static int modifyIpRule(uint16_t action, uint32_t priority, uint8_t ruleType,
+                                      uint32_t table, uint32_t fwmark, uint32_t mask,
+                                      const char* iif, const char* oif, uid_t uidStart,
+                                      uid_t uidEnd) {
     // Ensure that if you set a bit in the fwmark, it's not being ignored by the mask.
     if (fwmark & ~mask) {
         ALOGE("mask 0x%x does not select all the bits set in fwmark 0x%x", mask, fwmark);
@@ -324,23 +324,23 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint8_t 
     return 0;
 }
 
-WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
-                                    uint32_t fwmark, uint32_t mask, const char* iif,
-                                    const char* oif, uid_t uidStart, uid_t uidEnd) {
+[[nodiscard]] static int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
+                                      uint32_t fwmark, uint32_t mask, const char* iif,
+                                      const char* oif, uid_t uidStart, uid_t uidEnd) {
     return modifyIpRule(action, priority, FR_ACT_TO_TBL, table, fwmark, mask, iif, oif, uidStart,
                         uidEnd);
 }
 
-WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
-                                    uint32_t fwmark, uint32_t mask) {
+[[nodiscard]] static int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
+                                      uint32_t fwmark, uint32_t mask) {
     return modifyIpRule(action, priority, table, fwmark, mask, IIF_NONE, OIF_NONE, INVALID_UID,
                         INVALID_UID);
 }
 
 // Adds or deletes an IPv4 or IPv6 route.
 // Returns 0 on success or negative errno on failure.
-WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char* interface,
-                                     const char* destination, const char* nexthop) {
+int modifyIpRoute(uint16_t action, uint32_t table, const char* interface, const char* destination,
+                  const char* nexthop) {
     // At least the destination must be non-null.
     if (!destination) {
         ALOGE("null destination");
@@ -447,8 +447,8 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
 //   replies, SYN-ACKs, etc).
 // + Mark sockets that accept connections from this interface so that the connection stays on the
 //   same interface.
-WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* interface,
-                                                Permission permission, bool add) {
+int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission permission,
+                             bool add) {
     Fwmark fwmark;
 
     fwmark.netId = netId;
@@ -473,7 +473,7 @@ WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* inte
 //
 // When a VPN is in effect, packets from the local network to upstream networks are forwarded into
 // the VPN's tunnel interface. When the VPN forwards the responses, they emerge out of the tunnel.
-WARN_UNUSED_RESULT int modifyVpnOutputToLocalRule(const char* vpnInterface, bool add) {
+[[nodiscard]] static int modifyVpnOutputToLocalRule(const char* vpnInterface, bool add) {
     return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_VPN_OUTPUT_TO_LOCAL,
                         ROUTE_TABLE_LOCAL_NETWORK, MARK_UNSET, MARK_UNSET, vpnInterface, OIF_NONE,
                         INVALID_UID, INVALID_UID);
@@ -484,8 +484,8 @@ WARN_UNUSED_RESULT int modifyVpnOutputToLocalRule(const char* vpnInterface, bool
 // Notice that this rule doesn't use the netId. I.e., no matter what netId the user's socket may
 // have, if they are subject to this VPN, their traffic has to go through it. Allows the traffic to
 // bypass the VPN if the protectedFromVpn bit is set.
-WARN_UNUSED_RESULT int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid_t uidEnd,
-                                             bool secure, bool add) {
+[[nodiscard]] static int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid_t uidEnd,
+                                               bool secure, bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -512,8 +512,8 @@ WARN_UNUSED_RESULT int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid
 //
 // This is needed for DnsProxyListener to correctly resolve a request for a user who is in the
 // target set, but where the DnsProxyListener itself is not.
-WARN_UNUSED_RESULT int modifyVpnSystemPermissionRule(unsigned netId, uint32_t table, bool secure,
-                                                     bool add) {
+[[nodiscard]] static int modifyVpnSystemPermissionRule(unsigned netId, uint32_t table, bool secure,
+                                                       bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -536,9 +536,9 @@ WARN_UNUSED_RESULT int modifyVpnSystemPermissionRule(unsigned netId, uint32_t ta
 // Even though we check permissions at the time we set a netId into the fwmark of a socket, we need
 // to check it again in the rules here, because a network's permissions may have been updated via
 // modifyNetworkPermission().
-WARN_UNUSED_RESULT int modifyExplicitNetworkRule(unsigned netId, uint32_t table,
-                                                 Permission permission, uid_t uidStart,
-                                                 uid_t uidEnd, bool add) {
+[[nodiscard]] static int modifyExplicitNetworkRule(unsigned netId, uint32_t table,
+                                                   Permission permission, uid_t uidStart,
+                                                   uid_t uidEnd, bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -559,9 +559,9 @@ WARN_UNUSED_RESULT int modifyExplicitNetworkRule(unsigned netId, uint32_t table,
 //
 // Supports apps that use SO_BINDTODEVICE or IP_PKTINFO options and the kernel that already knows
 // the outgoing interface (typically for link-local communications).
-WARN_UNUSED_RESULT int modifyOutputInterfaceRules(const char* interface, uint32_t table,
-                                                  Permission permission, uid_t uidStart,
-                                                  uid_t uidEnd, bool add) {
+[[nodiscard]] static int modifyOutputInterfaceRules(const char* interface, uint32_t table,
+                                                    Permission permission, uid_t uidStart,
+                                                    uid_t uidEnd, bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -588,7 +588,7 @@ WARN_UNUSED_RESULT int modifyOutputInterfaceRules(const char* interface, uint32_
 // This is for sockets that have not explicitly requested a particular network, but have been
 // bound to one when they called connect(). This ensures that sockets connected on a particular
 // network stay on that network even if the default network changes.
-WARN_UNUSED_RESULT int modifyImplicitNetworkRule(unsigned netId, uint32_t table, bool add) {
+[[nodiscard]] static int modifyImplicitNetworkRule(unsigned netId, uint32_t table, bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -610,9 +610,9 @@ WARN_UNUSED_RESULT int modifyImplicitNetworkRule(unsigned netId, uint32_t table,
 //
 // If a packet with a VPN's netId doesn't find a route in the VPN's routing table, it's allowed to
 // go over the default network, provided it has the permissions required by the default network.
-WARN_UNUSED_RESULT int RouteController::modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId,
-                                                                 const char* physicalInterface,
-                                                                 Permission permission) {
+int RouteController::modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId,
+                                              const char* physicalInterface,
+                                              Permission permission) {
     uint32_t table = getRouteTableForInterface(physicalInterface);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
@@ -632,7 +632,7 @@ WARN_UNUSED_RESULT int RouteController::modifyVpnFallthroughRule(uint16_t action
 }
 
 // Add rules to allow legacy routes added through the requestRouteToHost() API.
-WARN_UNUSED_RESULT int addLegacyRouteRules() {
+[[nodiscard]] static int addLegacyRouteRules() {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -658,7 +658,7 @@ WARN_UNUSED_RESULT int addLegacyRouteRules() {
 }
 
 // Add rules to lookup the local network when specified explicitly or otherwise.
-WARN_UNUSED_RESULT int addLocalNetworkRules(unsigned localNetId) {
+[[nodiscard]] static int addLocalNetworkRules(unsigned localNetId) {
     if (int ret = modifyExplicitNetworkRule(localNetId, ROUTE_TABLE_LOCAL_NETWORK, PERMISSION_NONE,
                                             INVALID_UID, INVALID_UID, ACTION_ADD)) {
         return ret;
@@ -712,12 +712,12 @@ int RouteController::configureDummyNetwork() {
 // relying on the kernel-default "from all lookup main" rule at priority 32766 is not intended
 // behaviour. We do flush the kernel-default rules at startup, but having an explicit unreachable
 // rule will hopefully make things even clearer.
-WARN_UNUSED_RESULT int addUnreachableRule() {
+[[nodiscard]] static int addUnreachableRule() {
     return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_UNREACHABLE, FR_ACT_UNREACHABLE, RT_TABLE_UNSPEC,
                         MARK_UNSET, MARK_UNSET, IIF_NONE, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
-WARN_UNUSED_RESULT int modifyLocalNetwork(unsigned netId, const char* interface, bool add) {
+[[nodiscard]] static int modifyLocalNetwork(unsigned netId, const char* interface, bool add) {
     if (int ret = modifyIncomingPacketMark(netId, interface, PERMISSION_NONE, add)) {
         return ret;
     }
@@ -726,8 +726,8 @@ WARN_UNUSED_RESULT int modifyLocalNetwork(unsigned netId, const char* interface,
 }
 
 /* static */
-WARN_UNUSED_RESULT int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface,
-                                                              Permission permission, bool add) {
+int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface,
+                                           Permission permission, bool add) {
     uint32_t table = getRouteTableForInterface(interface);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
@@ -771,7 +771,7 @@ WARN_UNUSED_RESULT int RouteController::modifyPhysicalNetwork(unsigned netId, co
     return 0;
 }
 
-WARN_UNUSED_RESULT int modifyRejectNonSecureNetworkRule(const UidRanges& uidRanges, bool add) {
+[[nodiscard]] static int modifyRejectNonSecureNetworkRule(const UidRanges& uidRanges, bool add) {
     Fwmark fwmark;
     Fwmark mask;
     fwmark.protectedFromVpn = false;
@@ -788,10 +788,9 @@ WARN_UNUSED_RESULT int modifyRejectNonSecureNetworkRule(const UidRanges& uidRang
     return 0;
 }
 
-WARN_UNUSED_RESULT int RouteController::modifyVirtualNetwork(unsigned netId, const char* interface,
-                                                             const UidRanges& uidRanges,
-                                                             bool secure, bool add,
-                                                             bool modifyNonUidBasedRules) {
+int RouteController::modifyVirtualNetwork(unsigned netId, const char* interface,
+                                          const UidRanges& uidRanges, bool secure, bool add,
+                                          bool modifyNonUidBasedRules) {
     uint32_t table = getRouteTableForInterface(interface);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
@@ -827,8 +826,8 @@ WARN_UNUSED_RESULT int RouteController::modifyVirtualNetwork(unsigned netId, con
     return 0;
 }
 
-WARN_UNUSED_RESULT int RouteController::modifyDefaultNetwork(uint16_t action, const char* interface,
-                                                             Permission permission) {
+int RouteController::modifyDefaultNetwork(uint16_t action, const char* interface,
+                                          Permission permission) {
     uint32_t table = getRouteTableForInterface(interface);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
@@ -847,9 +846,8 @@ WARN_UNUSED_RESULT int RouteController::modifyDefaultNetwork(uint16_t action, co
                         mask.intValue, IIF_LOOPBACK, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
-WARN_UNUSED_RESULT int RouteController::modifyTetheredNetwork(uint16_t action,
-                                                              const char* inputInterface,
-                                                              const char* outputInterface) {
+int RouteController::modifyTetheredNetwork(uint16_t action, const char* inputInterface,
+                                           const char* outputInterface) {
     uint32_t table = getRouteTableForInterface(outputInterface);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
@@ -861,9 +859,8 @@ WARN_UNUSED_RESULT int RouteController::modifyTetheredNetwork(uint16_t action,
 
 // Adds or removes an IPv4 or IPv6 route to the specified table.
 // Returns 0 on success or negative errno on failure.
-WARN_UNUSED_RESULT int RouteController::modifyRoute(uint16_t action, const char* interface,
-                                                    const char* destination, const char* nexthop,
-                                                    TableType tableType) {
+int RouteController::modifyRoute(uint16_t action, const char* interface, const char* destination,
+                                 const char* nexthop, TableType tableType) {
     uint32_t table;
     switch (tableType) {
         case RouteController::INTERFACE: {
@@ -896,7 +893,7 @@ WARN_UNUSED_RESULT int RouteController::modifyRoute(uint16_t action, const char*
     return 0;
 }
 
-WARN_UNUSED_RESULT int clearTetheringRules(const char* inputInterface) {
+[[nodiscard]] static int clearTetheringRules(const char* inputInterface) {
     int ret = 0;
     while (ret == 0) {
         ret = modifyIpRule(RTM_DELRULE, RULE_PRIORITY_TETHERING, 0, MARK_UNSET, MARK_UNSET,
@@ -918,7 +915,7 @@ uint32_t getRouteTable(const nlmsghdr *nlh) {
     return getRtmU32Attribute(nlh, RTA_TABLE);
 }
 
-WARN_UNUSED_RESULT int flushRules() {
+[[nodiscard]] static int flushRules() {
     NetlinkDumpFilter shouldDelete = [] (nlmsghdr *nlh) {
         // Don't touch rules at priority 0 because by default they are used for local input.
         return getRulePriority(nlh) != 0;
@@ -926,7 +923,7 @@ WARN_UNUSED_RESULT int flushRules() {
     return rtNetlinkFlush(RTM_GETRULE, RTM_DELRULE, "rules", shouldDelete);
 }
 
-WARN_UNUSED_RESULT int RouteController::flushRoutes(uint32_t table) {
+int RouteController::flushRoutes(uint32_t table) {
     NetlinkDumpFilter shouldDelete = [table] (nlmsghdr *nlh) {
         return getRouteTable(nlh) == table;
     };
@@ -935,7 +932,7 @@ WARN_UNUSED_RESULT int RouteController::flushRoutes(uint32_t table) {
 }
 
 // Returns 0 on success or negative errno on failure.
-WARN_UNUSED_RESULT int RouteController::flushRoutes(const char* interface) {
+int RouteController::flushRoutes(const char* interface) {
     std::lock_guard lock(sInterfaceToTableLock);
 
     uint32_t table = getRouteTableForInterfaceLocked(interface);
@@ -1101,6 +1098,4 @@ int RouteController::removeVirtualNetworkFallthrough(unsigned vpnNetId,
 std::mutex RouteController::sInterfaceToTableLock;
 std::map<std::string, uint32_t> RouteController::sInterfaceToTable;
 
-
-}  // namespace net
-}  // namespace android
+}  // namespace android::net
