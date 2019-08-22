@@ -235,11 +235,6 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
     return fwmark.intValue;
 }
 
-uint32_t NetworkController::getNetworkForDns(unsigned* netId, uid_t uid) const {
-    ScopedRLock lock(mRWLock);
-    return getNetworkForDnsLocked(netId, uid);
-}
-
 // Returns the NetId that a given UID would use if no network is explicitly selected. Specifically,
 // the VPN that applies to the UID if any; otherwise, the default network.
 unsigned NetworkController::getNetworkForUser(uid_t uid) const {
