@@ -23,13 +23,12 @@
 
 #include "log/log.h"
 
-namespace android {
-namespace net {
+namespace android::net {
 
 namespace {
 
-WARN_UNUSED_RESULT int addToDefault(unsigned netId, const std::string& interface,
-                                    Permission permission, PhysicalNetwork::Delegate* delegate) {
+[[nodiscard]] int addToDefault(unsigned netId, const std::string& interface, Permission permission,
+                               PhysicalNetwork::Delegate* delegate) {
     if (int ret = RouteController::addInterfaceToDefaultNetwork(interface.c_str(), permission)) {
         ALOGE("failed to add interface %s to default netId %u", interface.c_str(), netId);
         return ret;
@@ -40,9 +39,8 @@ WARN_UNUSED_RESULT int addToDefault(unsigned netId, const std::string& interface
     return 0;
 }
 
-WARN_UNUSED_RESULT int removeFromDefault(unsigned netId, const std::string& interface,
-                                         Permission permission,
-                                         PhysicalNetwork::Delegate* delegate) {
+[[nodiscard]] int removeFromDefault(unsigned netId, const std::string& interface,
+                                    Permission permission, PhysicalNetwork::Delegate* delegate) {
     if (int ret = RouteController::removeInterfaceFromDefaultNetwork(interface.c_str(),
                                                                      permission)) {
         ALOGE("failed to remove interface %s from default netId %u", interface.c_str(), netId);
@@ -56,15 +54,13 @@ WARN_UNUSED_RESULT int removeFromDefault(unsigned netId, const std::string& inte
 
 }  // namespace
 
-PhysicalNetwork::Delegate::~Delegate() {
-}
+PhysicalNetwork::Delegate::~Delegate() {}
 
 PhysicalNetwork::PhysicalNetwork(unsigned netId, PhysicalNetwork::Delegate* delegate) :
         Network(netId), mDelegate(delegate), mPermission(PERMISSION_NONE), mIsDefault(false) {
 }
 
-PhysicalNetwork::~PhysicalNetwork() {
-}
+PhysicalNetwork::~PhysicalNetwork() {}
 
 Permission PhysicalNetwork::getPermission() const {
     return mPermission;
@@ -206,5 +202,4 @@ int PhysicalNetwork::removeInterface(const std::string& interface) {
     return 0;
 }
 
-}  // namespace net
-}  // namespace android
+}  // namespace android::net

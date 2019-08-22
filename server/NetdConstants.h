@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _NETD_CONSTANTS_H
-#define _NETD_CONSTANTS_H
+#pragma once
 
 #include <ifaddrs.h>
 #include <netdb.h>
@@ -50,8 +49,6 @@ void setCloseOnExec(const char *sock);
 #define UINT32_HEX_STRLEN sizeof("0x12345678")
 #define IPSEC_IFACE_PREFIX "ipsec"
 
-#define WARN_UNUSED_RESULT __attribute__((__warn_unused_result__))
-
 const uid_t INVALID_UID = static_cast<uid_t>(-1);
 
 constexpr char TCP_RMEM_PROC_FILE[] = "/proc/sys/net/ipv4/tcp_rmem";
@@ -67,8 +64,7 @@ struct IfaddrsDeleter {
 
 typedef std::unique_ptr<struct ifaddrs, struct IfaddrsDeleter> ScopedIfaddrs;
 
-namespace android {
-namespace net {
+namespace android::net {
 
 /**
  * This lock exists to make NetdNativeService RPCs (which come in on multiple Binder threads)
@@ -78,7 +74,4 @@ namespace net {
  */
 extern std::mutex gBigNetdLock;
 
-}  // namespace net
-}  // namespace android
-
-#endif  // _NETD_CONSTANTS_H
+}  // namespace android::net
