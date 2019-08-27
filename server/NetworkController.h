@@ -93,10 +93,6 @@ public:
     unsigned getDefaultNetwork() const;
     [[nodiscard]] int setDefaultNetwork(unsigned netId);
 
-    // Sets |*netId| to an appropriate NetId to use for DNS for the given user. Call with |*netId|
-    // set to a non-NETID_UNSET value if the user already has indicated a preference. Returns the
-    // fwmark value to set on the socket when performing the DNS request.
-    uint32_t getNetworkForDns(unsigned* netId, uid_t uid) const;
     unsigned getNetworkForUser(uid_t uid) const;
     unsigned getNetworkForConnect(uid_t uid) const;
     void getNetworkContext(unsigned netId, uid_t uid, struct android_net_context* netcontext) const;
@@ -145,7 +141,12 @@ public:
   private:
     bool isValidNetworkLocked(unsigned netId) const;
     Network* getNetworkLocked(unsigned netId) const;
+
+    // Sets |*netId| to an appropriate NetId to use for DNS for the given user. Call with |*netId|
+    // set to a non-NETID_UNSET value if the user already has indicated a preference. Returns the
+    // fwmark value to set on the socket when performing the DNS request.
     uint32_t getNetworkForDnsLocked(unsigned* netId, uid_t uid) const;
+
     unsigned getNetworkForUserLocked(uid_t uid) const;
     unsigned getNetworkForConnectLocked(uid_t uid) const;
     unsigned getNetworkForInterfaceLocked(const char* interface) const;
