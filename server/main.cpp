@@ -82,11 +82,16 @@ void logCallback(const char* msg) {
     gLog.info(std::string(msg));
 }
 
+int tagSocketCallback(int sockFd, uint32_t tag, uid_t uid) {
+    return gCtls->trafficCtrl.tagSocket(sockFd, tag, uid, geteuid());
+}
+
 bool initDnsResolver() {
     ResolverNetdCallbacks callbacks = {
             .get_network_context = &getNetworkContextCallback,
             .log = &logCallback,
             .check_calling_permission = &checkCallingPermissionCallback,
+            .tagSocket = &tagSocketCallback,
     };
     return RESOLV_STUB.resolv_init(callbacks);
 }
