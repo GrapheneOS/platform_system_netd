@@ -101,7 +101,7 @@ cc_library_static {
         "libpcap",
         "libqtaguid",
         "libssl",
-        "netd_aidl_interface-V2-cpp",
+        "netd_aidl_interface-cpp",
         "netd_event_listener_interface-V1-cpp",
     ],
     header_libs: [
@@ -143,7 +143,7 @@ cc_binary {
         "libselinux",
         "libsysutils",
         "libutils",
-        "netd_aidl_interface-V2-cpp",
+        "netd_aidl_interface-cpp",
         "netd_event_listener_interface-V1-cpp",
         "oemnetd_aidl_interface-cpp",
     ],
