@@ -1992,22 +1992,30 @@ TEST_F(BinderTest, TetherStartStopStatus) {
     std::vector<std::string> noDhcpRange = {};
     static const char dnsdName[] = "dnsmasq";
 
-    binder::Status status = mNetd->tetherStart(noDhcpRange);
-    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    expectProcessExists(dnsdName);
+    for (bool usingLegacyDnsProxy : {true, false}) {
+        binder::Status status =
+                mNetd->tetherStartWithConfiguration(usingLegacyDnsProxy, noDhcpRange);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        SCOPED_TRACE(StringPrintf("usingLegacyDnsProxy: %d", usingLegacyDnsProxy));
+        if (usingLegacyDnsProxy == true) {
+            expectProcessExists(dnsdName);
+        } else {
+            expectProcessDoesNotExist(dnsdName);
+        }
 
-    bool tetherEnabled;
-    status = mNetd->tetherIsEnabled(&tetherEnabled);
-    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    EXPECT_TRUE(tetherEnabled);
+        bool tetherEnabled;
+        status = mNetd->tetherIsEnabled(&tetherEnabled);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        EXPECT_TRUE(tetherEnabled);
 
-    status = mNetd->tetherStop();
-    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    expectProcessDoesNotExist(dnsdName);
+        status = mNetd->tetherStop();
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectProcessDoesNotExist(dnsdName);
 
-    status = mNetd->tetherIsEnabled(&tetherEnabled);
-    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-    EXPECT_FALSE(tetherEnabled);
+        status = mNetd->tetherIsEnabled(&tetherEnabled);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        EXPECT_FALSE(tetherEnabled);
+    }
 }
 
 TEST_F(BinderTest, TetherInterfaceAddRemoveList) {
