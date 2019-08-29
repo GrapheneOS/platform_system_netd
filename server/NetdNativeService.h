@@ -121,6 +121,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status tetherGetStats(
             std::vector<android::net::TetherStatsParcel>* tetherStatsVec) override;
     binder::Status tetherStart(const std::vector<std::string>& dhcpRanges) override;
+    binder::Status tetherStartWithConfiguration(
+            bool usingLegacyDnsProxy, const std::vector<std::string>& dhcpRanges) override;
     binder::Status tetherStop() override;
     binder::Status tetherIsEnabled(bool* enabled) override;
     binder::Status tetherInterfaceAdd(const std::string& ifName) override;

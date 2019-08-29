@@ -1194,4 +1194,18 @@ interface INetd {
     * @return a IBinder object, it could be casted to oem specific interface.
     */
     IBinder getOemNetd();
+
+   /**
+    * Start tethering with given configuration
+    *
+    * @param usingLegacyDnsProxy, whether to enable or disable legacy DNS proxy server.
+    * @param dhcpRanges dhcp ranges to set.
+    *                   dhcpRanges might contain many addresss {addr1, addr2, aadr3, addr4...}
+    *                   Netd splits them into ranges: addr1-addr2, addr3-addr4, etc.
+    *                   An odd number of addrs will fail.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the failure.
+    */
+    void tetherStartWithConfiguration(
+            boolean usingLegacyDnsProxy, in @utf8InCpp String[] dhcpRanges);
 }
