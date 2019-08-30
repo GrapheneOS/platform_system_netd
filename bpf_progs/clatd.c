@@ -83,6 +83,10 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
             if (udp + 1 > (struct udphdr*)data_end) return TC_ACT_OK;
             break;
 
+        case IPPROTO_GRE:  // we do not need to bother looking at GRE/ESP headers,
+        case IPPROTO_ESP:  // since there is never a checksum to update.
+            break;
+
         default:  // do not know how to handle anything else
             return TC_ACT_OK;
     }
