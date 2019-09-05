@@ -321,6 +321,8 @@ bool operator<(const stats_line& lhs, const stats_line& rhs) {
 }
 
 stats_line& stats_line::operator=(const stats_line& rhs) {
+    if (this == &rhs) return *this;
+
     strlcpy(iface, rhs.iface, sizeof(iface));
     uid = rhs.uid;
     set = rhs.set;
