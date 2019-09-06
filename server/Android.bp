@@ -130,7 +130,6 @@ cc_binary {
         "libcutils",
         "libdl",
         "libhidlbase",
-        "libhidltransport",
         "libjsoncpp",
         "liblog",
         "libmdnssd",
