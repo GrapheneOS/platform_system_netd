@@ -16,6 +16,7 @@
 
 #include "netd.h"
 #include <linux/bpf.h>
+#include <linux/if_packet.h>
 
 SEC("cgroupskb/ingress/stats")
 int bpf_cgroup_ingress(struct __sk_buff* skb) {
@@ -45,8 +46,18 @@ SEC("skfilter/whitelist/xtbpf")
 int xt_bpf_whitelist_prog(struct __sk_buff* skb) {
     uint32_t sock_uid = bpf_get_socket_uid(skb);
     if (is_system_uid(sock_uid)) return BPF_MATCH;
+
+    // 65534 is the overflow 'nobody' uid, usually this being returned means
+    // that skb->sk is NULL during RX (early decap socket lookup failure),
+    // which commonly happens for incoming packets to an unconnected udp socket.
+    // Additionally bpf_get_socket_cookie() returns 0 if skb->sk is NULL
+    if ((sock_uid == 65534) && !bpf_get_socket_cookie(skb) &&
+        (skb->pkt_type == PACKET_HOST || skb->pkt_type == PACKET_BROADCAST ||
+         skb->pkt_type == PACKET_MULTICAST))
+        return BPF_MATCH;
+
     UidOwnerValue* whitelistMatch = bpf_uid_owner_map_lookup_elem(&sock_uid);
-    if (whitelistMatch) return whitelistMatch->rule & HAPPY_BOX_MATCH;
+    if (whitelistMatch) return whitelistMatch->rule & HAPPY_BOX_MATCH ? BPF_MATCH : BPF_NOMATCH;
     return BPF_NOMATCH;
 }
 
@@ -54,7 +65,7 @@ SEC("skfilter/blacklist/xtbpf")
 int xt_bpf_blacklist_prog(struct __sk_buff* skb) {
     uint32_t sock_uid = bpf_get_socket_uid(skb);
     UidOwnerValue* blacklistMatch = bpf_uid_owner_map_lookup_elem(&sock_uid);
-    if (blacklistMatch) return blacklistMatch->rule & PENALTY_BOX_MATCH;
+    if (blacklistMatch) return blacklistMatch->rule & PENALTY_BOX_MATCH ? BPF_MATCH : BPF_NOMATCH;
     return BPF_NOMATCH;
 }
 
