@@ -115,7 +115,7 @@ bool TrafficController::hasUpdateDeviceStatsPermission(uid_t uid) {
             mPrivilegedUser.find(appId) != mPrivilegedUser.end());
 }
 
-const std::string UidPermissionTypeToString(uint8_t permission) {
+const std::string UidPermissionTypeToString(int permission) {
     if (permission == INetd::PERMISSION_NONE) {
         return "PERMISSION_NONE";
     }
@@ -1121,7 +1121,7 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
         dw.println("mUidOwnerMap print end with error: %s", res.msg().c_str());
     }
     dumpBpfMap("mUidPermissionMap", dw, "");
-    const auto printUidPermissionInfo = [&dw](const uint32_t& key, const uint8_t& value,
+    const auto printUidPermissionInfo = [&dw](const uint32_t& key, const int& value,
                                               const BpfMap<uint32_t, uint8_t>&) {
         dw.println("%u %s", key, UidPermissionTypeToString(value).c_str());
         return netdutils::status::ok;
