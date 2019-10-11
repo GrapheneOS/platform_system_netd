@@ -499,8 +499,8 @@ int SockDiag::destroySocketsLackingPermission(unsigned netId, Permission permiss
     };
 
     struct nlattr nla = {
-        .nla_type = INET_DIAG_REQ_BYTECODE,
-        .nla_len = sizeof(struct nlattr) + bytecodelen,
+            .nla_len = sizeof(struct nlattr) + bytecodelen,
+            .nla_type = INET_DIAG_REQ_BYTECODE,
     };
 
     iovec iov[] = {
