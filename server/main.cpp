@@ -88,9 +88,9 @@ int tagSocketCallback(int sockFd, uint32_t tag, uid_t uid) {
 
 bool initDnsResolver() {
     ResolverNetdCallbacks callbacks = {
+            .check_calling_permission = &checkCallingPermissionCallback,
             .get_network_context = &getNetworkContextCallback,
             .log = &logCallback,
-            .check_calling_permission = &checkCallingPermissionCallback,
             .tagSocket = &tagSocketCallback,
     };
     return RESOLV_STUB.resolv_init(callbacks);

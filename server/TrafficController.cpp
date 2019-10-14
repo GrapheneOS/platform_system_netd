@@ -588,8 +588,10 @@ Status TrafficController::removeRule(BpfMap<uint32_t, UidOwnerValue>& map, uint3
                                      UidOwnerMatchType match) {
     auto oldMatch = map.readValue(uid);
     if (isOk(oldMatch)) {
-        UidOwnerValue newMatch = {.rule = static_cast<uint8_t>(oldMatch.value().rule & ~match),
-                                  .iif = (match == IIF_MATCH) ? 0 : oldMatch.value().iif};
+        UidOwnerValue newMatch = {
+                .iif = (match == IIF_MATCH) ? 0 : oldMatch.value().iif,
+                .rule = static_cast<uint8_t>(oldMatch.value().rule & ~match),
+        };
         if (newMatch.rule == 0) {
             RETURN_IF_NOT_OK(map.deleteValue(uid));
         } else {
@@ -611,11 +613,16 @@ Status TrafficController::addRule(BpfMap<uint32_t, UidOwnerValue>& map, uint32_t
     }
     auto oldMatch = map.readValue(uid);
     if (isOk(oldMatch)) {
-        UidOwnerValue newMatch = {.rule = static_cast<uint8_t>(oldMatch.value().rule | match),
-                                  .iif = iif ? iif : oldMatch.value().iif};
+        UidOwnerValue newMatch = {
+                .iif = iif ? iif : oldMatch.value().iif,
+                .rule = static_cast<uint8_t>(oldMatch.value().rule | match),
+        };
         RETURN_IF_NOT_OK(map.writeValue(uid, newMatch, BPF_ANY));
     } else {
-        UidOwnerValue newMatch = {.rule = static_cast<uint8_t>(match), .iif = iif};
+        UidOwnerValue newMatch = {
+                .iif = iif,
+                .rule = static_cast<uint8_t>(match),
+        };
         RETURN_IF_NOT_OK(map.writeValue(uid, newMatch, BPF_ANY));
     }
     return netdutils::status::ok;
