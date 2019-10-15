@@ -3111,7 +3111,11 @@ bool sendIPv6PacketFromUid(uid_t uid, const in6_addr& dstAddr, Fwmark* fwmark, i
     android::base::unique_fd testSocket(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
     if (testSocket < 0) return false;
 
-    const sockaddr_in6 dst6 = {.sin6_family = AF_INET6, .sin6_addr = dstAddr, .sin6_port = 42};
+    const sockaddr_in6 dst6 = {
+            .sin6_family = AF_INET6,
+            .sin6_port = 42,
+            .sin6_addr = dstAddr,
+    };
     int res = connect(testSocket, (sockaddr*)&dst6, sizeof(dst6));
     socklen_t fwmarkLen = sizeof(fwmark->intValue);
     EXPECT_NE(-1, getsockopt(testSocket, SOL_SOCKET, SO_MARK, &(fwmark->intValue), &fwmarkLen));

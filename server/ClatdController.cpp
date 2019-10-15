@@ -140,7 +140,11 @@ bool ClatdController::isIpv4AddressFree(in_addr_t addr) {
 
     // Attempt to connect to the address. If the connection succeeds and getsockname returns the
     // same then the address is already assigned to the system and we can't use it.
-    struct sockaddr_in sin = {.sin_family = AF_INET, .sin_addr = {addr}, .sin_port = 53};
+    struct sockaddr_in sin = {
+            .sin_family = AF_INET,
+            .sin_port = 53,
+            .sin_addr = {addr},
+    };
     socklen_t len = sizeof(sin);
     bool inuse = connect(s, (struct sockaddr*)&sin, sizeof(sin)) == 0 &&
                  getsockname(s, (struct sockaddr*)&sin, &len) == 0 && (size_t)len >= sizeof(sin) &&
