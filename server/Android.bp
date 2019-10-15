@@ -102,7 +102,7 @@ cc_library_static {
         "libqtaguid",
         "libssl",
         "netd_aidl_interface-cpp",
-        "netd_event_listener_interface-V1-cpp",
+        "netd_event_listener_interface-cpp",
     ],
     header_libs: [
         "libnetd_resolv_headers",
@@ -142,8 +142,8 @@ cc_binary {
         "libselinux",
         "libsysutils",
         "libutils",
-        "netd_aidl_interface-cpp",
-        "netd_event_listener_interface-V1-cpp",
+        "netd_aidl_interface-unstable-cpp",
+        "netd_event_listener_interface-cpp",
         "oemnetd_aidl_interface-cpp",
     ],
     static_libs: [
@@ -192,8 +192,8 @@ cc_binary {
         "liblog",
         "libutils",
         "libbinder",
-        "dnsresolver_aidl_interface-V2-cpp",
-        "netd_aidl_interface-V2-cpp",
+        "dnsresolver_aidl_interface-cpp",
+        "netd_aidl_interface-cpp",
     ],
     srcs: [
         "ndc.cpp",
@@ -236,8 +236,8 @@ cc_test {
         "libnetd_server",
         "libnetd_test_tun_interface",
         "libqtaguid",
-        "netd_aidl_interface-V2-cpp",
-        "netd_event_listener_interface-V1-cpp",
+        "netd_aidl_interface-cpp",
+        "netd_event_listener_interface-cpp",
     ],
     shared_libs: [
         "libbase",
