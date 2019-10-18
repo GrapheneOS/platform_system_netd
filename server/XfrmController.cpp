@@ -86,7 +86,7 @@ constexpr uint32_t ALGO_MASK_CRYPT_ALL = ~0;
 // Exposed for testing
 constexpr uint32_t ALGO_MASK_AEAD_ALL = ~0;
 // Exposed for testing
-constexpr uint8_t REPLAY_WINDOW_SIZE = 4;
+constexpr uint8_t REPLAY_WINDOW_SIZE = 32;
 
 namespace {
 
