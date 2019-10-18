@@ -55,13 +55,6 @@ using android::netdutils::StatusOr;
 using android::netdutils::toString;
 using android::netdutils::status::ok;
 
-#define RETURN_STATUS_IF_IFCERROR(exp)                           \
-    do {                                                         \
-        if ((exp) == -1) {                                       \
-            return statusFromErrno(errno, "Failed to add addr"); \
-        }                                                        \
-    } while (0);
-
 namespace {
 
 const char ipv4_proc_path[] = "/proc/sys/net/ipv4/conf";
@@ -506,8 +499,9 @@ Status InterfaceController::setCfg(const InterfaceConfigurationParcel& cfg) {
         }
     }
 
-    RETURN_STATUS_IF_IFCERROR(
-            ifc_add_address(cfg.ifName.c_str(), cfg.ipv4Addr.c_str(), cfg.prefixLength));
+    if (int ret = ifc_add_address(cfg.ifName.c_str(), cfg.ipv4Addr.c_str(), cfg.prefixLength)) {
+        return statusFromErrno(-ret, "Failed to add addr");
+    }
 
     return ok;
 }
