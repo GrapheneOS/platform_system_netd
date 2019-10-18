@@ -367,11 +367,13 @@ int InterfaceController::setMtu(const char *interface, const char *mtu)
     return writeValueToPath(sys_net_path, interface, "mtu", mtu);
 }
 
+// Returns zero on success and negative errno on failure.
 int InterfaceController::addAddress(const char *interface,
         const char *addrString, int prefixLength) {
     return ifc_add_address(interface, addrString, prefixLength);
 }
 
+// Returns zero on success and negative errno on failure.
 int InterfaceController::delAddress(const char *interface,
         const char *addrString, int prefixLength) {
     return ifc_del_address(interface, addrString, prefixLength);
