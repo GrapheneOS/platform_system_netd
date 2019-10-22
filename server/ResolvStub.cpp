@@ -76,6 +76,7 @@ int resolv_stub_init() {
 #define RESOLV_STUB_LOAD_SYMBOL(x) resolvStubInitFunction(netdResolvHandle, STR(x), &RESOLV_STUB.x)
     RESOLV_STUB_LOAD_SYMBOL(resolv_has_nameservers);
     RESOLV_STUB_LOAD_SYMBOL(resolv_init);
+    RESOLV_STUB_LOAD_SYMBOL(resolv_gethostbyaddr_from_local_cache);
 #undef RESOLV_STUB_LOAD_SYMBOL
 #undef STR
 
