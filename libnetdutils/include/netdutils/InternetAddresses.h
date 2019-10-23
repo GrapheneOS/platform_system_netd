@@ -242,6 +242,23 @@ class IPSockAddr {
   public:
     // TODO: static forString
 
+    static IPSockAddr toIPSockAddr(const std::string& repr, in_port_t port) {
+        return IPSockAddr(IPAddress::forString(repr), port);
+    }
+    static IPSockAddr toIPSockAddr(const sockaddr& sa) {
+        switch (sa.sa_family) {
+            case AF_INET:
+                return IPSockAddr(*reinterpret_cast<const sockaddr_in*>(&sa));
+            case AF_INET6:
+                return IPSockAddr(*reinterpret_cast<const sockaddr_in6*>(&sa));
+            default:
+                return IPSockAddr();
+        }
+    }
+    static IPSockAddr toIPSockAddr(const sockaddr_storage& ss) {
+        return toIPSockAddr(*reinterpret_cast<const sockaddr*>(&ss));
+    }
+
     IPSockAddr() = default;
     IPSockAddr(const IPSockAddr&) = default;
     IPSockAddr(IPSockAddr&&) = default;
