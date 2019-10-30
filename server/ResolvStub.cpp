@@ -55,7 +55,7 @@ static void resolvStubInitFunction(void* handle, const char* symbol, FunctionTyp
 }
 
 int resolv_stub_init() {
-    void* netdResolvHandle;
+    void* netdResolvHandle = nullptr;
 
     for (const auto& dir : {APEX_LIB64_DIR, APEX_LIB_DIR}) {
         std::string path = std::string(dir) + "/" + LIBNAME;
