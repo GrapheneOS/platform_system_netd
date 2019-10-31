@@ -93,7 +93,7 @@ cc_test {
         "libnetdbpf",
         "libnetdutils",
         "libqtaguid",
-        "netd_aidl_interface-cpp",
+        "netd_aidl_interface-unstable-cpp",
         "netd_event_listener_interface-cpp",
         "oemnetd_aidl_interface-cpp",
     ],
