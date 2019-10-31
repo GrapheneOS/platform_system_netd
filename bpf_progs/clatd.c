@@ -121,8 +121,9 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
     // Note that there is no L4 checksum update: we are relying on the checksum neutrality
     // of the ipv6 address chosen by netd's ClatdController.
 
-    // Packet mutations begin - point of no return.
-    if (bpf_skb_change_proto(skb, htons(ETH_P_IP), 0)) return TC_ACT_SHOT;
+    // Packet mutations begin - point of no return, but if this first modification fails
+    // the packet is probably still pristine, so let clatd handle it.
+    if (bpf_skb_change_proto(skb, htons(ETH_P_IP), 0)) return TC_ACT_OK;
 
     // bpf_skb_change_proto() invalidates all pointers - reload them.
     data = (void*)(long)skb->data;
