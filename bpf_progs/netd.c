@@ -51,9 +51,7 @@ int xt_bpf_whitelist_prog(struct __sk_buff* skb) {
     // that skb->sk is NULL during RX (early decap socket lookup failure),
     // which commonly happens for incoming packets to an unconnected udp socket.
     // Additionally bpf_get_socket_cookie() returns 0 if skb->sk is NULL
-    if ((sock_uid == 65534) && !bpf_get_socket_cookie(skb) &&
-        (skb->pkt_type == PACKET_HOST || skb->pkt_type == PACKET_BROADCAST ||
-         skb->pkt_type == PACKET_MULTICAST))
+    if ((sock_uid == 65534) && !bpf_get_socket_cookie(skb) && is_received_skb(skb))
         return BPF_MATCH;
 
     UidOwnerValue* whitelistMatch = bpf_uid_owner_map_lookup_elem(&sock_uid);
