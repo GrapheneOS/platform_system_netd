@@ -142,7 +142,7 @@ bool ClatdController::isIpv4AddressFree(in_addr_t addr) {
     // same then the address is already assigned to the system and we can't use it.
     struct sockaddr_in sin = {
             .sin_family = AF_INET,
-            .sin_port = 53,
+            .sin_port = htons(53),
             .sin_addr = {addr},
     };
     socklen_t len = sizeof(sin);
