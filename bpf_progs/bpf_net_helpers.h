@@ -35,6 +35,12 @@ static int (*bpf_l4_csum_replace)(struct __sk_buff* skb, __u32 offset, __u64 fro
                                   __u64 flags) = (void*)BPF_FUNC_l4_csum_replace;
 static int (*bpf_redirect)(__u32 ifindex, __u64 flags) = (void*)BPF_FUNC_redirect;
 
+// Android only supports little endian architectures
+#define htons(x) (__builtin_constant_p(x) ? ___constant_swab16(x) : __builtin_bswap16(x))
+#define htonl(x) (__builtin_constant_p(x) ? ___constant_swab32(x) : __builtin_bswap32(x))
+#define ntohs(x) htons(x)
+#define ntohl(x) htonl(x)
+
 static inline __always_inline __unused bool is_received_skb(struct __sk_buff* skb) {
     return skb->pkt_type == PACKET_HOST || skb->pkt_type == PACKET_BROADCAST ||
            skb->pkt_type == PACKET_MULTICAST;
