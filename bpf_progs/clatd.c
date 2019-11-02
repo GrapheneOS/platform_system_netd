@@ -27,6 +27,7 @@
 #include <stdint.h>
 
 #include "bpf_helpers.h"
+#include "bpf_net_helpers.h"
 #include "netdbpf/bpf_shared.h"
 
 // From kernel:include/net/ip.h

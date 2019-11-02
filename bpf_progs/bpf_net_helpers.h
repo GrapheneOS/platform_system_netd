@@ -22,6 +22,19 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+static uint64_t (*bpf_get_socket_cookie)(struct __sk_buff* skb) = (void*)BPF_FUNC_get_socket_cookie;
+static uint32_t (*bpf_get_socket_uid)(struct __sk_buff* skb) = (void*)BPF_FUNC_get_socket_uid;
+static int (*bpf_skb_load_bytes)(struct __sk_buff* skb, int off, void* to,
+                                 int len) = (void*)BPF_FUNC_skb_load_bytes;
+
+static int (*bpf_skb_change_proto)(struct __sk_buff* skb, __be16 proto,
+                                   __u64 flags) = (void*)BPF_FUNC_skb_change_proto;
+static int (*bpf_l3_csum_replace)(struct __sk_buff* skb, __u32 offset, __u64 from, __u64 to,
+                                  __u64 flags) = (void*)BPF_FUNC_l3_csum_replace;
+static int (*bpf_l4_csum_replace)(struct __sk_buff* skb, __u32 offset, __u64 from, __u64 to,
+                                  __u64 flags) = (void*)BPF_FUNC_l4_csum_replace;
+static int (*bpf_redirect)(__u32 ifindex, __u64 flags) = (void*)BPF_FUNC_redirect;
+
 static inline __always_inline __unused bool is_received_skb(struct __sk_buff* skb) {
     return skb->pkt_type == PACKET_HOST || skb->pkt_type == PACKET_BROADCAST ||
            skb->pkt_type == PACKET_MULTICAST;
