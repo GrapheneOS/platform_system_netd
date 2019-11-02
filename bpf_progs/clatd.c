@@ -33,12 +33,6 @@
 // From kernel:include/net/ip.h
 #define IP_DF 0x4000  // Flag: "Don't Fragment"
 
-// Android only supports little endian architectures
-#define htons(x) (__builtin_constant_p(x) ? ___constant_swab16(x) : __builtin_bswap16(x))
-#define htonl(x) (__builtin_constant_p(x) ? ___constant_swab32(x) : __builtin_bswap32(x))
-#define ntohs(x) htons(x)
-#define ntohl(x) htonl(x)
-
 DEFINE_BPF_MAP(clat_ingress_map, HASH, ClatIngressKey, ClatIngressValue, 16)
 
 static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet) {
