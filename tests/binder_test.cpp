@@ -87,6 +87,7 @@ using android::base::ReadFileToString;
 using android::base::StartsWith;
 using android::base::StringPrintf;
 using android::base::Trim;
+using android::base::unique_fd;
 using android::net::INetd;
 using android::net::InterfaceConfigurationParcel;
 using android::net::InterfaceController;
@@ -150,7 +151,8 @@ class BinderTest : public ::testing::Test {
         sTun2.destroy();
     }
 
-    static void fakeRemoteSocketPair(int *clientSocket, int *serverSocket, int *acceptedSocket);
+    static void fakeRemoteSocketPair(unique_fd* clientSocket, unique_fd* serverSocket,
+                                     unique_fd* acceptedSocket);
 
     void createVpnNetworkWithUid(bool secure, uid_t uid, int vpnNetId = TEST_NETID2,
                                  int fallthroughNetId = TEST_NETID1);
@@ -291,7 +293,7 @@ TEST_F(BinderTest, IpSecTunnelInterface) {
 }
 
 TEST_F(BinderTest, IpSecSetEncapSocketOwner) {
-    android::base::unique_fd uniqueFd(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+    unique_fd uniqueFd(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
     android::os::ParcelFileDescriptor sockFd(std::move(uniqueFd));
 
     int sockOptVal = UDP_ENCAP_ESPINUDP;
@@ -601,8 +603,9 @@ TEST_F(BinderTest, NetworkRejectNonSecureVpn) {
 }
 
 // Create a socket pair that isLoopbackSocket won't think is local.
-void BinderTest::fakeRemoteSocketPair(int *clientSocket, int *serverSocket, int *acceptedSocket) {
-    *serverSocket = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
+void BinderTest::fakeRemoteSocketPair(unique_fd* clientSocket, unique_fd* serverSocket,
+                                      unique_fd* acceptedSocket) {
+    serverSocket->reset(socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0));
     struct sockaddr_in6 server6 = { .sin6_family = AF_INET6, .sin6_addr = sTun.dstAddr() };
     ASSERT_EQ(0, bind(*serverSocket, (struct sockaddr *) &server6, sizeof(server6)));
 
@@ -610,13 +613,14 @@ void BinderTest::fakeRemoteSocketPair(int *clientSocket, int *serverSocket, int 
     ASSERT_EQ(0, getsockname(*serverSocket, (struct sockaddr *) &server6, &addrlen));
     ASSERT_EQ(0, listen(*serverSocket, 10));
 
-    *clientSocket = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    clientSocket->reset(socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0));
     struct sockaddr_in6 client6 = { .sin6_family = AF_INET6, .sin6_addr = sTun.srcAddr() };
     ASSERT_EQ(0, bind(*clientSocket, (struct sockaddr *) &client6, sizeof(client6)));
     ASSERT_EQ(0, connect(*clientSocket, (struct sockaddr *) &server6, sizeof(server6)));
     ASSERT_EQ(0, getsockname(*clientSocket, (struct sockaddr *) &client6, &addrlen));
 
-    *acceptedSocket = accept4(*serverSocket, (struct sockaddr *) &server6, &addrlen, SOCK_CLOEXEC);
+    acceptedSocket->reset(
+            accept4(*serverSocket, (struct sockaddr*)&server6, &addrlen, SOCK_CLOEXEC));
     ASSERT_NE(-1, *acceptedSocket);
 
     ASSERT_EQ(0, memcmp(&client6, &server6, sizeof(client6)));
@@ -644,7 +648,7 @@ void checkSocketpairClosed(int clientSocket, int acceptedSocket) {
 }
 
 TEST_F(BinderTest, SocketDestroy) {
-    int clientSocket, serverSocket, acceptedSocket;
+    unique_fd clientSocket, serverSocket, acceptedSocket;
     ASSERT_NO_FATAL_FAILURE(fakeRemoteSocketPair(&clientSocket, &serverSocket, &acceptedSocket));
 
     // Pick a random UID in the system UID range.
@@ -684,10 +688,6 @@ TEST_F(BinderTest, SocketDestroy) {
     skipUids.resize(skipUids.size() - 1);
     EXPECT_TRUE(mNetd->socketDestroy(uidRanges, skipUids).isOk());
     checkSocketpairClosed(clientSocket, acceptedSocket);
-
-    close(clientSocket);
-    close(serverSocket);
-    close(acceptedSocket);
 }
 
 namespace {
@@ -3108,7 +3108,7 @@ void checkDataReceived(int udpSocket, int tunFd) {
 
 bool sendIPv6PacketFromUid(uid_t uid, const in6_addr& dstAddr, Fwmark* fwmark, int tunFd) {
     ScopedUidChange scopedUidChange(uid);
-    android::base::unique_fd testSocket(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+    unique_fd testSocket(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
     if (testSocket < 0) return false;
 
     const sockaddr_in6 dst6 = {

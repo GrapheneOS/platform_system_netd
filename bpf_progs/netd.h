@@ -29,6 +29,7 @@
 #include <linux/ipv6.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include "bpf_net_helpers.h"
 #include "netdbpf/bpf_shared.h"
 
 typedef struct {
