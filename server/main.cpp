@@ -86,12 +86,17 @@ int tagSocketCallback(int sockFd, uint32_t tag, uid_t uid, pid_t) {
     return gCtls->trafficCtrl.tagSocket(sockFd, tag, uid, geteuid());
 }
 
+bool evaluateDomainNameCallback(const android_net_context&, const char* /*name*/) {
+    return true;
+}
+
 bool initDnsResolver() {
     ResolverNetdCallbacks callbacks = {
             .check_calling_permission = &checkCallingPermissionCallback,
             .get_network_context = &getNetworkContextCallback,
             .log = &logCallback,
             .tagSocket = &tagSocketCallback,
+            .evaluate_domain_name = &evaluateDomainNameCallback,
     };
     return RESOLV_STUB.resolv_init(callbacks);
 }
