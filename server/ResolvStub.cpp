@@ -64,7 +64,7 @@ int resolv_stub_init() {
             ALOGI("Loaded resolver library from %s", path.c_str());
             break;
         }
-        ALOGW("dlopen(%s) failed: %s", path.c_str(), strerror(errno));
+        ALOGW("dlopen(%s) failed: %s", path.c_str(), dlerror());
     }
 
     if (netdResolvHandle == nullptr) {
