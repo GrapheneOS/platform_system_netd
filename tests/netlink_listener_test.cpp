@@ -103,7 +103,7 @@ class NetlinkListenerTest : public testing::Test {
         return mCookieTagMap.iterateWithValue(checkGarbageTags);
     }
 
-    void checkMassiveSocketDestroy(const int totalNumber, bool expectError) {
+    void checkMassiveSocketDestroy(int totalNumber, bool expectError) {
         std::unique_ptr<android::net::NetlinkListenerInterface> skDestroyListener;
         auto result = android::net::TrafficController::makeSkDestroyListener();
         if (!isOk(result)) {
@@ -118,16 +118,24 @@ class NetlinkListenerTest : public testing::Test {
         int fds[totalNumber];
         for (int i = 0; i < totalNumber; i++) {
             fds[i] = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
-            EXPECT_LE(0, fds[i]);
+            // The likely reason for a failure is running out of available file descriptors.
+            EXPECT_LE(0, fds[i]) << i << " of " << totalNumber;
+            if (fds[i] < 0) {
+                // EXPECT_LE already failed above, so test case is a failure, but we don't
+                // want potentially tens of thousands of extra failures creating and then
+                // closing all these fds cluttering up the logs.
+                totalNumber = i;
+                break;
+            };
             qtaguid_tagSocket(fds[i], TEST_TAG, TEST_UID);
         }
 
-        // TODO: Use a separate thread that have it's own fd table so we can
-        // close socket faster by terminating that threads.
+        // TODO: Use a separate thread that has it's own fd table so we can
+        // close sockets even faster simply by terminating that thread.
         for (int i = 0; i < totalNumber; i++) {
             EXPECT_EQ(0, close(fds[i]));
         }
-        // wait a bit for netlink listner to handle all the messages.
+        // wait a bit for netlink listener to handle all the messages.
         usleep(SOCK_CLOSE_WAIT_US);
         if (expectError) {
             // If ENOBUFS triggered, check it only called into the handler once, ie.
@@ -150,11 +158,8 @@ TEST_F(NetlinkListenerTest, TestAllSocketUntagged) {
     checkMassiveSocketDestroy(100, false);
 }
 
-// Disabled because flaky on blueline-userdebug; this test relies on the main thread
-// winning a race against the NetlinkListener::run() thread. There's no way to ensure
-// things will be scheduled the same way across all architectures and test environments.
-TEST_F(NetlinkListenerTest, DISABLED_TestSkDestroyError) {
+TEST_F(NetlinkListenerTest, TestSkDestroyError) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    checkMassiveSocketDestroy(50000, true);
+    checkMassiveSocketDestroy(32500, true);
 }
