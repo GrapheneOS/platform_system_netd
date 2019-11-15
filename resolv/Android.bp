@@ -191,10 +191,6 @@ cc_test {
         "dnsresolver_aidl_interface-V2-cpp",
     ],
     compile_multilib: "both",
-    sanitize: {
-        address: true,
-        recover: ["all"],
-    },
 }
 
 cc_test {
