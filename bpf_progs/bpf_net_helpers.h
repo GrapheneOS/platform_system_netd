@@ -29,6 +29,11 @@ static uint32_t (*bpf_get_socket_uid)(struct __sk_buff* skb) = (void*)BPF_FUNC_g
 static int (*bpf_skb_load_bytes)(struct __sk_buff* skb, int off, void* to,
                                  int len) = (void*)BPF_FUNC_skb_load_bytes;
 
+static int64_t (*bpf_csum_diff)(__be32* from, __u32 from_size, __be32* to, __u32 to_size,
+                                __wsum seed) = (void*)BPF_FUNC_csum_diff;
+
+static int64_t (*bpf_csum_update)(struct __sk_buff* skb, __wsum csum) = (void*)BPF_FUNC_csum_update;
+
 static int (*bpf_skb_change_proto)(struct __sk_buff* skb, __be16 proto,
                                    __u64 flags) = (void*)BPF_FUNC_skb_change_proto;
 static int (*bpf_l3_csum_replace)(struct __sk_buff* skb, __u32 offset, __u64 from, __u64 to,
