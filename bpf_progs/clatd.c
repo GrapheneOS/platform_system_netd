@@ -104,7 +104,7 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
     };
 
     // Calculate the IPv4 one's complement checksum of the IPv4 header.
-    __u32 sum = 0;
+    __wsum sum = 0;
     for (int i = 0; i < sizeof(ip) / sizeof(__u16); ++i) {
         sum += ((__u16*)&ip)[i];
     }
