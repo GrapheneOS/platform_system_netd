@@ -104,14 +104,14 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
     };
 
     // Calculate the IPv4 one's complement checksum of the IPv4 header.
-    __wsum sum = 0;
+    __wsum sum4 = 0;
     for (int i = 0; i < sizeof(ip) / sizeof(__u16); ++i) {
-        sum += ((__u16*)&ip)[i];
+        sum4 += ((__u16*)&ip)[i];
     }
-    // Note that sum is guaranteed to be non-zero by virtue of ip.version == 4
-    sum = (sum & 0xFFFF) + (sum >> 16);  // collapse u32 into range 1 .. 0x1FFFE
-    sum = (sum & 0xFFFF) + (sum >> 16);  // collapse any potential carry into u16
-    ip.check = (__u16)~sum;              // sum cannot be zero, so this is never 0xFFFF
+    // Note that sum4 is guaranteed to be non-zero by virtue of ip.version == 4
+    sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse u32 into range 1 .. 0x1FFFE
+    sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse any potential carry into u16
+    ip.check = (__u16)~sum4;                // sum4 cannot be zero, so this is never 0xFFFF
 
     // Note that there is no L4 checksum update: we are relying on the checksum neutrality
     // of the ipv6 address chosen by netd's ClatdController.

@@ -118,7 +118,7 @@ DEFINE_UPDATE_STATS(stats_map_B, stats_key)
 static inline bool skip_owner_match(struct __sk_buff* skb) {
     int offset = -1;
     int ret = 0;
-    if (skb->protocol == ETH_P_IP) {
+    if (skb->protocol == htons(ETH_P_IP)) {
         offset = IP_PROTO_OFF;
         uint8_t proto, ihl;
         uint16_t flag;
@@ -135,7 +135,7 @@ static inline bool skip_owner_match(struct __sk_buff* skb) {
                 }
             }
         }
-    } else if (skb->protocol == ETH_P_IPV6) {
+    } else if (skb->protocol == htons(ETH_P_IPV6)) {
         offset = IPV6_PROTO_OFF;
         uint8_t proto;
         ret = bpf_skb_load_bytes(skb, offset, &proto, 1);
