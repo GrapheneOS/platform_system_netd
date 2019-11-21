@@ -26,9 +26,6 @@ cc_benchmark {
         "system/netd/server",
         "system/netd/server/binder",
     ],
-    header_libs: [
-        "libnetd_resolv_headers",
-    ],
     srcs: [
         "main.cpp",
         "connect_benchmark.cpp",
