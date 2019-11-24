@@ -44,12 +44,12 @@
 
 #include "NetdClient.h"
 #include "dns_responder_client.h"
-#include "netd_resolv/params.h"  // MAXNS
 
 using android::base::StringPrintf;
 
 constexpr int MIN_THREADS = 1;
 constexpr int MAX_THREADS = 32;
+constexpr int MAXNS = 4;
 
 class DnsFixture : public ::benchmark::Fixture {
 protected:
