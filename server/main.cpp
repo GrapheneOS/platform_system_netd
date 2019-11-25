@@ -51,6 +51,7 @@
 #include "netd_resolv/resolv_stub.h"
 
 using android::IPCThreadState;
+using android::sp;
 using android::status_t;
 using android::String16;
 using android::net::FwmarkServer;
@@ -189,10 +190,9 @@ int main() {
 
     android::net::process::ScopedPidFile pidFile(PID_FILE_PATH);
 
-    // Now that netd is ready to process commands, advertise service
-    // availability for HAL clients.
-    NetdHwService mHwSvc;
-    if ((ret = mHwSvc.start()) != android::OK) {
+    // Now that netd is ready to process commands, advertise service availability for HAL clients.
+    sp<NetdHwService> mHwSvc(new NetdHwService());
+    if ((ret = mHwSvc->start()) != android::OK) {
         ALOGE("Unable to start NetdHwService: %d", ret);
         exit(1);
     }
