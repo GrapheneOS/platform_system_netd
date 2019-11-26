@@ -1309,6 +1309,9 @@ TEST_F(ResolverTest, GetHostByName_Tls) {
 }
 
 TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
+    // Certificate fingerprints are no longer supported by the module.
+    SKIP_IF_RESOLVER_VERSION_NEWER_THAN(mDnsClient.resolvService(), 2);
+
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_udp[] = "53";
     constexpr char listen_tls[] = "853";
@@ -1346,6 +1349,9 @@ TEST_F(ResolverTest, GetHostByName_TlsFingerprint) {
 }
 
 TEST_F(ResolverTest, GetHostByName_BadTlsFingerprint) {
+    // Certificate fingerprints are no longer supported by the module.
+    SKIP_IF_RESOLVER_VERSION_NEWER_THAN(mDnsClient.resolvService(), 2);
+
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_udp[] = "53";
     constexpr char listen_tls[] = "853";
@@ -1410,6 +1416,9 @@ TEST_F(ResolverTest, GetHostByName_TwoTlsFingerprints) {
 }
 
 TEST_F(ResolverTest, GetHostByName_TlsFingerprintGoesBad) {
+    // Certificate fingerprints are no longer supported by the module.
+    SKIP_IF_RESOLVER_VERSION_NEWER_THAN(mDnsClient.resolvService(), 2);
+
     constexpr char listen_addr[] = "127.0.0.3";
     constexpr char listen_udp[] = "53";
     constexpr char listen_tls[] = "853";
@@ -1582,6 +1591,9 @@ TEST_F(ResolverTest, GetAddrInfo_Tls) {
 }
 
 TEST_F(ResolverTest, TlsBypass) {
+    // Certificate fingerprints are no longer supported by the module.
+    SKIP_IF_RESOLVER_VERSION_NEWER_THAN(mDnsClient.resolvService(), 2);
+
     const char OFF[] = "off";
     const char OPPORTUNISTIC[] = "opportunistic";
     const char STRICT[] = "strict";
@@ -1724,6 +1736,9 @@ TEST_F(ResolverTest, TlsBypass) {
 }
 
 TEST_F(ResolverTest, StrictMode_NoTlsServers) {
+    // Certificate fingerprints are no longer supported by the module.
+    SKIP_IF_RESOLVER_VERSION_NEWER_THAN(mDnsClient.resolvService(), 2);
+
     const std::vector<uint8_t> NOOP_FINGERPRINT(SHA256_SIZE, 0U);
     constexpr char cleartext_addr[] = "127.0.0.53";
     const std::vector<std::string> servers = { cleartext_addr };
@@ -2300,6 +2315,9 @@ TEST_F(ResolverTest, Async_VerifyQueryID) {
 // FORMERR_ON_EDNS, we will fallback to no EDNS0 and try again. If the server does no response, we
 // won't retry so that we get no answer.
 TEST_F(ResolverTest, BrokenEdns) {
+    // Certificate fingerprints are no longer supported by the module.
+    SKIP_IF_RESOLVER_VERSION_NEWER_THAN(mDnsClient.resolvService(), 2);
+
     typedef test::DNSResponder::Edns Edns;
     enum ExpectResult { EXPECT_FAILURE, EXPECT_SUCCESS };
 
