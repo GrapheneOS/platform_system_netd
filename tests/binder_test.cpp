@@ -847,6 +847,19 @@ TEST_F(BinderTest, InterfaceAddRemoveAddress) {
         // [2.b] No matter what, the address should not be present.
         EXPECT_FALSE(interfaceHasAddress(sTun.name(), td.addrString, -1));
     }
+
+    // Check that netlink errors are returned correctly.
+    // We do this by attempting to create an IPv6 address on an interface that has IPv6 disabled,
+    // which returns EACCES.
+    TunInterface tun;
+    ASSERT_EQ(0, tun.init());
+    binder::Status status =
+            mNetd->setProcSysNet(INetd::IPV6, INetd::CONF, tun.name(), "disable_ipv6", "1");
+    ASSERT_TRUE(status.isOk()) << status.exceptionMessage();
+    status = mNetd->interfaceAddAddress(tun.name(), "2001:db8::1", 64);
+    EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+    EXPECT_EQ(EACCES, status.serviceSpecificErrorCode());
+    tun.destroy();
 }
 
 TEST_F(BinderTest, GetProcSysNet) {
