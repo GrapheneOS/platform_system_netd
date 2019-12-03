@@ -102,9 +102,6 @@ cc_library_static {
         "netd_aidl_interface-cpp",
         "netd_event_listener_interface-cpp",
     ],
-    header_libs: [
-        "libnetd_resolv_headers",
-    ],
     aidl: {
         export_aidl_headers: true,
         local_include_dirs: ["binder"],
@@ -131,6 +128,7 @@ cc_binary {
         "libjsoncpp",
         "liblog",
         "libmdnssd",
+        "libnetd_resolv",
         "libnetdbpf",
         "libnetdutils",
         "libnetutils",
@@ -146,9 +144,6 @@ cc_binary {
     ],
     static_libs: [
         "libnetd_server",
-    ],
-    header_libs: [
-        "libnetd_resolv_headers",
     ],
     srcs: [
         "DummyNetwork.cpp",
@@ -166,7 +161,6 @@ cc_binary {
         "PhysicalNetwork.cpp",
         "PppController.cpp",
         "Process.cpp",
-        "ResolvStub.cpp",
         "VirtualNetwork.cpp",
         "main.cpp",
         "oem_iptables_hook.cpp",
