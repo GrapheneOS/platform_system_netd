@@ -33,6 +33,13 @@
 #include "binder/IServiceManager.h"
 #include "dns_responder.h"
 
+#define SKIP_IF_RESOLVER_VERSION_NEWER_THAN(service, version) \
+    do {                                                      \
+        if ((service)->getInterfaceVersion() > (version)) {   \
+            return;                                           \
+        }                                                     \
+    } while (0)
+
 inline const std::vector<std::string> kDefaultServers = {"127.0.0.3"};
 inline const std::vector<std::string> kDefaultSearchDomains = {"example.com"};
 inline const std::vector<int> kDefaultParams = {

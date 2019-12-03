@@ -226,6 +226,9 @@ TEST_F(DnsResolverBinderTest, EventListener_onDnsEvent) {
 }
 
 TEST_F(DnsResolverBinderTest, SetResolverConfiguration_Tls) {
+    // Certificate fingerprints are no longer supported by the module.
+    SKIP_IF_RESOLVER_VERSION_NEWER_THAN(mDnsResolver, 2);
+
     const std::vector<std::string> LOCALLY_ASSIGNED_DNS{"8.8.8.8", "2001:4860:4860::8888"};
     std::vector<uint8_t> fp(SHA256_SIZE);
     std::vector<uint8_t> short_fp(1);
