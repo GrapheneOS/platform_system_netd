@@ -797,35 +797,39 @@ TEST_F(BinderTest, InterfaceAddRemoveAddress) {
     static const struct TestData {
         const char *addrString;
         const int   prefixLength;
-        const bool  expectSuccess;
+        const int expectAddResult;
+        const int expectRemoveResult;
     } kTestData[] = {
-        { "192.0.2.1", 24, true },
-        { "192.0.2.2", 25, true },
-        { "192.0.2.3", 32, true },
-        { "192.0.2.4", 33, false },
-        { "192.not.an.ip", 24, false },
-        { "2001:db8::1", 64, true },
-        { "2001:db8::2", 65, true },
-        { "2001:db8::3", 128, true },
-        { "2001:db8::4", 129, false },
-        { "foo:bar::bad", 64, false },
+            {"192.0.2.1", 24, 0, 0},
+            {"192.0.2.2", 25, 0, 0},
+            {"192.0.2.3", 32, 0, 0},
+            {"192.0.2.4", 33, EINVAL, EADDRNOTAVAIL},
+            {"192.not.an.ip", 24, EINVAL, EINVAL},
+            {"2001:db8::1", 64, 0, 0},
+            {"2001:db8::2", 65, 0, 0},
+            {"2001:db8::3", 128, 0, 0},
+            {"2001:db8::4", 129, EINVAL, EINVAL},
+            {"foo:bar::bad", 64, EINVAL, EINVAL},
+            {"2001:db8::1/64", 64, EINVAL, EINVAL},
     };
 
     for (size_t i = 0; i < std::size(kTestData); i++) {
         const auto &td = kTestData[i];
 
+        SCOPED_TRACE(String8::format("Offending IP address %s/%d", td.addrString, td.prefixLength));
+
         // [1.a] Add the address.
         binder::Status status = mNetd->interfaceAddAddress(
                 sTun.name(), td.addrString, td.prefixLength);
-        if (td.expectSuccess) {
+        if (td.expectAddResult == 0) {
             EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
         } else {
             ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-            ASSERT_NE(0, status.serviceSpecificErrorCode());
+            ASSERT_EQ(td.expectAddResult, status.serviceSpecificErrorCode());
         }
 
         // [1.b] Verify the addition meets the expectation.
-        if (td.expectSuccess) {
+        if (td.expectAddResult == 0) {
             EXPECT_TRUE(interfaceHasAddress(sTun.name(), td.addrString, td.prefixLength));
         } else {
             EXPECT_FALSE(interfaceHasAddress(sTun.name(), td.addrString, -1));
@@ -833,16 +837,29 @@ TEST_F(BinderTest, InterfaceAddRemoveAddress) {
 
         // [2.a] Try to remove the address.  If it was not previously added, removing it fails.
         status = mNetd->interfaceDelAddress(sTun.name(), td.addrString, td.prefixLength);
-        if (td.expectSuccess) {
+        if (td.expectRemoveResult == 0) {
             EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
         } else {
             ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-            ASSERT_NE(0, status.serviceSpecificErrorCode());
+            ASSERT_EQ(td.expectRemoveResult, status.serviceSpecificErrorCode());
         }
 
         // [2.b] No matter what, the address should not be present.
         EXPECT_FALSE(interfaceHasAddress(sTun.name(), td.addrString, -1));
     }
+
+    // Check that netlink errors are returned correctly.
+    // We do this by attempting to create an IPv6 address on an interface that has IPv6 disabled,
+    // which returns EACCES.
+    TunInterface tun;
+    ASSERT_EQ(0, tun.init());
+    binder::Status status =
+            mNetd->setProcSysNet(INetd::IPV6, INetd::CONF, tun.name(), "disable_ipv6", "1");
+    ASSERT_TRUE(status.isOk()) << status.exceptionMessage();
+    status = mNetd->interfaceAddAddress(tun.name(), "2001:db8::1", 64);
+    EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+    EXPECT_EQ(EACCES, status.serviceSpecificErrorCode());
+    tun.destroy();
 }
 
 TEST_F(BinderTest, GetProcSysNet) {
