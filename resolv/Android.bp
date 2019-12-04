@@ -191,11 +191,8 @@ cc_test {
         "netd_event_listener_interface-V1-cpp",
         "dnsresolver_aidl_interface-V2-cpp",
     ],
+    tidy: false,
     compile_multilib: "both",
-    sanitize: {
-        address: true,
-        recover: ["all"],
-    },
 }
 
 cc_test {
