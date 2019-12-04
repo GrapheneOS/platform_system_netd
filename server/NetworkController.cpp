@@ -30,7 +30,6 @@
 #include <android-base/strings.h>
 #include <cutils/misc.h>  // FIRST_APPLICATION_UID
 #include <netd_resolv/resolv.h>
-#include <netd_resolv/resolv_stub.h>
 #include "log/log.h"
 
 #include "Controllers.h"
@@ -213,8 +212,7 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         // servers (through the default network). Otherwise, the query is guaranteed to fail.
         // http://b/29498052
         Network *network = getNetworkLocked(*netId);
-        if (network && network->getType() == Network::VIRTUAL &&
-            !RESOLV_STUB.resolv_has_nameservers(*netId)) {
+        if (network && network->getType() == Network::VIRTUAL && !resolv_has_nameservers(*netId)) {
             *netId = mDefaultNetId;
         }
     } else {
@@ -223,7 +221,7 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         // them). Otherwise, use the default network's DNS servers.
         // TODO: Consider if we should set the explicit bit here.
         VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
-        if (virtualNetwork && RESOLV_STUB.resolv_has_nameservers(virtualNetwork->getNetId())) {
+        if (virtualNetwork && resolv_has_nameservers(virtualNetwork->getNetId())) {
             *netId = virtualNetwork->getNetId();
         } else {
             // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
