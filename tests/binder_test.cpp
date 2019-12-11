@@ -2013,8 +2013,10 @@ TEST_F(BinderTest, TetherStartStopStatus) {
     static const char dnsdName[] = "dnsmasq";
 
     for (bool usingLegacyDnsProxy : {true, false}) {
-        binder::Status status =
-                mNetd->tetherStartWithConfiguration(usingLegacyDnsProxy, noDhcpRange);
+        android::net::TetherConfigParcel config;
+        config.usingLegacyDnsProxy = usingLegacyDnsProxy;
+        config.dhcpRanges = noDhcpRange;
+        binder::Status status = mNetd->tetherStartWithConfiguration(config);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
         SCOPED_TRACE(StringPrintf("usingLegacyDnsProxy: %d", usingLegacyDnsProxy));
         if (usingLegacyDnsProxy == true) {
