@@ -18,6 +18,7 @@ package android.net;
 
 import android.net.INetdUnsolicitedEventListener;
 import android.net.InterfaceConfigurationParcel;
+import android.net.MarkMaskParcel;
 import android.net.TetherStatsParcel;
 import android.net.UidRangeParcel;
 
@@ -1208,4 +1209,12 @@ interface INetd {
     */
     void tetherStartWithConfiguration(
             boolean usingLegacyDnsProxy, in @utf8InCpp String[] dhcpRanges);
+
+    /**
+     * Get the fwmark and its net id mask for the given network id.
+     *
+     * @param netId the network to get the fwmark and mask for.
+     * @return A MarkMaskParcel of the given network id.
+     */
+    MarkMaskParcel getFwmarkForNetwork(int netId);
 }
