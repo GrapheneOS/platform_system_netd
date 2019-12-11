@@ -37,6 +37,7 @@
 
 #include "BinderUtil.h"
 #include "Controllers.h"
+#include "Fwmark.h"
 #include "InterfaceController.h"
 #include "NetdNativeService.h"
 #include "NetdPermissions.h"
@@ -1185,6 +1186,16 @@ binder::Status NetdNativeService::getOemNetd(android::sp<android::IBinder>* list
     ENFORCE_NETWORK_STACK_PERMISSIONS();
     *listener = com::android::internal::net::OemNetdListener::getListener();
 
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::getFwmarkForNetwork(int32_t netId, MarkMaskParcel* markMask) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    Fwmark fwmark;
+    fwmark.netId = netId;
+    markMask->mask = FWMARK_NET_ID_MASK;
+    markMask->mark = fwmark.intValue;
     return binder::Status::ok();
 }
 
