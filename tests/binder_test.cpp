@@ -43,6 +43,7 @@
 #include <android-base/macros.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <android/multinetwork.h>
 #include <binder/IPCThreadState.h>
 #include <bpf/BpfMap.h>
 #include <bpf/BpfUtils.h>
@@ -56,6 +57,7 @@
 #include "InterfaceController.h"
 #include "NetdClient.h"
 #include "NetdConstants.h"
+#include "NetworkController.h"
 #include "TestUnsolService.h"
 #include "XfrmController.h"
 #include "android/net/INetd.h"
@@ -91,6 +93,7 @@ using android::base::unique_fd;
 using android::net::INetd;
 using android::net::InterfaceConfigurationParcel;
 using android::net::InterfaceController;
+using android::net::MarkMaskParcel;
 using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
@@ -2010,8 +2013,10 @@ TEST_F(BinderTest, TetherStartStopStatus) {
     static const char dnsdName[] = "dnsmasq";
 
     for (bool usingLegacyDnsProxy : {true, false}) {
-        binder::Status status =
-                mNetd->tetherStartWithConfiguration(usingLegacyDnsProxy, noDhcpRange);
+        android::net::TetherConfigParcel config;
+        config.usingLegacyDnsProxy = usingLegacyDnsProxy;
+        config.dhcpRanges = noDhcpRange;
+        binder::Status status = mNetd->tetherStartWithConfiguration(config);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
         SCOPED_TRACE(StringPrintf("usingLegacyDnsProxy: %d", usingLegacyDnsProxy));
         if (usingLegacyDnsProxy == true) {
@@ -3245,4 +3250,60 @@ TEST_F(BinderTest, BypassableVPNFallthrough) {
     // Get current default network NetId
     ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
     expectVpnFallthroughWorks(mNetd.get(), true /* bypassable */, TEST_UID1, sTun, sTun2);
+}
+
+namespace {
+
+int32_t createIpv6SocketAndCheckMark(int type, const in6_addr& dstAddr) {
+    const sockaddr_in6 dst6 = {
+            .sin6_family = AF_INET6,
+            .sin6_port = 1234,
+            .sin6_addr = dstAddr,
+    };
+    // create non-blocking socket.
+    int sockFd = socket(AF_INET6, type | SOCK_NONBLOCK, 0);
+    EXPECT_NE(-1, sockFd);
+    EXPECT_EQ((type == SOCK_STREAM) ? -1 : 0, connect(sockFd, (sockaddr*)&dst6, sizeof(dst6)));
+
+    // Get socket fwmark.
+    Fwmark fwmark;
+    socklen_t fwmarkLen = sizeof(fwmark.intValue);
+    EXPECT_EQ(0, getsockopt(sockFd, SOL_SOCKET, SO_MARK, &fwmark.intValue, &fwmarkLen));
+    EXPECT_EQ(0, close(sockFd));
+    return fwmark.intValue;
+}
+
+}  // namespace
+
+TEST_F(BinderTest, GetFwmarkForNetwork) {
+    in6_addr v6Addr = {
+            {// 2001:db8:cafe::8888
+             .u6_addr8 = {0x20, 0x01, 0x0d, 0xb8, 0xca, 0xfe, 0, 0, 0, 0, 0, 0, 0, 0, 0x88, 0x88}}};
+    // Add test physical network 1 and set as default network.
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "2001:db8::/32", "").isOk());
+    EXPECT_TRUE(mNetd->networkSetDefault(TEST_NETID1).isOk());
+    // Add test physical network 2
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID2, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID2, sTun2.name()).isOk());
+
+    // Get fwmark for network 1.
+    MarkMaskParcel maskMarkNet1;
+    ASSERT_TRUE(mNetd->getFwmarkForNetwork(TEST_NETID1, &maskMarkNet1).isOk());
+
+    uint32_t fwmarkTcp = createIpv6SocketAndCheckMark(SOCK_STREAM, v6Addr);
+    uint32_t fwmarkUdp = createIpv6SocketAndCheckMark(SOCK_DGRAM, v6Addr);
+    EXPECT_EQ(maskMarkNet1.mark, static_cast<int>(fwmarkTcp & maskMarkNet1.mask));
+    EXPECT_EQ(maskMarkNet1.mark, static_cast<int>(fwmarkUdp & maskMarkNet1.mask));
+
+    // Get fwmark for network 2.
+    MarkMaskParcel maskMarkNet2;
+    ASSERT_TRUE(mNetd->getFwmarkForNetwork(TEST_NETID2, &maskMarkNet2).isOk());
+    EXPECT_NE(maskMarkNet2.mark, static_cast<int>(fwmarkTcp & maskMarkNet2.mask));
+    EXPECT_NE(maskMarkNet2.mark, static_cast<int>(fwmarkUdp & maskMarkNet2.mask));
+
+    // Remove test physical network.
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID2).isOk());
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }

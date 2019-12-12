@@ -18,6 +18,8 @@ package android.net;
 
 import android.net.INetdUnsolicitedEventListener;
 import android.net.InterfaceConfigurationParcel;
+import android.net.MarkMaskParcel;
+import android.net.TetherConfigParcel;
 import android.net.TetherStatsParcel;
 import android.net.UidRangeParcel;
 
@@ -1198,14 +1200,18 @@ interface INetd {
    /**
     * Start tethering with given configuration
     *
-    * @param usingLegacyDnsProxy, whether to enable or disable legacy DNS proxy server.
-    * @param dhcpRanges dhcp ranges to set.
-    *                   dhcpRanges might contain many addresss {addr1, addr2, aadr3, addr4...}
-    *                   Netd splits them into ranges: addr1-addr2, addr3-addr4, etc.
-    *                   An odd number of addrs will fail.
+    * @param config config to start tethering.
     * @throws ServiceSpecificException in case of failure, with an error code indicating the
     *         cause of the failure.
     */
-    void tetherStartWithConfiguration(
-            boolean usingLegacyDnsProxy, in @utf8InCpp String[] dhcpRanges);
+    void tetherStartWithConfiguration(in TetherConfigParcel config);
+
+
+    /**
+     * Get the fwmark and its net id mask for the given network id.
+     *
+     * @param netId the network to get the fwmark and mask for.
+     * @return A MarkMaskParcel of the given network id.
+     */
+    MarkMaskParcel getFwmarkForNetwork(int netId);
 }

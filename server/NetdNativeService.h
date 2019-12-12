@@ -121,8 +121,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status tetherGetStats(
             std::vector<android::net::TetherStatsParcel>* tetherStatsVec) override;
     binder::Status tetherStart(const std::vector<std::string>& dhcpRanges) override;
-    binder::Status tetherStartWithConfiguration(
-            bool usingLegacyDnsProxy, const std::vector<std::string>& dhcpRanges) override;
+    binder::Status tetherStartWithConfiguration(const TetherConfigParcel& config) override;
     binder::Status tetherStop() override;
     binder::Status tetherIsEnabled(bool* enabled) override;
     binder::Status tetherInterfaceAdd(const std::string& ifName) override;
@@ -250,6 +249,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             const android::sp<android::net::INetdUnsolicitedEventListener>& listener) override;
 
     binder::Status getOemNetd(android::sp<android::IBinder>* listener) override;
+    binder::Status getFwmarkForNetwork(int32_t netId, MarkMaskParcel* markmask);
 
   private:
     std::vector<uid_t> intsToUids(const std::vector<int32_t>& intUids);

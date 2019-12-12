@@ -37,6 +37,7 @@
 
 #include "BinderUtil.h"
 #include "Controllers.h"
+#include "Fwmark.h"
 #include "InterfaceController.h"
 #include "NetdNativeService.h"
 #include "NetdPermissions.h"
@@ -905,16 +906,19 @@ binder::Status NetdNativeService::interfaceSetMtu(const std::string& ifName, int
 }
 
 binder::Status NetdNativeService::tetherStart(const std::vector<std::string>& dhcpRanges) {
-    return tetherStartWithConfiguration(true, dhcpRanges);
+    TetherConfigParcel config;
+    config.usingLegacyDnsProxy = true;
+    config.dhcpRanges = dhcpRanges;
+    return tetherStartWithConfiguration(config);
 }
 
-binder::Status NetdNativeService::tetherStartWithConfiguration(
-        bool usingLegacyDnsProxy, const std::vector<std::string>& dhcpRanges) {
+binder::Status NetdNativeService::tetherStartWithConfiguration(const TetherConfigParcel& config) {
     NETD_LOCKING_RPC(gCtls->tetherCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    if (dhcpRanges.size() % 2 == 1) {
+    if (config.dhcpRanges.size() % 2 == 1) {
         return statusFromErrcode(-EINVAL);
     }
-    int res = gCtls->tetherCtrl.startTethering(usingLegacyDnsProxy, dhcpRanges);
+    // TODO: Pass TetherConfigParcel directly.
+    int res = gCtls->tetherCtrl.startTethering(config.usingLegacyDnsProxy, config.dhcpRanges);
     return statusFromErrcode(res);
 }
 
@@ -1185,6 +1189,16 @@ binder::Status NetdNativeService::getOemNetd(android::sp<android::IBinder>* list
     ENFORCE_NETWORK_STACK_PERMISSIONS();
     *listener = com::android::internal::net::OemNetdListener::getListener();
 
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::getFwmarkForNetwork(int32_t netId, MarkMaskParcel* markMask) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    Fwmark fwmark;
+    fwmark.netId = netId;
+    markMask->mask = FWMARK_NET_ID_MASK;
+    markMask->mark = fwmark.intValue;
     return binder::Status::ok();
 }
 
