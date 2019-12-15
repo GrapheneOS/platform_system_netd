@@ -62,6 +62,11 @@ int hardwareAddressType(const std::string& interface) {
     return ifr.ifr_hwaddr.sa_family;
 }
 
+int getClatEgressMapFd(void) {
+    const int fd = bpf::bpfFdGet(CLAT_EGRESS_MAP_PATH, 0);
+    return (fd == -1) ? -errno : fd;
+}
+
 int getClatIngressMapFd(void) {
     const int fd = bpf::bpfFdGet(CLAT_INGRESS_MAP_PATH, 0);
     return (fd == -1) ? -errno : fd;
