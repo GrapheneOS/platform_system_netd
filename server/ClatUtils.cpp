@@ -218,7 +218,7 @@ int tcQdiscDelDevClsact(int fd, int ifIndex) {
 }
 
 // tc filter add dev .. ingress prio 1 protocol ipv6 bpf object-pinned /sys/fs/bpf/... direct-action
-int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
+int tcFilterAddDevIngressBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
     // The priority doesn't matter until we actually start attaching multiple
     // things to the same interface's ingress point.
     const int prio = 1;
