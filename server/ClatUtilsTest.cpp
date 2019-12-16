@@ -181,13 +181,13 @@ TEST_F(ClatUtilsTest, AttachReplaceDetachClsactLo) {
     close(fd);
 }
 
-void checkAttachBpfFilterClsactLo(const bool ethernet) {
+static void checkAttachBpfFilterClsactLo(const bool ingress, const bool ethernet) {
     // This test requires kernel 4.9-Q or better
     SKIP_IF_BPF_NOT_SUPPORTED;
     if (!kernelSupportsNetSchIngress()) return;
     if (!kernelSupportsNetClsBpf()) return;
 
-    int bpf_fd = getClatIngressProgFd(false);
+    int bpf_fd = ingress ? getClatIngressProgFd(ethernet) : getClatEgressProgFd(ethernet);
     ASSERT_LE(3, bpf_fd);
 
     int fd = openNetlinkSocket();
@@ -198,7 +198,11 @@ void checkAttachBpfFilterClsactLo(const bool ethernet) {
         // actually populating the ebpf control map.
         // Furthermore: it only takes fractions of a second.
         EXPECT_EQ(0, tcQdiscAddDevClsact(fd, LOOPBACK_IFINDEX));
-        EXPECT_EQ(0, tcFilterAddDevIngressBpf(fd, LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        if (ingress) {
+            EXPECT_EQ(0, tcFilterAddDevIngressBpf(fd, LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        } else {
+            EXPECT_EQ(0, tcFilterAddDevEgressBpf(fd, LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        }
         EXPECT_EQ(0, tcQdiscDelDevClsact(fd, LOOPBACK_IFINDEX));
         close(fd);
     }
@@ -206,12 +210,20 @@ void checkAttachBpfFilterClsactLo(const bool ethernet) {
     close(bpf_fd);
 }
 
-TEST_F(ClatUtilsTest, CheckAttachBpfFilterRawIpClsactLo) {
-    checkAttachBpfFilterClsactLo(false);
+TEST_F(ClatUtilsTest, CheckAttachBpfFilterRawIpClsactEgressLo) {
+    checkAttachBpfFilterClsactLo(/*ingress*/ false, /*ethernet*/ false);
 }
 
-TEST_F(ClatUtilsTest, CheckAttachBpfFilterEthernetClsactLo) {
-    checkAttachBpfFilterClsactLo(true);
+TEST_F(ClatUtilsTest, CheckAttachBpfFilterEthernetClsactEgressLo) {
+    checkAttachBpfFilterClsactLo(/*ingress*/ false, /*ethernet*/ true);
+}
+
+TEST_F(ClatUtilsTest, CheckAttachBpfFilterRawIpClsactIngressLo) {
+    checkAttachBpfFilterClsactLo(/*ingress*/ true, /*ethernet*/ false);
+}
+
+TEST_F(ClatUtilsTest, CheckAttachBpfFilterEthernetClsactIngressLo) {
+    checkAttachBpfFilterClsactLo(/*ingress*/ true, /*ethernet*/ true);
 }
 
 }  // namespace net
