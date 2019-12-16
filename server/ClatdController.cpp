@@ -298,14 +298,14 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcFilterAddDevBpf(mNetlinkFd, tracker.ifIndex, progFd, isEthernet);
+    rv = tcFilterAddDevIngressBpf(mNetlinkFd, tracker.ifIndex, progFd, isEthernet);
     if (rv) {
         if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
-            ALOGI("tcFilterAddDevBpf(%d[%s], %d): %s", tracker.ifIndex, tracker.iface, isEthernet,
-                  strerror(-rv));
-        } else {
-            ALOGE("tcFilterAddDevBpf(%d[%s], %d) failure: %s", tracker.ifIndex, tracker.iface,
+            ALOGI("tcFilterAddDevIngressBpf(%d[%s], %d): %s", tracker.ifIndex, tracker.iface,
                   isEthernet, strerror(-rv));
+        } else {
+            ALOGE("tcFilterAddDevIngressBpf(%d[%s], %d) failure: %s", tracker.ifIndex,
+                  tracker.iface, isEthernet, strerror(-rv));
         }
         rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
         if (rv)

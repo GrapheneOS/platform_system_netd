@@ -198,7 +198,7 @@ void checkAttachBpfFilterClsactLo(const bool ethernet) {
         // actually populating the ebpf control map.
         // Furthermore: it only takes fractions of a second.
         EXPECT_EQ(0, tcQdiscAddDevClsact(fd, LOOPBACK_IFINDEX));
-        EXPECT_EQ(0, tcFilterAddDevBpf(fd, LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        EXPECT_EQ(0, tcFilterAddDevIngressBpf(fd, LOOPBACK_IFINDEX, bpf_fd, ethernet));
         EXPECT_EQ(0, tcQdiscDelDevClsact(fd, LOOPBACK_IFINDEX));
         close(fd);
     }
