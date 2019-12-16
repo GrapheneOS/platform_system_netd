@@ -73,6 +73,22 @@ TEST_F(ClatUtilsTest, GetClatEgressMapFd) {
     close(fd);
 }
 
+TEST_F(ClatUtilsTest, GetClatEgressRawIpProgFd) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    int fd = getClatEgressProgFd(false);
+    ASSERT_LE(3, fd);
+    close(fd);
+}
+
+TEST_F(ClatUtilsTest, GetClatEgressEtherProgFd) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    int fd = getClatEgressProgFd(true);
+    ASSERT_LE(3, fd);
+    close(fd);
+}
+
 TEST_F(ClatUtilsTest, GetClatIngressMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
@@ -81,7 +97,7 @@ TEST_F(ClatUtilsTest, GetClatIngressMapFd) {
     close(fd);
 }
 
-TEST_F(ClatUtilsTest, GetClatRawIpProgFd) {
+TEST_F(ClatUtilsTest, GetClatIngressRawIpProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatIngressProgFd(false);
@@ -89,7 +105,7 @@ TEST_F(ClatUtilsTest, GetClatRawIpProgFd) {
     close(fd);
 }
 
-TEST_F(ClatUtilsTest, GetClatEtherProgFd) {
+TEST_F(ClatUtilsTest, GetClatIngressEtherProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatIngressProgFd(true);
