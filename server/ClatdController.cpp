@@ -569,25 +569,7 @@ int ClatdController::stopClatd(const std::string& interface) {
     return 0;
 }
 
-void ClatdController::dump(DumpWriter& dw) {
-    std::lock_guard guard(mutex);
-
-    ScopedIndent clatdIndent(dw);
-    dw.println("ClatdController");
-
-    {
-        ScopedIndent trackerIndent(dw);
-        dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr v4iif[v4iface] [netId]");
-
-        ScopedIndent trackerDetailIndent(dw);
-        for (const auto& pair : mClatdTrackers) {
-            const ClatdTracker& tracker = pair.second;
-            dw.println("%u[%s] %s/96 %s -> %s %u[%s] [%u]", tracker.ifIndex, tracker.iface,
-                       tracker.pfx96String, tracker.v6Str, tracker.v4Str, tracker.v4ifIndex,
-                       tracker.v4iface, tracker.netId);
-        }
-    }
-
+void ClatdController::dumpIngress(DumpWriter& dw) {
     int mapFd = getClatIngressMapFd();
     if (mapFd < 0) return;  // if unsupported just don't dump anything
     BpfMap<ClatIngressKey, ClatIngressValue> configMap(mapFd);
@@ -618,6 +600,28 @@ void ClatdController::dump(DumpWriter& dw) {
     if (!isOk(res)) {
         dw.println("Error printing BPF map: %s", res.msg().c_str());
     }
+}
+
+void ClatdController::dump(DumpWriter& dw) {
+    std::lock_guard guard(mutex);
+
+    ScopedIndent clatdIndent(dw);
+    dw.println("ClatdController");
+
+    {
+        ScopedIndent trackerIndent(dw);
+        dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr v4iif[v4iface] [netId]");
+
+        ScopedIndent trackerDetailIndent(dw);
+        for (const auto& pair : mClatdTrackers) {
+            const ClatdTracker& tracker = pair.second;
+            dw.println("%u[%s] %s/96 %s -> %s %u[%s] [%u]", tracker.ifIndex, tracker.iface,
+                       tracker.pfx96String, tracker.v6Str, tracker.v4Str, tracker.v4ifIndex,
+                       tracker.v4iface, tracker.netId);
+        }
+    }
+
+    dumpIngress(dw);
 }
 
 auto ClatdController::isIpv4AddressFreeFunc = isIpv4AddressFree;
