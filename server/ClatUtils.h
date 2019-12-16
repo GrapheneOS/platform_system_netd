@@ -26,6 +26,8 @@ int hardwareAddressType(const std::string& interface);
 
 int getClatEgressMapFd(void);
 
+int getClatEgressProgFd(bool with_ethernet_header);
+
 int getClatIngressMapFd(void);
 
 int getClatIngressProgFd(bool with_ethernet_header);
