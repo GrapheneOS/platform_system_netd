@@ -65,7 +65,15 @@ TEST_F(ClatUtilsTest, HardwareAddressTypeOfCellular) {
     ASSERT_EQ(ARPHRD_RAWIP, type);
 }
 
-TEST_F(ClatUtilsTest, GetClatMapFd) {
+TEST_F(ClatUtilsTest, GetClatEgressMapFd) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    int fd = getClatEgressMapFd();
+    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    close(fd);
+}
+
+TEST_F(ClatUtilsTest, GetClatIngressMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatIngressMapFd();
