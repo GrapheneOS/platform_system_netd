@@ -182,4 +182,16 @@ int sched_cls_ingress_clat_rawip(struct __sk_buff* skb) {
     return nat64(skb, false);
 }
 
+DEFINE_BPF_MAP(clat_egress_map, HASH, ClatEgressKey, ClatEgressValue, 16)
+
+SEC("schedcls/egress/clat_ether")
+int sched_cls_egress_clat_ether(struct __sk_buff* skb) {
+    return TC_ACT_OK;
+}
+
+SEC("schedcls/egress/clat_rawip")
+int sched_cls_egress_clat_rawip(struct __sk_buff* skb) {
+    return TC_ACT_OK;
+}
+
 char _license[] SEC("license") = "Apache 2.0";
