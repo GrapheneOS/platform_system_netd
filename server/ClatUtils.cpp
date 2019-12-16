@@ -67,6 +67,12 @@ int getClatEgressMapFd(void) {
     return (fd == -1) ? -errno : fd;
 }
 
+int getClatEgressProgFd(bool with_ethernet_header) {
+    const int fd = bpf::bpfFdGet(
+            with_ethernet_header ? CLAT_EGRESS_PROG_ETHER_PATH : CLAT_EGRESS_PROG_RAWIP_PATH, 0);
+    return (fd == -1) ? -errno : fd;
+}
+
 int getClatIngressMapFd(void) {
     const int fd = bpf::bpfFdGet(CLAT_INGRESS_MAP_PATH, 0);
     return (fd == -1) ? -errno : fd;
