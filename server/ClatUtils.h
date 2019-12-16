@@ -40,7 +40,7 @@ int tcQdiscAddDevClsact(int fd, int ifIndex);
 int tcQdiscReplaceDevClsact(int fd, int ifIndex);
 int tcQdiscDelDevClsact(int fd, int ifIndex);
 
-int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
+int tcFilterAddDevIngressBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
 
 }  // namespace net
 }  // namespace android
