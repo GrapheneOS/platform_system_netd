@@ -602,25 +602,26 @@ void ClatdController::dumpIngress(DumpWriter& dw) {
     }
 }
 
+void ClatdController::dumpTrackers(DumpWriter& dw) {
+    ScopedIndent trackerIndent(dw);
+    dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr v4iif[v4iface] [netId]");
+
+    ScopedIndent trackerDetailIndent(dw);
+    for (const auto& pair : mClatdTrackers) {
+        const ClatdTracker& tracker = pair.second;
+        dw.println("%u[%s] %s/96 %s -> %s %u[%s] [%u]", tracker.ifIndex, tracker.iface,
+                   tracker.pfx96String, tracker.v6Str, tracker.v4Str, tracker.v4ifIndex,
+                   tracker.v4iface, tracker.netId);
+    }
+}
+
 void ClatdController::dump(DumpWriter& dw) {
     std::lock_guard guard(mutex);
 
     ScopedIndent clatdIndent(dw);
     dw.println("ClatdController");
 
-    {
-        ScopedIndent trackerIndent(dw);
-        dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr v4iif[v4iface] [netId]");
-
-        ScopedIndent trackerDetailIndent(dw);
-        for (const auto& pair : mClatdTrackers) {
-            const ClatdTracker& tracker = pair.second;
-            dw.println("%u[%s] %s/96 %s -> %s %u[%s] [%u]", tracker.ifIndex, tracker.iface,
-                       tracker.pfx96String, tracker.v6Str, tracker.v4Str, tracker.v4ifIndex,
-                       tracker.v4iface, tracker.netId);
-        }
-    }
-
+    dumpTrackers(dw);
     dumpIngress(dw);
 }
 
