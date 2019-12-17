@@ -299,31 +299,51 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
     }
     unique_fd rxProgFd(rv);
 
-    ClatIngressKey key = {
+    ClatEgressKey txKey = {
+            .iif = tracker.v4ifIndex,
+            .local4 = tracker.v4,
+    };
+    ClatEgressValue txValue = {
+            .oif = tracker.ifIndex,
+            .local6 = tracker.v6,
+            .pfx96 = tracker.pfx96,
+    };
+
+    auto ret = mClatEgressMap.writeValue(txKey, txValue, BPF_ANY);
+    if (!isOk(ret)) {
+        ALOGE("mClatEgress.Map.writeValue failure: %s", strerror(ret.code()));
+        return;
+    }
+
+    ClatIngressKey rxKey = {
             .iif = tracker.ifIndex,
             .pfx96 = tracker.pfx96,
             .local6 = tracker.v6,
     };
-    ClatIngressValue value = {
+    ClatIngressValue rxValue = {
             // TODO: move all the clat code to eBPF and remove the tun interface entirely.
             .oif = tracker.v4ifIndex,
             .local4 = tracker.v4,
     };
 
-    auto ret = mClatIngressMap.writeValue(key, value, BPF_ANY);
+    ret = mClatIngressMap.writeValue(rxKey, rxValue, BPF_ANY);
     if (!isOk(ret)) {
         ALOGE("mClatIngress.Map.writeValue failure: %s", strerror(ret.code()));
+        ret = mClatEgressMap.deleteValue(txKey);
+        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
         return;
     }
 
-    // We do tc setup *after* populating map, so scanning through map
+    // We do tc setup *after* populating the maps, so scanning through them
     // can always be used to tell us what needs cleanup.
 
     rv = tcQdiscAddDevClsact(mNetlinkFd, tracker.ifIndex);
     if (rv) {
         ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
               strerror(-rv));
-        ret = mClatIngressMap.deleteValue(key);
+        ret = mClatEgressMap.deleteValue(txKey);
+        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        ret = mClatIngressMap.deleteValue(rxKey);
         if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
         return;
     }
@@ -338,10 +358,13 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
                   tracker.iface, isEthernet, strerror(-rv));
         }
         rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
-        if (rv)
+        if (rv) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
                   strerror(-rv));
-        ret = mClatIngressMap.deleteValue(key);
+        }
+        ret = mClatEgressMap.deleteValue(txKey);
+        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        ret = mClatIngressMap.deleteValue(rxKey);
         if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
         return;
     }
@@ -371,16 +394,24 @@ void ClatdController::maybeStopBpf(const ClatdTracker& tracker) {
         ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
               strerror(-rv));
 
-    // We cleanup map last, so scanning through map can be used to
+    // We cleanup the maps last, so scanning through them can be used to
     // determine what still needs cleanup.
 
-    ClatIngressKey key = {
+    ClatEgressKey txKey = {
+            .iif = tracker.v4ifIndex,
+            .local4 = tracker.v4,
+    };
+
+    auto ret = mClatEgressMap.deleteValue(txKey);
+    if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+
+    ClatIngressKey rxKey = {
             .iif = tracker.ifIndex,
             .pfx96 = tracker.pfx96,
             .local6 = tracker.v6,
     };
 
-    auto ret = mClatIngressMap.deleteValue(key);
+    ret = mClatIngressMap.deleteValue(rxKey);
     if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
 }
 
