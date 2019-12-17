@@ -107,10 +107,20 @@ void ClatdController::init(void) {
     }
     mNetlinkFd.reset(rv);
 
+    rv = getClatEgressMapFd();
+    if (rv < 0) {
+        ALOGE("getClatEgressMapFd() failure: %s", strerror(-rv));
+        mClatEbpfMode = ClatEbpfDisabled;
+        mNetlinkFd.reset(-1);
+        return;
+    }
+    mClatEgressMap.reset(rv);
+
     rv = getClatIngressMapFd();
     if (rv < 0) {
         ALOGE("getClatIngressMapFd() failure: %s", strerror(-rv));
         mClatEbpfMode = ClatEbpfDisabled;
+        mClatEgressMap.reset(-1);
         mNetlinkFd.reset(-1);
         return;
     }
