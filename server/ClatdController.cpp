@@ -70,6 +70,22 @@ using android::netdutils::ScopedIndent;
 namespace android {
 namespace net {
 
+void ClatdController::resetIngressMap() {
+    int netlinkFd = mNetlinkFd.get();
+
+    const auto del = [&netlinkFd](const ClatIngressKey& key,
+                                  const BpfMap<ClatIngressKey, ClatIngressValue>&) {
+        ALOGW("Removing stale clat config on interface %d.", key.iif);
+        int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
+        if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
+        return netdutils::status::ok;  // keep on going regardless
+    };
+    auto ret = mClatIngressMap.iterate(del);
+    if (!isOk(ret)) ALOGE("mClatIngressMap.iterate() failure: %s", strerror(ret.code()));
+    ret = mClatIngressMap.clear();
+    if (!isOk(ret)) ALOGE("mClatIngressMap.clear() failure: %s", strerror(ret.code()));
+}
+
 void ClatdController::init(void) {
     std::lock_guard guard(mutex);
 
@@ -126,20 +142,7 @@ void ClatdController::init(void) {
     }
     mClatIngressMap.reset(rv);
 
-    int netlinkFd = mNetlinkFd.get();
-
-    // TODO: perhaps this initial cleanup should be in its own function?
-    const auto del = [&netlinkFd](const ClatIngressKey& key,
-                                  const BpfMap<ClatIngressKey, ClatIngressValue>&) {
-        ALOGW("Removing stale clat config on interface %d.", key.iif);
-        int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
-        if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
-        return netdutils::status::ok;  // keep on going regardless
-    };
-    auto ret = mClatIngressMap.iterate(del);
-    if (!isOk(ret)) ALOGE("mClatIngressMap.iterate() failure: %s", strerror(ret.code()));
-    ret = mClatIngressMap.clear();
-    if (!isOk(ret)) ALOGE("mClatIngressMap.clear() failure: %s", strerror(ret.code()));
+    resetIngressMap();
 }
 
 bool ClatdController::isIpv4AddressFree(in_addr_t addr) {
