@@ -103,6 +103,7 @@ class ClatdController {
     }
 
     base::unique_fd mNetlinkFd GUARDED_BY(mutex);
+    bpf::BpfMap<ClatEgressKey, ClatEgressValue> mClatEgressMap GUARDED_BY(mutex);
     bpf::BpfMap<ClatIngressKey, ClatIngressValue> mClatIngressMap GUARDED_BY(mutex);
 
     void maybeStartBpf(const ClatdTracker& tracker) REQUIRES(mutex);
