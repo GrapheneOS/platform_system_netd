@@ -82,6 +82,8 @@ class ClatdController {
     std::map<std::string, ClatdTracker> mClatdTrackers GUARDED_BY(mutex);
     ClatdTracker* getClatdTracker(const std::string& interface) REQUIRES(mutex);
 
+    void dumpIngress(netdutils::DumpWriter& dw) REQUIRES(mutex);
+
     static in_addr_t selectIpv4Address(const in_addr ip, int16_t prefixlen);
     static int generateIpv6Address(const char* iface, const in_addr v4, const in6_addr& nat64Prefix,
                                    in6_addr* v6);
