@@ -297,7 +297,7 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         ALOGE("getClatIngressProgFd(%d) failure: %s", isEthernet, strerror(-rv));
         return;
     }
-    unique_fd progFd(rv);
+    unique_fd rxProgFd(rv);
 
     ClatIngressKey key = {
             .iif = tracker.ifIndex,
@@ -328,7 +328,7 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcFilterAddDevIngressBpf(mNetlinkFd, tracker.ifIndex, progFd, isEthernet);
+    rv = tcFilterAddDevIngressBpf(mNetlinkFd, tracker.ifIndex, rxProgFd, isEthernet);
     if (rv) {
         if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
             ALOGI("tcFilterAddDevIngressBpf(%d[%s], %d): %s", tracker.ifIndex, tracker.iface,
