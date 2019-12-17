@@ -70,6 +70,22 @@ using android::netdutils::ScopedIndent;
 namespace android {
 namespace net {
 
+void ClatdController::resetEgressMap() {
+    int netlinkFd = mNetlinkFd.get();
+
+    const auto del = [&netlinkFd](const ClatEgressKey& key,
+                                  const BpfMap<ClatEgressKey, ClatEgressValue>&) {
+        ALOGW("Removing stale clat config on interface %d.", key.iif);
+        int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
+        if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
+        return netdutils::status::ok;  // keep on going regardless
+    };
+    auto ret = mClatEgressMap.iterate(del);
+    if (!isOk(ret)) ALOGE("mClatEgressMap.iterate() failure: %s", strerror(ret.code()));
+    ret = mClatEgressMap.clear();
+    if (!isOk(ret)) ALOGE("mClatEgressMap.clear() failure: %s", strerror(ret.code()));
+}
+
 void ClatdController::resetIngressMap() {
     int netlinkFd = mNetlinkFd.get();
 
@@ -142,6 +158,7 @@ void ClatdController::init(void) {
     }
     mClatIngressMap.reset(rv);
 
+    resetEgressMap();
     resetIngressMap();
 }
 
