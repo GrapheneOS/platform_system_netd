@@ -569,6 +569,39 @@ int ClatdController::stopClatd(const std::string& interface) {
     return 0;
 }
 
+void ClatdController::dumpEgress(DumpWriter& dw) {
+    int mapFd = getClatEgressMapFd();
+    if (mapFd < 0) return;  // if unsupported just don't dump anything
+    BpfMap<ClatEgressKey, ClatEgressValue> configMap(mapFd);
+
+    ScopedIndent bpfIndent(dw);
+    dw.println("BPF egress map: iif(iface) v4Addr -> v6Addr nat64Prefix oif(iface)");
+
+    ScopedIndent bpfDetailIndent(dw);
+    const auto printClatMap = [&dw](const ClatEgressKey& key, const ClatEgressValue& value,
+                                    const BpfMap<ClatEgressKey, ClatEgressValue>&) {
+        char iifStr[IFNAMSIZ] = "?";
+        char local4Str[INET_ADDRSTRLEN] = "?";
+        char local6Str[INET6_ADDRSTRLEN] = "?";
+        char pfx96Str[INET6_ADDRSTRLEN] = "?";
+        char oifStr[IFNAMSIZ] = "?";
+
+        if_indextoname(key.iif, iifStr);
+        inet_ntop(AF_INET, &key.local4, local4Str, sizeof(local4Str));
+        inet_ntop(AF_INET6, &value.local6, local6Str, sizeof(local6Str));
+        inet_ntop(AF_INET6, &value.pfx96, pfx96Str, sizeof(pfx96Str));
+        if_indextoname(value.oif, oifStr);
+
+        dw.println("%u(%s) %s -> %s %s/96 %u(%s)", key.iif, iifStr, local4Str, local6Str, pfx96Str,
+                   value.oif, oifStr);
+        return netdutils::status::ok;
+    };
+    auto res = configMap.iterateWithValue(printClatMap);
+    if (!isOk(res)) {
+        dw.println("Error printing BPF map: %s", res.msg().c_str());
+    }
+}
+
 void ClatdController::dumpIngress(DumpWriter& dw) {
     int mapFd = getClatIngressMapFd();
     if (mapFd < 0) return;  // if unsupported just don't dump anything
@@ -623,6 +656,7 @@ void ClatdController::dump(DumpWriter& dw) {
 
     dumpTrackers(dw);
     dumpIngress(dw);
+    dumpEgress(dw);
 }
 
 auto ClatdController::isIpv4AddressFreeFunc = isIpv4AddressFree;
