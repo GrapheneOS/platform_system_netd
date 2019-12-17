@@ -348,6 +348,22 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
+    rv = tcQdiscAddDevClsact(mNetlinkFd, tracker.v4ifIndex);
+    if (rv) {
+        ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
+              strerror(-rv));
+        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
+        if (rv < 0) {
+            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
+                  strerror(-rv));
+        }
+        ret = mClatEgressMap.deleteValue(txKey);
+        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        ret = mClatIngressMap.deleteValue(rxKey);
+        if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+        return;
+    }
+
     rv = tcFilterAddDevIngressBpf(mNetlinkFd, tracker.ifIndex, rxProgFd, isEthernet);
     if (rv) {
         if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
@@ -360,6 +376,11 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
         if (rv) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
+                  strerror(-rv));
+        }
+        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.v4ifIndex);
+        if (rv) {
+            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
                   strerror(-rv));
         }
         ret = mClatEgressMap.deleteValue(txKey);
@@ -387,12 +408,19 @@ void ClatdController::maybeSetIptablesDropRule(bool add, const char* pfx96Str, c
 void ClatdController::maybeStopBpf(const ClatdTracker& tracker) {
     if (mClatEbpfMode == ClatEbpfDisabled) return;
 
-    // No need to remove filter, since we remove qdisc it is attached to,
+    // No need to remove filters, since we remove qdiscs they are attached to,
     // which automatically removes everything attached to the qdisc.
     int rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
-    if (rv < 0)
+    if (rv < 0) {
         ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
               strerror(-rv));
+    }
+
+    rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.v4ifIndex);
+    if (rv < 0) {
+        ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
+              strerror(-rv));
+    }
 
     // We cleanup the maps last, so scanning through them can be used to
     // determine what still needs cleanup.
