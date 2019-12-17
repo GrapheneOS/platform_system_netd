@@ -62,6 +62,17 @@ int hardwareAddressType(const std::string& interface) {
     return ifr.ifr_hwaddr.sa_family;
 }
 
+int getClatEgressMapFd(void) {
+    const int fd = bpf::bpfFdGet(CLAT_EGRESS_MAP_PATH, 0);
+    return (fd == -1) ? -errno : fd;
+}
+
+int getClatEgressProgFd(bool with_ethernet_header) {
+    const int fd = bpf::bpfFdGet(
+            with_ethernet_header ? CLAT_EGRESS_PROG_ETHER_PATH : CLAT_EGRESS_PROG_RAWIP_PATH, 0);
+    return (fd == -1) ? -errno : fd;
+}
+
 int getClatIngressMapFd(void) {
     const int fd = bpf::bpfFdGet(CLAT_INGRESS_MAP_PATH, 0);
     return (fd == -1) ? -errno : fd;
@@ -144,7 +155,7 @@ int processNetlinkResponse(int fd) {
 // ADD:     nlMsgType=RTM_NEWQDISC nlMsgFlags=NLM_F_EXCL|NLM_F_CREATE
 // REPLACE: nlMsgType=RTM_NEWQDISC nlMsgFlags=NLM_F_CREATE|NLM_F_REPLACE
 // DEL:     nlMsgType=RTM_DELQDISC nlMsgFlags=0
-int doTcQdiscClsact(int fd, int ifIndex, __u16 nlMsgType, __u16 nlMsgFlags) {
+static int doTcQdiscClsact(int fd, int ifIndex, __u16 nlMsgType, __u16 nlMsgFlags) {
     // This is the name of the qdisc we are attaching.
     // Some hoop jumping to make this compile time constant with known size,
     // so that the structure declaration is well defined at compile time.
@@ -206,11 +217,13 @@ int tcQdiscDelDevClsact(int fd, int ifIndex) {
     return doTcQdiscClsact(fd, ifIndex, RTM_DELQDISC, 0);
 }
 
-// tc filter add dev .. ingress prio 1 protocol ipv6 bpf object-pinned /sys/fs/bpf/... direct-action
-int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
+// tc filter add dev .. in/egress prio 1 protocol ipv6/ip bpf object-pinned /sys/fs/bpf/...
+// direct-action
+static int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool ingress,
+                             bool ipv6) {
     // The priority doesn't matter until we actually start attaching multiple
-    // things to the same interface's ingress point.
-    const int prio = 1;
+    // things to the same interface's in/egress point.
+    const __u32 prio = 1;
 
     // This is the name of the filter we're attaching (ie. this is the 'bpf'
     // packet classifier enabled by kernel config option CONFIG_NET_CLS_BPF.
@@ -229,27 +242,50 @@ int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
 
     // This macro expands (from header files) to:
     //   prog_clatd_schedcls_ingress_clat_rawip:[*fsobj]
-    // and is the name of the pinned ebpf program for ARPHRD_RAWIP interfaces.
+    // and is the name of the pinned ingress ebpf program for ARPHRD_RAWIP interfaces.
     // (also compatible with anything that has 0 size L2 header)
-#define NAME_RAWIP CLAT_INGRESS_PROG_RAWIP_NAME FSOBJ_SUFFIX
-    const char name_rawip[] = NAME_RAWIP;
+#define NAME_RX_RAWIP CLAT_INGRESS_PROG_RAWIP_NAME FSOBJ_SUFFIX
+    const char name_rx_rawip[] = NAME_RX_RAWIP;
 
     // This macro expands (from header files) to:
     //   prog_clatd_schedcls_ingress_clat_ether:[*fsobj]
-    // and is the name of the pinned ebpf program for ARPHRD_ETHER interfaces.
+    // and is the name of the pinned ingress ebpf program for ARPHRD_ETHER interfaces.
     // (also compatible with anything that has standard ethernet header)
-#define NAME_ETHER CLAT_INGRESS_PROG_ETHER_NAME FSOBJ_SUFFIX
-    const char name_ether[] = NAME_ETHER;
+#define NAME_RX_ETHER CLAT_INGRESS_PROG_ETHER_NAME FSOBJ_SUFFIX
+    const char name_rx_ether[] = NAME_RX_ETHER;
 
-    // The actual name we'll use is determined at run time via 'ethernet'
-    // boolean.  We need to compile time allocate enough space in the struct
+    // This macro expands (from header files) to:
+    //   prog_clatd_schedcls_egress_clat_rawip:[*fsobj]
+    // and is the name of the pinned egress ebpf program for ARPHRD_RAWIP interfaces.
+    // (also compatible with anything that has 0 size L2 header)
+#define NAME_TX_RAWIP CLAT_EGRESS_PROG_RAWIP_NAME FSOBJ_SUFFIX
+    const char name_tx_rawip[] = NAME_TX_RAWIP;
+
+    // This macro expands (from header files) to:
+    //   prog_clatd_schedcls_egress_clat_ether:[*fsobj]
+    // and is the name of the pinned egress ebpf program for ARPHRD_ETHER interfaces.
+    // (also compatible with anything that has standard ethernet header)
+#define NAME_TX_ETHER CLAT_EGRESS_PROG_ETHER_NAME FSOBJ_SUFFIX
+    const char name_tx_ether[] = NAME_TX_ETHER;
+
+    // The actual name we'll use is determined at run time via 'ethernet' and 'ingress'
+    // booleans.  We need to compile time allocate enough space in the struct
     // hence this macro magic to make sure we have enough space for either
-    // possibility.  In practice both are actually the same size.
-#define ASCIIZ_MAXLEN_NAME \
-    ((sizeof(name_rawip) > sizeof(name_ether)) ? sizeof(name_rawip) : sizeof(name_ether))
+    // possibility.  In practice some of these are actually the same size.
+#define ASCIIZ_MAXLEN_NAME_RX                                                \
+    ((sizeof(name_rx_rawip) > sizeof(name_rx_ether)) ? sizeof(name_rx_rawip) \
+                                                     : sizeof(name_rx_ether))
+#define ASCIIZ_MAXLEN_NAME_TX                                                \
+    ((sizeof(name_tx_rawip) > sizeof(name_tx_ether)) ? sizeof(name_tx_rawip) \
+                                                     : sizeof(name_tx_ether))
+#define ASCIIZ_MAXLEN_NAME                                                   \
+    ((ASCIIZ_MAXLEN_NAME_RX > ASCIIZ_MAXLEN_NAME_TX) ? ASCIIZ_MAXLEN_NAME_RX \
+                                                     : ASCIIZ_MAXLEN_NAME_TX)
 
-    // This is not a compile time constant and is used in strcpy below
-#define NAME (ethernet ? NAME_ETHER : NAME_RAWIP)
+    // These are not compile time constants: NAME is used in strncpy below
+#define NAME_RX (ethernet ? NAME_RX_ETHER : NAME_RX_RAWIP)
+#define NAME_TX (ethernet ? NAME_TX_ETHER : NAME_TX_RAWIP)
+#define NAME (ingress ? NAME_RX : NAME_TX)
 
     struct {
         nlmsghdr n;
@@ -285,8 +321,10 @@ int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
                             .tcm_family = AF_UNSPEC,
                             .tcm_ifindex = ifIndex,
                             .tcm_handle = TC_H_UNSPEC,
-                            .tcm_parent = TC_H_MAKE(TC_H_CLSACT, TC_H_MIN_INGRESS),
-                            .tcm_info = (prio << 16) | htons(ETH_P_IPV6),
+                            .tcm_parent = TC_H_MAKE(TC_H_CLSACT,
+                                                    ingress ? TC_H_MIN_INGRESS : TC_H_MIN_EGRESS),
+                            .tcm_info = (prio << 16) |
+                                        (__u32)(ipv6 ? htons(ETH_P_IPV6) : htons(ETH_P_IP)),
                     },
             .kind =
                     {
@@ -321,7 +359,7 @@ int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
                                                             .nla_type = TCA_BPF_NAME,
                                                     },
                                             // Visible via 'tc filter show', but
-                                            // is overwritten by strcpy below
+                                            // is overwritten by strncpy below
                                             .str = "placeholder",
                                     },
                             .flags =
@@ -339,10 +377,16 @@ int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
     strncpy(req.options.name.str, NAME, sizeof(req.options.name.str));
 
 #undef NAME
+#undef NAME_TX
+#undef NAME_RX
 #undef ASCIIZ_MAXLEN_NAME
-#undef NAME_ETHER
-#undef NAME_RAWIP
-#undef NAME
+#undef ASCIIZ_MAXLEN_NAME_TX
+#undef ASCIIZ_MAXLEN_NAME_RX
+#undef NAME_TX_ETHER
+#undef NAME_TX_RAWIP
+#undef NAME_RX_ETHER
+#undef NAME_RX_RAWIP
+#undef FSOBJ_SUFFIX
 #undef ASCIIZ_LEN_BPF
 #undef BPF
 
@@ -351,6 +395,16 @@ int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
     if (rv != sizeof(req)) return -EMSGSIZE;
 
     return processNetlinkResponse(fd);
+}
+
+// tc filter add dev .. ingress prio 1 protocol ipv6 bpf object-pinned /sys/fs/bpf/... direct-action
+int tcFilterAddDevIngressBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
+    return tcFilterAddDevBpf(fd, ifIndex, bpfFd, ethernet, /*ingress*/ true, /*ipv6*/ true);
+}
+
+// tc filter add dev .. egress prio 1 protocol ip bpf object-pinned /sys/fs/bpf/... direct-action
+int tcFilterAddDevEgressBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
+    return tcFilterAddDevBpf(fd, ifIndex, bpfFd, ethernet, /*ingress*/ false, /*ipv6*/ false);
 }
 
 }  // namespace net

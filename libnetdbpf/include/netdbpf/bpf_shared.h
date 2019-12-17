@@ -133,4 +133,23 @@ typedef struct {
     struct in_addr local4;  // The destination IPv4 address
 } ClatIngressValue;
 
+#define CLAT_EGRESS_PROG_RAWIP_NAME "prog_clatd_schedcls_egress_clat_rawip"
+#define CLAT_EGRESS_PROG_ETHER_NAME "prog_clatd_schedcls_egress_clat_ether"
+
+#define CLAT_EGRESS_PROG_RAWIP_PATH BPF_PATH "/" CLAT_EGRESS_PROG_RAWIP_NAME
+#define CLAT_EGRESS_PROG_ETHER_PATH BPF_PATH "/" CLAT_EGRESS_PROG_ETHER_NAME
+
+#define CLAT_EGRESS_MAP_PATH BPF_PATH "/map_clatd_clat_egress_map"
+
+typedef struct {
+    uint32_t iif;           // The input interface index
+    struct in_addr local4;  // The source IPv4 address
+} ClatEgressKey;
+
+typedef struct {
+    uint32_t oif;            // The output interface to redirect to
+    struct in6_addr local6;  // The full 128-bits of the source IPv6 address
+    struct in6_addr pfx96;   // The destination /96 nat64 prefix, bottom 32 bits must be 0
+} ClatEgressValue;
+
 #endif  // NETDBPF_BPF_SHARED_H

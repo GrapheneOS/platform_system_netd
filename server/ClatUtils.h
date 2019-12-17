@@ -24,6 +24,10 @@ namespace net {
 
 int hardwareAddressType(const std::string& interface);
 
+int getClatEgressMapFd(void);
+
+int getClatEgressProgFd(bool with_ethernet_header);
+
 int getClatIngressMapFd(void);
 
 int getClatIngressProgFd(bool with_ethernet_header);
@@ -36,7 +40,8 @@ int tcQdiscAddDevClsact(int fd, int ifIndex);
 int tcQdiscReplaceDevClsact(int fd, int ifIndex);
 int tcQdiscDelDevClsact(int fd, int ifIndex);
 
-int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
+int tcFilterAddDevIngressBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
+int tcFilterAddDevEgressBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
 
 }  // namespace net
 }  // namespace android
