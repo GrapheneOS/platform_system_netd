@@ -191,7 +191,115 @@ int sched_cls_egress_clat_ether(struct __sk_buff* skb) {
 
 SEC("schedcls/egress/clat_rawip")
 int sched_cls_egress_clat_rawip(struct __sk_buff* skb) {
-    return TC_ACT_OK;
+    void* data = (void*)(long)skb->data;
+    const void* data_end = (void*)(long)skb->data_end;
+    const struct iphdr* const ip4 = data;
+
+    // Must be meta-ethernet IPv4 frame
+    if (skb->protocol != htons(ETH_P_IP)) return TC_ACT_OK;
+
+    // Must have ipv4 header
+    if (data + sizeof(*ip4) > data_end) return TC_ACT_OK;
+
+    // IP version must be 4
+    if (ip4->version != 4) return TC_ACT_OK;
+
+    // We cannot handle IP options, just standard 20 byte == 5 dword minimal IPv4 header
+    if (ip4->ihl != 5) return TC_ACT_OK;
+
+    // Calculate the IPv4 one's complement checksum of the IPv4 header.
+    __wsum sum4 = 0;
+    for (int i = 0; i < sizeof(*ip4) / sizeof(__u16); ++i) {
+        sum4 += ((__u16*)ip4)[i];
+    }
+    // Note that sum4 is guaranteed to be non-zero by virtue of ip4->version == 4
+    sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse u32 into range 1 .. 0x1FFFE
+    sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse any potential carry into u16
+    // for a correct checksum we should get *a* zero, but sum4 must be positive, ie 0xFFFF
+    if (sum4 != 0xFFFF) return TC_ACT_OK;
+
+    // Minimum IPv4 total length is the size of the header
+    if (ntohs(ip4->tot_len) < sizeof(*ip4)) return TC_ACT_OK;
+
+    // We are incapable of dealing with IPv4 fragments
+    if (ip4->frag_off & ~htons(IP_DF)) return TC_ACT_OK;
+
+    switch (ip4->protocol) {
+        case IPPROTO_TCP:  // For TCP & UDP the checksum neutrality of the chosen IPv6
+        case IPPROTO_UDP:  // address means there is no need to update their checksums.
+        case IPPROTO_GRE:  // We do not need to bother looking at GRE/ESP headers,
+        case IPPROTO_ESP:  // since there is never a checksum to update.
+            break;
+
+        default:  // do not know how to handle anything else
+            return TC_ACT_OK;
+    }
+
+    ClatEgressKey k = {
+            .iif = skb->ifindex,
+            .local4.s_addr = ip4->saddr,
+    };
+
+    ClatEgressValue* v = bpf_clat_egress_map_lookup_elem(&k);
+
+    if (!v) return TC_ACT_OK;
+
+    // Translating without redirecting doesn't make sense.
+    if (!v->oif) return TC_ACT_OK;
+
+    // This implementation is currently limited to rawip.
+    if (v->oifIsEthernet) return TC_ACT_OK;
+
+    struct ipv6hdr ip6 = {
+            .version = 6,                                    // __u8:4
+            .priority = ip4->tos >> 4,                       // __u8:4
+            .flow_lbl = {(ip4->tos & 0xF) << 4, 0, 0},       // __u8[3]
+            .payload_len = htons(ntohs(ip4->tot_len) - 20),  // __be16
+            .nexthdr = ip4->protocol,                        // __u8
+            .hop_limit = ip4->ttl,                           // __u8
+            .saddr = v->local6,                              // struct in6_addr
+            .daddr = v->pfx96,                               // struct in6_addr
+    };
+    ip6.daddr.in6_u.u6_addr32[3] = ip4->daddr;
+
+    // Calculate the IPv6 16-bit one's complement checksum of the IPv6 header.
+    __wsum sum6 = 0;
+    // We'll end up with a non-zero sum due to ip6.version == 6
+    for (int i = 0; i < sizeof(ip6) / sizeof(__u16); ++i) {
+        sum6 += ((__u16*)&ip6)[i];
+    }
+
+    // Note that there is no L4 checksum update: we are relying on the checksum neutrality
+    // of the ipv6 address chosen by netd's ClatdController.
+
+    // Packet mutations begin - point of no return, but if this first modification fails
+    // the packet is probably still pristine, so let clatd handle it.
+    if (bpf_skb_change_proto(skb, htons(ETH_P_IPV6), 0)) return TC_ACT_OK;
+
+    // This takes care of updating the skb->csum field for a CHECKSUM_COMPLETE packet.
+    //
+    // In such a case, skb->csum is a 16-bit one's complement sum of the entire payload,
+    // thus we need to subtract out the ipv4 header's sum, and add in the ipv6 header's sum.
+    // However, we've already verified the ipv4 checksum is correct and thus 0.
+    // Thus we only need to add the ipv6 header's sum.
+    //
+    // bpf_csum_update() always succeeds if the skb is CHECKSUM_COMPLETE and returns an error
+    // (-ENOTSUPP) if it isn't.  So we just ignore the return code (see above for more details).
+    bpf_csum_update(skb, sum6);
+
+    // bpf_skb_change_proto() invalidates all pointers - reload them.
+    data = (void*)(long)skb->data;
+    data_end = (void*)(long)skb->data_end;
+
+    // I cannot think of any valid way for this error condition to trigger, however I do
+    // believe the explicit check is required to keep the in kernel ebpf verifier happy.
+    if (data + sizeof(ip6) > data_end) return TC_ACT_SHOT;
+
+    // Copy over the new ipv6 header without an ethernet header.
+    *(struct ipv6hdr*)data = ip6;
+
+    // Redirect to non v4-* interface.  Tcpdump only sees packet after this redirect.
+    return bpf_redirect(v->oif, 0 /* this is effectively BPF_F_EGRESS */);
 }
 
 char _license[] SEC("license") = "Apache 2.0";
