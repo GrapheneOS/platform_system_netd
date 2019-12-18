@@ -150,6 +150,7 @@ typedef struct {
     uint32_t oif;            // The output interface to redirect to
     struct in6_addr local6;  // The full 128-bits of the source IPv6 address
     struct in6_addr pfx96;   // The destination /96 nat64 prefix, bottom 32 bits must be 0
+    bool oifIsEthernet;      // Whether the output interface requires ethernet header
 } ClatEgressValue;
 
 #endif  // NETDBPF_BPF_SHARED_H

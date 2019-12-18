@@ -307,6 +307,7 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             .oif = tracker.ifIndex,
             .local6 = tracker.v6,
             .pfx96 = tracker.pfx96,
+            .oifIsEthernet = isEthernet,
     };
 
     auto ret = mClatEgressMap.writeValue(txKey, txValue, BPF_ANY);
@@ -681,8 +682,8 @@ void ClatdController::dumpEgress(DumpWriter& dw) {
         inet_ntop(AF_INET6, &value.pfx96, pfx96Str, sizeof(pfx96Str));
         if_indextoname(value.oif, oifStr);
 
-        dw.println("%u(%s) %s -> %s %s/96 %u(%s)", key.iif, iifStr, local4Str, local6Str, pfx96Str,
-                   value.oif, oifStr);
+        dw.println("%u(%s) %s -> %s %s/96 %u(%s) %s", key.iif, iifStr, local4Str, local6Str,
+                   pfx96Str, value.oif, oifStr, value.oifIsEthernet ? "ether" : "rawip");
         return netdutils::status::ok;
     };
     auto res = configMap.iterateWithValue(printClatMap);
