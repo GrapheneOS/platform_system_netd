@@ -70,6 +70,38 @@ using android::netdutils::ScopedIndent;
 namespace android {
 namespace net {
 
+void ClatdController::resetEgressMap() {
+    int netlinkFd = mNetlinkFd.get();
+
+    const auto del = [&netlinkFd](const ClatEgressKey& key,
+                                  const BpfMap<ClatEgressKey, ClatEgressValue>&) {
+        ALOGW("Removing stale clat config on interface %d.", key.iif);
+        int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
+        if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
+        return netdutils::status::ok;  // keep on going regardless
+    };
+    auto ret = mClatEgressMap.iterate(del);
+    if (!isOk(ret)) ALOGE("mClatEgressMap.iterate() failure: %s", strerror(ret.code()));
+    ret = mClatEgressMap.clear();
+    if (!isOk(ret)) ALOGE("mClatEgressMap.clear() failure: %s", strerror(ret.code()));
+}
+
+void ClatdController::resetIngressMap() {
+    int netlinkFd = mNetlinkFd.get();
+
+    const auto del = [&netlinkFd](const ClatIngressKey& key,
+                                  const BpfMap<ClatIngressKey, ClatIngressValue>&) {
+        ALOGW("Removing stale clat config on interface %d.", key.iif);
+        int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
+        if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
+        return netdutils::status::ok;  // keep on going regardless
+    };
+    auto ret = mClatIngressMap.iterate(del);
+    if (!isOk(ret)) ALOGE("mClatIngressMap.iterate() failure: %s", strerror(ret.code()));
+    ret = mClatIngressMap.clear();
+    if (!isOk(ret)) ALOGE("mClatIngressMap.clear() failure: %s", strerror(ret.code()));
+}
+
 void ClatdController::init(void) {
     std::lock_guard guard(mutex);
 
@@ -107,29 +139,27 @@ void ClatdController::init(void) {
     }
     mNetlinkFd.reset(rv);
 
+    rv = getClatEgressMapFd();
+    if (rv < 0) {
+        ALOGE("getClatEgressMapFd() failure: %s", strerror(-rv));
+        mClatEbpfMode = ClatEbpfDisabled;
+        mNetlinkFd.reset(-1);
+        return;
+    }
+    mClatEgressMap.reset(rv);
+
     rv = getClatIngressMapFd();
     if (rv < 0) {
         ALOGE("getClatIngressMapFd() failure: %s", strerror(-rv));
         mClatEbpfMode = ClatEbpfDisabled;
+        mClatEgressMap.reset(-1);
         mNetlinkFd.reset(-1);
         return;
     }
     mClatIngressMap.reset(rv);
 
-    int netlinkFd = mNetlinkFd.get();
-
-    // TODO: perhaps this initial cleanup should be in its own function?
-    const auto del = [&netlinkFd](const ClatIngressKey& key,
-                                  const BpfMap<ClatIngressKey, ClatIngressValue>&) {
-        ALOGW("Removing stale clat config on interface %d.", key.iif);
-        int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
-        if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
-        return netdutils::status::ok;  // keep on going regardless
-    };
-    auto ret = mClatIngressMap.iterate(del);
-    if (!isOk(ret)) ALOGE("mClatIngressMap.iterate() failure: %s", strerror(ret.code()));
-    ret = mClatIngressMap.clear();
-    if (!isOk(ret)) ALOGE("mClatIngressMap.clear() failure: %s", strerror(ret.code()));
+    resetEgressMap();
+    resetIngressMap();
 }
 
 bool ClatdController::isIpv4AddressFree(in_addr_t addr) {
@@ -267,38 +297,74 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         ALOGE("getClatIngressProgFd(%d) failure: %s", isEthernet, strerror(-rv));
         return;
     }
-    unique_fd progFd(rv);
+    unique_fd rxProgFd(rv);
 
-    ClatIngressKey key = {
+    ClatEgressKey txKey = {
+            .iif = tracker.v4ifIndex,
+            .local4 = tracker.v4,
+    };
+    ClatEgressValue txValue = {
+            .oif = tracker.ifIndex,
+            .local6 = tracker.v6,
+            .pfx96 = tracker.pfx96,
+    };
+
+    auto ret = mClatEgressMap.writeValue(txKey, txValue, BPF_ANY);
+    if (!isOk(ret)) {
+        ALOGE("mClatEgress.Map.writeValue failure: %s", strerror(ret.code()));
+        return;
+    }
+
+    ClatIngressKey rxKey = {
             .iif = tracker.ifIndex,
             .pfx96 = tracker.pfx96,
             .local6 = tracker.v6,
     };
-    ClatIngressValue value = {
+    ClatIngressValue rxValue = {
             // TODO: move all the clat code to eBPF and remove the tun interface entirely.
             .oif = tracker.v4ifIndex,
             .local4 = tracker.v4,
     };
 
-    auto ret = mClatIngressMap.writeValue(key, value, BPF_ANY);
+    ret = mClatIngressMap.writeValue(rxKey, rxValue, BPF_ANY);
     if (!isOk(ret)) {
         ALOGE("mClatIngress.Map.writeValue failure: %s", strerror(ret.code()));
+        ret = mClatEgressMap.deleteValue(txKey);
+        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
         return;
     }
 
-    // We do tc setup *after* populating map, so scanning through map
+    // We do tc setup *after* populating the maps, so scanning through them
     // can always be used to tell us what needs cleanup.
 
     rv = tcQdiscAddDevClsact(mNetlinkFd, tracker.ifIndex);
     if (rv) {
         ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
               strerror(-rv));
-        ret = mClatIngressMap.deleteValue(key);
+        ret = mClatEgressMap.deleteValue(txKey);
+        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        ret = mClatIngressMap.deleteValue(rxKey);
         if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
         return;
     }
 
-    rv = tcFilterAddDevIngressBpf(mNetlinkFd, tracker.ifIndex, progFd, isEthernet);
+    rv = tcQdiscAddDevClsact(mNetlinkFd, tracker.v4ifIndex);
+    if (rv) {
+        ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
+              strerror(-rv));
+        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
+        if (rv < 0) {
+            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
+                  strerror(-rv));
+        }
+        ret = mClatEgressMap.deleteValue(txKey);
+        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        ret = mClatIngressMap.deleteValue(rxKey);
+        if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+        return;
+    }
+
+    rv = tcFilterAddDevIngressBpf(mNetlinkFd, tracker.ifIndex, rxProgFd, isEthernet);
     if (rv) {
         if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
             ALOGI("tcFilterAddDevIngressBpf(%d[%s], %d): %s", tracker.ifIndex, tracker.iface,
@@ -308,10 +374,18 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
                   tracker.iface, isEthernet, strerror(-rv));
         }
         rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
-        if (rv)
+        if (rv) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
                   strerror(-rv));
-        ret = mClatIngressMap.deleteValue(key);
+        }
+        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.v4ifIndex);
+        if (rv) {
+            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
+                  strerror(-rv));
+        }
+        ret = mClatEgressMap.deleteValue(txKey);
+        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        ret = mClatIngressMap.deleteValue(rxKey);
         if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
         return;
     }
@@ -334,23 +408,38 @@ void ClatdController::maybeSetIptablesDropRule(bool add, const char* pfx96Str, c
 void ClatdController::maybeStopBpf(const ClatdTracker& tracker) {
     if (mClatEbpfMode == ClatEbpfDisabled) return;
 
-    // No need to remove filter, since we remove qdisc it is attached to,
+    // No need to remove filters, since we remove qdiscs they are attached to,
     // which automatically removes everything attached to the qdisc.
     int rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
-    if (rv < 0)
+    if (rv < 0) {
         ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
               strerror(-rv));
+    }
 
-    // We cleanup map last, so scanning through map can be used to
+    rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.v4ifIndex);
+    if (rv < 0) {
+        ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
+              strerror(-rv));
+    }
+
+    // We cleanup the maps last, so scanning through them can be used to
     // determine what still needs cleanup.
 
-    ClatIngressKey key = {
+    ClatEgressKey txKey = {
+            .iif = tracker.v4ifIndex,
+            .local4 = tracker.v4,
+    };
+
+    auto ret = mClatEgressMap.deleteValue(txKey);
+    if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+
+    ClatIngressKey rxKey = {
             .iif = tracker.ifIndex,
             .pfx96 = tracker.pfx96,
             .local6 = tracker.v6,
     };
 
-    auto ret = mClatIngressMap.deleteValue(key);
+    ret = mClatIngressMap.deleteValue(rxKey);
     if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
 }
 
@@ -569,25 +658,40 @@ int ClatdController::stopClatd(const std::string& interface) {
     return 0;
 }
 
-void ClatdController::dump(DumpWriter& dw) {
-    std::lock_guard guard(mutex);
+void ClatdController::dumpEgress(DumpWriter& dw) {
+    int mapFd = getClatEgressMapFd();
+    if (mapFd < 0) return;  // if unsupported just don't dump anything
+    BpfMap<ClatEgressKey, ClatEgressValue> configMap(mapFd);
 
-    ScopedIndent clatdIndent(dw);
-    dw.println("ClatdController");
+    ScopedIndent bpfIndent(dw);
+    dw.println("BPF egress map: iif(iface) v4Addr -> v6Addr nat64Prefix oif(iface)");
 
-    {
-        ScopedIndent trackerIndent(dw);
-        dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr v4iif[v4iface] [netId]");
+    ScopedIndent bpfDetailIndent(dw);
+    const auto printClatMap = [&dw](const ClatEgressKey& key, const ClatEgressValue& value,
+                                    const BpfMap<ClatEgressKey, ClatEgressValue>&) {
+        char iifStr[IFNAMSIZ] = "?";
+        char local4Str[INET_ADDRSTRLEN] = "?";
+        char local6Str[INET6_ADDRSTRLEN] = "?";
+        char pfx96Str[INET6_ADDRSTRLEN] = "?";
+        char oifStr[IFNAMSIZ] = "?";
 
-        ScopedIndent trackerDetailIndent(dw);
-        for (const auto& pair : mClatdTrackers) {
-            const ClatdTracker& tracker = pair.second;
-            dw.println("%u[%s] %s/96 %s -> %s %u[%s] [%u]", tracker.ifIndex, tracker.iface,
-                       tracker.pfx96String, tracker.v6Str, tracker.v4Str, tracker.v4ifIndex,
-                       tracker.v4iface, tracker.netId);
-        }
+        if_indextoname(key.iif, iifStr);
+        inet_ntop(AF_INET, &key.local4, local4Str, sizeof(local4Str));
+        inet_ntop(AF_INET6, &value.local6, local6Str, sizeof(local6Str));
+        inet_ntop(AF_INET6, &value.pfx96, pfx96Str, sizeof(pfx96Str));
+        if_indextoname(value.oif, oifStr);
+
+        dw.println("%u(%s) %s -> %s %s/96 %u(%s)", key.iif, iifStr, local4Str, local6Str, pfx96Str,
+                   value.oif, oifStr);
+        return netdutils::status::ok;
+    };
+    auto res = configMap.iterateWithValue(printClatMap);
+    if (!isOk(res)) {
+        dw.println("Error printing BPF map: %s", res.msg().c_str());
     }
+}
 
+void ClatdController::dumpIngress(DumpWriter& dw) {
     int mapFd = getClatIngressMapFd();
     if (mapFd < 0) return;  // if unsupported just don't dump anything
     BpfMap<ClatIngressKey, ClatIngressValue> configMap(mapFd);
@@ -618,6 +722,30 @@ void ClatdController::dump(DumpWriter& dw) {
     if (!isOk(res)) {
         dw.println("Error printing BPF map: %s", res.msg().c_str());
     }
+}
+
+void ClatdController::dumpTrackers(DumpWriter& dw) {
+    ScopedIndent trackerIndent(dw);
+    dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr v4iif[v4iface] [netId]");
+
+    ScopedIndent trackerDetailIndent(dw);
+    for (const auto& pair : mClatdTrackers) {
+        const ClatdTracker& tracker = pair.second;
+        dw.println("%u[%s] %s/96 %s -> %s %u[%s] [%u]", tracker.ifIndex, tracker.iface,
+                   tracker.pfx96String, tracker.v6Str, tracker.v4Str, tracker.v4ifIndex,
+                   tracker.v4iface, tracker.netId);
+    }
+}
+
+void ClatdController::dump(DumpWriter& dw) {
+    std::lock_guard guard(mutex);
+
+    ScopedIndent clatdIndent(dw);
+    dw.println("ClatdController");
+
+    dumpTrackers(dw);
+    dumpIngress(dw);
+    dumpEgress(dw);
 }
 
 auto ClatdController::isIpv4AddressFreeFunc = isIpv4AddressFree;
