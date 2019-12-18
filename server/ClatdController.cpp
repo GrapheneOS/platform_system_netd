@@ -292,6 +292,14 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             return;
     }
 
+    // This program will be attached to the v4-* interface which is a TUN and thus always rawip.
+    rv = getClatEgressProgFd(false);
+    if (rv < 0) {
+        ALOGE("getClatEgressProgFd(false) failure: %s", strerror(-rv));
+        return;
+    }
+    unique_fd txRawIpProgFd(rv);
+
     rv = getClatIngressProgFd(isEthernet);
     if (rv < 0) {
         ALOGE("getClatIngressProgFd(%d) failure: %s", isEthernet, strerror(-rv));
@@ -356,6 +364,32 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
         if (rv < 0) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
+                  strerror(-rv));
+        }
+        ret = mClatEgressMap.deleteValue(txKey);
+        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        ret = mClatIngressMap.deleteValue(rxKey);
+        if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+        return;
+    }
+
+    rv = tcFilterAddDevEgressBpf(mNetlinkFd, tracker.v4ifIndex, txRawIpProgFd, false);
+    if (rv) {
+        if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
+            ALOGI("tcFilterAddDevEgressBpf(%d[%s], false): %s", tracker.v4ifIndex, tracker.v4iface,
+                  strerror(-rv));
+        } else {
+            ALOGE("tcFilterAddDevEgressBpf(%d[%s], false) failure: %s", tracker.v4ifIndex,
+                  tracker.v4iface, strerror(-rv));
+        }
+        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
+        if (rv) {
+            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
+                  strerror(-rv));
+        }
+        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.v4ifIndex);
+        if (rv) {
+            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
                   strerror(-rv));
         }
         ret = mClatEgressMap.deleteValue(txKey);
