@@ -38,6 +38,7 @@
 #include <openssl/base64.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/utsname.h>
 
 #include <android-base/file.h>
 #include <android-base/macros.h>
@@ -1354,6 +1355,11 @@ void expectIpfwdRuleNotExists(const char* fromIf, const char* toIf) {
 }  // namespace
 
 TEST_F(BinderTest, TestIpfwdEnableDisableStatusForwarding) {
+    // Disable test on 5.x kernels.
+    utsname u;
+    uname(&u);
+    if (u.release[0] == '5') return;
+
     // Get ipfwd requester list from Netd
     std::vector<std::string> requesterList;
     binder::Status status = mNetd->ipfwdGetRequesterList(&requesterList);
@@ -2913,6 +2919,11 @@ TEST_F(BinderTest, UnsolEvents) {
 }
 
 TEST_F(BinderTest, NDC) {
+    // Disable test on 5.x kernels.
+    utsname u;
+    uname(&u);
+    if (u.release[0] == '5') return;
+
     struct Command {
         const std::string cmdString;
         const std::string expectedResult;
