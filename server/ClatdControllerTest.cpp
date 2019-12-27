@@ -70,9 +70,9 @@ class ClatdControllerTest : public IptablesBaseTest {
   protected:
     ClatdController mClatdCtrl;
     bool isEbpfDisabled() { return mClatdCtrl.getEbpfMode() == ClatdController::ClatEbpfDisabled; }
-    void setIptablesDropRule(bool a, const char* b, const char* c) {
+    void setIptablesDropRule(bool a, const char* b, const char* c, const char* d) {
         std::lock_guard guard(mClatdCtrl.mutex);
-        return mClatdCtrl.setIptablesDropRule(a, b, c);
+        return mClatdCtrl.setIptablesDropRule(a, b, c, d);
     }
     void setIpv4AddressFreeFunc(bool (*func)(in_addr_t)) {
         ClatdController::isIpv4AddressFreeFunc = func;
@@ -188,20 +188,20 @@ TEST_F(ClatdControllerTest, MakeChecksumNeutral) {
 }
 
 TEST_F(ClatdControllerTest, AddIptablesRule) {
-    setIptablesDropRule(true, "64:ff9b::", "2001:db8::1:2:3:4");
+    setIptablesDropRule(true, "wlan0", "64:ff9b::", "2001:db8::1:2:3:4");
     expectIptablesRestoreCommands((ExpectedIptablesCommands){
             {V6,
              "*raw\n"
-             "-A clat_raw_PREROUTING -s 64:ff9b::/96 -d 2001:db8::1:2:3:4 -j DROP\n"
+             "-A clat_raw_PREROUTING -i wlan0 -s 64:ff9b::/96 -d 2001:db8::1:2:3:4 -j DROP\n"
              "COMMIT\n"}});
 }
 
 TEST_F(ClatdControllerTest, RemoveIptablesRule) {
-    setIptablesDropRule(false, "64:ff9b::", "2001:db8::a:b:c:d");
+    setIptablesDropRule(false, "wlan0", "64:ff9b::", "2001:db8::a:b:c:d");
     expectIptablesRestoreCommands((ExpectedIptablesCommands){
             {V6,
              "*raw\n"
-             "-D clat_raw_PREROUTING -s 64:ff9b::/96 -d 2001:db8::a:b:c:d -j DROP\n"
+             "-D clat_raw_PREROUTING -i wlan0 -s 64:ff9b::/96 -d 2001:db8::a:b:c:d -j DROP\n"
              "COMMIT\n"}});
 }
 
