@@ -111,7 +111,8 @@ class ClatdController {
 
     void maybeStartBpf(const ClatdTracker& tracker) REQUIRES(mutex);
     void maybeStopBpf(const ClatdTracker& tracker) REQUIRES(mutex);
-    void setIptablesDropRule(bool add, const char* pfx96Str, const char* v6Str) REQUIRES(mutex);
+    void setIptablesDropRule(bool add, const char* iface, const char* pfx96Str, const char* v6Str)
+            REQUIRES(mutex);
 
     // For testing.
     friend class ClatdControllerTest;
