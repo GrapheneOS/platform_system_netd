@@ -428,14 +428,13 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
     // success
 }
 
-void ClatdController::maybeSetIptablesDropRule(bool add, const char* pfx96Str, const char* v6Str) {
-    if (mClatEbpfMode == ClatEbpfDisabled) return;
-
+void ClatdController::setIptablesDropRule(bool add, const char* iface, const char* pfx96Str,
+                                          const char* v6Str) {
     std::string cmd = StringPrintf(
             "*raw\n"
-            "%s %s -s %s/96 -d %s -j DROP\n"
+            "%s %s -i %s -s %s/96 -d %s -j DROP\n"
             "COMMIT\n",
-            (add ? "-A" : "-D"), LOCAL_RAW_PREROUTING, pfx96Str, v6Str);
+            (add ? "-A" : "-D"), LOCAL_RAW_PREROUTING, iface, pfx96Str, v6Str);
 
     iptablesRestoreFunction(V6, cmd);
 }
@@ -649,8 +648,8 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
         return -res;
     }
 
-    // 11. If necessary, add the drop rule for iptables.
-    maybeSetIptablesDropRule(true, tracker.pfx96String, tracker.v6Str);
+    // 11. add the drop rule for iptables.
+    setIptablesDropRule(true, tracker.iface, tracker.pfx96String, tracker.v6Str);
 
     // 12. actually perform vfork/dup2/execve
     res = posix_spawn(&tracker.pid, kClatdPath, &fa, &attr, (char* const*)args, nullptr);
@@ -685,7 +684,7 @@ int ClatdController::stopClatd(const std::string& interface) {
     kill(tracker->pid, SIGTERM);
     waitpid(tracker->pid, nullptr, 0);
 
-    maybeSetIptablesDropRule(false, tracker->pfx96String, tracker->v6Str);
+    setIptablesDropRule(false, tracker->iface, tracker->pfx96String, tracker->v6Str);
     mClatdTrackers.erase(interface);
 
     ALOGD("clatd on %s stopped", interface.c_str());
