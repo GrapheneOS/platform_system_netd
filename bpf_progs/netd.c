@@ -28,29 +28,6 @@
 #include "bpf_net_helpers.h"
 #include "netdbpf/bpf_shared.h"
 
-typedef struct {
-    uint32_t uid;
-    uint32_t tag;
-} uid_tag;
-
-typedef struct {
-    uint32_t uid;
-    uint32_t tag;
-    uint32_t counterSet;
-    uint32_t ifaceIndex;
-} stats_key;
-
-typedef struct {
-    uint64_t rxPackets;
-    uint64_t rxBytes;
-    uint64_t txPackets;
-    uint64_t txBytes;
-} stats_value;
-
-typedef struct {
-    char name[IFNAMSIZ];
-} IfaceValue;
-
 // This is defined for cgroup bpf filter only.
 #define BPF_PASS 1
 #define BPF_DROP 0
@@ -68,12 +45,12 @@ typedef struct {
 #define TCP_FLAG_OFF 13
 #define RST_OFFSET 2
 
-DEFINE_BPF_MAP(cookie_tag_map, HASH, uint64_t, uid_tag, COOKIE_UID_MAP_SIZE)
+DEFINE_BPF_MAP(cookie_tag_map, HASH, uint64_t, UidTagValue, COOKIE_UID_MAP_SIZE)
 DEFINE_BPF_MAP(uid_counterset_map, HASH, uint32_t, uint8_t, UID_COUNTERSET_MAP_SIZE)
-DEFINE_BPF_MAP(app_uid_stats_map, HASH, uint32_t, stats_value, APP_STATS_MAP_SIZE)
-DEFINE_BPF_MAP(stats_map_A, HASH, stats_key, stats_value, STATS_MAP_SIZE)
-DEFINE_BPF_MAP(stats_map_B, HASH, stats_key, stats_value, STATS_MAP_SIZE)
-DEFINE_BPF_MAP(iface_stats_map, HASH, uint32_t, stats_value, IFACE_STATS_MAP_SIZE)
+DEFINE_BPF_MAP(app_uid_stats_map, HASH, uint32_t, StatsValue, APP_STATS_MAP_SIZE)
+DEFINE_BPF_MAP(stats_map_A, HASH, StatsKey, StatsValue, STATS_MAP_SIZE)
+DEFINE_BPF_MAP(stats_map_B, HASH, StatsKey, StatsValue, STATS_MAP_SIZE)
+DEFINE_BPF_MAP(iface_stats_map, HASH, uint32_t, StatsValue, IFACE_STATS_MAP_SIZE)
 DEFINE_BPF_MAP(configuration_map, HASH, uint32_t, uint8_t, CONFIGURATION_MAP_SIZE)
 DEFINE_BPF_MAP(uid_owner_map, HASH, uint32_t, UidOwnerValue, UID_OWNER_MAP_SIZE)
 
@@ -88,10 +65,10 @@ static __always_inline int is_system_uid(uint32_t uid) {
 #define DEFINE_UPDATE_STATS(the_stats_map, TypeOfKey)                                          \
     static __always_inline inline void update_##the_stats_map(struct __sk_buff* skb,           \
                                                               int direction, TypeOfKey* key) { \
-        stats_value* value;                                                                    \
+        StatsValue* value;                                                                     \
         value = bpf_##the_stats_map##_lookup_elem(key);                                        \
         if (!value) {                                                                          \
-            stats_value newValue = {};                                                         \
+            StatsValue newValue = {};                                                          \
             bpf_##the_stats_map##_update_elem(key, &newValue, BPF_NOEXIST);                    \
             value = bpf_##the_stats_map##_lookup_elem(key);                                    \
         }                                                                                      \
@@ -108,8 +85,8 @@ static __always_inline int is_system_uid(uint32_t uid) {
 
 DEFINE_UPDATE_STATS(app_uid_stats_map, uint32_t)
 DEFINE_UPDATE_STATS(iface_stats_map, uint32_t)
-DEFINE_UPDATE_STATS(stats_map_A, stats_key)
-DEFINE_UPDATE_STATS(stats_map_B, stats_key)
+DEFINE_UPDATE_STATS(stats_map_A, StatsKey)
+DEFINE_UPDATE_STATS(stats_map_B, StatsKey)
 
 static inline bool skip_owner_match(struct __sk_buff* skb) {
     int offset = -1;
@@ -192,7 +169,7 @@ static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid, int direc
 }
 
 static __always_inline inline void update_stats_with_config(struct __sk_buff* skb, int direction,
-                                                            stats_key* key, uint8_t selectedMap) {
+                                                            StatsKey* key, uint8_t selectedMap) {
     if (selectedMap == SELECT_MAP_A) {
         update_stats_map_A(skb, direction, key);
     } else if (selectedMap == SELECT_MAP_B) {
@@ -210,7 +187,7 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
     }
 
     uint64_t cookie = bpf_get_socket_cookie(skb);
-    uid_tag* utag = bpf_cookie_tag_map_lookup_elem(&cookie);
+    UidTagValue* utag = bpf_cookie_tag_map_lookup_elem(&cookie);
     uint32_t uid, tag;
     if (utag) {
         uid = utag->uid;
@@ -220,7 +197,7 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
         tag = 0;
     }
 
-    stats_key key = {.uid = uid, .tag = tag, .counterSet = 0, .ifaceIndex = skb->ifindex};
+    StatsKey key = {.uid = uid, .tag = tag, .counterSet = 0, .ifaceIndex = skb->ifindex};
 
     uint8_t* counterSet = bpf_uid_counterset_map_lookup_elem(&uid);
     if (counterSet) key.counterSet = (uint32_t)*counterSet;

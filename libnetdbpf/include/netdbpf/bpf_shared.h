@@ -20,8 +20,40 @@
 #include <linux/in.h>
 #include <linux/in6.h>
 #include <netdutils/UidConstants.h>
-// const values shared by bpf kernel program bpfloader and netd
 
+// This header file is shared by eBPF kernel programs and netd
+
+typedef struct {
+    uint32_t uid;
+    uint32_t tag;
+} UidTagValue;
+
+typedef struct {
+    uint32_t uid;
+    uint32_t tag;
+    uint32_t counterSet;
+    uint32_t ifaceIndex;
+} StatsKey;
+
+typedef struct {
+    uint64_t rxPackets;
+    uint64_t rxBytes;
+    uint64_t txPackets;
+    uint64_t txBytes;
+} StatsValue;
+
+typedef struct {
+    char name[IFNAMSIZ];
+} IfaceValue;
+
+typedef struct {
+    uint64_t rxBytes;
+    uint64_t rxPackets;
+    uint64_t txBytes;
+    uint64_t txPackets;
+    uint64_t tcpRxPackets;
+    uint64_t tcpTxPackets;
+} Stats;
 
 // Since we cannot garbage collect the stats map since device boot, we need to make these maps as
 // large as possible. The maximum size of number of map entries we can have is depend on the rlimit
