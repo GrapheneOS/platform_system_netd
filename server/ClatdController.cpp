@@ -61,6 +61,7 @@ static const char* kV4AddrString = "192.0.0.4";
 static const in_addr kV4Addr = {inet_addr(kV4AddrString)};
 static const int kV4AddrLen = 29;
 
+using android::base::Result;
 using android::base::StringPrintf;
 using android::base::unique_fd;
 using android::bpf::BpfMap;
@@ -78,12 +79,12 @@ void ClatdController::resetEgressMap() {
         ALOGW("Removing stale clat config on interface %d.", key.iif);
         int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
         if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
-        return netdutils::status::ok;  // keep on going regardless
+        return Result<void>();  // keep on going regardless
     };
     auto ret = mClatEgressMap.iterate(del);
-    if (!isOk(ret)) ALOGE("mClatEgressMap.iterate() failure: %s", strerror(ret.code()));
+    if (!ret) ALOGE("mClatEgressMap.iterate() failure: %s", strerror(ret.error().code()));
     ret = mClatEgressMap.clear();
-    if (!isOk(ret)) ALOGE("mClatEgressMap.clear() failure: %s", strerror(ret.code()));
+    if (!ret) ALOGE("mClatEgressMap.clear() failure: %s", strerror(ret.error().code()));
 }
 
 void ClatdController::resetIngressMap() {
@@ -94,12 +95,12 @@ void ClatdController::resetIngressMap() {
         ALOGW("Removing stale clat config on interface %d.", key.iif);
         int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
         if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
-        return netdutils::status::ok;  // keep on going regardless
+        return Result<void>();  // keep on going regardless
     };
     auto ret = mClatIngressMap.iterate(del);
-    if (!isOk(ret)) ALOGE("mClatIngressMap.iterate() failure: %s", strerror(ret.code()));
+    if (!ret) ALOGE("mClatIngressMap.iterate() failure: %s", strerror(ret.error().code()));
     ret = mClatIngressMap.clear();
-    if (!isOk(ret)) ALOGE("mClatIngressMap.clear() failure: %s", strerror(ret.code()));
+    if (!ret) ALOGE("mClatIngressMap.clear() failure: %s", strerror(ret.error().code()));
 }
 
 void ClatdController::init(void) {
@@ -319,8 +320,8 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
     };
 
     auto ret = mClatEgressMap.writeValue(txKey, txValue, BPF_ANY);
-    if (!isOk(ret)) {
-        ALOGE("mClatEgress.Map.writeValue failure: %s", strerror(ret.code()));
+    if (!ret) {
+        ALOGE("mClatEgress.Map.writeValue failure: %s", strerror(ret.error().code()));
         return;
     }
 
@@ -336,10 +337,10 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
     };
 
     ret = mClatIngressMap.writeValue(rxKey, rxValue, BPF_ANY);
-    if (!isOk(ret)) {
-        ALOGE("mClatIngress.Map.writeValue failure: %s", strerror(ret.code()));
+    if (!ret) {
+        ALOGE("mClatIngress.Map.writeValue failure: %s", strerror(ret.error().code()));
         ret = mClatEgressMap.deleteValue(txKey);
-        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        if (!ret) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
         return;
     }
 
@@ -351,9 +352,9 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
               strerror(-rv));
         ret = mClatEgressMap.deleteValue(txKey);
-        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        if (!ret) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
         ret = mClatIngressMap.deleteValue(rxKey);
-        if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+        if (!ret) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.error().code()));
         return;
     }
 
@@ -367,9 +368,9 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
                   strerror(-rv));
         }
         ret = mClatEgressMap.deleteValue(txKey);
-        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        if (!ret) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
         ret = mClatIngressMap.deleteValue(rxKey);
-        if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+        if (!ret) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.error().code()));
         return;
     }
 
@@ -393,9 +394,9 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
                   strerror(-rv));
         }
         ret = mClatEgressMap.deleteValue(txKey);
-        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        if (!ret) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
         ret = mClatIngressMap.deleteValue(rxKey);
-        if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+        if (!ret) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.error().code()));
         return;
     }
 
@@ -419,9 +420,9 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
                   strerror(-rv));
         }
         ret = mClatEgressMap.deleteValue(txKey);
-        if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+        if (!ret) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
         ret = mClatIngressMap.deleteValue(rxKey);
-        if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+        if (!ret) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.error().code()));
         return;
     }
 
@@ -465,7 +466,7 @@ void ClatdController::maybeStopBpf(const ClatdTracker& tracker) {
     };
 
     auto ret = mClatEgressMap.deleteValue(txKey);
-    if (!isOk(ret)) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.code()));
+    if (!ret) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
 
     ClatIngressKey rxKey = {
             .iif = tracker.ifIndex,
@@ -474,7 +475,7 @@ void ClatdController::maybeStopBpf(const ClatdTracker& tracker) {
     };
 
     ret = mClatIngressMap.deleteValue(rxKey);
-    if (!isOk(ret)) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.code()));
+    if (!ret) ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.error().code()));
 }
 
 // Finds the tracker of the clatd running on interface |interface|, or nullptr if clatd has not been
@@ -717,11 +718,11 @@ void ClatdController::dumpEgress(DumpWriter& dw) {
 
         dw.println("%u(%s) %s -> %s %s/96 %u(%s) %s", key.iif, iifStr, local4Str, local6Str,
                    pfx96Str, value.oif, oifStr, value.oifIsEthernet ? "ether" : "rawip");
-        return netdutils::status::ok;
+        return Result<void>();
     };
     auto res = configMap.iterateWithValue(printClatMap);
-    if (!isOk(res)) {
-        dw.println("Error printing BPF map: %s", res.msg().c_str());
+    if (!res) {
+        dw.println("Error printing BPF map: %s", res.error().message().c_str());
     }
 }
 
@@ -750,11 +751,11 @@ void ClatdController::dumpIngress(DumpWriter& dw) {
 
         dw.println("%u(%s) %s/96 %s -> %s %u(%s)", key.iif, iifStr, pfx96Str, local6Str, local4Str,
                    value.oif, oifStr);
-        return netdutils::status::ok;
+        return Result<void>();
     };
     auto res = configMap.iterateWithValue(printClatMap);
-    if (!isOk(res)) {
-        dw.println("Error printing BPF map: %s", res.msg().c_str());
+    if (!res) {
+        dw.println("Error printing BPF map: %s", res.error().message().c_str());
     }
 }
 

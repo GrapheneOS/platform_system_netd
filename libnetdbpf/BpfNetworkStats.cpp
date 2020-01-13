@@ -38,7 +38,7 @@
 namespace android {
 namespace bpf {
 
-using netdutils::Status;
+using base::Result;
 
 // The target map for stats reading should be the inactive map, which is oppsite
 // from the config value.
@@ -49,13 +49,13 @@ static constexpr uint32_t BPF_OPEN_FLAGS = BPF_F_RDONLY;
 int bpfGetUidStatsInternal(uid_t uid, Stats* stats,
                            const BpfMap<uint32_t, StatsValue>& appUidStatsMap) {
     auto statsEntry = appUidStatsMap.readValue(uid);
-    if (isOk(statsEntry)) {
+    if (statsEntry) {
         stats->rxPackets = statsEntry.value().rxPackets;
         stats->txPackets = statsEntry.value().txPackets;
         stats->rxBytes = statsEntry.value().rxBytes;
         stats->txBytes = statsEntry.value().txBytes;
     }
-    return statsEntry.status().code() == ENOENT ? 0 : -statsEntry.status().code();
+    return (statsEntry || statsEntry.error().code() == ENOENT) ? 0 : -statsEntry.error().code();
 }
 
 int bpfGetUidStats(uid_t uid, Stats* stats) {
@@ -76,25 +76,29 @@ int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
     int64_t unknownIfaceBytesTotal = 0;
     stats->tcpRxPackets = -1;
     stats->tcpTxPackets = -1;
-    const auto processIfaceStats = [iface, stats, &ifaceNameMap, &unknownIfaceBytesTotal]
-                                   (const uint32_t& key,
-                                    const BpfMap<uint32_t, StatsValue>& ifaceStatsMap) {
+    const auto processIfaceStats =
+            [iface, stats, &ifaceNameMap, &unknownIfaceBytesTotal](
+                    const uint32_t& key,
+                    const BpfMap<uint32_t, StatsValue>& ifaceStatsMap) -> Result<void> {
         char ifname[IFNAMSIZ];
         if (getIfaceNameFromMap(ifaceNameMap, ifaceStatsMap, key, ifname, key,
                                 &unknownIfaceBytesTotal)) {
-            return netdutils::status::ok;
+            return Result<void>();
         }
         if (!iface || !strcmp(iface, ifname)) {
-            StatsValue statsEntry;
-            ASSIGN_OR_RETURN(statsEntry, ifaceStatsMap.readValue(key));
-            stats->rxPackets += statsEntry.rxPackets;
-            stats->txPackets += statsEntry.txPackets;
-            stats->rxBytes += statsEntry.rxBytes;
-            stats->txBytes += statsEntry.txBytes;
+            Result<StatsValue> statsEntry = ifaceStatsMap.readValue(key);
+            if (!statsEntry) {
+                return statsEntry.error();
+            }
+            stats->rxPackets += statsEntry.value().rxPackets;
+            stats->txPackets += statsEntry.value().txPackets;
+            stats->rxBytes += statsEntry.value().rxBytes;
+            stats->txBytes += statsEntry.value().txBytes;
         }
-        return netdutils::status::ok;
+        return Result<void>();
     };
-    return -ifaceStatsMap.iterate(processIfaceStats).code();
+    auto res = ifaceStatsMap.iterate(processIfaceStats);
+    return res ? 0 : -res.error().code();
 }
 
 int bpfGetIfaceStats(const char* iface, Stats* stats) {
@@ -134,37 +138,39 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
                                        int limitUid, const BpfMap<StatsKey, StatsValue>& statsMap,
                                        const BpfMap<uint32_t, IfaceValue>& ifaceMap) {
     int64_t unknownIfaceBytesTotal = 0;
-    const auto processDetailUidStats = [lines, &limitIfaces, &limitTag, &limitUid,
-                                        &unknownIfaceBytesTotal,
-                                        &ifaceMap](const StatsKey& key,
-                                                   const BpfMap<StatsKey, StatsValue>& statsMap) {
+    const auto processDetailUidStats =
+            [lines, &limitIfaces, &limitTag, &limitUid, &unknownIfaceBytesTotal, &ifaceMap](
+                    const StatsKey& key,
+                    const BpfMap<StatsKey, StatsValue>& statsMap) -> Result<void> {
         char ifname[IFNAMSIZ];
         if (getIfaceNameFromMap(ifaceMap, statsMap, key.ifaceIndex, ifname, key,
                                 &unknownIfaceBytesTotal)) {
-            return netdutils::status::ok;
+            return Result<void>();
         }
         std::string ifnameStr(ifname);
         if (limitIfaces.size() > 0 &&
             std::find(limitIfaces.begin(), limitIfaces.end(), ifnameStr) == limitIfaces.end()) {
             // Nothing matched; skip this line.
-            return netdutils::status::ok;
+            return Result<void>();
         }
         if (limitTag != TAG_ALL && uint32_t(limitTag) != key.tag) {
-            return netdutils::status::ok;
+            return Result<void>();
         }
         if (limitUid != UID_ALL && uint32_t(limitUid) != key.uid) {
-            return netdutils::status::ok;
+            return Result<void>();
         }
-        StatsValue statsEntry;
-        ASSIGN_OR_RETURN(statsEntry, statsMap.readValue(key));
-        lines->push_back(populateStatsEntry(key, statsEntry, ifname));
-        return netdutils::status::ok;
+        Result<StatsValue> statsEntry = statsMap.readValue(key);
+        if (!statsEntry) {
+            return base::ResultError(statsEntry.error().message(), statsEntry.error().code());
+        }
+        lines->push_back(populateStatsEntry(key, statsEntry.value(), ifname));
+        return Result<void>();
     };
-    Status res = statsMap.iterate(processDetailUidStats);
-    if (!isOk(res)) {
+    Result<void> res = statsMap.iterate(processDetailUidStats);
+    if (!res) {
         ALOGE("failed to iterate per uid Stats map for detail traffic stats: %s",
-              strerror(res.code()));
-        return -res.code();
+              strerror(res.error().code()));
+        return -res.error().code();
     }
 
     // Since eBPF use hash map to record stats, network stats collected from
@@ -198,10 +204,10 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
         return ret;
     }
     auto configuration = configurationMap.readValue(CURRENT_STATS_MAP_CONFIGURATION_KEY);
-    if (!isOk(configuration)) {
+    if (!configuration) {
         ALOGE("Cannot read the old configuration from map: %s",
-              configuration.status().msg().c_str());
-        return -configuration.status().code();
+              configuration.error().message().c_str());
+        return -configuration.error().code();
     }
     const char* statsMapPath = STATS_MAP_PATH[configuration.value()];
     BpfMap<StatsKey, StatsValue> statsMap(mapRetrieve(statsMapPath, 0));
@@ -220,10 +226,10 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
         return ret;
     }
 
-    Status res = statsMap.clear();
-    if (!isOk(res)) {
-        ALOGE("Clean up current stats map failed: %s", strerror(res.code()));
-        return -res.code();
+    Result<void> res = statsMap.clear();
+    if (!res) {
+        ALOGE("Clean up current stats map failed: %s", strerror(res.error().code()));
+        return -res.error().code();
     }
 
     return 0;
@@ -238,7 +244,7 @@ int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
                                              const BpfMap<uint32_t, StatsValue>&) {
         char ifname[IFNAMSIZ];
         if (getIfaceNameFromMap(ifaceMap, statsMap, key, ifname, key, &unknownIfaceBytesTotal)) {
-            return netdutils::status::ok;
+            return Result<void>();
         }
         StatsKey fakeKey = {
                 .uid = (uint32_t)UID_ALL,
@@ -246,13 +252,13 @@ int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
                 .counterSet = (uint32_t)SET_ALL,
         };
         lines->push_back(populateStatsEntry(fakeKey, value, ifname));
-        return netdutils::status::ok;
+        return Result<void>();
     };
-    Status res = statsMap.iterateWithValue(processDetailIfaceStats);
-    if (!isOk(res)) {
+    Result<void> res = statsMap.iterateWithValue(processDetailIfaceStats);
+    if (!res) {
         ALOGE("failed to iterate per uid Stats map for detail traffic stats: %s",
-              strerror(res.code()));
-        return -res.code();
+              strerror(res.error().code()));
+        return -res.error().code();
     }
 
     groupNetworkStats(lines);
