@@ -32,9 +32,9 @@
 
 #include "log/log.h"
 
-#include <android-base/properties.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
+#include <libbpf_android.h>
 #include <netdutils/Stopwatch.h>
 
 #include "Controllers.h"
@@ -119,10 +119,7 @@ int main() {
     }
 
     // Make sure BPF programs are loaded before doing anything
-    while (!android::base::WaitForProperty("bpf.progs_loaded", "1",
-           std::chrono::seconds(5))) {
-        ALOGD("netd waited 5s for bpf.progs_loaded, still waiting...");
-    }
+    android::bpf::waitForProgsLoaded();
 
     NetlinkManager *nm = NetlinkManager::Instance();
     if (nm == nullptr) {
