@@ -70,7 +70,7 @@ constexpr uint32_t UNKNOWN_IFACE = 0;
 class BpfNetworkStatsHelperTest : public testing::Test {
   protected:
     BpfNetworkStatsHelperTest() {}
-    BpfMap<uint64_t, UidTag> mFakeCookieTagMap;
+    BpfMap<uint64_t, UidTagValue> mFakeCookieTagMap;
     BpfMap<uint32_t, StatsValue> mFakeAppUidStatsMap;
     BpfMap<StatsKey, StatsValue> mFakeStatsMap;
     BpfMap<uint32_t, IfaceValue> mFakeIfaceIndexNameMap;
@@ -80,17 +80,16 @@ class BpfNetworkStatsHelperTest : public testing::Test {
         SKIP_IF_BPF_NOT_SUPPORTED;
         ASSERT_EQ(0, setrlimitForTest());
 
-        mFakeCookieTagMap = BpfMap<uint64_t, UidTag>(createMap(
-            BPF_MAP_TYPE_HASH, sizeof(uint64_t), sizeof(struct UidTag), TEST_MAP_SIZE, 0));
+        mFakeCookieTagMap = BpfMap<uint64_t, UidTagValue>(createMap(
+                BPF_MAP_TYPE_HASH, sizeof(uint64_t), sizeof(UidTagValue), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakeCookieTagMap.getMap());
 
         mFakeAppUidStatsMap = BpfMap<uint32_t, StatsValue>(createMap(
-            BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
+                BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(StatsValue), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakeAppUidStatsMap.getMap());
 
-        mFakeStatsMap = BpfMap<StatsKey, StatsValue>(
-                createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey), sizeof(struct StatsValue),
-                          TEST_MAP_SIZE, 0));
+        mFakeStatsMap = BpfMap<StatsKey, StatsValue>(createMap(
+                BPF_MAP_TYPE_HASH, sizeof(StatsKey), sizeof(StatsValue), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakeStatsMap.getMap());
 
         mFakeIfaceIndexNameMap = BpfMap<uint32_t, IfaceValue>(
@@ -98,7 +97,7 @@ class BpfNetworkStatsHelperTest : public testing::Test {
         ASSERT_LE(0, mFakeIfaceIndexNameMap.getMap());
 
         mFakeIfaceStatsMap = BpfMap<uint32_t, StatsValue>(createMap(
-            BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
+                BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(StatsValue), TEST_MAP_SIZE, 0));
         ASSERT_LE(0, mFakeIfaceStatsMap.getMap());
     }
 
@@ -149,7 +148,7 @@ TEST_F(BpfNetworkStatsHelperTest, TestIterateMapWithDeletion) {
 
     for (int i = 0; i < 5; i++) {
         uint64_t cookie = i + 1;
-        struct UidTag tag = {.uid = TEST_UID1, .tag = TEST_TAG};
+        UidTagValue tag = {.uid = TEST_UID1, .tag = TEST_TAG};
         EXPECT_TRUE(isOk(mFakeCookieTagMap.writeValue(cookie, tag, BPF_ANY)));
     }
     uint64_t curCookie = 0;
@@ -180,18 +179,18 @@ TEST_F(BpfNetworkStatsHelperTest, TestBpfIterateMap) {
 
     for (int i = 0; i < 5; i++) {
         uint64_t cookie = i + 1;
-        struct UidTag tag = {.uid = TEST_UID1, .tag = TEST_TAG};
+        UidTagValue tag = {.uid = TEST_UID1, .tag = TEST_TAG};
         EXPECT_TRUE(isOk(mFakeCookieTagMap.writeValue(cookie, tag, BPF_ANY)));
     }
     int totalCount = 0;
     int totalSum = 0;
-    const auto iterateWithoutDeletion = [&totalCount, &totalSum](const uint64_t& key,
-                                                                 const BpfMap<uint64_t, UidTag>&) {
-        EXPECT_GE((uint64_t)5, key);
-        totalCount++;
-        totalSum += key;
-        return netdutils::status::ok;
-    };
+    const auto iterateWithoutDeletion =
+            [&totalCount, &totalSum](const uint64_t& key, const BpfMap<uint64_t, UidTagValue>&) {
+                EXPECT_GE((uint64_t)5, key);
+                totalCount++;
+                totalSum += key;
+                return netdutils::status::ok;
+            };
     EXPECT_TRUE(isOk(mFakeCookieTagMap.iterate(iterateWithoutDeletion)));
     EXPECT_EQ(5, totalCount);
     EXPECT_EQ(1 + 2 + 3 + 4 + 5, totalSum);

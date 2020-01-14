@@ -368,7 +368,7 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
 
     uint64_t sock_cookie = getSocketCookie(sockFd);
     if (sock_cookie == NONEXISTENT_COOKIE) return -errno;
-    UidTag newKey = {.uid = (uint32_t)uid, .tag = tag};
+    UidTagValue newKey = {.uid = (uint32_t)uid, .tag = tag};
 
     uint32_t totalEntryCount = 0;
     uint32_t perUidEntryCount = 0;
@@ -487,8 +487,9 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid, uid_t callingUid) 
 
     // First we go through the cookieTagMap to delete the target uid tag combination. Or delete all
     // the tags related to the uid if the tag is 0.
-    const auto deleteMatchedCookieEntries = [uid, tag](const uint64_t& key, const UidTag& value,
-                                                       BpfMap<uint64_t, UidTag>& map) {
+    const auto deleteMatchedCookieEntries = [uid, tag](const uint64_t& key,
+                                                       const UidTagValue& value,
+                                                       BpfMap<uint64_t, UidTagValue>& map) {
         if (value.uid == uid && (value.tag == tag || tag == 0)) {
             Status res = map.deleteValue(key);
             if (isOk(res) || (res.code() == ENOENT)) {
@@ -991,8 +992,8 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
 
     // Print CookieTagMap content.
     dumpBpfMap("mCookieTagMap", dw, "");
-    const auto printCookieTagInfo = [&dw](const uint64_t& key, const UidTag& value,
-                                          const BpfMap<uint64_t, UidTag>&) {
+    const auto printCookieTagInfo = [&dw](const uint64_t& key, const UidTagValue& value,
+                                          const BpfMap<uint64_t, UidTagValue>&) {
         dw.println("cookie=%" PRIu64 " tag=0x%x uid=%u", key, value.tag, value.uid);
         return netdutils::status::ok;
     };
