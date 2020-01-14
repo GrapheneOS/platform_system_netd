@@ -100,14 +100,14 @@ TEST_F(BpfBasicTest, TestSocketFilterSetUp) {
 TEST_F(BpfBasicTest, TestTagSocket) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    BpfMap<uint64_t, UidTag> cookieTagMap(mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
+    BpfMap<uint64_t, UidTagValue> cookieTagMap(mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
     ASSERT_LE(0, cookieTagMap.getMap());
     int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
     ASSERT_LE(0, sock);
     uint64_t cookie = getSocketCookie(sock);
     ASSERT_NE(NONEXISTENT_COOKIE, cookie);
     ASSERT_EQ(0, qtaguid_tagSocket(sock, TEST_TAG, TEST_UID));
-    StatusOr<UidTag> tagResult = cookieTagMap.readValue(cookie);
+    StatusOr<UidTagValue> tagResult = cookieTagMap.readValue(cookie);
     ASSERT_TRUE(isOk(tagResult));
     ASSERT_EQ(TEST_UID, tagResult.value().uid);
     ASSERT_EQ(TEST_TAG, tagResult.value().tag);
@@ -120,14 +120,14 @@ TEST_F(BpfBasicTest, TestTagSocket) {
 TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    BpfMap<uint64_t, UidTag> cookieTagMap(mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
+    BpfMap<uint64_t, UidTagValue> cookieTagMap(mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
     ASSERT_LE(0, cookieTagMap.getMap());
     int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
     ASSERT_LE(0, sock);
     uint64_t cookie = getSocketCookie(sock);
     ASSERT_NE(NONEXISTENT_COOKIE, cookie);
     ASSERT_EQ(0, qtaguid_tagSocket(sock, TEST_TAG, TEST_UID));
-    StatusOr<UidTag> tagResult = cookieTagMap.readValue(cookie);
+    StatusOr<UidTagValue> tagResult = cookieTagMap.readValue(cookie);
     ASSERT_TRUE(isOk(tagResult));
     ASSERT_EQ(TEST_UID, tagResult.value().uid);
     ASSERT_EQ(TEST_TAG, tagResult.value().tag);
