@@ -65,7 +65,7 @@ class TrafficControllerTest : public ::testing::Test {
     TrafficControllerTest()
         : mTc(TEST_PER_UID_STATS_ENTRIES_LIMIT, TEST_TOTAL_UID_STATS_ENTRIES_LIMIT) {}
     TrafficController mTc;
-    BpfMap<uint64_t, UidTag> mFakeCookieTagMap;
+    BpfMap<uint64_t, UidTagValue> mFakeCookieTagMap;
     BpfMap<uint32_t, uint8_t> mFakeUidCounterSetMap;
     BpfMap<uint32_t, StatsValue> mFakeAppUidStatsMap;
     BpfMap<StatsKey, StatsValue> mFakeStatsMapA;
@@ -78,20 +78,20 @@ class TrafficControllerTest : public ::testing::Test {
         SKIP_IF_BPF_NOT_SUPPORTED;
         ASSERT_EQ(0, setrlimitForTest());
 
-        mFakeCookieTagMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(uint64_t),
-                                          sizeof(struct UidTag), TEST_MAP_SIZE, 0));
+        mFakeCookieTagMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(uint64_t), sizeof(UidTagValue),
+                                          TEST_MAP_SIZE, 0));
         ASSERT_VALID(mFakeCookieTagMap);
 
         mFakeUidCounterSetMap.reset(
             createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(uint8_t), TEST_MAP_SIZE, 0));
         ASSERT_VALID(mFakeUidCounterSetMap);
 
-        mFakeAppUidStatsMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t),
-                                            sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
+        mFakeAppUidStatsMap.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(StatsValue),
+                                            TEST_MAP_SIZE, 0));
         ASSERT_VALID(mFakeAppUidStatsMap);
 
-        mFakeStatsMapA.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(struct StatsKey),
-                                       sizeof(struct StatsValue), TEST_MAP_SIZE, 0));
+        mFakeStatsMapA.reset(createMap(BPF_MAP_TYPE_HASH, sizeof(StatsKey), sizeof(StatsValue),
+                                       TEST_MAP_SIZE, 0));
         ASSERT_VALID(mFakeStatsMapA);
 
         mFakeConfigurationMap.reset(
@@ -141,7 +141,7 @@ class TrafficControllerTest : public ::testing::Test {
     }
 
     void expectUidTag(uint64_t cookie, uid_t uid, uint32_t tag) {
-        StatusOr<UidTag> tagResult = mFakeCookieTagMap.readValue(cookie);
+        StatusOr<UidTagValue> tagResult = mFakeCookieTagMap.readValue(cookie);
         EXPECT_TRUE(isOk(tagResult));
         EXPECT_EQ(uid, tagResult.value().uid);
         EXPECT_EQ(tag, tagResult.value().tag);
@@ -150,7 +150,7 @@ class TrafficControllerTest : public ::testing::Test {
     void expectNoTag(uint64_t cookie) { EXPECT_FALSE(isOk(mFakeCookieTagMap.readValue(cookie))); }
 
     void populateFakeStats(uint64_t cookie, uint32_t uid, uint32_t tag, StatsKey* key) {
-        UidTag cookieMapkey = {.uid = (uint32_t)uid, .tag = tag};
+        UidTagValue cookieMapkey = {.uid = (uint32_t)uid, .tag = tag};
         EXPECT_TRUE(isOk(mFakeCookieTagMap.writeValue(cookie, cookieMapkey, BPF_ANY)));
         *key = {.uid = uid, .tag = tag, .counterSet = TEST_COUNTERSET, .ifaceIndex = 1};
         StatsValue statsMapValue = {.rxPackets = 1, .rxBytes = 100};
@@ -277,7 +277,7 @@ class TrafficControllerTest : public ::testing::Test {
 
     void expectFakeStatsUnchanged(uint64_t cookie, uint32_t tag, uint32_t uid,
                                   StatsKey tagStatsMapKey) {
-        StatusOr<UidTag> cookieMapResult = mFakeCookieTagMap.readValue(cookie);
+        StatusOr<UidTagValue> cookieMapResult = mFakeCookieTagMap.readValue(cookie);
         EXPECT_TRUE(isOk(cookieMapResult));
         EXPECT_EQ(uid, cookieMapResult.value().uid);
         EXPECT_EQ(tag, cookieMapResult.value().tag);
@@ -545,7 +545,7 @@ TEST_F(TrafficControllerTest, TestDeleteDataWithTwoTags) {
     populateFakeStats(cookie2, uid, tag2, &tagStatsMapKey2);
     ASSERT_EQ(0, mTc.deleteTagData(TEST_TAG, TEST_UID, callingUid));
     ASSERT_FALSE(isOk(mFakeCookieTagMap.readValue(cookie1)));
-    StatusOr<UidTag> cookieMapResult = mFakeCookieTagMap.readValue(cookie2);
+    StatusOr<UidTagValue> cookieMapResult = mFakeCookieTagMap.readValue(cookie2);
     ASSERT_TRUE(isOk(cookieMapResult));
     ASSERT_EQ(TEST_UID, cookieMapResult.value().uid);
     ASSERT_EQ(TEST_TAG + 1, cookieMapResult.value().tag);
