@@ -64,7 +64,7 @@ using android::netdutils::statusFromErrno;
 class NetlinkListenerTest : public testing::Test {
   protected:
     NetlinkListenerTest() {}
-    BpfMap<uint64_t, UidTag> mCookieTagMap;
+    BpfMap<uint64_t, UidTagValue> mCookieTagMap;
 
     void SetUp() {
         SKIP_IF_BPF_NOT_SUPPORTED;
@@ -76,8 +76,8 @@ class NetlinkListenerTest : public testing::Test {
     void TearDown() {
         SKIP_IF_BPF_NOT_SUPPORTED;
 
-        const auto deleteTestCookieEntries = [](const uint64_t& key, const UidTag& value,
-                                                BpfMap<uint64_t, UidTag>& map) {
+        const auto deleteTestCookieEntries = [](const uint64_t& key, const UidTagValue& value,
+                                                BpfMap<uint64_t, UidTagValue>& map) {
             if ((value.uid == TEST_UID) && (value.tag == TEST_TAG)) {
                 Status res = map.deleteValue(key);
                 if (isOk(res) || (res.code() == ENOENT)) {
@@ -93,8 +93,8 @@ class NetlinkListenerTest : public testing::Test {
     }
 
     Status checkNoGarbageTagsExist() {
-        const auto checkGarbageTags = [](const uint64_t&, const UidTag& value,
-                                         const BpfMap<uint64_t, UidTag>&) {
+        const auto checkGarbageTags = [](const uint64_t&, const UidTagValue& value,
+                                         const BpfMap<uint64_t, UidTagValue>&) {
             if ((TEST_UID == value.uid) && (TEST_TAG == value.tag)) {
                 return statusFromErrno(EUCLEAN, "Closed socket is not untagged");
             }
