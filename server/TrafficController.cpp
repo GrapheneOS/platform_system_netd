@@ -247,7 +247,7 @@ Status TrafficController::initMaps() {
     return netdutils::status::ok;
 }
 
-static Status attachProgramToCgroup(const char* programPath, const int cgroupFd,
+static Status attachProgramToCgroup(const char* programPath, const unique_fd& cgroupFd,
                                     bpf_attach_type type) {
     unique_fd cgroupProg(bpfFdGet(programPath, 0));
     if (cgroupProg == -1) {
