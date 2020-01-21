@@ -80,24 +80,19 @@ class BpfNetworkStatsHelperTest : public testing::Test {
         SKIP_IF_BPF_NOT_SUPPORTED;
         ASSERT_EQ(0, setrlimitForTest());
 
-        mFakeCookieTagMap = BpfMap<uint64_t, UidTagValue>(createMap(
-                BPF_MAP_TYPE_HASH, sizeof(uint64_t), sizeof(UidTagValue), TEST_MAP_SIZE, 0));
+        mFakeCookieTagMap = BpfMap<uint64_t, UidTagValue>(BPF_MAP_TYPE_HASH, TEST_MAP_SIZE, 0);
         ASSERT_LE(0, mFakeCookieTagMap.getMap());
 
-        mFakeAppUidStatsMap = BpfMap<uint32_t, StatsValue>(createMap(
-                BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(StatsValue), TEST_MAP_SIZE, 0));
+        mFakeAppUidStatsMap = BpfMap<uint32_t, StatsValue>(BPF_MAP_TYPE_HASH, TEST_MAP_SIZE, 0);
         ASSERT_LE(0, mFakeAppUidStatsMap.getMap());
 
-        mFakeStatsMap = BpfMap<StatsKey, StatsValue>(createMap(
-                BPF_MAP_TYPE_HASH, sizeof(StatsKey), sizeof(StatsValue), TEST_MAP_SIZE, 0));
+        mFakeStatsMap = BpfMap<StatsKey, StatsValue>(BPF_MAP_TYPE_HASH, TEST_MAP_SIZE, 0);
         ASSERT_LE(0, mFakeStatsMap.getMap());
 
-        mFakeIfaceIndexNameMap = BpfMap<uint32_t, IfaceValue>(
-            createMap(BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(IfaceValue), TEST_MAP_SIZE, 0));
+        mFakeIfaceIndexNameMap = BpfMap<uint32_t, IfaceValue>(BPF_MAP_TYPE_HASH, TEST_MAP_SIZE, 0);
         ASSERT_LE(0, mFakeIfaceIndexNameMap.getMap());
 
-        mFakeIfaceStatsMap = BpfMap<uint32_t, StatsValue>(createMap(
-                BPF_MAP_TYPE_HASH, sizeof(uint32_t), sizeof(StatsValue), TEST_MAP_SIZE, 0));
+        mFakeIfaceStatsMap = BpfMap<uint32_t, StatsValue>(BPF_MAP_TYPE_HASH, TEST_MAP_SIZE, 0);
         ASSERT_LE(0, mFakeIfaceStatsMap.getMap());
     }
 
