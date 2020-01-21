@@ -38,7 +38,7 @@
 #include "bpf/BpfUtils.h"
 #include "netdbpf/bpf_shared.h"
 
-using android::netdutils::StatusOr;
+using android::base::Result;
 
 namespace android {
 namespace bpf {
@@ -107,14 +107,14 @@ TEST_F(BpfBasicTest, TestTagSocket) {
     uint64_t cookie = getSocketCookie(sock);
     ASSERT_NE(NONEXISTENT_COOKIE, cookie);
     ASSERT_EQ(0, qtaguid_tagSocket(sock, TEST_TAG, TEST_UID));
-    StatusOr<UidTagValue> tagResult = cookieTagMap.readValue(cookie);
-    ASSERT_TRUE(isOk(tagResult));
+    Result<UidTagValue> tagResult = cookieTagMap.readValue(cookie);
+    ASSERT_TRUE(tagResult);
     ASSERT_EQ(TEST_UID, tagResult.value().uid);
     ASSERT_EQ(TEST_TAG, tagResult.value().tag);
     ASSERT_EQ(0, qtaguid_untagSocket(sock));
     tagResult = cookieTagMap.readValue(cookie);
-    ASSERT_FALSE(isOk(tagResult));
-    ASSERT_EQ(ENOENT, tagResult.status().code());
+    ASSERT_FALSE(tagResult);
+    ASSERT_EQ(ENOENT, tagResult.error().code());
 }
 
 TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
@@ -127,8 +127,8 @@ TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
     uint64_t cookie = getSocketCookie(sock);
     ASSERT_NE(NONEXISTENT_COOKIE, cookie);
     ASSERT_EQ(0, qtaguid_tagSocket(sock, TEST_TAG, TEST_UID));
-    StatusOr<UidTagValue> tagResult = cookieTagMap.readValue(cookie);
-    ASSERT_TRUE(isOk(tagResult));
+    Result<UidTagValue> tagResult = cookieTagMap.readValue(cookie);
+    ASSERT_TRUE(tagResult);
     ASSERT_EQ(TEST_UID, tagResult.value().uid);
     ASSERT_EQ(TEST_TAG, tagResult.value().tag);
     ASSERT_EQ(0, close(sock));
@@ -136,8 +136,8 @@ TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
     for (int i = 0; i < 10; i++) {
         usleep(5000);  // 5ms
         tagResult = cookieTagMap.readValue(cookie);
-        if (!isOk(tagResult)) {
-            ASSERT_EQ(ENOENT, tagResult.status().code());
+        if (!tagResult) {
+            ASSERT_EQ(ENOENT, tagResult.error().code());
             return;
         }
     }
@@ -151,13 +151,13 @@ TEST_F(BpfBasicTest, TestChangeCounterSet) {
     ASSERT_LE(0, uidCounterSetMap.getMap());
     ASSERT_EQ(0, qtaguid_setCounterSet(TEST_COUNTERSET, TEST_UID));
     uid_t uid = TEST_UID;
-    StatusOr<uint8_t> counterSetResult = uidCounterSetMap.readValue(uid);
-    ASSERT_TRUE(isOk(counterSetResult));
+    Result<uint8_t> counterSetResult = uidCounterSetMap.readValue(uid);
+    ASSERT_TRUE(counterSetResult);
     ASSERT_EQ(TEST_COUNTERSET, counterSetResult.value());
     ASSERT_EQ(0, qtaguid_setCounterSet(DEFAULT_COUNTERSET, TEST_UID));
     counterSetResult = uidCounterSetMap.readValue(uid);
-    ASSERT_FALSE(isOk(counterSetResult));
-    ASSERT_EQ(ENOENT, counterSetResult.status().code());
+    ASSERT_FALSE(counterSetResult);
+    ASSERT_EQ(ENOENT, counterSetResult.error().code());
 }
 
 TEST_F(BpfBasicTest, TestDeleteTagData) {
@@ -173,21 +173,21 @@ TEST_F(BpfBasicTest, TestDeleteTagData) {
     StatsKey key = {.uid = TEST_UID, .tag = TEST_TAG, .counterSet = TEST_COUNTERSET,
                     .ifaceIndex = 1};
     StatsValue statsMapValue = {.rxPackets = 1, .rxBytes = 100};
-    EXPECT_TRUE(isOk(statsMapB.writeValue(key, statsMapValue, BPF_ANY)));
+    EXPECT_TRUE(statsMapB.writeValue(key, statsMapValue, BPF_ANY));
     key.tag = 0;
-    EXPECT_TRUE(isOk(statsMapA.writeValue(key, statsMapValue, BPF_ANY)));
-    EXPECT_TRUE(isOk(appUidStatsMap.writeValue(TEST_UID, statsMapValue, BPF_ANY)));
+    EXPECT_TRUE(statsMapA.writeValue(key, statsMapValue, BPF_ANY));
+    EXPECT_TRUE(appUidStatsMap.writeValue(TEST_UID, statsMapValue, BPF_ANY));
     ASSERT_EQ(0, qtaguid_deleteTagData(0, TEST_UID));
-    StatusOr<StatsValue> statsResult = statsMapA.readValue(key);
-    ASSERT_FALSE(isOk(statsResult));
-    ASSERT_EQ(ENOENT, statsResult.status().code());
+    Result<StatsValue> statsResult = statsMapA.readValue(key);
+    ASSERT_FALSE(statsResult);
+    ASSERT_EQ(ENOENT, statsResult.error().code());
     statsResult = appUidStatsMap.readValue(TEST_UID);
-    ASSERT_FALSE(isOk(statsResult));
-    ASSERT_EQ(ENOENT, statsResult.status().code());
+    ASSERT_FALSE(statsResult);
+    ASSERT_EQ(ENOENT, statsResult.error().code());
     key.tag = TEST_TAG;
     statsResult = statsMapB.readValue(key);
-    ASSERT_FALSE(isOk(statsResult));
-    ASSERT_EQ(ENOENT, statsResult.status().code());
+    ASSERT_FALSE(statsResult);
+    ASSERT_EQ(ENOENT, statsResult.error().code());
 }
 
 }
