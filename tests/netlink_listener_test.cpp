@@ -48,8 +48,8 @@ constexpr uint32_t TEST_TAG = 0xFF0F0F0F;
 constexpr uint32_t SOCK_CLOSE_WAIT_US = 20 * 1000;
 constexpr uint32_t ENOBUFS_POLL_WAIT_US = 10 * 1000;
 
-using android::netdutils::Status;
-using android::netdutils::statusFromErrno;
+using android::base::Result;
+using android::base::ResultError;
 
 // This test set up a SkDestroyListener that is runing parallel with the production
 // SkDestroyListener. The test will create thousands of sockets and tag them on the
@@ -79,26 +79,26 @@ class NetlinkListenerTest : public testing::Test {
         const auto deleteTestCookieEntries = [](const uint64_t& key, const UidTagValue& value,
                                                 BpfMap<uint64_t, UidTagValue>& map) {
             if ((value.uid == TEST_UID) && (value.tag == TEST_TAG)) {
-                Status res = map.deleteValue(key);
-                if (isOk(res) || (res.code() == ENOENT)) {
-                    return android::netdutils::status::ok;
+                Result<void> res = map.deleteValue(key);
+                if (res || (res.error().code() == ENOENT)) {
+                    return Result<void>();
                 }
                 ALOGE("Failed to delete data(cookie = %" PRIu64 "): %s\n", key,
-                      strerror(res.code()));
+                      strerror(res.error().code()));
             }
             // Move forward to next cookie in the map.
-            return android::netdutils::status::ok;
+            return Result<void>();
         };
-        EXPECT_OK(mCookieTagMap.iterateWithValue(deleteTestCookieEntries));
+        EXPECT_TRUE(mCookieTagMap.iterateWithValue(deleteTestCookieEntries));
     }
 
-    Status checkNoGarbageTagsExist() {
+    Result<void> checkNoGarbageTagsExist() {
         const auto checkGarbageTags = [](const uint64_t&, const UidTagValue& value,
-                                         const BpfMap<uint64_t, UidTagValue>&) {
+                                         const BpfMap<uint64_t, UidTagValue>&) -> Result<void> {
             if ((TEST_UID == value.uid) && (TEST_TAG == value.tag)) {
-                return statusFromErrno(EUCLEAN, "Closed socket is not untagged");
+                return ResultError("Closed socket is not untagged", EUCLEAN);
             }
-            return android::netdutils::status::ok;
+            return Result<void>();
         };
         return mCookieTagMap.iterateWithValue(checkGarbageTags);
     }
@@ -145,7 +145,7 @@ class NetlinkListenerTest : public testing::Test {
             usleep(ENOBUFS_POLL_WAIT_US);
             EXPECT_EQ(currentErrorCount, rxErrorCount);
         } else {
-            EXPECT_TRUE(isOk(checkNoGarbageTagsExist()));
+            EXPECT_TRUE(checkNoGarbageTagsExist());
             EXPECT_EQ(0, rxErrorCount);
         }
     }
