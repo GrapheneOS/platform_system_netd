@@ -43,6 +43,7 @@ using ::testing::Test;
 namespace android {
 namespace bpf {
 
+using base::Result;
 using base::unique_fd;
 
 constexpr int TEST_MAP_SIZE = 10;
@@ -98,7 +99,7 @@ class BpfNetworkStatsHelperTest : public testing::Test {
 
     void expectUidTag(uint64_t cookie, uid_t uid, uint32_t tag) {
         auto tagResult = mFakeCookieTagMap.readValue(cookie);
-        EXPECT_TRUE(isOk(tagResult));
+        EXPECT_TRUE(tagResult);
         EXPECT_EQ(uid, tagResult.value().uid);
         EXPECT_EQ(tag, tagResult.value().tag);
     }
@@ -107,13 +108,13 @@ class BpfNetworkStatsHelperTest : public testing::Test {
                            StatsValue value, BpfMap<StatsKey, StatsValue>& map) {
         StatsKey key = {
             .uid = (uint32_t)uid, .tag = tag, .counterSet = counterSet, .ifaceIndex = ifaceIndex};
-        EXPECT_TRUE(isOk(map.writeValue(key, value, BPF_ANY)));
+        EXPECT_TRUE(map.writeValue(key, value, BPF_ANY));
     }
 
     void updateIfaceMap(const char* ifaceName, uint32_t ifaceIndex) {
         IfaceValue iface;
         strlcpy(iface.name, ifaceName, IFNAMSIZ);
-        EXPECT_TRUE(isOk(mFakeIfaceIndexNameMap.writeValue(ifaceIndex, iface, BPF_ANY)));
+        EXPECT_TRUE(mFakeIfaceIndexNameMap.writeValue(ifaceIndex, iface, BPF_ANY));
     }
 
     void expectStatsEqual(const StatsValue& target, const Stats& result) {
@@ -144,28 +145,28 @@ TEST_F(BpfNetworkStatsHelperTest, TestIterateMapWithDeletion) {
     for (int i = 0; i < 5; i++) {
         uint64_t cookie = i + 1;
         UidTagValue tag = {.uid = TEST_UID1, .tag = TEST_TAG};
-        EXPECT_TRUE(isOk(mFakeCookieTagMap.writeValue(cookie, tag, BPF_ANY)));
+        EXPECT_TRUE(mFakeCookieTagMap.writeValue(cookie, tag, BPF_ANY));
     }
     uint64_t curCookie = 0;
     auto nextCookie = mFakeCookieTagMap.getNextKey(curCookie);
-    EXPECT_TRUE(isOk(nextCookie));
+    EXPECT_TRUE(nextCookie);
     uint64_t headOfMap = nextCookie.value();
     curCookie = nextCookie.value();
     // Find the second entry in the map, then immediately delete it.
     nextCookie = mFakeCookieTagMap.getNextKey(curCookie);
-    EXPECT_TRUE(isOk(nextCookie));
-    EXPECT_TRUE(isOk(mFakeCookieTagMap.deleteValue((nextCookie.value()))));
+    EXPECT_TRUE(nextCookie);
+    EXPECT_TRUE(mFakeCookieTagMap.deleteValue((nextCookie.value())));
     // Find the entry that is now immediately after headOfMap, then delete that.
     nextCookie = mFakeCookieTagMap.getNextKey(curCookie);
-    EXPECT_TRUE(isOk(nextCookie));
-    EXPECT_TRUE(isOk(mFakeCookieTagMap.deleteValue((nextCookie.value()))));
+    EXPECT_TRUE(nextCookie);
+    EXPECT_TRUE(mFakeCookieTagMap.deleteValue((nextCookie.value())));
     // Attempting to read an entry that has been deleted fails with ENOENT.
     curCookie = nextCookie.value();
     auto tagResult = mFakeCookieTagMap.readValue(curCookie);
-    EXPECT_EQ(ENOENT, tagResult.status().code());
+    EXPECT_EQ(ENOENT, tagResult.error().code());
     // Finding the entry after our deleted entry restarts iteration from the beginning of the map.
     nextCookie = mFakeCookieTagMap.getNextKey(curCookie);
-    EXPECT_TRUE(isOk(nextCookie));
+    EXPECT_TRUE(nextCookie);
     EXPECT_EQ(headOfMap, nextCookie.value());
 }
 
@@ -175,7 +176,7 @@ TEST_F(BpfNetworkStatsHelperTest, TestBpfIterateMap) {
     for (int i = 0; i < 5; i++) {
         uint64_t cookie = i + 1;
         UidTagValue tag = {.uid = TEST_UID1, .tag = TEST_TAG};
-        EXPECT_TRUE(isOk(mFakeCookieTagMap.writeValue(cookie, tag, BPF_ANY)));
+        EXPECT_TRUE(mFakeCookieTagMap.writeValue(cookie, tag, BPF_ANY));
     }
     int totalCount = 0;
     int totalSum = 0;
@@ -184,9 +185,9 @@ TEST_F(BpfNetworkStatsHelperTest, TestBpfIterateMap) {
                 EXPECT_GE((uint64_t)5, key);
                 totalCount++;
                 totalSum += key;
-                return netdutils::status::ok;
+                return Result<void>();
             };
-    EXPECT_TRUE(isOk(mFakeCookieTagMap.iterate(iterateWithoutDeletion)));
+    EXPECT_TRUE(mFakeCookieTagMap.iterate(iterateWithoutDeletion));
     EXPECT_EQ(5, totalCount);
     EXPECT_EQ(1 + 2 + 3 + 4 + 5, totalSum);
 }
@@ -223,8 +224,8 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetUidStatsTotal) {
             .txPackets = TEST_PACKET1 * 2,
             .txBytes = TEST_BYTES1 * 2,
     };
-    ASSERT_TRUE(isOk(mFakeAppUidStatsMap.writeValue(TEST_UID1, value1, BPF_ANY)));
-    ASSERT_TRUE(isOk(mFakeAppUidStatsMap.writeValue(TEST_UID2, value2, BPF_ANY)));
+    ASSERT_TRUE(mFakeAppUidStatsMap.writeValue(TEST_UID1, value1, BPF_ANY));
+    ASSERT_TRUE(mFakeAppUidStatsMap.writeValue(TEST_UID2, value2, BPF_ANY));
     Stats result1 = {};
     ASSERT_EQ(0, bpfGetUidStatsInternal(TEST_UID1, &result1, mFakeAppUidStatsMap));
     expectStatsEqual(value1, result1);
@@ -266,11 +267,11 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetIfaceStatsInternal) {
             .txBytes = TEST_BYTES0,
     };
     uint32_t ifaceStatsKey = IFACE_INDEX1;
-    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY)));
+    EXPECT_TRUE(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY));
     ifaceStatsKey = IFACE_INDEX2;
-    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY)));
+    EXPECT_TRUE(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY));
     ifaceStatsKey = IFACE_INDEX3;
-    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY)));
+    EXPECT_TRUE(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY));
 
     Stats result1 = {};
     ASSERT_EQ(0, bpfGetIfaceStatsInternal(IFACE_NAME1, &result1, mFakeIfaceStatsMap,
@@ -430,13 +431,13 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetIfaceStatsDetail) {
             .txBytes = TEST_BYTES0,
     };
     uint32_t ifaceStatsKey = IFACE_INDEX1;
-    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY)));
+    EXPECT_TRUE(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY));
     ifaceStatsKey = IFACE_INDEX2;
-    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY)));
+    EXPECT_TRUE(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY));
     ifaceStatsKey = IFACE_INDEX3;
-    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY)));
+    EXPECT_TRUE(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY));
     ifaceStatsKey = IFACE_INDEX4;
-    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY)));
+    EXPECT_TRUE(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY));
     std::vector<stats_line> lines;
     ASSERT_EQ(0,
               parseBpfNetworkStatsDevInternal(&lines, mFakeIfaceStatsMap, mFakeIfaceIndexNameMap));
@@ -522,13 +523,13 @@ TEST_F(BpfNetworkStatsHelperTest, TestGetStatsSortedAndGrouped) {
 
     // Perform test on IfaceStats.
     uint32_t ifaceStatsKey = IFACE_INDEX2;
-    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY)));
+    EXPECT_TRUE(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value2, BPF_ANY));
     ifaceStatsKey = IFACE_INDEX1;
-    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY)));
+    EXPECT_TRUE(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY));
 
     // This should be grouped.
     ifaceStatsKey = IFACE_INDEX3;
-    EXPECT_TRUE(isOk(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY)));
+    EXPECT_TRUE(mFakeIfaceStatsMap.writeValue(ifaceStatsKey, value1, BPF_ANY));
 
     ASSERT_EQ(0,
               parseBpfNetworkStatsDevInternal(&lines, mFakeIfaceStatsMap, mFakeIfaceIndexNameMap));

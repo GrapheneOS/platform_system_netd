@@ -2853,13 +2853,13 @@ void checkUidsInPermissionMap(std::vector<int32_t>& uids, bool exist) {
     android::bpf::BpfMap<uint32_t, uint8_t> uidPermissionMap(
             android::bpf::mapRetrieve(UID_PERMISSION_MAP_PATH, 0));
     for (int32_t uid : uids) {
-        android::netdutils::StatusOr<uint8_t> permission = uidPermissionMap.readValue(uid);
+        android::base::Result<uint8_t> permission = uidPermissionMap.readValue(uid);
         if (exist) {
-            EXPECT_TRUE(isOk(permission));
+            ASSERT_TRUE(permission);
             EXPECT_EQ(INetd::PERMISSION_NONE, permission.value());
         } else {
-            EXPECT_FALSE(isOk(permission));
-            EXPECT_EQ(ENOENT, permission.status().code());
+            ASSERT_FALSE(permission);
+            EXPECT_EQ(ENOENT, permission.error().code());
         }
     }
 }
