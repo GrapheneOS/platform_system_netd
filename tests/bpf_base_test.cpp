@@ -68,7 +68,15 @@ TEST_F(BpfBasicTest, TestCgroupMounted) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     std::string cg2_path;
+#if 0
+    // This is the correct way to fetch cg2_path, but it occasionally hits ASAN
+    // problems due to memory allocated in non ASAN code being freed later by us
     ASSERT_EQ(true, CgroupGetControllerPath(CGROUPV2_CONTROLLER_NAME, &cg2_path));
+#else
+    ASSERT_EQ(true, CgroupGetControllerPath(CGROUPV2_CONTROLLER_NAME, nullptr));
+    // Constant derived from //system/core/libprocessgroup/profiles/cgroups.json
+    cg2_path = "/dev/cg2_bpf";
+#endif
     ASSERT_EQ(0, access(cg2_path.c_str(), R_OK));
     ASSERT_EQ(0, access((cg2_path + "/cgroup.controllers").c_str(), R_OK));
 }
