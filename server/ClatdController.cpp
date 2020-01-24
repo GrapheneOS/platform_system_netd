@@ -321,7 +321,7 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
 
     auto ret = mClatEgressMap.writeValue(txKey, txValue, BPF_ANY);
     if (!ret) {
-        ALOGE("mClatEgress.Map.writeValue failure: %s", strerror(ret.error().code()));
+        ALOGE("mClatEgressMap.writeValue failure: %s", strerror(ret.error().code()));
         return;
     }
 
@@ -338,7 +338,7 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
 
     ret = mClatIngressMap.writeValue(rxKey, rxValue, BPF_ANY);
     if (!ret) {
-        ALOGE("mClatIngress.Map.writeValue failure: %s", strerror(ret.error().code()));
+        ALOGE("mClatIngressMap.writeValue failure: %s", strerror(ret.error().code()));
         ret = mClatEgressMap.deleteValue(txKey);
         if (!ret) ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
         return;
