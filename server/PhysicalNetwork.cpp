@@ -88,8 +88,8 @@ void PhysicalNetwork::invalidateRouteCache(const std::string& interface) {
         // If any of these operations fail, there's no point in logging because RouteController will
         // have already logged a message. There's also no point returning an error since there's
         // nothing we can do.
-        (void) RouteController::addRoute(interface.c_str(), dst, "throw",
-                                         RouteController::INTERFACE);
+        (void)RouteController::addRoute(interface.c_str(), dst, "throw", RouteController::INTERFACE,
+                                        0 /* mtu */);
         (void) RouteController::removeRoute(interface.c_str(), dst, "throw",
                                          RouteController::INTERFACE);
     }
