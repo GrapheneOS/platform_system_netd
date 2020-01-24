@@ -694,9 +694,7 @@ int ClatdController::stopClatd(const std::string& interface) {
 }
 
 void ClatdController::dumpEgress(DumpWriter& dw) {
-    int mapFd = getClatEgressMapFd();
-    if (mapFd < 0) return;  // if unsupported just don't dump anything
-    BpfMap<ClatEgressKey, ClatEgressValue> configMap(mapFd);
+    if (!mClatEgressMap.isValid()) return;  // if unsupported just don't dump anything
 
     ScopedIndent bpfIndent(dw);
     dw.println("BPF egress map: iif(iface) v4Addr -> v6Addr nat64Prefix oif(iface)");
@@ -720,16 +718,14 @@ void ClatdController::dumpEgress(DumpWriter& dw) {
                    pfx96Str, value.oif, oifStr, value.oifIsEthernet ? "ether" : "rawip");
         return Result<void>();
     };
-    auto res = configMap.iterateWithValue(printClatMap);
+    auto res = mClatEgressMap.iterateWithValue(printClatMap);
     if (!res) {
         dw.println("Error printing BPF map: %s", res.error().message().c_str());
     }
 }
 
 void ClatdController::dumpIngress(DumpWriter& dw) {
-    int mapFd = getClatIngressMapFd();
-    if (mapFd < 0) return;  // if unsupported just don't dump anything
-    BpfMap<ClatIngressKey, ClatIngressValue> configMap(mapFd);
+    if (!mClatIngressMap.isValid()) return;  // if unsupported just don't dump anything
 
     ScopedIndent bpfIndent(dw);
     dw.println("BPF ingress map: iif(iface) nat64Prefix v6Addr -> v4Addr oif(iface)");
@@ -753,7 +749,7 @@ void ClatdController::dumpIngress(DumpWriter& dw) {
                    value.oif, oifStr);
         return Result<void>();
     };
-    auto res = configMap.iterateWithValue(printClatMap);
+    auto res = mClatIngressMap.iterateWithValue(printClatMap);
     if (!res) {
         dw.println("Error printing BPF map: %s", res.error().message().c_str());
     }
