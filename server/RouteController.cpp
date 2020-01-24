@@ -120,9 +120,10 @@ rtattr RTATTR_PRIO      = { U16_RTA_LENGTH(sizeof(uint32_t)),           RTA_PRIO
 
 // One or more nested attributes in the RTA_METRICS attribute.
 rtattr RTATTRX_MTU      = { U16_RTA_LENGTH(sizeof(uint32_t)),           RTAX_MTU};
+constexpr size_t RTATTRX_MTU_SIZE = RTA_SPACE(sizeof(uint32_t));
 
 // The RTA_METRICS attribute itself.
-constexpr int RTATTR_METRICS_SIZE = sizeof(RTATTRX_MTU) + sizeof(uint32_t);
+constexpr size_t RTATTR_METRICS_SIZE = RTATTRX_MTU_SIZE;
 rtattr RTATTR_METRICS   = { U16_RTA_LENGTH(RTATTR_METRICS_SIZE),         RTA_METRICS };
 
 uint8_t PADDING_BUFFER[RTA_ALIGNTO] = {0, 0, 0, 0};
