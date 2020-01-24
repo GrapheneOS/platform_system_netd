@@ -19,6 +19,7 @@ package android.net;
 import android.net.INetdUnsolicitedEventListener;
 import android.net.InterfaceConfigurationParcel;
 import android.net.MarkMaskParcel;
+import android.net.RouteInfoParcel;
 import android.net.TetherConfigParcel;
 import android.net.TetherStatsParcel;
 import android.net.UidRangeParcel;
@@ -1214,4 +1215,32 @@ interface INetd {
      * @return A MarkMaskParcel of the given network id.
      */
     MarkMaskParcel getFwmarkForNetwork(int netId);
+
+    /**
+    * Add a route for specific network
+    *
+    * @param netId the network to add the route to
+    * @param routeInfo parcelable with route information
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the failure.
+    */
+    void networkAddRouteParcel(int netId, in android.net.RouteInfoParcel routeInfo);
+
+    /**
+    * Update a route for specific network
+    *
+    * @param routeInfo parcelable with route information
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the failure.
+    */
+    void networkUpdateRouteParcel(int netId, in android.net.RouteInfoParcel routeInfo);
+
+    /**
+    * Remove a route for specific network
+    *
+    * @param routeInfo parcelable with route information
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the failure.
+    */
+    void networkRemoveRouteParcel(int netId, in android.net.RouteInfoParcel routeInfo);
 }

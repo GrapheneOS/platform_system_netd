@@ -76,6 +76,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
                                           const std::vector<UidRangeParcel>& uids) override;
     binder::Status networkRejectNonSecureVpn(bool enable,
                                              const std::vector<UidRangeParcel>& uids) override;
+    binder::Status networkAddRouteParcel(int32_t netId, const RouteInfoParcel& route) override;
+    binder::Status networkUpdateRouteParcel(int32_t netId, const RouteInfoParcel& route) override;
+    binder::Status networkRemoveRouteParcel(int32_t netId, const RouteInfoParcel& route) override;
     binder::Status networkAddRoute(int32_t netId, const std::string& ifName,
                                    const std::string& destination,
                                    const std::string& nextHop) override;
