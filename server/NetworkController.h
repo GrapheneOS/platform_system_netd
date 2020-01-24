@@ -88,6 +88,9 @@ public:
     static constexpr int LOCAL_NET_ID = INetd::LOCAL_NET_ID;
     static constexpr int DUMMY_NET_ID = 51;
 
+    // Route mode for modify route
+    enum RouteOperation { ROUTE_ADD, ROUTE_UPDATE, ROUTE_REMOVE };
+
     NetworkController();
 
     unsigned getDefaultNetwork() const;
@@ -122,7 +125,9 @@ public:
     // Routes are added to tables determined by the interface, so only |interface| is actually used.
     // |netId| is given only to sanity check that the interface has the correct netId.
     [[nodiscard]] int addRoute(unsigned netId, const char* interface, const char* destination,
-                               const char* nexthop, bool legacy, uid_t uid);
+                               const char* nexthop, bool legacy, uid_t uid, int mtu);
+    [[nodiscard]] int updateRoute(unsigned netId, const char* interface, const char* destination,
+                                  const char* nexthop, bool legacy, uid_t uid, int mtu);
     [[nodiscard]] int removeRoute(unsigned netId, const char* interface, const char* destination,
                                   const char* nexthop, bool legacy, uid_t uid);
 
@@ -158,7 +163,8 @@ public:
     [[nodiscard]] int createPhysicalNetworkLocked(unsigned netId, Permission permission);
 
     [[nodiscard]] int modifyRoute(unsigned netId, const char* interface, const char* destination,
-                                  const char* nexthop, bool add, bool legacy, uid_t uid);
+                                  const char* nexthop, RouteOperation op, bool legacy, uid_t uid,
+                                  int mtu);
     [[nodiscard]] int modifyFallthroughLocked(unsigned vpnNetId, bool add);
     void updateTcpSocketMonitorPolling();
 

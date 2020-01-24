@@ -28,6 +28,7 @@ const sockaddr_nl KERNEL_NLADDR = {AF_NETLINK, 0, 0, 0};
 
 const uint16_t NETLINK_REQUEST_FLAGS = NLM_F_REQUEST | NLM_F_ACK;
 const uint16_t NETLINK_ROUTE_CREATE_FLAGS = NETLINK_REQUEST_FLAGS | NLM_F_CREATE | NLM_F_EXCL;
+const uint16_t NETLINK_ROUTE_REPLACE_FLAGS = NETLINK_REQUEST_FLAGS | NLM_F_REPLACE;
 // Don't create rules with NLM_F_EXCL, because operations such as changing network permissions rely
 // on make-before-break. The kernel did not complain about duplicate rules until ~4.9, at which
 // point it started returning EEXIST. See for example b/69607866 . We can't just ignore the EEXIST

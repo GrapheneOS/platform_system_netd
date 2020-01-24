@@ -90,9 +90,11 @@ public:
     // |nexthop| can be NULL (to indicate a directly-connected route), "unreachable" (to indicate a
     // route that's blocked), "throw" (to indicate the lack of a match), or a regular IP address.
     [[nodiscard]] static int addRoute(const char* interface, const char* destination,
-                                      const char* nexthop, TableType tableType);
+                                      const char* nexthop, TableType tableType, int mtu);
     [[nodiscard]] static int removeRoute(const char* interface, const char* destination,
                                          const char* nexthop, TableType tableType);
+    [[nodiscard]] static int updateRoute(const char* interface, const char* destination,
+                                         const char* nexthop, TableType tableType, int mtu);
 
     [[nodiscard]] static int enableTethering(const char* inputInterface,
                                              const char* outputInterface);
@@ -125,8 +127,9 @@ private:
     static int modifyDefaultNetwork(uint16_t action, const char* interface, Permission permission);
     static int modifyPhysicalNetwork(unsigned netId, const char* interface, Permission permission,
                                      bool add);
-    static int modifyRoute(uint16_t action, const char* interface, const char* destination,
-                           const char* nexthop, TableType tableType);
+    static int modifyRoute(uint16_t action, uint16_t flags, const char* interface,
+                           const char* destination, const char* nexthop, TableType tableType,
+                           int mtu);
     static int modifyTetheredNetwork(uint16_t action, const char* inputInterface,
                                      const char* outputInterface);
     static int modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId,
@@ -140,8 +143,9 @@ private:
 // Public because they are called by by RouteControllerTest.cpp.
 // TODO: come up with a scheme of unit testing this code that does not rely on making all its
 // functions public.
-[[nodiscard]] int modifyIpRoute(uint16_t action, uint32_t table, const char* interface,
-                                const char* destination, const char* nexthop);
+[[nodiscard]] int modifyIpRoute(uint16_t action, uint16_t flags, uint32_t table,
+                                const char* interface, const char* destination, const char* nexthop,
+                                uint32_t mtu);
 uint32_t getRulePriority(const nlmsghdr *nlh);
 [[nodiscard]] int modifyIncomingPacketMark(unsigned netId, const char* interface,
                                            Permission permission, bool add);
