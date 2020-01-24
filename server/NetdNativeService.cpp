@@ -969,6 +969,39 @@ binder::Status NetdNativeService::tetherDnsList(std::vector<std::string>* dnsLis
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::networkAddRouteParcel(int32_t netId,
+                                                        const RouteInfoParcel& route) {
+    // Public methods of NetworkController are thread-safe.
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    bool legacy = false;
+    uid_t uid = 0;  // UID is only meaningful for legacy routes.
+
+    // convert Parcel to parameters
+    int res = gCtls->netCtrl.addRoute(netId, route.ifName.c_str(), route.destination.c_str(),
+                                      route.nextHop.empty() ? nullptr : route.nextHop.c_str(),
+                                      legacy, uid, route.mtu);
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::networkUpdateRouteParcel(int32_t netId,
+                                                           const RouteInfoParcel& route) {
+    // Public methods of NetworkController are thread-safe.
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    bool legacy = false;
+    uid_t uid = 0;  // UID is only meaningful for legacy routes.
+
+    // convert Parcel to parameters
+    int res = gCtls->netCtrl.updateRoute(netId, route.ifName.c_str(), route.destination.c_str(),
+                                         route.nextHop.empty() ? nullptr : route.nextHop.c_str(),
+                                         legacy, uid, route.mtu);
+    return statusFromErrcode(res);
+}
+
+binder::Status NetdNativeService::networkRemoveRouteParcel(int32_t netId,
+                                                           const RouteInfoParcel& route) {
+    return networkRemoveRoute(netId, route.ifName, route.destination, route.nextHop);
+}
+
 binder::Status NetdNativeService::networkAddRoute(int32_t netId, const std::string& ifName,
                                                   const std::string& destination,
                                                   const std::string& nextHop) {
@@ -977,7 +1010,7 @@ binder::Status NetdNativeService::networkAddRoute(int32_t netId, const std::stri
     bool legacy = false;
     uid_t uid = 0;  // UID is only meaningful for legacy routes.
     int res = gCtls->netCtrl.addRoute(netId, ifName.c_str(), destination.c_str(),
-                                      nextHop.empty() ? nullptr : nextHop.c_str(), legacy, uid);
+                                      nextHop.empty() ? nullptr : nextHop.c_str(), legacy, uid, 0);
     return statusFromErrcode(res);
 }
 
@@ -999,7 +1032,7 @@ binder::Status NetdNativeService::networkAddLegacyRoute(int32_t netId, const std
     bool legacy = true;
     int res = gCtls->netCtrl.addRoute(netId, ifName.c_str(), destination.c_str(),
                                       nextHop.empty() ? nullptr : nextHop.c_str(), legacy,
-                                      (uid_t) uid);
+                                      (uid_t)uid, 0);
     return statusFromErrcode(res);
 }
 

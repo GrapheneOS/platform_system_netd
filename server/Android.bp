@@ -31,6 +31,7 @@ aidl_interface {
         "binder/android/net/INetdUnsolicitedEventListener.aidl",
         "binder/android/net/InterfaceConfigurationParcel.aidl",
         "binder/android/net/MarkMaskParcel.aidl",
+        "binder/android/net/RouteInfoParcel.aidl",
         "binder/android/net/TetherConfigParcel.aidl",
         "binder/android/net/TetherStatsParcel.aidl",
         "binder/android/net/UidRangeParcel.aidl",
