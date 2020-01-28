@@ -40,7 +40,7 @@
 
 #include "tun_interface.h"
 
-#define TUN_DEV "/dev/tun"
+#define TUN_DEV "/dev/net/tun"
 
 using android::base::StringPrintf;
 using android::base::unique_fd;
