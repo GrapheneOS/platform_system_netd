@@ -137,7 +137,9 @@ int TunInterface::addAddress(const std::string& addr, int prefixlen) {
     timeval timeout = {.tv_usec = 200 * 1000};
     if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1) return -errno;
 
-    if (int ret = ifc_add_address(mIfName.c_str(), addr.c_str(), prefixlen)) return ret;
+    if (int ret = ifc_act_on_address(RTM_NEWADDR, mIfName.c_str(), addr.c_str(), prefixlen,
+                                     /*nodad*/ true))
+        return ret;
 
     int family;
     size_t addrlen;
