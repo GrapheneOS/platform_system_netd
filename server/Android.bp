@@ -168,6 +168,12 @@ cc_binary {
         "main.cpp",
         "oem_iptables_hook.cpp",
     ],
+    sanitize: {
+        cfi: true,
+        diag: {
+            cfi: true,
+        },
+    },
 }
 
 cc_binary {
@@ -195,6 +201,12 @@ cc_binary {
         "UidRanges.cpp",
         "NdcDispatcher.cpp",
     ],
+    sanitize: {
+        cfi: true,
+        diag: {
+            cfi: true,
+        },
+    },
 }
 
 cc_test {
