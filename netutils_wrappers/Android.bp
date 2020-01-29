@@ -21,6 +21,12 @@ cc_binary {
         "-Wall",
         "-Wextra",
     ],
+    sanitize: {
+        cfi: true,
+        diag: {
+            cfi: true,
+        },
+    },
 }
 
 cc_test {
