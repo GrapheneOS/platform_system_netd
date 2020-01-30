@@ -108,7 +108,7 @@ TEST_F(BpfBasicTest, TestSocketFilterSetUp) {
 TEST_F(BpfBasicTest, TestTagSocket) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    BpfMap<uint64_t, UidTagValue> cookieTagMap(mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
+    BpfMap<uint64_t, UidTagValue> cookieTagMap(COOKIE_TAG_MAP_PATH);
     ASSERT_LE(0, cookieTagMap.getMap());
     int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
     ASSERT_LE(0, sock);
@@ -128,7 +128,7 @@ TEST_F(BpfBasicTest, TestTagSocket) {
 TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    BpfMap<uint64_t, UidTagValue> cookieTagMap(mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
+    BpfMap<uint64_t, UidTagValue> cookieTagMap(COOKIE_TAG_MAP_PATH);
     ASSERT_LE(0, cookieTagMap.getMap());
     int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
     ASSERT_LE(0, sock);
@@ -155,7 +155,7 @@ TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
 TEST_F(BpfBasicTest, TestChangeCounterSet) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    BpfMap<uint32_t, uint8_t> uidCounterSetMap(mapRetrieve(UID_COUNTERSET_MAP_PATH, 0));
+    BpfMap<uint32_t, uint8_t> uidCounterSetMap(UID_COUNTERSET_MAP_PATH);
     ASSERT_LE(0, uidCounterSetMap.getMap());
     ASSERT_EQ(0, qtaguid_setCounterSet(TEST_COUNTERSET, TEST_UID));
     uid_t uid = TEST_UID;
@@ -171,11 +171,11 @@ TEST_F(BpfBasicTest, TestChangeCounterSet) {
 TEST_F(BpfBasicTest, TestDeleteTagData) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    BpfMap<StatsKey, StatsValue> statsMapA(mapRetrieve(STATS_MAP_A_PATH, 0));
+    BpfMap<StatsKey, StatsValue> statsMapA(STATS_MAP_A_PATH);
     ASSERT_LE(0, statsMapA.getMap());
-    BpfMap<StatsKey, StatsValue> statsMapB(mapRetrieve(STATS_MAP_B_PATH, 0));
+    BpfMap<StatsKey, StatsValue> statsMapB(STATS_MAP_B_PATH);
     ASSERT_LE(0, statsMapB.getMap());
-    BpfMap<uint32_t, StatsValue> appUidStatsMap(mapRetrieve(APP_UID_STATS_MAP_PATH, 0));
+    BpfMap<uint32_t, StatsValue> appUidStatsMap(APP_UID_STATS_MAP_PATH);
     ASSERT_LE(0, appUidStatsMap.getMap());
 
     StatsKey key = {.uid = TEST_UID, .tag = TEST_TAG, .counterSet = TEST_COUNTERSET,

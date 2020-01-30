@@ -2909,8 +2909,7 @@ TEST_F(BinderTest, TcpBufferSet) {
 namespace {
 
 void checkUidsInPermissionMap(std::vector<int32_t>& uids, bool exist) {
-    android::bpf::BpfMap<uint32_t, uint8_t> uidPermissionMap(
-            android::bpf::mapRetrieve(UID_PERMISSION_MAP_PATH, 0));
+    android::bpf::BpfMap<uint32_t, uint8_t> uidPermissionMap(UID_PERMISSION_MAP_PATH);
     for (int32_t uid : uids) {
         android::base::Result<uint8_t> permission = uidPermissionMap.readValue(uid);
         if (exist) {
