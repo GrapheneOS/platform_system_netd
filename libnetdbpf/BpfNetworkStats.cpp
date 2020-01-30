@@ -44,8 +44,6 @@ using base::Result;
 // from the config value.
 static constexpr char const* STATS_MAP_PATH[] = {STATS_MAP_B_PATH, STATS_MAP_A_PATH};
 
-static constexpr uint32_t BPF_OPEN_FLAGS = BPF_F_RDONLY;
-
 int bpfGetUidStatsInternal(uid_t uid, Stats* stats,
                            const BpfMap<uint32_t, StatsValue>& appUidStatsMap) {
     auto statsEntry = appUidStatsMap.readValue(uid);
@@ -59,8 +57,7 @@ int bpfGetUidStatsInternal(uid_t uid, Stats* stats,
 }
 
 int bpfGetUidStats(uid_t uid, Stats* stats) {
-    BpfMap<uint32_t, StatsValue> appUidStatsMap(
-        mapRetrieve(APP_UID_STATS_MAP_PATH, BPF_OPEN_FLAGS));
+    BpfMapRO<uint32_t, StatsValue> appUidStatsMap(APP_UID_STATS_MAP_PATH);
 
     if (!appUidStatsMap.isValid()) {
         int ret = -errno;
@@ -102,15 +99,14 @@ int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
 }
 
 int bpfGetIfaceStats(const char* iface, Stats* stats) {
-    BpfMap<uint32_t, StatsValue> ifaceStatsMap(mapRetrieve(IFACE_STATS_MAP_PATH, BPF_OPEN_FLAGS));
+    BpfMapRO<uint32_t, StatsValue> ifaceStatsMap(IFACE_STATS_MAP_PATH);
     int ret;
     if (!ifaceStatsMap.isValid()) {
         ret = -errno;
         ALOGE("get ifaceStats map fd failed: %s", strerror(errno));
         return ret;
     }
-    BpfMap<uint32_t, IfaceValue> ifaceIndexNameMap(
-        mapRetrieve(IFACE_INDEX_NAME_MAP_PATH, BPF_OPEN_FLAGS));
+    BpfMapRO<uint32_t, IfaceValue> ifaceIndexNameMap(IFACE_INDEX_NAME_MAP_PATH);
     if (!ifaceIndexNameMap.isValid()) {
         ret = -errno;
         ALOGE("get ifaceIndexName map fd failed: %s", strerror(errno));
@@ -189,15 +185,14 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
 int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
                                const std::vector<std::string>& limitIfaces, int limitTag,
                                int limitUid) {
-    BpfMap<uint32_t, IfaceValue> ifaceIndexNameMap(
-        mapRetrieve(IFACE_INDEX_NAME_MAP_PATH, BPF_OPEN_FLAGS));
+    BpfMapRO<uint32_t, IfaceValue> ifaceIndexNameMap(IFACE_INDEX_NAME_MAP_PATH);
     if (!ifaceIndexNameMap.isValid()) {
         int ret = -errno;
         ALOGE("get ifaceIndexName map fd failed: %s", strerror(errno));
         return ret;
     }
 
-    BpfMap<uint32_t, uint8_t> configurationMap(mapRetrieve(CONFIGURATION_MAP_PATH, BPF_OPEN_FLAGS));
+    BpfMapRO<uint32_t, uint8_t> configurationMap(CONFIGURATION_MAP_PATH);
     if (!configurationMap.isValid()) {
         int ret = -errno;
         ALOGE("get configuration map fd failed: %s", strerror(errno));
@@ -210,7 +205,7 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
         return -configuration.error().code();
     }
     const char* statsMapPath = STATS_MAP_PATH[configuration.value()];
-    BpfMap<StatsKey, StatsValue> statsMap(mapRetrieve(statsMapPath, 0));
+    BpfMap<StatsKey, StatsValue> statsMap(statsMapPath);
     if (!statsMap.isValid()) {
         int ret = -errno;
         ALOGE("get stats map fd failed: %s, path: %s", strerror(errno), statsMapPath);
@@ -267,15 +262,14 @@ int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
 
 int parseBpfNetworkStatsDev(std::vector<stats_line>* lines) {
     int ret = 0;
-    BpfMap<uint32_t, IfaceValue> ifaceIndexNameMap(
-        mapRetrieve(IFACE_INDEX_NAME_MAP_PATH, BPF_OPEN_FLAGS));
+    BpfMapRO<uint32_t, IfaceValue> ifaceIndexNameMap(IFACE_INDEX_NAME_MAP_PATH);
     if (!ifaceIndexNameMap.isValid()) {
         ret = -errno;
         ALOGE("get ifaceIndexName map fd failed: %s", strerror(errno));
         return ret;
     }
 
-    BpfMap<uint32_t, StatsValue> ifaceStatsMap(mapRetrieve(IFACE_STATS_MAP_PATH, BPF_OPEN_FLAGS));
+    BpfMapRO<uint32_t, StatsValue> ifaceStatsMap(IFACE_STATS_MAP_PATH);
     if (!ifaceStatsMap.isValid()) {
         ret = -errno;
         ALOGE("get ifaceStats map fd failed: %s", strerror(errno));
