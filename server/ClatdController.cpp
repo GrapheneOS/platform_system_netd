@@ -557,7 +557,7 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
     }
 
     // 3. open the tun device in non blocking mode as required by clatd
-    int res = open("/dev/tun", O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    int res = open("/dev/net/tun", O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (res == -1) {
         res = errno;
         ALOGE("open of tun device failed (%s)", strerror(res));
