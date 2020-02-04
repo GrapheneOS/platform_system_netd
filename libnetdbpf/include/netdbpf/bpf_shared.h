@@ -17,6 +17,7 @@
 #ifndef NETDBPF_BPF_SHARED_H
 #define NETDBPF_BPF_SHARED_H
 
+#include <linux/if_ether.h>
 #include <linux/in.h>
 #include <linux/in6.h>
 #include <netdutils/UidConstants.h>
@@ -184,5 +185,26 @@ typedef struct {
     struct in6_addr pfx96;   // The destination /96 nat64 prefix, bottom 32 bits must be 0
     bool oifIsEthernet;      // Whether the output interface requires ethernet header
 } ClatEgressValue;
+
+#define TETHER_INGRESS_PROG_RAWIP_NAME "prog_offload_schedcls_ingress_tether_rawip"
+#define TETHER_INGRESS_PROG_ETHER_NAME "prog_offload_schedcls_ingress_tether_ether"
+
+#define TETHER_INGRESS_PROG_RAWIP_PATH BPF_PATH "/" TETHER_INGRESS_PROG_RAWIP_NAME
+#define TETHER_INGRESS_PROG_ETHER_PATH BPF_PATH "/" TETHER_INGRESS_PROG_ETHER_NAME
+
+#define TETHER_INGRESS_MAP_PATH BPF_PATH "/map_offload_tether_ingress_map"
+
+typedef struct {
+    uint32_t iif;            // The input interface index
+    struct in6_addr neigh6;  // The destination IPv6 address
+} TetherIngressKey;
+
+typedef struct {
+    uint32_t oif;  // The output interface to redirect to
+    // For now tethering offload only needs to support downstreams that use 6-byte MAC addresses,
+    // because all downstream types that are currently supported (WiFi, USB, Bluetooth and
+    // Ethernet) have 6-byte MAC addresses.
+    struct ethhdr macHeader;  // includes dst/src mac and ethertype
+} TetherIngressValue;
 
 #endif  // NETDBPF_BPF_SHARED_H
