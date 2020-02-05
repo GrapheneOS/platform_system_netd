@@ -16,22 +16,40 @@
 
 #pragma once
 
+#include <errno.h>
 #include <linux/if_ether.h>
 
 #include <string>
+
+#include "bpf/BpfUtils.h"
+#include "netdbpf/bpf_shared.h"
 
 namespace android {
 namespace net {
 
 int hardwareAddressType(const std::string& interface);
 
-int getClatEgressMapFd(void);
+static inline int getClatEgressMapFd(void) {
+    const int fd = bpf::bpfFdGet(CLAT_EGRESS_MAP_PATH, 0);
+    return (fd == -1) ? -errno : fd;
+}
 
-int getClatEgressProgFd(bool with_ethernet_header);
+static inline int getClatEgressProgFd(bool with_ethernet_header) {
+    const int fd = bpf::bpfFdGet(
+            with_ethernet_header ? CLAT_EGRESS_PROG_ETHER_PATH : CLAT_EGRESS_PROG_RAWIP_PATH, 0);
+    return (fd == -1) ? -errno : fd;
+}
 
-int getClatIngressMapFd(void);
+static inline int getClatIngressMapFd(void) {
+    const int fd = bpf::bpfFdGet(CLAT_INGRESS_MAP_PATH, 0);
+    return (fd == -1) ? -errno : fd;
+}
 
-int getClatIngressProgFd(bool with_ethernet_header);
+static inline int getClatIngressProgFd(bool with_ethernet_header) {
+    const int fd = bpf::bpfFdGet(
+            with_ethernet_header ? CLAT_INGRESS_PROG_ETHER_PATH : CLAT_INGRESS_PROG_RAWIP_PATH, 0);
+    return (fd == -1) ? -errno : fd;
+}
 
 int openNetlinkSocket(void);
 
