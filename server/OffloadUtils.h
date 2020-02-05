@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _CLAT_UTILS_H
-#define _CLAT_UTILS_H
+#pragma once
 
 #include <string>
 
@@ -45,5 +44,3 @@ int tcFilterAddDevEgressBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
 
 }  // namespace net
 }  // namespace android
-
-#endif
