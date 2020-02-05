@@ -17,7 +17,6 @@
 #include "OffloadUtils.h"
 
 #include <arpa/inet.h>
-#include <errno.h>
 #include <linux/if.h>
 #include <linux/netlink.h>
 #include <linux/pkt_cls.h>
@@ -33,8 +32,6 @@
 
 #include "NetlinkCommands.h"
 #include "android-base/unique_fd.h"
-#include "bpf/BpfUtils.h"
-#include "netdbpf/bpf_shared.h"
 
 namespace android {
 namespace net {
@@ -60,28 +57,6 @@ int hardwareAddressType(const std::string& interface) {
     if (ioctl(ufd, SIOCGIFHWADDR, &ifr, sizeof(ifr))) return -errno;
 
     return ifr.ifr_hwaddr.sa_family;
-}
-
-int getClatEgressMapFd(void) {
-    const int fd = bpf::bpfFdGet(CLAT_EGRESS_MAP_PATH, 0);
-    return (fd == -1) ? -errno : fd;
-}
-
-int getClatEgressProgFd(bool with_ethernet_header) {
-    const int fd = bpf::bpfFdGet(
-            with_ethernet_header ? CLAT_EGRESS_PROG_ETHER_PATH : CLAT_EGRESS_PROG_RAWIP_PATH, 0);
-    return (fd == -1) ? -errno : fd;
-}
-
-int getClatIngressMapFd(void) {
-    const int fd = bpf::bpfFdGet(CLAT_INGRESS_MAP_PATH, 0);
-    return (fd == -1) ? -errno : fd;
-}
-
-int getClatIngressProgFd(bool with_ethernet_header) {
-    const int fd = bpf::bpfFdGet(
-            with_ethernet_header ? CLAT_INGRESS_PROG_ETHER_PATH : CLAT_INGRESS_PROG_RAWIP_PATH, 0);
-    return (fd == -1) ? -errno : fd;
 }
 
 // TODO: use //system/netd/server/NetlinkCommands.cpp:openNetlinkSocket(protocol)
