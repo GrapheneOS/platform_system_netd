@@ -407,5 +407,35 @@ int tcFilterAddDevEgressBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
     return tcFilterAddDevBpf(fd, ifIndex, bpfFd, ethernet, /*ingress*/ false, /*ipv6*/ false);
 }
 
+// tc filter del dev .. in/egress prio .. protocol ..
+int tcFilterDelDev(int fd, int ifIndex, bool ingress, uint16_t prio, uint16_t proto) {
+    struct {
+        nlmsghdr n;
+        tcmsg t;
+    } req = {
+            .n =
+                    {
+                            .nlmsg_len = sizeof(req),
+                            .nlmsg_type = RTM_DELTFILTER,
+                            .nlmsg_flags = NETLINK_REQUEST_FLAGS,
+                    },
+            .t =
+                    {
+                            .tcm_family = AF_UNSPEC,
+                            .tcm_ifindex = ifIndex,
+                            .tcm_handle = TC_H_UNSPEC,
+                            .tcm_parent = TC_H_MAKE(TC_H_CLSACT,
+                                                    ingress ? TC_H_MIN_INGRESS : TC_H_MIN_EGRESS),
+                            .tcm_info = static_cast<__u32>((prio << 16) | htons(proto)),
+                    },
+    };
+
+    const int rv = send(fd, &req, sizeof(req), 0);
+    if (rv == -1) return -errno;
+    if (rv != sizeof(req)) return -EMSGSIZE;
+
+    return processNetlinkResponse(fd);
+}
+
 }  // namespace net
 }  // namespace android
