@@ -21,7 +21,6 @@
 #include <linux/netlink.h>
 #include <linux/pkt_cls.h>
 #include <linux/pkt_sched.h>
-#include <linux/rtnetlink.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -130,7 +129,7 @@ int processNetlinkResponse(int fd) {
 // ADD:     nlMsgType=RTM_NEWQDISC nlMsgFlags=NLM_F_EXCL|NLM_F_CREATE
 // REPLACE: nlMsgType=RTM_NEWQDISC nlMsgFlags=NLM_F_CREATE|NLM_F_REPLACE
 // DEL:     nlMsgType=RTM_DELQDISC nlMsgFlags=0
-static int doTcQdiscClsact(int fd, int ifIndex, __u16 nlMsgType, __u16 nlMsgFlags) {
+int doTcQdiscClsact(int fd, int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags) {
     // This is the name of the qdisc we are attaching.
     // Some hoop jumping to make this compile time constant with known size,
     // so that the structure declaration is well defined at compile time.
@@ -178,18 +177,6 @@ static int doTcQdiscClsact(int fd, int ifIndex, __u16 nlMsgType, __u16 nlMsgFlag
     if (rv != sizeof(req)) return -EMSGSIZE;
 
     return processNetlinkResponse(fd);
-}
-
-int tcQdiscAddDevClsact(int fd, int ifIndex) {
-    return doTcQdiscClsact(fd, ifIndex, RTM_NEWQDISC, NLM_F_EXCL | NLM_F_CREATE);
-}
-
-int tcQdiscReplaceDevClsact(int fd, int ifIndex) {
-    return doTcQdiscClsact(fd, ifIndex, RTM_NEWQDISC, NLM_F_CREATE | NLM_F_REPLACE);
-}
-
-int tcQdiscDelDevClsact(int fd, int ifIndex) {
-    return doTcQdiscClsact(fd, ifIndex, RTM_DELQDISC, 0);
 }
 
 // tc filter add dev .. in/egress prio 1 protocol ipv6/ip bpf object-pinned /sys/fs/bpf/...
