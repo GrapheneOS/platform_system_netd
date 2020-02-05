@@ -47,10 +47,10 @@ extern "C" {
 #include "netutils/checksum.h"
 }
 
-#include "ClatUtils.h"
 #include "Fwmark.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
+#include "OffloadUtils.h"
 #include "netid_client.h"
 
 static const char* kClatdPath = "/system/bin/clatd";
