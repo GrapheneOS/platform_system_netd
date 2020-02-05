@@ -18,6 +18,7 @@
 
 #include <errno.h>
 #include <linux/if_ether.h>
+#include <linux/rtnetlink.h>
 
 #include <string>
 
@@ -55,9 +56,19 @@ int openNetlinkSocket(void);
 
 int processNetlinkResponse(int fd);
 
-int tcQdiscAddDevClsact(int fd, int ifIndex);
-int tcQdiscReplaceDevClsact(int fd, int ifIndex);
-int tcQdiscDelDevClsact(int fd, int ifIndex);
+int doTcQdiscClsact(int fd, int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags);
+
+static inline int tcQdiscAddDevClsact(int fd, int ifIndex) {
+    return doTcQdiscClsact(fd, ifIndex, RTM_NEWQDISC, NLM_F_EXCL | NLM_F_CREATE);
+}
+
+static inline int tcQdiscReplaceDevClsact(int fd, int ifIndex) {
+    return doTcQdiscClsact(fd, ifIndex, RTM_NEWQDISC, NLM_F_CREATE | NLM_F_REPLACE);
+}
+
+static inline int tcQdiscDelDevClsact(int fd, int ifIndex) {
+    return doTcQdiscClsact(fd, ifIndex, RTM_DELQDISC, 0);
+}
 
 int tcFilterAddDevIngressBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
 int tcFilterAddDevEgressBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
