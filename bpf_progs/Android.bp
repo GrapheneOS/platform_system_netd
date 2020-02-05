@@ -47,3 +47,16 @@ bpf {
         "system/netd/libnetdutils/include",
     ],
 }
+
+bpf {
+    name: "offload.o",
+    srcs: ["offload.c"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    include_dirs: [
+        "system/netd/libnetdbpf/include",
+        "system/netd/libnetdutils/include",
+    ],
+}
