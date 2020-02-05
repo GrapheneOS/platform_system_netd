@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <linux/if_ether.h>
+
 #include <string>
 
 namespace android {
@@ -41,6 +43,19 @@ int tcQdiscDelDevClsact(int fd, int ifIndex);
 
 int tcFilterAddDevIngressBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
 int tcFilterAddDevEgressBpf(int fd, int ifIndex, int bpfFd, bool ethernet);
+
+// tc filter del dev .. in/egress prio .. protocol ..
+int tcFilterDelDev(int fd, int ifIndex, bool ingress, uint16_t prio, uint16_t proto);
+
+// tc filter del dev .. ingress prio 1 protocol ipv6
+static inline int tcFilterDelDevIngressClatIpv6(int fd, int ifIndex) {
+    return tcFilterDelDev(fd, ifIndex, /*ingress*/ true, /*prio*/ 1, ETH_P_IPV6);
+}
+
+// tc filter del dev .. egress prio 1 protocol ip
+static inline int tcFilterDelDevEgressClatIpv4(int fd, int ifIndex) {
+    return tcFilterDelDev(fd, ifIndex, /*ingress*/ false, /*prio*/ 1, ETH_P_IP);
+}
 
 }  // namespace net
 }  // namespace android
