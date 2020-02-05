@@ -181,7 +181,7 @@ TEST_F(OffloadUtilsTest, AttachReplaceDetachClsactLo) {
     close(fd);
 }
 
-static void checkAttachBpfFilterClsactLo(const bool ingress, const bool ethernet) {
+static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool ethernet) {
     // This test requires kernel 4.9-Q or better
     SKIP_IF_BPF_NOT_SUPPORTED;
     if (!kernelSupportsNetSchIngress()) return;
@@ -200,8 +200,10 @@ static void checkAttachBpfFilterClsactLo(const bool ingress, const bool ethernet
         EXPECT_EQ(0, tcQdiscAddDevClsact(fd, LOOPBACK_IFINDEX));
         if (ingress) {
             EXPECT_EQ(0, tcFilterAddDevIngressBpf(fd, LOOPBACK_IFINDEX, bpf_fd, ethernet));
+            EXPECT_EQ(0, tcFilterDelDevIngressClatIpv6(fd, LOOPBACK_IFINDEX));
         } else {
             EXPECT_EQ(0, tcFilterAddDevEgressBpf(fd, LOOPBACK_IFINDEX, bpf_fd, ethernet));
+            EXPECT_EQ(0, tcFilterDelDevEgressClatIpv4(fd, LOOPBACK_IFINDEX));
         }
         EXPECT_EQ(0, tcQdiscDelDevClsact(fd, LOOPBACK_IFINDEX));
         close(fd);
@@ -211,19 +213,19 @@ static void checkAttachBpfFilterClsactLo(const bool ingress, const bool ethernet
 }
 
 TEST_F(OffloadUtilsTest, CheckAttachBpfFilterRawIpClsactEgressLo) {
-    checkAttachBpfFilterClsactLo(/*ingress*/ false, /*ethernet*/ false);
+    checkAttachDetachBpfFilterClsactLo(/*ingress*/ false, /*ethernet*/ false);
 }
 
 TEST_F(OffloadUtilsTest, CheckAttachBpfFilterEthernetClsactEgressLo) {
-    checkAttachBpfFilterClsactLo(/*ingress*/ false, /*ethernet*/ true);
+    checkAttachDetachBpfFilterClsactLo(/*ingress*/ false, /*ethernet*/ true);
 }
 
 TEST_F(OffloadUtilsTest, CheckAttachBpfFilterRawIpClsactIngressLo) {
-    checkAttachBpfFilterClsactLo(/*ingress*/ true, /*ethernet*/ false);
+    checkAttachDetachBpfFilterClsactLo(/*ingress*/ true, /*ethernet*/ false);
 }
 
 TEST_F(OffloadUtilsTest, CheckAttachBpfFilterEthernetClsactIngressLo) {
-    checkAttachBpfFilterClsactLo(/*ingress*/ true, /*ethernet*/ true);
+    checkAttachDetachBpfFilterClsactLo(/*ingress*/ true, /*ethernet*/ true);
 }
 
 }  // namespace net
