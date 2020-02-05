@@ -71,7 +71,6 @@ cc_library_static {
     srcs: [
         "BandwidthController.cpp",
         "ClatdController.cpp",
-        "ClatUtils.cpp",
         "Controllers.cpp",
         "NetdConstants.cpp",
         "FirewallController.cpp",
@@ -82,6 +81,7 @@ cc_library_static {
         "NetlinkCommands.cpp",
         "NetlinkListener.cpp",
         "NetlinkManager.cpp",
+        "OffloadUtils.cpp",
         "RouteController.cpp",
         "SockDiag.cpp",
         "StrictController.cpp",
@@ -222,7 +222,6 @@ cc_test {
     srcs: [
         "BandwidthControllerTest.cpp",
         "ClatdControllerTest.cpp",
-        "ClatUtilsTest.cpp",
         "ControllersTest.cpp",
         "FirewallControllerTest.cpp",
         "IdletimerControllerTest.cpp",
@@ -230,6 +229,7 @@ cc_test {
         "IptablesBaseTest.cpp",
         "IptablesRestoreControllerTest.cpp",
         "NFLogListenerTest.cpp",
+        "OffloadUtilsTest.cpp",
         "RouteControllerTest.cpp",
         "SockDiagTest.cpp",
         "StrictControllerTest.cpp",
