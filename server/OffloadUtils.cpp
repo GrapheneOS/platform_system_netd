@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "ClatUtils.h"
+#include "OffloadUtils.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -28,7 +28,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define LOG_TAG "ClatUtils"
+#define LOG_TAG "OffloadUtils"
 #include <log/log.h>
 
 #include "NetlinkCommands.h"
