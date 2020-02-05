@@ -181,8 +181,7 @@ int doTcQdiscClsact(int fd, int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags
 
 // tc filter add dev .. in/egress prio 1 protocol ipv6/ip bpf object-pinned /sys/fs/bpf/...
 // direct-action
-static int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool ingress,
-                             bool ipv6) {
+int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool ingress, bool ipv6) {
     // The priority doesn't matter until we actually start attaching multiple
     // things to the same interface's in/egress point.
     const __u32 prio = 1;
@@ -357,16 +356,6 @@ static int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool
     if (rv != sizeof(req)) return -EMSGSIZE;
 
     return processNetlinkResponse(fd);
-}
-
-// tc filter add dev .. ingress prio 1 protocol ipv6 bpf object-pinned /sys/fs/bpf/... direct-action
-int tcFilterAddDevIngressBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
-    return tcFilterAddDevBpf(fd, ifIndex, bpfFd, ethernet, /*ingress*/ true, /*ipv6*/ true);
-}
-
-// tc filter add dev .. egress prio 1 protocol ip bpf object-pinned /sys/fs/bpf/... direct-action
-int tcFilterAddDevEgressBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
-    return tcFilterAddDevBpf(fd, ifIndex, bpfFd, ethernet, /*ingress*/ false, /*ipv6*/ false);
 }
 
 // tc filter del dev .. in/egress prio .. protocol ..
