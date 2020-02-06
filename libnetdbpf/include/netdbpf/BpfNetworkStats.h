@@ -75,7 +75,7 @@ int getIfaceNameFromMap(const BpfMap<uint32_t, IfaceValue>& ifaceMap,
                         const BpfMap<Key, StatsValue>& statsMap, uint32_t ifaceIndex, char* ifname,
                         const Key& curKey, int64_t* unknownIfaceBytesTotal) {
     auto iface = ifaceMap.readValue(ifaceIndex);
-    if (!iface) {
+    if (!iface.ok()) {
         maybeLogUnknownIface(ifaceIndex, statsMap, curKey, unknownIfaceBytesTotal);
         return -ENODEV;
     }
@@ -93,7 +93,7 @@ void maybeLogUnknownIface(int ifaceIndex, const BpfMap<Key, StatsValue>& statsMa
 
     // Are we undercounting enough data to be worth logging?
     auto statsEntry = statsMap.readValue(curKey);
-    if (!statsEntry) {
+    if (!statsEntry.ok()) {
         // No data is being undercounted.
         return;
     }
