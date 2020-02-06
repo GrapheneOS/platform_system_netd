@@ -14,27 +14,23 @@
  * limitations under the License.
  */
 
-#include "ClatUtils.h"
+#include "OffloadUtils.h"
 
 #include <arpa/inet.h>
-#include <errno.h>
 #include <linux/if.h>
 #include <linux/netlink.h>
 #include <linux/pkt_cls.h>
 #include <linux/pkt_sched.h>
-#include <linux/rtnetlink.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#define LOG_TAG "ClatUtils"
+#define LOG_TAG "OffloadUtils"
 #include <log/log.h>
 
 #include "NetlinkCommands.h"
 #include "android-base/unique_fd.h"
-#include "bpf/BpfUtils.h"
-#include "netdbpf/bpf_shared.h"
 
 namespace android {
 namespace net {
@@ -60,28 +56,6 @@ int hardwareAddressType(const std::string& interface) {
     if (ioctl(ufd, SIOCGIFHWADDR, &ifr, sizeof(ifr))) return -errno;
 
     return ifr.ifr_hwaddr.sa_family;
-}
-
-int getClatEgressMapFd(void) {
-    const int fd = bpf::bpfFdGet(CLAT_EGRESS_MAP_PATH, 0);
-    return (fd == -1) ? -errno : fd;
-}
-
-int getClatEgressProgFd(bool with_ethernet_header) {
-    const int fd = bpf::bpfFdGet(
-            with_ethernet_header ? CLAT_EGRESS_PROG_ETHER_PATH : CLAT_EGRESS_PROG_RAWIP_PATH, 0);
-    return (fd == -1) ? -errno : fd;
-}
-
-int getClatIngressMapFd(void) {
-    const int fd = bpf::bpfFdGet(CLAT_INGRESS_MAP_PATH, 0);
-    return (fd == -1) ? -errno : fd;
-}
-
-int getClatIngressProgFd(bool with_ethernet_header) {
-    const int fd = bpf::bpfFdGet(
-            with_ethernet_header ? CLAT_INGRESS_PROG_ETHER_PATH : CLAT_INGRESS_PROG_RAWIP_PATH, 0);
-    return (fd == -1) ? -errno : fd;
 }
 
 // TODO: use //system/netd/server/NetlinkCommands.cpp:openNetlinkSocket(protocol)
@@ -155,7 +129,7 @@ int processNetlinkResponse(int fd) {
 // ADD:     nlMsgType=RTM_NEWQDISC nlMsgFlags=NLM_F_EXCL|NLM_F_CREATE
 // REPLACE: nlMsgType=RTM_NEWQDISC nlMsgFlags=NLM_F_CREATE|NLM_F_REPLACE
 // DEL:     nlMsgType=RTM_DELQDISC nlMsgFlags=0
-static int doTcQdiscClsact(int fd, int ifIndex, __u16 nlMsgType, __u16 nlMsgFlags) {
+int doTcQdiscClsact(int fd, int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags) {
     // This is the name of the qdisc we are attaching.
     // Some hoop jumping to make this compile time constant with known size,
     // so that the structure declaration is well defined at compile time.
@@ -205,22 +179,9 @@ static int doTcQdiscClsact(int fd, int ifIndex, __u16 nlMsgType, __u16 nlMsgFlag
     return processNetlinkResponse(fd);
 }
 
-int tcQdiscAddDevClsact(int fd, int ifIndex) {
-    return doTcQdiscClsact(fd, ifIndex, RTM_NEWQDISC, NLM_F_EXCL | NLM_F_CREATE);
-}
-
-int tcQdiscReplaceDevClsact(int fd, int ifIndex) {
-    return doTcQdiscClsact(fd, ifIndex, RTM_NEWQDISC, NLM_F_CREATE | NLM_F_REPLACE);
-}
-
-int tcQdiscDelDevClsact(int fd, int ifIndex) {
-    return doTcQdiscClsact(fd, ifIndex, RTM_DELQDISC, 0);
-}
-
 // tc filter add dev .. in/egress prio 1 protocol ipv6/ip bpf object-pinned /sys/fs/bpf/...
 // direct-action
-static int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool ingress,
-                             bool ipv6) {
+int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool ingress, bool ipv6) {
     // The priority doesn't matter until we actually start attaching multiple
     // things to the same interface's in/egress point.
     const __u32 prio = 1;
@@ -397,14 +358,34 @@ static int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool
     return processNetlinkResponse(fd);
 }
 
-// tc filter add dev .. ingress prio 1 protocol ipv6 bpf object-pinned /sys/fs/bpf/... direct-action
-int tcFilterAddDevIngressBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
-    return tcFilterAddDevBpf(fd, ifIndex, bpfFd, ethernet, /*ingress*/ true, /*ipv6*/ true);
-}
+// tc filter del dev .. in/egress prio .. protocol ..
+int tcFilterDelDev(int fd, int ifIndex, bool ingress, uint16_t prio, uint16_t proto) {
+    struct {
+        nlmsghdr n;
+        tcmsg t;
+    } req = {
+            .n =
+                    {
+                            .nlmsg_len = sizeof(req),
+                            .nlmsg_type = RTM_DELTFILTER,
+                            .nlmsg_flags = NETLINK_REQUEST_FLAGS,
+                    },
+            .t =
+                    {
+                            .tcm_family = AF_UNSPEC,
+                            .tcm_ifindex = ifIndex,
+                            .tcm_handle = TC_H_UNSPEC,
+                            .tcm_parent = TC_H_MAKE(TC_H_CLSACT,
+                                                    ingress ? TC_H_MIN_INGRESS : TC_H_MIN_EGRESS),
+                            .tcm_info = static_cast<__u32>((prio << 16) | htons(proto)),
+                    },
+    };
 
-// tc filter add dev .. egress prio 1 protocol ip bpf object-pinned /sys/fs/bpf/... direct-action
-int tcFilterAddDevEgressBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
-    return tcFilterAddDevBpf(fd, ifIndex, bpfFd, ethernet, /*ingress*/ false, /*ipv6*/ false);
+    const int rv = send(fd, &req, sizeof(req), 0);
+    if (rv == -1) return -errno;
+    if (rv != sizeof(req)) return -EMSGSIZE;
+
+    return processNetlinkResponse(fd);
 }
 
 }  // namespace net
