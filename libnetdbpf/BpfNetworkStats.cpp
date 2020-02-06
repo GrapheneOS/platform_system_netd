@@ -47,13 +47,14 @@ static constexpr char const* STATS_MAP_PATH[] = {STATS_MAP_B_PATH, STATS_MAP_A_P
 int bpfGetUidStatsInternal(uid_t uid, Stats* stats,
                            const BpfMap<uint32_t, StatsValue>& appUidStatsMap) {
     auto statsEntry = appUidStatsMap.readValue(uid);
-    if (statsEntry) {
+    if (statsEntry.ok()) {
         stats->rxPackets = statsEntry.value().rxPackets;
         stats->txPackets = statsEntry.value().txPackets;
         stats->rxBytes = statsEntry.value().rxBytes;
         stats->txBytes = statsEntry.value().txBytes;
     }
-    return (statsEntry || statsEntry.error().code() == ENOENT) ? 0 : -statsEntry.error().code();
+    return (statsEntry.ok() || statsEntry.error().code() == ENOENT) ? 0
+                                                                    : -statsEntry.error().code();
 }
 
 int bpfGetUidStats(uid_t uid, Stats* stats) {
@@ -84,7 +85,7 @@ int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
         }
         if (!iface || !strcmp(iface, ifname)) {
             Result<StatsValue> statsEntry = ifaceStatsMap.readValue(key);
-            if (!statsEntry) {
+            if (!statsEntry.ok()) {
                 return statsEntry.error();
             }
             stats->rxPackets += statsEntry.value().rxPackets;
@@ -95,7 +96,7 @@ int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
         return Result<void>();
     };
     auto res = ifaceStatsMap.iterate(processIfaceStats);
-    return res ? 0 : -res.error().code();
+    return res.ok() ? 0 : -res.error().code();
 }
 
 int bpfGetIfaceStats(const char* iface, Stats* stats) {
@@ -156,14 +157,14 @@ int parseBpfNetworkStatsDetailInternal(std::vector<stats_line>* lines,
             return Result<void>();
         }
         Result<StatsValue> statsEntry = statsMap.readValue(key);
-        if (!statsEntry) {
+        if (!statsEntry.ok()) {
             return base::ResultError(statsEntry.error().message(), statsEntry.error().code());
         }
         lines->push_back(populateStatsEntry(key, statsEntry.value(), ifname));
         return Result<void>();
     };
     Result<void> res = statsMap.iterate(processDetailUidStats);
-    if (!res) {
+    if (!res.ok()) {
         ALOGE("failed to iterate per uid Stats map for detail traffic stats: %s",
               strerror(res.error().code()));
         return -res.error().code();
@@ -199,7 +200,7 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
         return ret;
     }
     auto configuration = configurationMap.readValue(CURRENT_STATS_MAP_CONFIGURATION_KEY);
-    if (!configuration) {
+    if (!configuration.ok()) {
         ALOGE("Cannot read the old configuration from map: %s",
               configuration.error().message().c_str());
         return -configuration.error().code();
@@ -222,7 +223,7 @@ int parseBpfNetworkStatsDetail(std::vector<stats_line>* lines,
     }
 
     Result<void> res = statsMap.clear();
-    if (!res) {
+    if (!res.ok()) {
         ALOGE("Clean up current stats map failed: %s", strerror(res.error().code()));
         return -res.error().code();
     }
@@ -250,7 +251,7 @@ int parseBpfNetworkStatsDevInternal(std::vector<stats_line>* lines,
         return Result<void>();
     };
     Result<void> res = statsMap.iterateWithValue(processDetailIfaceStats);
-    if (!res) {
+    if (!res.ok()) {
         ALOGE("failed to iterate per uid Stats map for detail traffic stats: %s",
               strerror(res.error().code()));
         return -res.error().code();
