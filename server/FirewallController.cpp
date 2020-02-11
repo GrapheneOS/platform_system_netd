@@ -54,8 +54,8 @@ constexpr const uid_t kDefaultMaximumUid = UID_MAX - 1;  // UID_MAX defined as U
 // Proc file containing the uid mapping for the user namespace of the current process.
 const char kUidMapProcFile[] = "/proc/self/uid_map";
 
-android::bpf::BpfLevel getBpfOwnerStatus() {
-    return gCtls->trafficCtrl.getBpfLevel();
+bool getBpfOwnerStatus() {
+    return gCtls->trafficCtrl.getBpfLevel() != BpfLevel::NONE;
 }
 
 }  // namespace
@@ -96,7 +96,7 @@ FirewallController::FirewallController(void) : mMaxUid(discoverMaximumValidUid(k
 int FirewallController::setupIptablesHooks(void) {
     int res = 0;
     mUseBpfOwnerMatch = getBpfOwnerStatus();
-    if (mUseBpfOwnerMatch != BpfLevel::NONE) {
+    if (mUseBpfOwnerMatch) {
         return res;
     }
     res |= createChain(LOCAL_DOZABLE, getFirewallType(DOZABLE));
@@ -160,7 +160,7 @@ int FirewallController::enableChildChains(ChildChain chain, bool enable) {
             return res;
     }
 
-    if (mUseBpfOwnerMatch != BpfLevel::NONE) {
+    if (mUseBpfOwnerMatch) {
         return gCtls->trafficCtrl.toggleUidOwnerMap(chain, enable);
     }
 
@@ -259,7 +259,7 @@ int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule)
             ALOGW("Unknown child chain: %d", chain);
             return -EINVAL;
     }
-    if (mUseBpfOwnerMatch != BpfLevel::NONE) {
+    if (mUseBpfOwnerMatch) {
         return gCtls->trafficCtrl.changeUidOwnerRule(chain, uid, rule, firewallType);
     }
 
@@ -347,12 +347,12 @@ std::string FirewallController::makeUidRules(IptablesTarget target, const char *
 
 int FirewallController::replaceUidChain(
         const std::string &name, bool isWhitelist, const std::vector<int32_t>& uids) {
-    if (mUseBpfOwnerMatch != BpfLevel::NONE) {
+    if (mUseBpfOwnerMatch) {
         return gCtls->trafficCtrl.replaceUidOwnerMap(name, isWhitelist, uids);
-   }
-   std::string commands4 = makeUidRules(V4, name.c_str(), isWhitelist, uids);
-   std::string commands6 = makeUidRules(V6, name.c_str(), isWhitelist, uids);
-   return execIptablesRestore(V4, commands4.c_str()) | execIptablesRestore(V6, commands6.c_str());
+    }
+    std::string commands4 = makeUidRules(V4, name.c_str(), isWhitelist, uids);
+    std::string commands6 = makeUidRules(V6, name.c_str(), isWhitelist, uids);
+    return execIptablesRestore(V4, commands4.c_str()) | execIptablesRestore(V6, commands6.c_str());
 }
 
 /* static */
