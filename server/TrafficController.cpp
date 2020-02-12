@@ -182,12 +182,12 @@ Status changeOwnerAndMode(const char* path, gid_t group, const char* debugName, 
 }
 
 TrafficController::TrafficController()
-    : mBpfLevel(getBpfSupportLevel()),
+    : mBpfEnabled(isBpfSupported()),
       mPerUidStatsEntriesLimit(PER_UID_STATS_ENTRIES_LIMIT),
       mTotalUidStatsEntriesLimit(TOTAL_UID_STATS_ENTRIES_LIMIT) {}
 
 TrafficController::TrafficController(uint32_t perUidLimit, uint32_t totalLimit)
-    : mBpfLevel(getBpfSupportLevel()),
+    : mBpfEnabled(isBpfSupported()),
       mPerUidStatsEntriesLimit(perUidLimit),
       mTotalUidStatsEntriesLimit(totalLimit) {}
 
@@ -297,7 +297,7 @@ static Status initPrograms() {
 }
 
 Status TrafficController::start() {
-    if (mBpfLevel == BpfLevel::NONE) {
+    if (!mBpfEnabled) {
         return netdutils::status::ok;
     }
 
@@ -364,7 +364,7 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
         return -EPERM;
     }
 
-    if (mBpfLevel == BpfLevel::NONE) {
+    if (!mBpfEnabled) {
         if (legacy_tagSocket(sockFd, tag, uid)) return -errno;
         return 0;
     }
@@ -432,7 +432,7 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
 
 int TrafficController::untagSocket(int sockFd) {
     std::lock_guard guard(mMutex);
-    if (mBpfLevel == BpfLevel::NONE) {
+    if (!mBpfEnabled) {
         if (legacy_untagSocket(sockFd)) return -errno;
         return 0;
     }
@@ -453,7 +453,7 @@ int TrafficController::setCounterSet(int counterSetNum, uid_t uid, uid_t calling
     std::lock_guard guard(mMutex);
     if (!hasUpdateDeviceStatsPermission(callingUid)) return -EPERM;
 
-    if (mBpfLevel == BpfLevel::NONE) {
+    if (!mBpfEnabled) {
         if (legacy_setCounterSet(counterSetNum, uid)) return -errno;
         return 0;
     }
@@ -486,7 +486,7 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid, uid_t callingUid) 
     std::lock_guard guard(mMutex);
     if (!hasUpdateDeviceStatsPermission(callingUid)) return -EPERM;
 
-    if (mBpfLevel == BpfLevel::NONE) {
+    if (!mBpfEnabled) {
         if (legacy_deleteTagData(tag, uid)) return -errno;
         return 0;
     }
@@ -551,7 +551,7 @@ int TrafficController::deleteTagData(uint32_t tag, uid_t uid, uid_t callingUid) 
 }
 
 int TrafficController::addInterface(const char* name, uint32_t ifaceIndex) {
-    if (mBpfLevel == BpfLevel::NONE) return 0;
+    if (!mBpfEnabled) return 0;
 
     IfaceValue iface;
     if (ifaceIndex == 0) {
@@ -668,7 +668,7 @@ Status TrafficController::updateUidOwnerMap(const std::vector<std::string>& appS
 
 int TrafficController::changeUidOwnerRule(ChildChain chain, uid_t uid, FirewallRule rule,
                                           FirewallType type) {
-    if (mBpfLevel == BpfLevel::NONE) {
+    if (!mBpfEnabled) {
         ALOGE("bpf is not set up, should use iptables rule");
         return -ENOSYS;
     }
@@ -721,7 +721,7 @@ Status TrafficController::replaceRulesInMap(const UidOwnerMatchType match,
 
 Status TrafficController::addUidInterfaceRules(const int iif,
                                                const std::vector<int32_t>& uidsToAdd) {
-    if (mBpfLevel == BpfLevel::NONE) {
+    if (!mBpfEnabled) {
         ALOGW("UID ingress interface filtering not possible without BPF owner match");
         return statusFromErrno(EOPNOTSUPP, "eBPF not supported");
     }
@@ -740,7 +740,7 @@ Status TrafficController::addUidInterfaceRules(const int iif,
 }
 
 Status TrafficController::removeUidInterfaceRules(const std::vector<int32_t>& uidsToDelete) {
-    if (mBpfLevel == BpfLevel::NONE) {
+    if (!mBpfEnabled) {
         ALOGW("UID ingress interface filtering not possible without BPF owner match");
         return statusFromErrno(EOPNOTSUPP, "eBPF not supported");
     }
@@ -818,14 +818,14 @@ int TrafficController::toggleUidOwnerMap(ChildChain chain, bool enable) {
     return -res.code();
 }
 
-BpfLevel TrafficController::getBpfLevel() {
-    return mBpfLevel;
+bool TrafficController::getBpfEnabled() {
+    return mBpfEnabled;
 }
 
 Status TrafficController::swapActiveStatsMap() {
     std::lock_guard guard(mMutex);
 
-    if (mBpfLevel == BpfLevel::NONE) {
+    if (!mBpfEnabled) {
         return statusFromErrno(EOPNOTSUPP, "This device doesn't have eBPF support");
     }
 
@@ -871,7 +871,7 @@ void TrafficController::setPermissionForUids(int permission, const std::vector<u
             // Clean up all permission information for the related uid if all the
             // packages related to it are uninstalled.
             mPrivilegedUser.erase(uid);
-            if (mBpfLevel > BpfLevel::NONE) {
+            if (mBpfEnabled) {
                 Status ret = mUidPermissionMap.deleteValue(uid);
                 if (!isOk(ret) && ret.code() != ENOENT) {
                     ALOGE("Failed to clean up the permission for %u: %s", uid,
@@ -892,7 +892,7 @@ void TrafficController::setPermissionForUids(int permission, const std::vector<u
         }
 
         // Skip the bpf map operation if not supported.
-        if (mBpfLevel == BpfLevel::NONE) {
+        if (!mBpfEnabled) {
             continue;
         }
         // The map stores all the permissions that the UID has, except if the only permission
@@ -950,9 +950,10 @@ void TrafficController::dump(DumpWriter& dw, bool verbose) {
     dw.println("TrafficController");
 
     ScopedIndent indentPreBpfModule(dw);
-    dw.println("BPF module status: %s", BpfLevelToString(mBpfLevel).c_str());
+    dw.println("BPF module status: %s", mBpfEnabled ? "enabled" : "disabled");
+    dw.println("BPF support level: %s", BpfLevelToString(getBpfSupportLevel()).c_str());
 
-    if (mBpfLevel == BpfLevel::NONE) {
+    if (!mBpfEnabled) {
         return;
     }
 

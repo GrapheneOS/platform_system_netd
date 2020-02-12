@@ -41,7 +41,6 @@ using android::base::ReadFileToString;
 using android::base::Split;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
-using android::bpf::BpfLevel;
 using android::net::gCtls;
 
 namespace {
@@ -55,7 +54,7 @@ constexpr const uid_t kDefaultMaximumUid = UID_MAX - 1;  // UID_MAX defined as U
 const char kUidMapProcFile[] = "/proc/self/uid_map";
 
 bool getBpfOwnerStatus() {
-    return gCtls->trafficCtrl.getBpfLevel() != BpfLevel::NONE;
+    return gCtls->trafficCtrl.getBpfEnabled();
 }
 
 }  // namespace
