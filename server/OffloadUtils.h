@@ -54,8 +54,6 @@ static inline int getClatIngressProgFd(bool with_ethernet_header) {
 
 int openNetlinkSocket(void);
 
-int processNetlinkResponse(int fd);
-
 int doTcQdiscClsact(int fd, int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags);
 
 static inline int tcQdiscAddDevClsact(int fd, int ifIndex) {
