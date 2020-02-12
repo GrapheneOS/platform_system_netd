@@ -421,6 +421,11 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
                   strerror(-rv));
         }
+        rv = tcFilterDelDevEgressClatIpv4(mNetlinkFd, tracker.v4ifIndex);
+        if (rv) {
+            ALOGE("tcFilterDelDevEgressClatIpv4(%d[%s]) failure: %s", tracker.v4ifIndex,
+                  tracker.v4iface, strerror(-rv));
+        }
         rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.v4ifIndex);
         if (rv) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
@@ -452,12 +457,22 @@ void ClatdController::setIptablesDropRule(bool add, const char* iface, const cha
 void ClatdController::maybeStopBpf(const ClatdTracker& tracker) {
     if (mClatEbpfMode == ClatEbpfDisabled) return;
 
-    // No need to remove filters, since we remove qdiscs they are attached to,
-    // which automatically removes everything attached to the qdisc.
-    int rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
+    int rv = tcFilterDelDevIngressClatIpv6(mNetlinkFd, tracker.ifIndex);
+    if (rv < 0) {
+        ALOGE("tcFilterDelDevIngressClatIpv6(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
+              strerror(-rv));
+    }
+
+    rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
     if (rv < 0) {
         ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
               strerror(-rv));
+    }
+
+    rv = tcFilterDelDevEgressClatIpv4(mNetlinkFd, tracker.v4ifIndex);
+    if (rv < 0) {
+        ALOGE("tcFilterDelDevEgressClatIpv4(%d[%s]) failure: %s", tracker.v4ifIndex,
+              tracker.v4iface, strerror(-rv));
     }
 
     rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.v4ifIndex);
