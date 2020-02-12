@@ -288,7 +288,7 @@ void Controllers::init() {
     }
     gLog.info("Initializing traffic control: %" PRId64 "us", s.getTimeAndResetUs());
 
-    bandwidthCtrl.setBpfEnabled(trafficCtrl.getBpfLevel() != android::bpf::BpfLevel::NONE);
+    bandwidthCtrl.setBpfEnabled(trafficCtrl.getBpfEnabled());
     bandwidthCtrl.enableBandwidthControl();
     gLog.info("Enabling bandwidth control: %" PRId64 "us", s.getTimeAndResetUs());
 
