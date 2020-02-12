@@ -2913,10 +2913,10 @@ void checkUidsInPermissionMap(std::vector<int32_t>& uids, bool exist) {
     for (int32_t uid : uids) {
         android::base::Result<uint8_t> permission = uidPermissionMap.readValue(uid);
         if (exist) {
-            ASSERT_TRUE(permission);
+            ASSERT_RESULT_OK(permission);
             EXPECT_EQ(INetd::PERMISSION_NONE, permission.value());
         } else {
-            ASSERT_FALSE(permission);
+            ASSERT_FALSE(permission.ok());
             EXPECT_EQ(ENOENT, permission.error().code());
         }
     }
