@@ -107,7 +107,7 @@ void ClatdController::init(void) {
     std::lock_guard guard(mutex);
 
     // TODO: should refactor into separate function for testability
-    if (bpf::getBpfSupportLevel() == bpf::BpfLevel::NONE) {
+    if (!bpf::isBpfSupported()) {
         ALOGI("Pre-4.9 kernel or pre-P api shipping level - disabling clat ebpf.");
         mClatEbpfMode = ClatEbpfDisabled;
         return;
