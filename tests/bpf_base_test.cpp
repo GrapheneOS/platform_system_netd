@@ -116,12 +116,12 @@ TEST_F(BpfBasicTest, TestTagSocket) {
     ASSERT_NE(NONEXISTENT_COOKIE, cookie);
     ASSERT_EQ(0, qtaguid_tagSocket(sock, TEST_TAG, TEST_UID));
     Result<UidTagValue> tagResult = cookieTagMap.readValue(cookie);
-    ASSERT_TRUE(tagResult);
+    ASSERT_RESULT_OK(tagResult);
     ASSERT_EQ(TEST_UID, tagResult.value().uid);
     ASSERT_EQ(TEST_TAG, tagResult.value().tag);
     ASSERT_EQ(0, qtaguid_untagSocket(sock));
     tagResult = cookieTagMap.readValue(cookie);
-    ASSERT_FALSE(tagResult);
+    ASSERT_FALSE(tagResult.ok());
     ASSERT_EQ(ENOENT, tagResult.error().code());
 }
 
@@ -136,7 +136,7 @@ TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
     ASSERT_NE(NONEXISTENT_COOKIE, cookie);
     ASSERT_EQ(0, qtaguid_tagSocket(sock, TEST_TAG, TEST_UID));
     Result<UidTagValue> tagResult = cookieTagMap.readValue(cookie);
-    ASSERT_TRUE(tagResult);
+    ASSERT_RESULT_OK(tagResult);
     ASSERT_EQ(TEST_UID, tagResult.value().uid);
     ASSERT_EQ(TEST_TAG, tagResult.value().tag);
     ASSERT_EQ(0, close(sock));
@@ -144,7 +144,7 @@ TEST_F(BpfBasicTest, TestCloseSocketWithoutUntag) {
     for (int i = 0; i < 10; i++) {
         usleep(5000);  // 5ms
         tagResult = cookieTagMap.readValue(cookie);
-        if (!tagResult) {
+        if (!tagResult.ok()) {
             ASSERT_EQ(ENOENT, tagResult.error().code());
             return;
         }
@@ -160,11 +160,11 @@ TEST_F(BpfBasicTest, TestChangeCounterSet) {
     ASSERT_EQ(0, qtaguid_setCounterSet(TEST_COUNTERSET, TEST_UID));
     uid_t uid = TEST_UID;
     Result<uint8_t> counterSetResult = uidCounterSetMap.readValue(uid);
-    ASSERT_TRUE(counterSetResult);
+    ASSERT_RESULT_OK(counterSetResult);
     ASSERT_EQ(TEST_COUNTERSET, counterSetResult.value());
     ASSERT_EQ(0, qtaguid_setCounterSet(DEFAULT_COUNTERSET, TEST_UID));
     counterSetResult = uidCounterSetMap.readValue(uid);
-    ASSERT_FALSE(counterSetResult);
+    ASSERT_FALSE(counterSetResult.ok());
     ASSERT_EQ(ENOENT, counterSetResult.error().code());
 }
 
@@ -181,20 +181,20 @@ TEST_F(BpfBasicTest, TestDeleteTagData) {
     StatsKey key = {.uid = TEST_UID, .tag = TEST_TAG, .counterSet = TEST_COUNTERSET,
                     .ifaceIndex = 1};
     StatsValue statsMapValue = {.rxPackets = 1, .rxBytes = 100};
-    EXPECT_TRUE(statsMapB.writeValue(key, statsMapValue, BPF_ANY));
+    EXPECT_RESULT_OK(statsMapB.writeValue(key, statsMapValue, BPF_ANY));
     key.tag = 0;
-    EXPECT_TRUE(statsMapA.writeValue(key, statsMapValue, BPF_ANY));
-    EXPECT_TRUE(appUidStatsMap.writeValue(TEST_UID, statsMapValue, BPF_ANY));
+    EXPECT_RESULT_OK(statsMapA.writeValue(key, statsMapValue, BPF_ANY));
+    EXPECT_RESULT_OK(appUidStatsMap.writeValue(TEST_UID, statsMapValue, BPF_ANY));
     ASSERT_EQ(0, qtaguid_deleteTagData(0, TEST_UID));
     Result<StatsValue> statsResult = statsMapA.readValue(key);
-    ASSERT_FALSE(statsResult);
+    ASSERT_FALSE(statsResult.ok());
     ASSERT_EQ(ENOENT, statsResult.error().code());
     statsResult = appUidStatsMap.readValue(TEST_UID);
-    ASSERT_FALSE(statsResult);
+    ASSERT_FALSE(statsResult.ok());
     ASSERT_EQ(ENOENT, statsResult.error().code());
     key.tag = TEST_TAG;
     statsResult = statsMapB.readValue(key);
-    ASSERT_FALSE(statsResult);
+    ASSERT_FALSE(statsResult.ok());
     ASSERT_EQ(ENOENT, statsResult.error().code());
 }
 
