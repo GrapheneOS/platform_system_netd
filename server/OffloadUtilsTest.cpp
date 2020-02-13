@@ -121,6 +121,26 @@ TEST_F(OffloadUtilsTest, GetTetherIngressMapFd) {
     close(fd);
 }
 
+TEST_F(OffloadUtilsTest, GetTetherIngressRawIpProgFd) {
+    // Currently only implementing downstream direction offload.
+    // RX Rawip -> TX Ether requires header adjustments and thus 4.14.
+    SKIP_IF_EXTENDED_BPF_NOT_SUPPORTED;
+
+    int fd = getTetherIngressProgFd(false);
+    ASSERT_LE(3, fd);
+    close(fd);
+}
+
+TEST_F(OffloadUtilsTest, GetTetherIngressEtherProgFd) {
+    // Currently only implementing downstream direction offload.
+    // RX Ether -> TX Ether does not require header adjustments
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    int fd = getTetherIngressProgFd(true);
+    ASSERT_LE(3, fd);
+    close(fd);
+}
+
 TEST_F(OffloadUtilsTest, TryOpeningNetlinkSocket) {
     int fd = openNetlinkSocket();
     ASSERT_LE(3, fd);
