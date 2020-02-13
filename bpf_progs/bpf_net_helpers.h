@@ -42,6 +42,9 @@ static int (*bpf_l4_csum_replace)(struct __sk_buff* skb, __u32 offset, __u64 fro
                                   __u64 flags) = (void*)BPF_FUNC_l4_csum_replace;
 static int (*bpf_redirect)(__u32 ifindex, __u64 flags) = (void*)BPF_FUNC_redirect;
 
+static int (*bpf_skb_adjust_room)(struct __sk_buff* skb, __s32 len_diff, __u32 mode,
+                                  __u64 flags) = (void*)BPF_FUNC_skb_adjust_room;
+
 // Android only supports little endian architectures
 #define htons(x) (__builtin_constant_p(x) ? ___constant_swab16(x) : __builtin_bswap16(x))
 #define htonl(x) (__builtin_constant_p(x) ? ___constant_swab32(x) : __builtin_bswap32(x))
