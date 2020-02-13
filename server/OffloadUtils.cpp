@@ -93,7 +93,7 @@ int openNetlinkSocket(void) {
 }
 
 // TODO: merge with //system/netd/server/SockDiag.cpp:checkError(fd)
-int processNetlinkResponse(int fd) {
+static int processNetlinkResponse(int fd) {
     struct {
         nlmsghdr h;
         nlmsgerr e;
