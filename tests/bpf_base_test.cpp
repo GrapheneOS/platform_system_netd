@@ -50,15 +50,6 @@ constexpr uint32_t TEST_TAG = 42;
 constexpr int TEST_COUNTERSET = 1;
 constexpr int DEFAULT_COUNTERSET = 0;
 
-#define SKIP_IF_EXTENDED_BPF_NOT_SUPPORTED                                           \
-    do {                                                                             \
-        if (android::bpf::getBpfSupportLevel() < android::bpf::BpfLevel::EXTENDED) { \
-            GTEST_LOG_(INFO) << "This test is skipped since extended bpf feature"    \
-                             << "not supported\n";                                   \
-            return;                                                                  \
-        }                                                                            \
-    } while (0)
-
 class BpfBasicTest : public testing::Test {
   protected:
     BpfBasicTest() {}
