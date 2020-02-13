@@ -57,6 +57,13 @@ inline int getTetherIngressMapFd(void) {
     return (fd == -1) ? -errno : fd;
 }
 
+inline int getTetherIngressProgFd(bool with_ethernet_header) {
+    const int fd = bpf::bpfFdGet(
+            with_ethernet_header ? TETHER_INGRESS_PROG_ETHER_PATH : TETHER_INGRESS_PROG_RAWIP_PATH,
+            0);
+    return (fd == -1) ? -errno : fd;
+}
+
 int openNetlinkSocket(void);
 
 int doTcQdiscClsact(int fd, int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags);
