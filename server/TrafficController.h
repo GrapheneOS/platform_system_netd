@@ -81,7 +81,7 @@ class TrafficController {
      * Check if the current device have the bpf traffic stats accounting service
      * running.
      */
-    bpf::BpfLevel getBpfLevel();
+    bool getBpfEnabled();
 
     /*
      * Swap the stats map config from current active stats map to the idle one.
@@ -209,7 +209,7 @@ class TrafficController {
     netdutils::Status addRule(BpfMap<uint32_t, UidOwnerValue>& map, uint32_t uid,
                               UidOwnerMatchType match, uint32_t iif = 0) REQUIRES(mMutex);
 
-    bpf::BpfLevel mBpfLevel;
+    bool mBpfEnabled;
 
     // mMutex guards all accesses to mConfigurationMap, mUidOwnerMap, mUidPermissionMap,
     // mStatsMapA, mStatsMapB and mPrivilegedUser. It is designed to solve the following

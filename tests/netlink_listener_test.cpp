@@ -80,7 +80,7 @@ class NetlinkListenerTest : public testing::Test {
                                                 BpfMap<uint64_t, UidTagValue>& map) {
             if ((value.uid == TEST_UID) && (value.tag == TEST_TAG)) {
                 Result<void> res = map.deleteValue(key);
-                if (res || (res.error().code() == ENOENT)) {
+                if (res.ok() || (res.error().code() == ENOENT)) {
                     return Result<void>();
                 }
                 ALOGE("Failed to delete data(cookie = %" PRIu64 "): %s\n", key,
@@ -89,7 +89,7 @@ class NetlinkListenerTest : public testing::Test {
             // Move forward to next cookie in the map.
             return Result<void>();
         };
-        EXPECT_TRUE(mCookieTagMap.iterateWithValue(deleteTestCookieEntries));
+        EXPECT_RESULT_OK(mCookieTagMap.iterateWithValue(deleteTestCookieEntries));
     }
 
     Result<void> checkNoGarbageTagsExist() {
@@ -145,7 +145,7 @@ class NetlinkListenerTest : public testing::Test {
             usleep(ENOBUFS_POLL_WAIT_US);
             EXPECT_EQ(currentErrorCount, rxErrorCount);
         } else {
-            EXPECT_TRUE(checkNoGarbageTagsExist());
+            EXPECT_RESULT_OK(checkNoGarbageTagsExist());
             EXPECT_EQ(0, rxErrorCount);
         }
     }
