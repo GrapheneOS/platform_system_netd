@@ -113,6 +113,14 @@ TEST_F(OffloadUtilsTest, GetClatIngressEtherProgFd) {
     close(fd);
 }
 
+TEST_F(OffloadUtilsTest, GetTetherIngressMapFd) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    int fd = getTetherIngressMapFd();
+    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    close(fd);
+}
+
 TEST_F(OffloadUtilsTest, TryOpeningNetlinkSocket) {
     int fd = openNetlinkSocket();
     ASSERT_LE(3, fd);
