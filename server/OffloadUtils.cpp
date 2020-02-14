@@ -175,11 +175,8 @@ int doTcQdiscClsact(int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags) {
 
 // tc filter add dev .. in/egress prio 1 protocol ipv6/ip bpf object-pinned /sys/fs/bpf/...
 // direct-action
-int tcFilterAddDevBpf(int ifIndex, int bpfFd, bool ethernet, bool ingress, bool ipv6) {
-    // The priority doesn't matter until we actually start attaching multiple
-    // things to the same interface's in/egress point.
-    const __u32 prio = 1;
-
+int tcFilterAddDevBpf(int ifIndex, bool ingress, uint16_t prio, uint16_t proto, int bpfFd,
+                      bool ethernet) {
     // This is the name of the filter we're attaching (ie. this is the 'bpf'
     // packet classifier enabled by kernel config option CONFIG_NET_CLS_BPF.
     //
@@ -271,8 +268,7 @@ int tcFilterAddDevBpf(int ifIndex, int bpfFd, bool ethernet, bool ingress, bool 
                             .tcm_handle = TC_H_UNSPEC,
                             .tcm_parent = TC_H_MAKE(TC_H_CLSACT,
                                                     ingress ? TC_H_MIN_INGRESS : TC_H_MIN_EGRESS),
-                            .tcm_info = (prio << 16) |
-                                        (__u32)(ipv6 ? htons(ETH_P_IPV6) : htons(ETH_P_IP)),
+                            .tcm_info = static_cast<__u32>((prio << 16) | htons(proto)),
                     },
             .kind =
                     {
