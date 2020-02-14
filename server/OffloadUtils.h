@@ -36,6 +36,10 @@ int hardwareAddressType(const std::string& interface);
 constexpr bool RAWIP = false;
 constexpr bool ETHER = true;
 
+// For better code clarity when used for 'bool ingress' parameter.
+constexpr bool EGRESS = false;
+constexpr bool INGRESS = true;
+
 inline int getClatEgressMapFd(void) {
     const int fd = bpf::bpfFdGet(CLAT_EGRESS_MAP_PATH, 0);
     return (fd == -1) ? -errno : fd;
@@ -95,12 +99,12 @@ int tcFilterAddDevBpf(int ifIndex, int bpfFd, bool ethernet, bool ingress, bool 
 
 // tc filter add dev .. ingress prio 1 protocol ipv6 bpf object-pinned /sys/fs/bpf/... direct-action
 inline int tcFilterAddDevIngressBpf(int ifIndex, int bpfFd, bool ethernet) {
-    return tcFilterAddDevBpf(ifIndex, bpfFd, ethernet, /*ingress*/ true, /*ipv6*/ true);
+    return tcFilterAddDevBpf(ifIndex, bpfFd, ethernet, INGRESS, /*ipv6*/ true);
 }
 
 // tc filter add dev .. egress prio 1 protocol ip bpf object-pinned /sys/fs/bpf/... direct-action
 inline int tcFilterAddDevEgressBpf(int ifIndex, int bpfFd, bool ethernet) {
-    return tcFilterAddDevBpf(ifIndex, bpfFd, ethernet, /*ingress*/ false, /*ipv6*/ false);
+    return tcFilterAddDevBpf(ifIndex, bpfFd, ethernet, EGRESS, /*ipv6*/ false);
 }
 
 // tc filter del dev .. in/egress prio .. protocol ..
@@ -108,12 +112,12 @@ int tcFilterDelDev(int ifIndex, bool ingress, uint16_t prio, uint16_t proto);
 
 // tc filter del dev .. ingress prio 1 protocol ipv6
 inline int tcFilterDelDevIngressClatIpv6(int ifIndex) {
-    return tcFilterDelDev(ifIndex, /*ingress*/ true, /*prio*/ 1, ETH_P_IPV6);
+    return tcFilterDelDev(ifIndex, INGRESS, /*prio*/ 1, ETH_P_IPV6);
 }
 
 // tc filter del dev .. egress prio 1 protocol ip
 inline int tcFilterDelDevEgressClatIpv4(int ifIndex) {
-    return tcFilterDelDev(ifIndex, /*ingress*/ false, /*prio*/ 1, ETH_P_IP);
+    return tcFilterDelDev(ifIndex, EGRESS, /*prio*/ 1, ETH_P_IP);
 }
 
 }  // namespace net
