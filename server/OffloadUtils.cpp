@@ -93,14 +93,18 @@ int openNetlinkSocket(void) {
 }
 
 // TODO: merge with //system/netd/server/SockDiag.cpp:checkError(fd)
-int processNetlinkResponse(int fd) {
+static int sendAndProcessNetlinkResponse(int fd, const void* req, int len) {
+    int rv = send(fd, req, len, 0);
+    if (rv == -1) return -errno;
+    if (rv != len) return -EMSGSIZE;
+
     struct {
         nlmsghdr h;
         nlmsgerr e;
         char buf[256];
     } resp = {};
 
-    const int rv = recv(fd, &resp, sizeof(resp), MSG_TRUNC);
+    rv = recv(fd, &resp, sizeof(resp), MSG_TRUNC);
 
     if (rv == -1) {
         const int err = errno;
@@ -172,11 +176,7 @@ int doTcQdiscClsact(int fd, int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags
 #undef ASCIIZ_LEN_CLSACT
 #undef CLSACT
 
-    const int rv = send(fd, &req, sizeof(req), 0);
-    if (rv == -1) return -errno;
-    if (rv != sizeof(req)) return -EMSGSIZE;
-
-    return processNetlinkResponse(fd);
+    return sendAndProcessNetlinkResponse(fd, &req, sizeof(req));
 }
 
 // tc filter add dev .. in/egress prio 1 protocol ipv6/ip bpf object-pinned /sys/fs/bpf/...
@@ -351,11 +351,7 @@ int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool ingres
 #undef ASCIIZ_LEN_BPF
 #undef BPF
 
-    const int rv = send(fd, &req, sizeof(req), 0);
-    if (rv == -1) return -errno;
-    if (rv != sizeof(req)) return -EMSGSIZE;
-
-    return processNetlinkResponse(fd);
+    return sendAndProcessNetlinkResponse(fd, &req, sizeof(req));
 }
 
 // tc filter del dev .. in/egress prio .. protocol ..
@@ -381,11 +377,7 @@ int tcFilterDelDev(int fd, int ifIndex, bool ingress, uint16_t prio, uint16_t pr
                     },
     };
 
-    const int rv = send(fd, &req, sizeof(req), 0);
-    if (rv == -1) return -errno;
-    if (rv != sizeof(req)) return -EMSGSIZE;
-
-    return processNetlinkResponse(fd);
+    return sendAndProcessNetlinkResponse(fd, &req, sizeof(req));
 }
 
 }  // namespace net
