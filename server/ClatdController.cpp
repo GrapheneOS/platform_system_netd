@@ -72,12 +72,9 @@ namespace android {
 namespace net {
 
 void ClatdController::resetEgressMap() {
-    int netlinkFd = mNetlinkFd.get();
-
-    const auto del = [&netlinkFd](const ClatEgressKey& key,
-                                  const BpfMap<ClatEgressKey, ClatEgressValue>&) {
+    const auto del = [](const ClatEgressKey& key, const BpfMap<ClatEgressKey, ClatEgressValue>&) {
         ALOGW("Removing stale clat config on interface %d.", key.iif);
-        int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
+        int rv = tcQdiscDelDevClsact(key.iif);
         if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
         return Result<void>();  // keep on going regardless
     };
@@ -88,12 +85,10 @@ void ClatdController::resetEgressMap() {
 }
 
 void ClatdController::resetIngressMap() {
-    int netlinkFd = mNetlinkFd.get();
-
-    const auto del = [&netlinkFd](const ClatIngressKey& key,
-                                  const BpfMap<ClatIngressKey, ClatIngressValue>&) {
+    const auto del = [](const ClatIngressKey& key,
+                        const BpfMap<ClatIngressKey, ClatIngressValue>&) {
         ALOGW("Removing stale clat config on interface %d.", key.iif);
-        int rv = tcQdiscDelDevClsact(netlinkFd, key.iif);
+        int rv = tcQdiscDelDevClsact(key.iif);
         if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
         return Result<void>();  // keep on going regardless
     };
@@ -132,19 +127,10 @@ void ClatdController::init(void) {
         mClatEbpfMode = ClatEbpfMaybe;
     }
 
-    int rv = openNetlinkSocket();
-    if (rv < 0) {
-        ALOGE("openNetlinkSocket() failure: %s", strerror(-rv));
-        mClatEbpfMode = ClatEbpfDisabled;
-        return;
-    }
-    mNetlinkFd.reset(rv);
-
-    rv = getClatEgressMapFd();
+    int rv = getClatEgressMapFd();
     if (rv < 0) {
         ALOGE("getClatEgressMapFd() failure: %s", strerror(-rv));
         mClatEbpfMode = ClatEbpfDisabled;
-        mNetlinkFd.reset(-1);
         return;
     }
     mClatEgressMap.reset(rv);
@@ -154,7 +140,6 @@ void ClatdController::init(void) {
         ALOGE("getClatIngressMapFd() failure: %s", strerror(-rv));
         mClatEbpfMode = ClatEbpfDisabled;
         mClatEgressMap.reset(-1);
-        mNetlinkFd.reset(-1);
         return;
     }
     mClatIngressMap.reset(rv);
@@ -348,7 +333,7 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
     // We do tc setup *after* populating the maps, so scanning through them
     // can always be used to tell us what needs cleanup.
 
-    rv = tcQdiscAddDevClsact(mNetlinkFd, tracker.ifIndex);
+    rv = tcQdiscAddDevClsact(tracker.ifIndex);
     if (rv) {
         ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
               strerror(-rv));
@@ -361,11 +346,11 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcQdiscAddDevClsact(mNetlinkFd, tracker.v4ifIndex);
+    rv = tcQdiscAddDevClsact(tracker.v4ifIndex);
     if (rv) {
         ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
               strerror(-rv));
-        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
+        rv = tcQdiscDelDevClsact(tracker.ifIndex);
         if (rv < 0) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
                   strerror(-rv));
@@ -379,7 +364,7 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcFilterAddDevEgressBpf(mNetlinkFd, tracker.v4ifIndex, txRawIpProgFd, false);
+    rv = tcFilterAddDevEgressBpf(tracker.v4ifIndex, txRawIpProgFd, false);
     if (rv) {
         if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
             ALOGI("tcFilterAddDevEgressBpf(%d[%s], false): %s", tracker.v4ifIndex, tracker.v4iface,
@@ -388,12 +373,12 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             ALOGE("tcFilterAddDevEgressBpf(%d[%s], false) failure: %s", tracker.v4ifIndex,
                   tracker.v4iface, strerror(-rv));
         }
-        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
+        rv = tcQdiscDelDevClsact(tracker.ifIndex);
         if (rv) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
                   strerror(-rv));
         }
-        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.v4ifIndex);
+        rv = tcQdiscDelDevClsact(tracker.v4ifIndex);
         if (rv) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
                   strerror(-rv));
@@ -407,7 +392,7 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcFilterAddDevIngressBpf(mNetlinkFd, tracker.ifIndex, rxProgFd, isEthernet);
+    rv = tcFilterAddDevIngressBpf(tracker.ifIndex, rxProgFd, isEthernet);
     if (rv) {
         if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
             ALOGI("tcFilterAddDevIngressBpf(%d[%s], %d): %s", tracker.ifIndex, tracker.iface,
@@ -416,17 +401,17 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             ALOGE("tcFilterAddDevIngressBpf(%d[%s], %d) failure: %s", tracker.ifIndex,
                   tracker.iface, isEthernet, strerror(-rv));
         }
-        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
+        rv = tcQdiscDelDevClsact(tracker.ifIndex);
         if (rv) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
                   strerror(-rv));
         }
-        rv = tcFilterDelDevEgressClatIpv4(mNetlinkFd, tracker.v4ifIndex);
+        rv = tcFilterDelDevEgressClatIpv4(tracker.v4ifIndex);
         if (rv) {
             ALOGE("tcFilterDelDevEgressClatIpv4(%d[%s]) failure: %s", tracker.v4ifIndex,
                   tracker.v4iface, strerror(-rv));
         }
-        rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.v4ifIndex);
+        rv = tcQdiscDelDevClsact(tracker.v4ifIndex);
         if (rv) {
             ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
                   strerror(-rv));
@@ -457,25 +442,25 @@ void ClatdController::setIptablesDropRule(bool add, const char* iface, const cha
 void ClatdController::maybeStopBpf(const ClatdTracker& tracker) {
     if (mClatEbpfMode == ClatEbpfDisabled) return;
 
-    int rv = tcFilterDelDevIngressClatIpv6(mNetlinkFd, tracker.ifIndex);
+    int rv = tcFilterDelDevIngressClatIpv6(tracker.ifIndex);
     if (rv < 0) {
         ALOGE("tcFilterDelDevIngressClatIpv6(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
               strerror(-rv));
     }
 
-    rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.ifIndex);
+    rv = tcQdiscDelDevClsact(tracker.ifIndex);
     if (rv < 0) {
         ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
               strerror(-rv));
     }
 
-    rv = tcFilterDelDevEgressClatIpv4(mNetlinkFd, tracker.v4ifIndex);
+    rv = tcFilterDelDevEgressClatIpv4(tracker.v4ifIndex);
     if (rv < 0) {
         ALOGE("tcFilterDelDevEgressClatIpv4(%d[%s]) failure: %s", tracker.v4ifIndex,
               tracker.v4iface, strerror(-rv));
     }
 
-    rv = tcQdiscDelDevClsact(mNetlinkFd, tracker.v4ifIndex);
+    rv = tcQdiscDelDevClsact(tracker.v4ifIndex);
     if (rv < 0) {
         ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
               strerror(-rv));

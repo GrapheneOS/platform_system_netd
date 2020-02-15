@@ -59,7 +59,8 @@ int hardwareAddressType(const std::string& interface) {
 }
 
 // TODO: use //system/netd/server/NetlinkCommands.cpp:openNetlinkSocket(protocol)
-int openNetlinkSocket(void) {
+// and //system/netd/server/SockDiag.cpp:checkError(fd)
+static int sendAndProcessNetlinkResponse(const void* req, int len) {
     base::unique_fd fd(socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE));
     if (fd == -1) {
         const int err = errno;
@@ -67,10 +68,8 @@ int openNetlinkSocket(void) {
         return -err;
     }
 
-    int rv;
-
     const int on = 1;
-    rv = setsockopt(fd, SOL_NETLINK, NETLINK_CAP_ACK, &on, sizeof(on));
+    int rv = setsockopt(fd, SOL_NETLINK, NETLINK_CAP_ACK, &on, sizeof(on));
     if (rv) ALOGE("setsockopt(fd, SOL_NETLINK, NETLINK_CAP_ACK, %d)", on);
 
     // this is needed to get sane strace netlink parsing, it allocates the pid
@@ -89,12 +88,7 @@ int openNetlinkSocket(void) {
         return -err;
     }
 
-    return fd.release();
-}
-
-// TODO: merge with //system/netd/server/SockDiag.cpp:checkError(fd)
-static int sendAndProcessNetlinkResponse(int fd, const void* req, int len) {
-    int rv = send(fd, req, len, 0);
+    rv = send(fd, req, len, 0);
     if (rv == -1) return -errno;
     if (rv != len) return -EMSGSIZE;
 
@@ -133,7 +127,7 @@ static int sendAndProcessNetlinkResponse(int fd, const void* req, int len) {
 // ADD:     nlMsgType=RTM_NEWQDISC nlMsgFlags=NLM_F_EXCL|NLM_F_CREATE
 // REPLACE: nlMsgType=RTM_NEWQDISC nlMsgFlags=NLM_F_CREATE|NLM_F_REPLACE
 // DEL:     nlMsgType=RTM_DELQDISC nlMsgFlags=0
-int doTcQdiscClsact(int fd, int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags) {
+int doTcQdiscClsact(int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags) {
     // This is the name of the qdisc we are attaching.
     // Some hoop jumping to make this compile time constant with known size,
     // so that the structure declaration is well defined at compile time.
@@ -176,12 +170,12 @@ int doTcQdiscClsact(int fd, int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags
 #undef ASCIIZ_LEN_CLSACT
 #undef CLSACT
 
-    return sendAndProcessNetlinkResponse(fd, &req, sizeof(req));
+    return sendAndProcessNetlinkResponse(&req, sizeof(req));
 }
 
 // tc filter add dev .. in/egress prio 1 protocol ipv6/ip bpf object-pinned /sys/fs/bpf/...
 // direct-action
-int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool ingress, bool ipv6) {
+int tcFilterAddDevBpf(int ifIndex, int bpfFd, bool ethernet, bool ingress, bool ipv6) {
     // The priority doesn't matter until we actually start attaching multiple
     // things to the same interface's in/egress point.
     const __u32 prio = 1;
@@ -351,11 +345,11 @@ int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool ingres
 #undef ASCIIZ_LEN_BPF
 #undef BPF
 
-    return sendAndProcessNetlinkResponse(fd, &req, sizeof(req));
+    return sendAndProcessNetlinkResponse(&req, sizeof(req));
 }
 
 // tc filter del dev .. in/egress prio .. protocol ..
-int tcFilterDelDev(int fd, int ifIndex, bool ingress, uint16_t prio, uint16_t proto) {
+int tcFilterDelDev(int ifIndex, bool ingress, uint16_t prio, uint16_t proto) {
     struct {
         nlmsghdr n;
         tcmsg t;
@@ -377,7 +371,7 @@ int tcFilterDelDev(int fd, int ifIndex, bool ingress, uint16_t prio, uint16_t pr
                     },
     };
 
-    return sendAndProcessNetlinkResponse(fd, &req, sizeof(req));
+    return sendAndProcessNetlinkResponse(&req, sizeof(req));
 }
 
 }  // namespace net
