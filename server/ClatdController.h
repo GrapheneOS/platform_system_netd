@@ -105,7 +105,6 @@ class ClatdController {
         return mClatEbpfMode;
     }
 
-    base::unique_fd mNetlinkFd GUARDED_BY(mutex);
     bpf::BpfMap<ClatEgressKey, ClatEgressValue> mClatEgressMap GUARDED_BY(mutex);
     bpf::BpfMap<ClatIngressKey, ClatIngressValue> mClatIngressMap GUARDED_BY(mutex);
 
