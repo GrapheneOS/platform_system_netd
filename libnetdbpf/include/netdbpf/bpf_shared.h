@@ -207,4 +207,15 @@ typedef struct {
     struct ethhdr macHeader;  // includes dst/src mac and ethertype
 } TetherIngressValue;
 
+#define TETHER_STATS_MAP_PATH BPF_PATH "/map_offload_tether_stats_map"
+
+typedef struct {
+    uint64_t rxPackets;
+    uint64_t rxBytes;
+    uint64_t rxErrors;
+    uint64_t txPackets;
+    uint64_t txBytes;
+    uint64_t txErrors;
+} TetherStatsValue;
+
 #endif  // NETDBPF_BPF_SHARED_H

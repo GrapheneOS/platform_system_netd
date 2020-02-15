@@ -236,6 +236,8 @@ Status TrafficController::initMaps() {
 
     RETURN_IF_NOT_OK(changeOwnerAndMode(TETHER_INGRESS_MAP_PATH, AID_NETWORK_STACK,
                                         "TetherIngressMap", S_IRGRP | S_IWGRP));
+    RETURN_IF_NOT_OK(changeOwnerAndMode(TETHER_STATS_MAP_PATH, AID_NETWORK_STACK, "TetherStatsMap",
+                                        S_IRGRP | S_IWGRP));
 
     // The programs must be readable to process that modify iptables rules
     RETURN_IF_NOT_OK(changeOwnerAndMode(XT_BPF_EGRESS_PROG_PATH, AID_NET_ADMIN,
