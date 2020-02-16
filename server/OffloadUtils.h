@@ -64,47 +64,50 @@ inline int getTetherIngressProgFd(bool with_ethernet_header) {
     return (fd == -1) ? -errno : fd;
 }
 
-int openNetlinkSocket(void);
-
-int doTcQdiscClsact(int fd, int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags);
-
-inline int tcQdiscAddDevClsact(int fd, int ifIndex) {
-    return doTcQdiscClsact(fd, ifIndex, RTM_NEWQDISC, NLM_F_EXCL | NLM_F_CREATE);
+inline int getTetherStatsMapFd(void) {
+    const int fd = bpf::bpfFdGet(TETHER_STATS_MAP_PATH, 0);
+    return (fd == -1) ? -errno : fd;
 }
 
-inline int tcQdiscReplaceDevClsact(int fd, int ifIndex) {
-    return doTcQdiscClsact(fd, ifIndex, RTM_NEWQDISC, NLM_F_CREATE | NLM_F_REPLACE);
+int doTcQdiscClsact(int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags);
+
+inline int tcQdiscAddDevClsact(int ifIndex) {
+    return doTcQdiscClsact(ifIndex, RTM_NEWQDISC, NLM_F_EXCL | NLM_F_CREATE);
 }
 
-inline int tcQdiscDelDevClsact(int fd, int ifIndex) {
-    return doTcQdiscClsact(fd, ifIndex, RTM_DELQDISC, 0);
+inline int tcQdiscReplaceDevClsact(int ifIndex) {
+    return doTcQdiscClsact(ifIndex, RTM_NEWQDISC, NLM_F_CREATE | NLM_F_REPLACE);
+}
+
+inline int tcQdiscDelDevClsact(int ifIndex) {
+    return doTcQdiscClsact(ifIndex, RTM_DELQDISC, 0);
 }
 
 // tc filter add dev .. in/egress prio 1 protocol ipv6/ip bpf object-pinned /sys/fs/bpf/...
 // direct-action
-int tcFilterAddDevBpf(int fd, int ifIndex, int bpfFd, bool ethernet, bool ingress, bool ipv6);
+int tcFilterAddDevBpf(int ifIndex, int bpfFd, bool ethernet, bool ingress, bool ipv6);
 
 // tc filter add dev .. ingress prio 1 protocol ipv6 bpf object-pinned /sys/fs/bpf/... direct-action
-inline int tcFilterAddDevIngressBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
-    return tcFilterAddDevBpf(fd, ifIndex, bpfFd, ethernet, /*ingress*/ true, /*ipv6*/ true);
+inline int tcFilterAddDevIngressBpf(int ifIndex, int bpfFd, bool ethernet) {
+    return tcFilterAddDevBpf(ifIndex, bpfFd, ethernet, /*ingress*/ true, /*ipv6*/ true);
 }
 
 // tc filter add dev .. egress prio 1 protocol ip bpf object-pinned /sys/fs/bpf/... direct-action
-inline int tcFilterAddDevEgressBpf(int fd, int ifIndex, int bpfFd, bool ethernet) {
-    return tcFilterAddDevBpf(fd, ifIndex, bpfFd, ethernet, /*ingress*/ false, /*ipv6*/ false);
+inline int tcFilterAddDevEgressBpf(int ifIndex, int bpfFd, bool ethernet) {
+    return tcFilterAddDevBpf(ifIndex, bpfFd, ethernet, /*ingress*/ false, /*ipv6*/ false);
 }
 
 // tc filter del dev .. in/egress prio .. protocol ..
-int tcFilterDelDev(int fd, int ifIndex, bool ingress, uint16_t prio, uint16_t proto);
+int tcFilterDelDev(int ifIndex, bool ingress, uint16_t prio, uint16_t proto);
 
 // tc filter del dev .. ingress prio 1 protocol ipv6
-inline int tcFilterDelDevIngressClatIpv6(int fd, int ifIndex) {
-    return tcFilterDelDev(fd, ifIndex, /*ingress*/ true, /*prio*/ 1, ETH_P_IPV6);
+inline int tcFilterDelDevIngressClatIpv6(int ifIndex) {
+    return tcFilterDelDev(ifIndex, /*ingress*/ true, /*prio*/ 1, ETH_P_IPV6);
 }
 
 // tc filter del dev .. egress prio 1 protocol ip
-inline int tcFilterDelDevEgressClatIpv4(int fd, int ifIndex) {
-    return tcFilterDelDev(fd, ifIndex, /*ingress*/ false, /*prio*/ 1, ETH_P_IP);
+inline int tcFilterDelDevEgressClatIpv4(int ifIndex) {
+    return tcFilterDelDev(ifIndex, /*ingress*/ false, /*prio*/ 1, ETH_P_IP);
 }
 
 }  // namespace net

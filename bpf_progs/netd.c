@@ -56,8 +56,7 @@ DEFINE_BPF_MAP(configuration_map, HASH, uint32_t, uint8_t, CONFIGURATION_MAP_SIZ
 DEFINE_BPF_MAP(uid_owner_map, HASH, uint32_t, UidOwnerValue, UID_OWNER_MAP_SIZE)
 
 /* never actually used from ebpf */
-DEFINE_BPF_MAP_NO_ACCESSORS(iface_index_name_map, HASH, uint32_t, IfaceValue,
-                            IFACE_INDEX_NAME_MAP_SIZE)
+DEFINE_BPF_MAP(iface_index_name_map, HASH, uint32_t, IfaceValue, IFACE_INDEX_NAME_MAP_SIZE)
 
 static __always_inline int is_system_uid(uint32_t uid) {
     return (uid <= MAX_SYSTEM_UID) && (uid >= MIN_SYSTEM_UID);

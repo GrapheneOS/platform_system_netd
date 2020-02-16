@@ -141,9 +141,11 @@ TEST_F(OffloadUtilsTest, GetTetherIngressEtherProgFd) {
     close(fd);
 }
 
-TEST_F(OffloadUtilsTest, TryOpeningNetlinkSocket) {
-    int fd = openNetlinkSocket();
-    ASSERT_LE(3, fd);
+TEST_F(OffloadUtilsTest, GetTetherStatsMapFd) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    int fd = getTetherStatsMapFd();
+    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
     close(fd);
 }
 
@@ -198,16 +200,12 @@ TEST_F(OffloadUtilsTest, AttachReplaceDetachClsactLo) {
     SKIP_IF_BPF_NOT_SUPPORTED;
     if (!kernelSupportsNetSchIngress()) return;
 
-    int fd = openNetlinkSocket();
-    ASSERT_LE(3, fd);
-
     // This attaches and detaches a configuration-less and thus no-op clsact
     // qdisc to loopback interface (and it takes fractions of a second)
-    EXPECT_EQ(0, tcQdiscAddDevClsact(fd, LOOPBACK_IFINDEX));
-    EXPECT_EQ(0, tcQdiscReplaceDevClsact(fd, LOOPBACK_IFINDEX));
-    EXPECT_EQ(0, tcQdiscDelDevClsact(fd, LOOPBACK_IFINDEX));
-    EXPECT_EQ(-EINVAL, tcQdiscDelDevClsact(fd, LOOPBACK_IFINDEX));
-    close(fd);
+    EXPECT_EQ(0, tcQdiscAddDevClsact(LOOPBACK_IFINDEX));
+    EXPECT_EQ(0, tcQdiscReplaceDevClsact(LOOPBACK_IFINDEX));
+    EXPECT_EQ(0, tcQdiscDelDevClsact(LOOPBACK_IFINDEX));
+    EXPECT_EQ(-EINVAL, tcQdiscDelDevClsact(LOOPBACK_IFINDEX));
 }
 
 static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool ethernet) {
@@ -223,32 +221,27 @@ static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool et
     int bpf_fd = ingress ? getClatIngressProgFd(ethernet) : getClatEgressProgFd(ethernet);
     ASSERT_LE(3, bpf_fd);
 
-    int fd = openNetlinkSocket();
-    EXPECT_LE(3, fd);
-    if (fd >= 0) {
-        // This attaches and detaches a clsact plus ebpf program to loopback
-        // interface, but it should not affect traffic by virtue of us not
-        // actually populating the ebpf control map.
-        // Furthermore: it only takes fractions of a second.
-        EXPECT_EQ(-EINVAL, tcFilterDelDevIngressClatIpv6(fd, LOOPBACK_IFINDEX));
-        EXPECT_EQ(-EINVAL, tcFilterDelDevEgressClatIpv4(fd, LOOPBACK_IFINDEX));
-        EXPECT_EQ(0, tcQdiscAddDevClsact(fd, LOOPBACK_IFINDEX));
-        EXPECT_EQ(-errNOENT, tcFilterDelDevIngressClatIpv6(fd, LOOPBACK_IFINDEX));
-        EXPECT_EQ(-errNOENT, tcFilterDelDevEgressClatIpv4(fd, LOOPBACK_IFINDEX));
-        if (ingress) {
-            EXPECT_EQ(0, tcFilterAddDevIngressBpf(fd, LOOPBACK_IFINDEX, bpf_fd, ethernet));
-            EXPECT_EQ(0, tcFilterDelDevIngressClatIpv6(fd, LOOPBACK_IFINDEX));
-        } else {
-            EXPECT_EQ(0, tcFilterAddDevEgressBpf(fd, LOOPBACK_IFINDEX, bpf_fd, ethernet));
-            EXPECT_EQ(0, tcFilterDelDevEgressClatIpv4(fd, LOOPBACK_IFINDEX));
-        }
-        EXPECT_EQ(-errNOENT, tcFilterDelDevIngressClatIpv6(fd, LOOPBACK_IFINDEX));
-        EXPECT_EQ(-errNOENT, tcFilterDelDevEgressClatIpv4(fd, LOOPBACK_IFINDEX));
-        EXPECT_EQ(0, tcQdiscDelDevClsact(fd, LOOPBACK_IFINDEX));
-        EXPECT_EQ(-EINVAL, tcFilterDelDevIngressClatIpv6(fd, LOOPBACK_IFINDEX));
-        EXPECT_EQ(-EINVAL, tcFilterDelDevEgressClatIpv4(fd, LOOPBACK_IFINDEX));
-        close(fd);
+    // This attaches and detaches a clsact plus ebpf program to loopback
+    // interface, but it should not affect traffic by virtue of us not
+    // actually populating the ebpf control map.
+    // Furthermore: it only takes fractions of a second.
+    EXPECT_EQ(-EINVAL, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
+    EXPECT_EQ(-EINVAL, tcFilterDelDevEgressClatIpv4(LOOPBACK_IFINDEX));
+    EXPECT_EQ(0, tcQdiscAddDevClsact(LOOPBACK_IFINDEX));
+    EXPECT_EQ(-errNOENT, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
+    EXPECT_EQ(-errNOENT, tcFilterDelDevEgressClatIpv4(LOOPBACK_IFINDEX));
+    if (ingress) {
+        EXPECT_EQ(0, tcFilterAddDevIngressBpf(LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        EXPECT_EQ(0, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
+    } else {
+        EXPECT_EQ(0, tcFilterAddDevEgressBpf(LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        EXPECT_EQ(0, tcFilterDelDevEgressClatIpv4(LOOPBACK_IFINDEX));
     }
+    EXPECT_EQ(-errNOENT, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
+    EXPECT_EQ(-errNOENT, tcFilterDelDevEgressClatIpv4(LOOPBACK_IFINDEX));
+    EXPECT_EQ(0, tcQdiscDelDevClsact(LOOPBACK_IFINDEX));
+    EXPECT_EQ(-EINVAL, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
+    EXPECT_EQ(-EINVAL, tcFilterDelDevEgressClatIpv4(LOOPBACK_IFINDEX));
 
     close(bpf_fd);
 }

@@ -22,6 +22,9 @@
 
 DEFINE_BPF_MAP(tether_ingress_map, HASH, TetherIngressKey, TetherIngressValue, 64)
 
+// Tethering stats, indexed by upstream interface.
+DEFINE_BPF_MAP(tether_stats_map, HASH, uint32_t, TetherStatsValue, 16)
+
 SEC("schedcls/ingress/tether_ether")
 int sched_cls_ingress_tether_ether(struct __sk_buff* skb) {
     // TODO
