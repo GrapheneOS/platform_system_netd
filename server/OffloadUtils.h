@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <android-base/result.h>
 #include <errno.h>
 #include <linux/if_ether.h>
 #include <linux/rtnetlink.h>
@@ -27,9 +28,6 @@
 
 namespace android {
 namespace net {
-
-// this returns an ARPHRD_* constant or a -errno
-int hardwareAddressType(const std::string& interface);
 
 // For better code clarity - do not change values - used for booleans like
 // with_ethernet_header or isEthernet.
@@ -43,6 +41,11 @@ constexpr bool INGRESS = true;
 // The priority of clat/tether hooks - smaller is higher priority.
 constexpr uint16_t PRIO_CLAT = 1;
 constexpr uint16_t PRIO_TETHER = 2;
+
+// this returns an ARPHRD_* constant or a -errno
+int hardwareAddressType(const std::string& interface);
+
+base::Result<bool> isEthernet(const std::string& interface);
 
 inline int getClatEgressMapFd(void) {
     const int fd = bpf::bpfFdGet(CLAT_EGRESS_MAP_PATH, 0);
