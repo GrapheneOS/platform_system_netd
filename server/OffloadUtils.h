@@ -99,16 +99,17 @@ inline int tcQdiscDelDevClsact(int ifIndex) {
 
 // tc filter add dev .. in/egress prio 1 protocol ipv6/ip bpf object-pinned /sys/fs/bpf/...
 // direct-action
-int tcFilterAddDevBpf(int ifIndex, int bpfFd, bool ethernet, bool ingress, bool ipv6);
+int tcFilterAddDevBpf(int ifIndex, bool ingress, uint16_t prio, uint16_t proto, int bpfFd,
+                      bool ethernet);
 
 // tc filter add dev .. ingress prio 1 protocol ipv6 bpf object-pinned /sys/fs/bpf/... direct-action
 inline int tcFilterAddDevIngressBpf(int ifIndex, int bpfFd, bool ethernet) {
-    return tcFilterAddDevBpf(ifIndex, bpfFd, ethernet, INGRESS, /*ipv6*/ true);
+    return tcFilterAddDevBpf(ifIndex, INGRESS, PRIO_CLAT, ETH_P_IPV6, bpfFd, ethernet);
 }
 
 // tc filter add dev .. egress prio 1 protocol ip bpf object-pinned /sys/fs/bpf/... direct-action
 inline int tcFilterAddDevEgressBpf(int ifIndex, int bpfFd, bool ethernet) {
-    return tcFilterAddDevBpf(ifIndex, bpfFd, ethernet, EGRESS, /*ipv6*/ false);
+    return tcFilterAddDevBpf(ifIndex, EGRESS, PRIO_CLAT, ETH_P_IP, bpfFd, ethernet);
 }
 
 // tc filter del dev .. in/egress prio .. protocol ..
