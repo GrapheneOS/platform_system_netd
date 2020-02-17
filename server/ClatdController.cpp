@@ -74,8 +74,8 @@ namespace net {
 void ClatdController::resetEgressMap() {
     const auto del = [](const ClatEgressKey& key, const BpfMap<ClatEgressKey, ClatEgressValue>&) {
         ALOGW("Removing stale clat config on interface %d.", key.iif);
-        int rv = tcQdiscDelDevClsact(key.iif);
-        if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
+        int rv = tcFilterDelDevEgressClatIpv4(key.iif);
+        if (rv < 0) ALOGE("tcFilterDelDevEgressClatIpv4() failure: %s", strerror(-rv));
         return Result<void>();  // keep on going regardless
     };
     auto ret = mClatEgressMap.iterate(del);
@@ -88,8 +88,8 @@ void ClatdController::resetIngressMap() {
     const auto del = [](const ClatIngressKey& key,
                         const BpfMap<ClatIngressKey, ClatIngressValue>&) {
         ALOGW("Removing stale clat config on interface %d.", key.iif);
-        int rv = tcQdiscDelDevClsact(key.iif);
-        if (rv < 0) ALOGE("tcQdiscDelDevClsact() failure: %s", strerror(-rv));
+        int rv = tcFilterDelDevIngressClatIpv6(key.iif);
+        if (rv < 0) ALOGE("tcFilterDelDevIngressClatIpv6() failure: %s", strerror(-rv));
         return Result<void>();  // keep on going regardless
     };
     auto ret = mClatIngressMap.iterate(del);
@@ -333,28 +333,14 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
     // We do tc setup *after* populating the maps, so scanning through them
     // can always be used to tell us what needs cleanup.
 
-    rv = tcQdiscAddDevClsact(tracker.ifIndex);
-    if (rv) {
-        ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
-              strerror(-rv));
-        ret = mClatEgressMap.deleteValue(txKey);
-        if (!ret.ok())
-            ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
-        ret = mClatIngressMap.deleteValue(rxKey);
-        if (!ret.ok())
-            ALOGE("mClatIngressMap.deleteValue failure: %s", strerror(ret.error().code()));
-        return;
-    }
-
+    // Usually the clsact will be added in RouteController::addInterfaceToPhysicalNetwork.
+    // But clat is started before the v4- interface is added to the network. The clat startup have
+    // to add clsact of v4- tun interface first for adding bpf filter in maybeStartBpf.
+    // TODO: move "qdisc add clsact" of v4- tun interface out from ClatdController.
     rv = tcQdiscAddDevClsact(tracker.v4ifIndex);
     if (rv) {
         ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
               strerror(-rv));
-        rv = tcQdiscDelDevClsact(tracker.ifIndex);
-        if (rv < 0) {
-            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
-                  strerror(-rv));
-        }
         ret = mClatEgressMap.deleteValue(txKey);
         if (!ret.ok())
             ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
@@ -373,16 +359,11 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             ALOGE("tcFilterAddDevEgressClatIpv4(%d[%s], RAWIP) failure: %s", tracker.v4ifIndex,
                   tracker.v4iface, strerror(-rv));
         }
-        rv = tcQdiscDelDevClsact(tracker.ifIndex);
-        if (rv) {
-            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
-                  strerror(-rv));
-        }
-        rv = tcQdiscDelDevClsact(tracker.v4ifIndex);
-        if (rv) {
-            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
-                  strerror(-rv));
-        }
+
+        // The v4- interface clsact is not deleted for unwinding error because once it is created
+        // with interface addition, the lifetime is till interface deletion. Moreover, the clsact
+        // has no clat filter now. It should not break anything.
+
         ret = mClatEgressMap.deleteValue(txKey);
         if (!ret.ok())
             ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
@@ -401,21 +382,15 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             ALOGE("tcFilterAddDevIngressClatIpv6(%d[%s], %d) failure: %s", tracker.ifIndex,
                   tracker.iface, isEthernet, strerror(-rv));
         }
-        rv = tcQdiscDelDevClsact(tracker.ifIndex);
-        if (rv) {
-            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
-                  strerror(-rv));
-        }
         rv = tcFilterDelDevEgressClatIpv4(tracker.v4ifIndex);
         if (rv) {
             ALOGE("tcFilterDelDevEgressClatIpv4(%d[%s]) failure: %s", tracker.v4ifIndex,
                   tracker.v4iface, strerror(-rv));
         }
-        rv = tcQdiscDelDevClsact(tracker.v4ifIndex);
-        if (rv) {
-            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
-                  strerror(-rv));
-        }
+
+        // The v4- interface clsact is not deleted. See the reason in the error unwinding code of
+        // the egress filter attaching of v4- tun interface.
+
         ret = mClatEgressMap.deleteValue(txKey);
         if (!ret.ok())
             ALOGE("mClatEgressMap.deleteValue failure: %s", strerror(ret.error().code()));
@@ -448,22 +423,10 @@ void ClatdController::maybeStopBpf(const ClatdTracker& tracker) {
               strerror(-rv));
     }
 
-    rv = tcQdiscDelDevClsact(tracker.ifIndex);
-    if (rv < 0) {
-        ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.ifIndex, tracker.iface,
-              strerror(-rv));
-    }
-
     rv = tcFilterDelDevEgressClatIpv4(tracker.v4ifIndex);
     if (rv < 0) {
         ALOGE("tcFilterDelDevEgressClatIpv4(%d[%s]) failure: %s", tracker.v4ifIndex,
               tracker.v4iface, strerror(-rv));
-    }
-
-    rv = tcQdiscDelDevClsact(tracker.v4ifIndex);
-    if (rv < 0) {
-        ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
-              strerror(-rv));
     }
 
     // We cleanup the maps last, so scanning through them can be used to
