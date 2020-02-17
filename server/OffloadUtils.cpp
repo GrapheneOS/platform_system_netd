@@ -195,25 +195,25 @@ int tcFilterAddDevBpf(int ifIndex, bool ingress, uint16_t prio, uint16_t proto, 
     //   prog_clatd_schedcls_ingress_clat_rawip:[*fsobj]
     // and is the name of the pinned ingress ebpf program for ARPHRD_RAWIP interfaces.
     // (also compatible with anything that has 0 size L2 header)
-    static constexpr char name_rx_rawip[] = CLAT_INGRESS_PROG_RAWIP_NAME FSOBJ_SUFFIX;
+    static constexpr char name_clat_rx_rawip[] = CLAT_INGRESS_PROG_RAWIP_NAME FSOBJ_SUFFIX;
 
     // This macro expands (from header files) to:
     //   prog_clatd_schedcls_ingress_clat_ether:[*fsobj]
     // and is the name of the pinned ingress ebpf program for ARPHRD_ETHER interfaces.
     // (also compatible with anything that has standard ethernet header)
-    static constexpr char name_rx_ether[] = CLAT_INGRESS_PROG_ETHER_NAME FSOBJ_SUFFIX;
+    static constexpr char name_clat_rx_ether[] = CLAT_INGRESS_PROG_ETHER_NAME FSOBJ_SUFFIX;
 
     // This macro expands (from header files) to:
     //   prog_clatd_schedcls_egress_clat_rawip:[*fsobj]
     // and is the name of the pinned egress ebpf program for ARPHRD_RAWIP interfaces.
     // (also compatible with anything that has 0 size L2 header)
-    static constexpr char name_tx_rawip[] = CLAT_EGRESS_PROG_RAWIP_NAME FSOBJ_SUFFIX;
+    static constexpr char name_clat_tx_rawip[] = CLAT_EGRESS_PROG_RAWIP_NAME FSOBJ_SUFFIX;
 
     // This macro expands (from header files) to:
     //   prog_clatd_schedcls_egress_clat_ether:[*fsobj]
     // and is the name of the pinned egress ebpf program for ARPHRD_ETHER interfaces.
     // (also compatible with anything that has standard ethernet header)
-    static constexpr char name_tx_ether[] = CLAT_EGRESS_PROG_ETHER_NAME FSOBJ_SUFFIX;
+    static constexpr char name_clat_tx_ether[] = CLAT_EGRESS_PROG_ETHER_NAME FSOBJ_SUFFIX;
 
 #undef FSOBJ_SUFFIX
 
@@ -221,16 +221,17 @@ int tcFilterAddDevBpf(int ifIndex, bool ingress, uint16_t prio, uint16_t proto, 
     // booleans.  We need to compile time allocate enough space in the struct
     // hence this macro magic to make sure we have enough space for either
     // possibility.  In practice some of these are actually the same size.
-    static constexpr size_t ASCIIZ_MAXLEN_NAME_RX =
-            max(sizeof(name_rx_rawip), sizeof(name_rx_ether));
-    static constexpr size_t ASCIIZ_MAXLEN_NAME_TX =
-            max(sizeof(name_tx_rawip), sizeof(name_tx_ether));
-    static constexpr size_t ASCIIZ_MAXLEN_NAME = max(ASCIIZ_MAXLEN_NAME_RX, ASCIIZ_MAXLEN_NAME_TX);
+    static constexpr size_t ASCIIZ_MAXLEN_NAME_CLAT_RX =
+            max(sizeof(name_clat_rx_rawip), sizeof(name_clat_rx_ether));
+    static constexpr size_t ASCIIZ_MAXLEN_NAME_CLAT_TX =
+            max(sizeof(name_clat_tx_rawip), sizeof(name_clat_tx_ether));
+    static constexpr size_t ASCIIZ_MAXLEN_NAME =
+            max(ASCIIZ_MAXLEN_NAME_CLAT_RX, ASCIIZ_MAXLEN_NAME_CLAT_TX);
 
     // These are not compile time constants: 'name' is used in strncpy below
-    const char* const name_rx = ethernet ? name_rx_ether : name_rx_rawip;
-    const char* const name_tx = ethernet ? name_tx_ether : name_tx_rawip;
-    const char* const name = ingress ? name_rx : name_tx;
+    const char* const name_clat_rx = ethernet ? name_clat_rx_ether : name_clat_rx_rawip;
+    const char* const name_clat_tx = ethernet ? name_clat_tx_ether : name_clat_tx_rawip;
+    const char* const name = ingress ? name_clat_rx : name_clat_tx;
 
     struct {
         nlmsghdr n;
