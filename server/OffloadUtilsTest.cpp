@@ -231,10 +231,10 @@ static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool et
     EXPECT_EQ(-errNOENT, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
     EXPECT_EQ(-errNOENT, tcFilterDelDevEgressClatIpv4(LOOPBACK_IFINDEX));
     if (ingress) {
-        EXPECT_EQ(0, tcFilterAddDevIngressBpf(LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        EXPECT_EQ(0, tcFilterAddDevIngressClatIpv6(LOOPBACK_IFINDEX, bpf_fd, ethernet));
         EXPECT_EQ(0, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
     } else {
-        EXPECT_EQ(0, tcFilterAddDevEgressBpf(LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        EXPECT_EQ(0, tcFilterAddDevEgressClatIpv4(LOOPBACK_IFINDEX, bpf_fd, ethernet));
         EXPECT_EQ(0, tcFilterDelDevEgressClatIpv4(LOOPBACK_IFINDEX));
     }
     EXPECT_EQ(-errNOENT, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
