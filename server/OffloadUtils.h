@@ -40,6 +40,10 @@ constexpr bool ETHER = true;
 constexpr bool EGRESS = false;
 constexpr bool INGRESS = true;
 
+// The priority of clat/tether hooks - smaller is higher priority.
+constexpr uint16_t PRIO_CLAT = 1;
+constexpr uint16_t PRIO_TETHER = 2;
+
 inline int getClatEgressMapFd(void) {
     const int fd = bpf::bpfFdGet(CLAT_EGRESS_MAP_PATH, 0);
     return (fd == -1) ? -errno : fd;
@@ -112,12 +116,17 @@ int tcFilterDelDev(int ifIndex, bool ingress, uint16_t prio, uint16_t proto);
 
 // tc filter del dev .. ingress prio 1 protocol ipv6
 inline int tcFilterDelDevIngressClatIpv6(int ifIndex) {
-    return tcFilterDelDev(ifIndex, INGRESS, /*prio*/ 1, ETH_P_IPV6);
+    return tcFilterDelDev(ifIndex, INGRESS, PRIO_CLAT, ETH_P_IPV6);
 }
 
 // tc filter del dev .. egress prio 1 protocol ip
 inline int tcFilterDelDevEgressClatIpv4(int ifIndex) {
-    return tcFilterDelDev(ifIndex, EGRESS, /*prio*/ 1, ETH_P_IP);
+    return tcFilterDelDev(ifIndex, EGRESS, PRIO_CLAT, ETH_P_IP);
+}
+
+// tc filter del dev .. ingress prio 2 protocol ipv6
+inline int tcFilterDelDevIngressTether(int ifIndex) {
+    return tcFilterDelDev(ifIndex, INGRESS, PRIO_TETHER, ETH_P_IPV6);
 }
 
 }  // namespace net
