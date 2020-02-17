@@ -214,12 +214,18 @@ static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool et
     if (!kernelSupportsNetSchIngress()) return;
     if (!kernelSupportsNetClsBpf()) return;
 
+    const bool extended = (android::bpf::getBpfSupportLevel() >= android::bpf::BpfLevel::EXTENDED);
     // 4.9 returns EINVAL instead of ENOENT...
-    const int errNOENT =
-            (android::bpf::getBpfSupportLevel() == android::bpf::BpfLevel::BASIC) ? EINVAL : ENOENT;
+    const int errNOENT = extended ? ENOENT : EINVAL;
 
-    int bpf_fd = ingress ? getClatIngressProgFd(ethernet) : getClatEgressProgFd(ethernet);
-    ASSERT_LE(3, bpf_fd);
+    int clatBpfFd = ingress ? getClatIngressProgFd(ethernet) : getClatEgressProgFd(ethernet);
+    ASSERT_LE(3, clatBpfFd);
+
+    int tetherBpfFd = -1;
+    if (extended && ingress) {
+        tetherBpfFd = getTetherIngressProgFd(ethernet);
+        ASSERT_LE(3, tetherBpfFd);
+    }
 
     // This attaches and detaches a clsact plus ebpf program to loopback
     // interface, but it should not affect traffic by virtue of us not
@@ -231,10 +237,14 @@ static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool et
     EXPECT_EQ(-errNOENT, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
     EXPECT_EQ(-errNOENT, tcFilterDelDevEgressClatIpv4(LOOPBACK_IFINDEX));
     if (ingress) {
-        EXPECT_EQ(0, tcFilterAddDevIngressClatIpv6(LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        EXPECT_EQ(0, tcFilterAddDevIngressClatIpv6(LOOPBACK_IFINDEX, clatBpfFd, ethernet));
+        if (extended) {
+            EXPECT_EQ(0, tcFilterAddDevIngressTether(LOOPBACK_IFINDEX, tetherBpfFd, ethernet));
+            EXPECT_EQ(0, tcFilterDelDevIngressTether(LOOPBACK_IFINDEX));
+        }
         EXPECT_EQ(0, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
     } else {
-        EXPECT_EQ(0, tcFilterAddDevEgressClatIpv4(LOOPBACK_IFINDEX, bpf_fd, ethernet));
+        EXPECT_EQ(0, tcFilterAddDevEgressClatIpv4(LOOPBACK_IFINDEX, clatBpfFd, ethernet));
         EXPECT_EQ(0, tcFilterDelDevEgressClatIpv4(LOOPBACK_IFINDEX));
     }
     EXPECT_EQ(-errNOENT, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
@@ -243,7 +253,8 @@ static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool et
     EXPECT_EQ(-EINVAL, tcFilterDelDevIngressClatIpv6(LOOPBACK_IFINDEX));
     EXPECT_EQ(-EINVAL, tcFilterDelDevEgressClatIpv4(LOOPBACK_IFINDEX));
 
-    close(bpf_fd);
+    if (tetherBpfFd != -1) close(tetherBpfFd);
+    close(clatBpfFd);
 }
 
 TEST_F(OffloadUtilsTest, CheckAttachBpfFilterRawIpClsactEgressLo) {
