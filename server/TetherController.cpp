@@ -42,6 +42,7 @@
 #include <android-base/unique_fd.h>
 #include <cutils/properties.h>
 #include <log/log.h>
+#include <netdutils/DumpWriter.h>
 #include <netdutils/StatusOr.h>
 
 #include "Controllers.h"
@@ -59,6 +60,8 @@ using android::base::Join;
 using android::base::Pipe;
 using android::base::StringPrintf;
 using android::base::unique_fd;
+using android::netdutils::DumpWriter;
+using android::netdutils::ScopedIndent;
 using android::netdutils::statusFromErrno;
 using android::netdutils::StatusOr;
 
@@ -917,6 +920,35 @@ StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats() {
     }
 
     return statsList;
+}
+
+void TetherController::dumpIfaces(DumpWriter& dw) {
+    dw.println("Interface pairs:");
+
+    ScopedIndent ifaceIndent(dw);
+    for (const auto& it : mFwdIfaces) {
+        dw.println("%s -> %s %s", it.first.c_str(), it.second.iface.c_str(),
+                   (it.second.active ? "ACTIVE" : "DISABLED"));
+    }
+}
+
+void TetherController::dump(DumpWriter& dw) {
+    std::lock_guard guard(lock);
+
+    ScopedIndent tetherControllerIndent(dw);
+    dw.println("TetherController");
+    dw.incIndent();
+
+    dw.println("Forwarding requests: " + Join(mForwardingRequests, ' '));
+    if (mDnsNetId != 0) {
+        dw.println(StringPrintf("DNS: netId %d servers [%s]", mDnsNetId,
+                                Join(mDnsForwarders, ", ").c_str()));
+    }
+    if (mDaemonPid != 0) {
+        dw.println("dnsmasq PID: %d", mDaemonPid);
+    }
+
+    dumpIfaces(dw);
 }
 
 }  // namespace net
