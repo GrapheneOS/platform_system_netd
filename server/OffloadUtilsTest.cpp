@@ -247,19 +247,19 @@ static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool et
 }
 
 TEST_F(OffloadUtilsTest, CheckAttachBpfFilterRawIpClsactEgressLo) {
-    checkAttachDetachBpfFilterClsactLo(/*ingress*/ false, RAWIP);
+    checkAttachDetachBpfFilterClsactLo(EGRESS, RAWIP);
 }
 
 TEST_F(OffloadUtilsTest, CheckAttachBpfFilterEthernetClsactEgressLo) {
-    checkAttachDetachBpfFilterClsactLo(/*ingress*/ false, ETHER);
+    checkAttachDetachBpfFilterClsactLo(EGRESS, ETHER);
 }
 
 TEST_F(OffloadUtilsTest, CheckAttachBpfFilterRawIpClsactIngressLo) {
-    checkAttachDetachBpfFilterClsactLo(/*ingress*/ true, RAWIP);
+    checkAttachDetachBpfFilterClsactLo(INGRESS, RAWIP);
 }
 
 TEST_F(OffloadUtilsTest, CheckAttachBpfFilterEthernetClsactIngressLo) {
-    checkAttachDetachBpfFilterClsactLo(/*ingress*/ true, ETHER);
+    checkAttachDetachBpfFilterClsactLo(INGRESS, ETHER);
 }
 
 }  // namespace net
