@@ -112,6 +112,11 @@ inline int tcFilterAddDevEgressClatIpv4(int ifIndex, int bpfFd, bool ethernet) {
     return tcFilterAddDevBpf(ifIndex, EGRESS, PRIO_CLAT, ETH_P_IP, bpfFd, ethernet);
 }
 
+// tc filter add dev .. ingress prio 2 protocol ipv6 bpf object-pinned /sys/fs/bpf/... direct-action
+inline int tcFilterAddDevIngressTether(int ifIndex, int bpfFd, bool ethernet) {
+    return tcFilterAddDevBpf(ifIndex, INGRESS, PRIO_TETHER, ETH_P_IPV6, bpfFd, ethernet);
+}
+
 // tc filter del dev .. in/egress prio .. protocol ..
 int tcFilterDelDev(int ifIndex, bool ingress, uint16_t prio, uint16_t proto);
 
