@@ -364,13 +364,13 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcFilterAddDevEgressBpf(tracker.v4ifIndex, txRawIpProgFd, RAWIP);
+    rv = tcFilterAddDevEgressClatIpv4(tracker.v4ifIndex, txRawIpProgFd, RAWIP);
     if (rv) {
         if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
-            ALOGI("tcFilterAddDevEgressBpf(%d[%s], RAWIP): %s", tracker.v4ifIndex, tracker.v4iface,
-                  strerror(-rv));
+            ALOGI("tcFilterAddDevEgressClatIpv4(%d[%s], RAWIP): %s", tracker.v4ifIndex,
+                  tracker.v4iface, strerror(-rv));
         } else {
-            ALOGE("tcFilterAddDevEgressBpf(%d[%s], RAWIP) failure: %s", tracker.v4ifIndex,
+            ALOGE("tcFilterAddDevEgressClatIpv4(%d[%s], RAWIP) failure: %s", tracker.v4ifIndex,
                   tracker.v4iface, strerror(-rv));
         }
         rv = tcQdiscDelDevClsact(tracker.ifIndex);
@@ -392,13 +392,13 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcFilterAddDevIngressBpf(tracker.ifIndex, rxProgFd, isEthernet);
+    rv = tcFilterAddDevIngressClatIpv6(tracker.ifIndex, rxProgFd, isEthernet);
     if (rv) {
         if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
-            ALOGI("tcFilterAddDevIngressBpf(%d[%s], %d): %s", tracker.ifIndex, tracker.iface,
+            ALOGI("tcFilterAddDevIngressClatIpv6(%d[%s], %d): %s", tracker.ifIndex, tracker.iface,
                   isEthernet, strerror(-rv));
         } else {
-            ALOGE("tcFilterAddDevIngressBpf(%d[%s], %d) failure: %s", tracker.ifIndex,
+            ALOGE("tcFilterAddDevIngressClatIpv6(%d[%s], %d) failure: %s", tracker.ifIndex,
                   tracker.iface, isEthernet, strerror(-rv));
         }
         rv = tcQdiscDelDevClsact(tracker.ifIndex);
