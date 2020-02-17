@@ -279,9 +279,9 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
     }
 
     // This program will be attached to the v4-* interface which is a TUN and thus always rawip.
-    rv = getClatEgressProgFd(false);
+    rv = getClatEgressProgFd(RAWIP);
     if (rv < 0) {
-        ALOGE("getClatEgressProgFd(false) failure: %s", strerror(-rv));
+        ALOGE("getClatEgressProgFd(RAWIP) failure: %s", strerror(-rv));
         return;
     }
     unique_fd txRawIpProgFd(rv);
@@ -364,13 +364,13 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcFilterAddDevEgressBpf(tracker.v4ifIndex, txRawIpProgFd, false);
+    rv = tcFilterAddDevEgressBpf(tracker.v4ifIndex, txRawIpProgFd, RAWIP);
     if (rv) {
         if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
-            ALOGI("tcFilterAddDevEgressBpf(%d[%s], false): %s", tracker.v4ifIndex, tracker.v4iface,
+            ALOGI("tcFilterAddDevEgressBpf(%d[%s], RAWIP): %s", tracker.v4ifIndex, tracker.v4iface,
                   strerror(-rv));
         } else {
-            ALOGE("tcFilterAddDevEgressBpf(%d[%s], false) failure: %s", tracker.v4ifIndex,
+            ALOGE("tcFilterAddDevEgressBpf(%d[%s], RAWIP) failure: %s", tracker.v4ifIndex,
                   tracker.v4iface, strerror(-rv));
         }
         rv = tcQdiscDelDevClsact(tracker.ifIndex);
