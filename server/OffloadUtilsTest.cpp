@@ -65,6 +65,39 @@ TEST_F(OffloadUtilsTest, HardwareAddressTypeOfCellular) {
     ASSERT_EQ(ARPHRD_RAWIP, type);
 }
 
+TEST_F(OffloadUtilsTest, IsEthernetOfNonExistingIf) {
+    auto res = isEthernet("not_existing_if");
+    ASSERT_FALSE(res.ok());
+    ASSERT_EQ(ENODEV, res.error().code());
+}
+
+TEST_F(OffloadUtilsTest, IsEthernetOfLoopback) {
+    auto res = isEthernet("lo");
+    ASSERT_FALSE(res.ok());
+    ASSERT_EQ(EAFNOSUPPORT, res.error().code());
+}
+
+// If wireless 'wlan0' interface exists it should be Ethernet.
+// See also HardwareAddressTypeOfWireless.
+TEST_F(OffloadUtilsTest, IsEthernetOfWireless) {
+    auto res = isEthernet("wlan0");
+    if (!res.ok() && res.error().code() == ENODEV) return;
+
+    ASSERT_RESULT_OK(res);
+    ASSERT_TRUE(res.value());
+}
+
+// If cellular 'rmnet_data0' interface exists it should
+// *probably* not be Ethernet and instead be RawIp.
+// See also HardwareAddressTypeOfCellular.
+TEST_F(OffloadUtilsTest, IsEthernetOfCellular) {
+    auto res = isEthernet("rmnet_data0");
+    if (!res.ok() && res.error().code() == ENODEV) return;
+
+    ASSERT_RESULT_OK(res);
+    ASSERT_FALSE(res.value());
+}
+
 TEST_F(OffloadUtilsTest, GetClatEgressMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 

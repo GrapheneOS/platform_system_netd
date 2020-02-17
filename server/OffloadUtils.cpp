@@ -18,6 +18,7 @@
 
 #include <arpa/inet.h>
 #include <linux/if.h>
+#include <linux/if_arp.h>
 #include <linux/netlink.h>
 #include <linux/pkt_cls.h>
 #include <linux/pkt_sched.h>
@@ -58,6 +59,25 @@ int hardwareAddressType(const std::string& interface) {
     if (ioctl(ufd, SIOCGIFHWADDR, &ifr, sizeof(ifr))) return -errno;
 
     return ifr.ifr_hwaddr.sa_family;
+}
+
+base::Result<bool> isEthernet(const std::string& interface) {
+    int rv = hardwareAddressType(interface);
+    if (rv < 0) {
+        errno = -rv;
+        return ErrnoErrorf("Get hardware address type of interface {} failed", interface);
+    }
+
+    switch (rv) {
+        case ARPHRD_ETHER:
+            return true;
+        case ARPHRD_RAWIP:  // in Linux 4.14+ rmnet support was upstreamed and this is 519
+        case 530:           // this is ARPHRD_RAWIP on some Android 4.9 kernels with rmnet
+            return false;
+        default:
+            errno = EAFNOSUPPORT;  // Address family not supported
+            return ErrnoErrorf("Unknown hardware address type {} on interface {}", rv, interface);
+    }
 }
 
 // TODO: use //system/netd/server/NetlinkCommands.cpp:openNetlinkSocket(protocol)

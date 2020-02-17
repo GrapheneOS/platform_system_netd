@@ -19,7 +19,6 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
-#include <linux/if_arp.h>
 #include <linux/if_tun.h>
 #include <linux/ioctl.h>
 #include <net/if.h>
@@ -256,39 +255,24 @@ int ClatdController::generateIpv6Address(const char* iface, const in_addr v4,
 void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
     if (mClatEbpfMode == ClatEbpfDisabled) return;
 
-    int rv = hardwareAddressType(tracker.iface);
-    if (rv < 0) {
-        ALOGE("hardwareAddressType(%s[%d]) failure: %s", tracker.iface, tracker.ifIndex,
-              strerror(-rv));
+    auto isEthernet = android::net::isEthernet(tracker.iface);
+    if (!isEthernet.ok()) {
+        ALOGE("isEthernet(%s[%d]) failure: %s", tracker.iface, tracker.ifIndex,
+              isEthernet.error().message().c_str());
         return;
     }
 
-    bool isEthernet;
-    switch (rv) {
-        case ARPHRD_ETHER:
-            isEthernet = true;
-            break;
-        case ARPHRD_RAWIP:  // in Linux 4.14+ rmnet support was upstreamed and this is 519
-        case 530:           // this is ARPHRD_RAWIP on some Android 4.9 kernels with rmnet
-            isEthernet = false;
-            break;
-        default:
-            ALOGE("hardwareAddressType(%s[%d]) returned unknown type %d.", tracker.iface,
-                  tracker.ifIndex, rv);
-            return;
-    }
-
     // This program will be attached to the v4-* interface which is a TUN and thus always rawip.
-    rv = getClatEgressProgFd(RAWIP);
+    int rv = getClatEgressProgFd(RAWIP);
     if (rv < 0) {
         ALOGE("getClatEgressProgFd(RAWIP) failure: %s", strerror(-rv));
         return;
     }
     unique_fd txRawIpProgFd(rv);
 
-    rv = getClatIngressProgFd(isEthernet);
+    rv = getClatIngressProgFd(isEthernet.value());
     if (rv < 0) {
-        ALOGE("getClatIngressProgFd(%d) failure: %s", isEthernet, strerror(-rv));
+        ALOGE("getClatIngressProgFd(%d) failure: %s", isEthernet.value(), strerror(-rv));
         return;
     }
     unique_fd rxProgFd(rv);
@@ -301,7 +285,7 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
             .oif = tracker.ifIndex,
             .local6 = tracker.v6,
             .pfx96 = tracker.pfx96,
-            .oifIsEthernet = isEthernet,
+            .oifIsEthernet = isEthernet.value(),
     };
 
     auto ret = mClatEgressMap.writeValue(txKey, txValue, BPF_ANY);
@@ -373,14 +357,14 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcFilterAddDevIngressClatIpv6(tracker.ifIndex, rxProgFd, isEthernet);
+    rv = tcFilterAddDevIngressClatIpv6(tracker.ifIndex, rxProgFd, isEthernet.value());
     if (rv) {
         if ((rv == -ENOENT) && (mClatEbpfMode == ClatEbpfMaybe)) {
             ALOGI("tcFilterAddDevIngressClatIpv6(%d[%s], %d): %s", tracker.ifIndex, tracker.iface,
-                  isEthernet, strerror(-rv));
+                  isEthernet.value(), strerror(-rv));
         } else {
             ALOGE("tcFilterAddDevIngressClatIpv6(%d[%s], %d) failure: %s", tracker.ifIndex,
-                  tracker.iface, isEthernet, strerror(-rv));
+                  tracker.iface, isEthernet.value(), strerror(-rv));
         }
         rv = tcFilterDelDevEgressClatIpv4(tracker.v4ifIndex);
         if (rv) {
