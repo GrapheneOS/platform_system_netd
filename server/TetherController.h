@@ -21,6 +21,7 @@
 #include <set>
 #include <string>
 
+#include <netdutils/DumpWriter.h>
 #include <netdutils/StatusOr.h>
 #include <sysutils/SocketClient.h>
 
@@ -144,6 +145,9 @@ class TetherController {
     static constexpr const char* LOCAL_TETHER_COUNTERS_CHAIN = "tetherctrl_counters";
 
     std::mutex lock;
+
+    void dump(netdutils::DumpWriter& dw);
+    void dumpIfaces(netdutils::DumpWriter& dw);
 
   private:
     bool setIpFwdEnabled();
