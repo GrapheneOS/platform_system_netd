@@ -28,7 +28,13 @@
 namespace android {
 namespace net {
 
+// this returns an ARPHRD_* constant or a -errno
 int hardwareAddressType(const std::string& interface);
+
+// For better code clarity - do not change values - used for booleans like
+// with_ethernet_header or isEthernet.
+constexpr bool RAWIP = false;
+constexpr bool ETHER = true;
 
 inline int getClatEgressMapFd(void) {
     const int fd = bpf::bpfFdGet(CLAT_EGRESS_MAP_PATH, 0);
