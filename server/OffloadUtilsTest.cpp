@@ -102,7 +102,7 @@ TEST_F(OffloadUtilsTest, GetClatEgressMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatEgressMapFd();
-    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    ASSERT_GE(fd, 3);  // 0,1,2 - stdin/out/err, thus fd >= 3
     EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
@@ -111,7 +111,7 @@ TEST_F(OffloadUtilsTest, GetClatEgressRawIpProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatEgressProgFd(RAWIP);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
     EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
@@ -120,7 +120,7 @@ TEST_F(OffloadUtilsTest, GetClatEgressEtherProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatEgressProgFd(ETHER);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
     EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
@@ -129,7 +129,7 @@ TEST_F(OffloadUtilsTest, GetClatIngressMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatIngressMapFd();
-    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    ASSERT_GE(fd, 3);  // 0,1,2 - stdin/out/err, thus fd >= 3
     EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
@@ -138,7 +138,7 @@ TEST_F(OffloadUtilsTest, GetClatIngressRawIpProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatIngressProgFd(RAWIP);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
     EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
@@ -147,7 +147,7 @@ TEST_F(OffloadUtilsTest, GetClatIngressEtherProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatIngressProgFd(ETHER);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
     EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
@@ -156,7 +156,7 @@ TEST_F(OffloadUtilsTest, GetTetherIngressMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getTetherIngressMapFd();
-    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    ASSERT_GE(fd, 3);  // 0,1,2 - stdin/out/err, thus fd >= 3
     EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
@@ -167,7 +167,7 @@ TEST_F(OffloadUtilsTest, GetTetherIngressRawIpProgFd) {
     SKIP_IF_EXTENDED_BPF_NOT_SUPPORTED;
 
     int fd = getTetherIngressProgFd(RAWIP);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
     EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
@@ -178,7 +178,7 @@ TEST_F(OffloadUtilsTest, GetTetherIngressEtherProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getTetherIngressProgFd(ETHER);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
     EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
@@ -187,7 +187,7 @@ TEST_F(OffloadUtilsTest, GetTetherStatsMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getTetherStatsMapFd();
-    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    ASSERT_GE(fd, 3);  // 0,1,2 - stdin/out/err, thus fd >= 3
     EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
@@ -265,12 +265,12 @@ static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool et
                                                                                          : EINVAL;
 
     int clatBpfFd = ingress ? getClatIngressProgFd(ethernet) : getClatEgressProgFd(ethernet);
-    ASSERT_LE(3, clatBpfFd);
+    ASSERT_GE(clatBpfFd, 3);
 
     int tetherBpfFd = -1;
     if (extended && ingress) {
         tetherBpfFd = getTetherIngressProgFd(ethernet);
-        ASSERT_LE(3, tetherBpfFd);
+        ASSERT_GE(tetherBpfFd, 3);
     }
 
     // This attaches and detaches a clsact plus ebpf program to loopback
