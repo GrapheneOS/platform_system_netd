@@ -42,6 +42,7 @@
 #include <android-base/unique_fd.h>
 #include <cutils/properties.h>
 #include <log/log.h>
+#include <net/if.h>
 #include <netdutils/DumpWriter.h>
 #include <netdutils/StatusOr.h>
 
@@ -50,6 +51,7 @@
 #include "InterfaceController.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
+#include "OffloadUtils.h"
 #include "Permission.h"
 #include "TetherController.h"
 
@@ -598,6 +600,7 @@ int TetherController::enableNat(const char* intIface, const char* extIface) {
         return -ENODEV;
     }
 
+    maybeStartBpf(extIface);
     return 0;
 }
 
@@ -784,6 +787,8 @@ int TetherController::disableNat(const char* intIface, const char* extIface) {
     if (!isAnyForwardingPairEnabled()) {
         setDefaults();
     }
+
+    maybeStopBpf(extIface);
     return 0;
 }
 
@@ -920,6 +925,50 @@ StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats() {
     }
 
     return statsList;
+}
+
+void TetherController::maybeStartBpf(const char* extIface) {
+    // TODO: perhaps ignore IPv4-only interface because IPv4 traffic downstream is not supported.
+    int ifIndex = if_nametoindex(extIface);
+    if (!ifIndex) {
+        ALOGE("Fail to get index for interface %s", extIface);
+        return;
+    }
+
+    auto isEthernet = android::net::isEthernet(extIface);
+    if (!isEthernet.ok()) {
+        ALOGE("isEthernet(%s[%d]) failure: %s", extIface, ifIndex,
+              isEthernet.error().message().c_str());
+        return;
+    }
+
+    int rv = getTetherIngressProgFd(isEthernet.value());
+    if (rv < 0) {
+        ALOGE("getTetherIngressProgFd(%d) failure: %s", isEthernet.value(), strerror(-rv));
+        return;
+    }
+    unique_fd tetherProgFd(rv);
+
+    rv = tcFilterAddDevIngressTether(ifIndex, tetherProgFd, isEthernet.value());
+    if (rv) {
+        ALOGE("tcFilterAddDevIngressTether(%d[%s], %d) failure: %s", ifIndex, extIface,
+              isEthernet.value(), strerror(-rv));
+        return;
+    }
+}
+
+void TetherController::maybeStopBpf(const char* extIface) {
+    // TODO: perhaps ignore IPv4-only interface because IPv4 traffic downstream is not supported.
+    int ifIndex = if_nametoindex(extIface);
+    if (!ifIndex) {
+        ALOGE("Fail to get index for interface %s", extIface);
+        return;
+    }
+
+    int rv = tcFilterDelDevIngressTether(ifIndex);
+    if (rv < 0) {
+        ALOGE("tcFilterDelDevIngressTether(%d[%s]) failure: %s", ifIndex, extIface, strerror(-rv));
+    }
 }
 
 void TetherController::dumpIfaces(DumpWriter& dw) {
