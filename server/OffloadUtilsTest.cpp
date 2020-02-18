@@ -103,6 +103,7 @@ TEST_F(OffloadUtilsTest, GetClatEgressMapFd) {
 
     int fd = getClatEgressMapFd();
     ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -111,6 +112,7 @@ TEST_F(OffloadUtilsTest, GetClatEgressRawIpProgFd) {
 
     int fd = getClatEgressProgFd(RAWIP);
     ASSERT_LE(3, fd);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -119,6 +121,7 @@ TEST_F(OffloadUtilsTest, GetClatEgressEtherProgFd) {
 
     int fd = getClatEgressProgFd(ETHER);
     ASSERT_LE(3, fd);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -127,6 +130,7 @@ TEST_F(OffloadUtilsTest, GetClatIngressMapFd) {
 
     int fd = getClatIngressMapFd();
     ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -135,6 +139,7 @@ TEST_F(OffloadUtilsTest, GetClatIngressRawIpProgFd) {
 
     int fd = getClatIngressProgFd(RAWIP);
     ASSERT_LE(3, fd);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -143,6 +148,7 @@ TEST_F(OffloadUtilsTest, GetClatIngressEtherProgFd) {
 
     int fd = getClatIngressProgFd(ETHER);
     ASSERT_LE(3, fd);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -151,6 +157,7 @@ TEST_F(OffloadUtilsTest, GetTetherIngressMapFd) {
 
     int fd = getTetherIngressMapFd();
     ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -161,6 +168,7 @@ TEST_F(OffloadUtilsTest, GetTetherIngressRawIpProgFd) {
 
     int fd = getTetherIngressProgFd(RAWIP);
     ASSERT_LE(3, fd);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -171,6 +179,7 @@ TEST_F(OffloadUtilsTest, GetTetherIngressEtherProgFd) {
 
     int fd = getTetherIngressProgFd(ETHER);
     ASSERT_LE(3, fd);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -179,6 +188,7 @@ TEST_F(OffloadUtilsTest, GetTetherStatsMapFd) {
 
     int fd = getTetherStatsMapFd();
     ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
