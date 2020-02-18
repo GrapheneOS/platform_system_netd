@@ -131,6 +131,14 @@ binder::Status asBinderStatus(const netdutils::Status& status) {
     return binder::Status::fromServiceSpecificError(status.code(), status.msg().c_str());
 }
 
+template <typename T>
+binder::Status asBinderStatus(const base::Result<T> result) {
+    if (result.ok()) return binder::Status::ok();
+
+    return binder::Status::fromServiceSpecificError(result.error().code(),
+                                                    result.error().message().c_str());
+}
+
 inline binder::Status statusFromErrcode(int ret) {
     if (ret) {
         return binder::Status::fromServiceSpecificError(-ret, strerror(-ret));
@@ -1236,6 +1244,22 @@ binder::Status NetdNativeService::getFwmarkForNetwork(int32_t netId, MarkMaskPar
     markMask->mask = FWMARK_NET_ID_MASK;
     markMask->mark = fwmark.intValue;
     return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::tetherRuleAddDownstreamIpv6(
+        int intIfaceIndex, int extIfaceIndex, const std::vector<uint8_t>& ipAddress,
+        const std::vector<uint8_t>& srcL2Address, const std::vector<uint8_t>& dstL2Address) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    return asBinderStatus(gCtls->tetherCtrl.addDownstreamIpv6Rule(
+            intIfaceIndex, extIfaceIndex, ipAddress, srcL2Address, dstL2Address));
+}
+
+binder::Status NetdNativeService::tetherRuleRemoveDownstreamIpv6(
+        int extIfaceIndex, const std::vector<uint8_t>& ipAddress) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+
+    return asBinderStatus(gCtls->tetherCtrl.removeDownstreamIpv6Rule(extIfaceIndex, ipAddress));
 }
 
 }  // namespace net
