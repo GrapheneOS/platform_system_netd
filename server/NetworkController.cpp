@@ -36,6 +36,7 @@
 #include "DummyNetwork.h"
 #include "Fwmark.h"
 #include "LocalNetwork.h"
+#include "OffloadUtils.h"
 #include "PhysicalNetwork.h"
 #include "RouteController.h"
 #include "VirtualNetwork.h"
@@ -141,6 +142,22 @@ NetworkController::NetworkController() :
         mProtectableUsers({AID_VPN}) {
     mNetworks[LOCAL_NET_ID] = new LocalNetwork(LOCAL_NET_ID);
     mNetworks[DUMMY_NET_ID] = new DummyNetwork(DUMMY_NET_ID);
+
+    // Clear all clsact stubs on all interfaces.
+    // TODO: perhaps only remove the clsact on the interface which is added by
+    // RouteController::addInterfaceToPhysicalNetwork. Currently, the netd only
+    // attach the clsact to the interface for the physical network.
+    if (bpf::isBpfSupported()) {
+        const auto& ifaces = InterfaceController::getIfaceNames();
+        if (isOk(ifaces)) {
+            for (const std::string& iface : ifaces.value()) {
+                if (int ifIndex = if_nametoindex(iface.c_str())) {
+                    // Ignore the error because the interface might not have a clsact.
+                    tcQdiscDelDevClsact(ifIndex);
+                }
+            }
+        }
+    }
 }
 
 unsigned NetworkController::getDefaultNetwork() const {
