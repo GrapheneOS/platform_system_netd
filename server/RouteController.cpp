@@ -33,14 +33,17 @@
 #include "Fwmark.h"
 #include "NetdConstants.h"
 #include "NetlinkCommands.h"
+#include "OffloadUtils.h"
 #include "UidRanges.h"
 
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include "log/log.h"
 #include "netid_client.h"
 #include "netutils/ifc.h"
 
+using android::base::StartsWith;
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 using android::net::UidRangeParcel;
@@ -688,7 +691,7 @@ int RouteController::configureDummyNetwork() {
     const char *interface = DummyNetwork::INTERFACE_NAME;
     uint32_t table = getRouteTableForInterface(interface);
     if (table == RT_TABLE_UNSPEC) {
-        // getRouteTableForInterface has already looged an error.
+        // getRouteTableForInterface has already logged an error.
         return -ESRCH;
     }
 
@@ -905,6 +908,38 @@ int RouteController::modifyRoute(uint16_t action, uint16_t flags, const char* in
     return 0;
 }
 
+void maybeModifyQdiscClsact(const char* interface, bool add) {
+    if (!bpf::isBpfSupported()) return;
+
+    // The clsact attaching of v4- tun interface is triggered by ClatdController::maybeStartBpf
+    // because the clat is started before the v4- interface is added to the network and the
+    // clat startup needs to add {in, e}gress filters.
+    // TODO: remove this workaround once v4- tun interface clsact attaching is moved out from
+    // ClatdController::maybeStartBpf.
+    if (StartsWith(interface, "v4-") && add) return;
+
+    // The interface may have already gone away in the delete case.
+    uint32_t ifindex = if_nametoindex(interface);
+    if (!ifindex) {
+        ALOGE("cannot find interface %s", interface);
+        return;
+    }
+
+    if (add) {
+        if (int ret = tcQdiscAddDevClsact(ifindex)) {
+            ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", ifindex, interface, strerror(-ret));
+            return;
+        }
+    } else {
+        if (int ret = tcQdiscDelDevClsact(ifindex)) {
+            ALOGE("tcQdiscDelDevClsact(%d[%s]) failure: %s", ifindex, interface, strerror(-ret));
+            return;
+        }
+    }
+
+    return;
+}
+
 [[nodiscard]] static int clearTetheringRules(const char* inputInterface) {
     int ret = 0;
     while (ret == 0) {
@@ -996,6 +1031,7 @@ int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* i
     if (int ret = modifyPhysicalNetwork(netId, interface, permission, ACTION_ADD)) {
         return ret;
     }
+    maybeModifyQdiscClsact(interface, ACTION_ADD);
     updateTableNamesFile();
     return 0;
 }
@@ -1011,6 +1047,7 @@ int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const ch
     if (int ret = clearTetheringRules(interface)) {
         return ret;
     }
+    maybeModifyQdiscClsact(interface, ACTION_DEL);
     updateTableNamesFile();
     return 0;
 }
