@@ -261,8 +261,8 @@ static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool et
             (android::bpf::getBpfSupportLevel() >= android::bpf::BpfLevel::EXTENDED_4_14);
     // Older kernels return EINVAL instead of ENOENT due to lacking proper error propagation...
     const int errNOENT =
-            (android::bpf::getBpfSupportLevel() >= android::bpf::BpfLevel::EXTENDED_5_4) ? ENOENT
-                                                                                         : EINVAL;
+            (android::bpf::getBpfSupportLevel() >= android::bpf::BpfLevel::EXTENDED_4_19) ? ENOENT
+                                                                                          : EINVAL;
 
     int clatBpfFd = ingress ? getClatIngressProgFd(ethernet) : getClatEgressProgFd(ethernet);
     ASSERT_GE(clatBpfFd, 3);
