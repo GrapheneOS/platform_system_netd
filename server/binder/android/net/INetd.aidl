@@ -1243,4 +1243,30 @@ interface INetd {
     *         cause of the failure.
     */
     void networkRemoveRouteParcel(int netId, in android.net.RouteInfoParcel routeInfo);
+
+    /**
+     * Adds or updates a tethering rule to forward downstream IPv6 traffic.
+     *
+     * @param intifaceIndex the interface index of the internal interface.
+     * @param extifaceIndex the interface index of the external interface.
+     * @param ipAddress the IPv6 address as a byte array.
+     * @param srcL2Address the source (i.e., local) L2 address as a byte array. Currently, must be a
+     *                     6-byte MAC address.
+     * @param dstL2Address the destination L2 address as a byte array. Currently, must be a 6-byte
+     *                     MAC address.
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *                                  cause of the failure.
+     */
+    void tetherRuleAddDownstreamIpv6(int intIfaceIndex, int extIfaceIndex, in byte[] ipAddress,
+                                     in byte[] srcL2Address, in byte[] dstL2Address);
+
+    /**
+     * Removes a tethering rule to forward downstream IPv6 traffic.
+     *
+     * @param extifaceIndex the interface index of the external interface.
+     * @param ipAddress the IPv6 address as a byte array.
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *                                  cause of the failure.
+     */
+    void tetherRuleRemoveDownstreamIpv6(int extIfaceIndex, in byte[] ipAddress);
 }
