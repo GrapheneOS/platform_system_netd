@@ -82,9 +82,6 @@ class ClatdController {
     std::map<std::string, ClatdTracker> mClatdTrackers GUARDED_BY(mutex);
     ClatdTracker* getClatdTracker(const std::string& interface) REQUIRES(mutex);
 
-    void resetEgressMap() REQUIRES(mutex);
-    void resetIngressMap() REQUIRES(mutex);
-
     void dumpEgress(netdutils::DumpWriter& dw) REQUIRES(mutex);
     void dumpIngress(netdutils::DumpWriter& dw) REQUIRES(mutex);
     void dumpTrackers(netdutils::DumpWriter& dw) REQUIRES(mutex);
