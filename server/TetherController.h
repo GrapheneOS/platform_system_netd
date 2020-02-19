@@ -26,7 +26,9 @@
 #include <sysutils/SocketClient.h>
 
 #include "NetdConstants.h"
-
+#include "android-base/result.h"
+#include "bpf/BpfMap.h"
+#include "netdbpf/bpf_shared.h"
 
 namespace android {
 namespace net {
@@ -68,6 +70,9 @@ class TetherController {
         int sendAllState(int daemonFd) const;
     } mDnsmasqState{};
 
+    bpf::BpfMap<TetherIngressKey, TetherIngressValue> mBpfIngressMap;
+    bpf::BpfMap<uint32_t, TetherStatsValue> mBpfStatsMap;
+
   public:
     TetherController();
     ~TetherController() = default;
@@ -95,6 +100,14 @@ class TetherController {
     int enableNat(const char* intIface, const char* extIface);
     int disableNat(const char* intIface, const char* extIface);
     int setupIptablesHooks();
+
+    base::Result<void> addDownstreamIpv6Rule(int intIfaceIndex, int extIfaceIndex,
+                                             const std::vector<uint8_t>& ipAddress,
+                                             const std::vector<uint8_t>& srcL2Address,
+                                             const std::vector<uint8_t>& dstL2Address);
+
+    base::Result<void> removeDownstreamIpv6Rule(int extifaceIndex,
+                                                const std::vector<uint8_t>& ipAddress);
 
     class TetherStats {
       public:
@@ -148,6 +161,7 @@ class TetherController {
 
     void dump(netdutils::DumpWriter& dw);
     void dumpIfaces(netdutils::DumpWriter& dw);
+    void dumpBpf(netdutils::DumpWriter& dw);
 
   private:
     bool setIpFwdEnabled();
@@ -168,6 +182,9 @@ class TetherController {
     int setTetherGlobalAlertRule();
     int setForwardRules(bool set, const char *intIface, const char *extIface);
     int setTetherCountingRules(bool add, const char *intIface, const char *extIface);
+
+    void maybeStartBpf(const char* extIface);
+    void maybeStopBpf(const char* extIface);
 
     static void addStats(TetherStatsList& statsList, const TetherStats& stats);
 

@@ -65,11 +65,45 @@ TEST_F(OffloadUtilsTest, HardwareAddressTypeOfCellular) {
     ASSERT_EQ(ARPHRD_RAWIP, type);
 }
 
+TEST_F(OffloadUtilsTest, IsEthernetOfNonExistingIf) {
+    auto res = isEthernet("not_existing_if");
+    ASSERT_FALSE(res.ok());
+    ASSERT_EQ(ENODEV, res.error().code());
+}
+
+TEST_F(OffloadUtilsTest, IsEthernetOfLoopback) {
+    auto res = isEthernet("lo");
+    ASSERT_FALSE(res.ok());
+    ASSERT_EQ(EAFNOSUPPORT, res.error().code());
+}
+
+// If wireless 'wlan0' interface exists it should be Ethernet.
+// See also HardwareAddressTypeOfWireless.
+TEST_F(OffloadUtilsTest, IsEthernetOfWireless) {
+    auto res = isEthernet("wlan0");
+    if (!res.ok() && res.error().code() == ENODEV) return;
+
+    ASSERT_RESULT_OK(res);
+    ASSERT_TRUE(res.value());
+}
+
+// If cellular 'rmnet_data0' interface exists it should
+// *probably* not be Ethernet and instead be RawIp.
+// See also HardwareAddressTypeOfCellular.
+TEST_F(OffloadUtilsTest, IsEthernetOfCellular) {
+    auto res = isEthernet("rmnet_data0");
+    if (!res.ok() && res.error().code() == ENODEV) return;
+
+    ASSERT_RESULT_OK(res);
+    ASSERT_FALSE(res.value());
+}
+
 TEST_F(OffloadUtilsTest, GetClatEgressMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatEgressMapFd();
-    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    ASSERT_GE(fd, 3);  // 0,1,2 - stdin/out/err, thus fd >= 3
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -77,7 +111,8 @@ TEST_F(OffloadUtilsTest, GetClatEgressRawIpProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatEgressProgFd(RAWIP);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -85,7 +120,8 @@ TEST_F(OffloadUtilsTest, GetClatEgressEtherProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatEgressProgFd(ETHER);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -93,7 +129,8 @@ TEST_F(OffloadUtilsTest, GetClatIngressMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatIngressMapFd();
-    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    ASSERT_GE(fd, 3);  // 0,1,2 - stdin/out/err, thus fd >= 3
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -101,7 +138,8 @@ TEST_F(OffloadUtilsTest, GetClatIngressRawIpProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatIngressProgFd(RAWIP);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -109,7 +147,8 @@ TEST_F(OffloadUtilsTest, GetClatIngressEtherProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getClatIngressProgFd(ETHER);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -117,7 +156,8 @@ TEST_F(OffloadUtilsTest, GetTetherIngressMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getTetherIngressMapFd();
-    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    ASSERT_GE(fd, 3);  // 0,1,2 - stdin/out/err, thus fd >= 3
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -127,7 +167,8 @@ TEST_F(OffloadUtilsTest, GetTetherIngressRawIpProgFd) {
     SKIP_IF_EXTENDED_BPF_NOT_SUPPORTED;
 
     int fd = getTetherIngressProgFd(RAWIP);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -137,7 +178,8 @@ TEST_F(OffloadUtilsTest, GetTetherIngressEtherProgFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getTetherIngressProgFd(ETHER);
-    ASSERT_LE(3, fd);
+    ASSERT_GE(fd, 3);
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -145,7 +187,8 @@ TEST_F(OffloadUtilsTest, GetTetherStatsMapFd) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     int fd = getTetherStatsMapFd();
-    ASSERT_LE(3, fd);  // 0,1,2 - stdin/out/err, thus 3 <= fd
+    ASSERT_GE(fd, 3);  // 0,1,2 - stdin/out/err, thus fd >= 3
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
     close(fd);
 }
 
@@ -214,17 +257,20 @@ static void checkAttachDetachBpfFilterClsactLo(const bool ingress, const bool et
     if (!kernelSupportsNetSchIngress()) return;
     if (!kernelSupportsNetClsBpf()) return;
 
-    const bool extended = (android::bpf::getBpfSupportLevel() >= android::bpf::BpfLevel::EXTENDED);
-    // 4.9 returns EINVAL instead of ENOENT...
-    const int errNOENT = extended ? ENOENT : EINVAL;
+    const bool extended =
+            (android::bpf::getBpfSupportLevel() >= android::bpf::BpfLevel::EXTENDED_4_14);
+    // Older kernels return EINVAL instead of ENOENT due to lacking proper error propagation...
+    const int errNOENT =
+            (android::bpf::getBpfSupportLevel() >= android::bpf::BpfLevel::EXTENDED_4_19) ? ENOENT
+                                                                                          : EINVAL;
 
     int clatBpfFd = ingress ? getClatIngressProgFd(ethernet) : getClatEgressProgFd(ethernet);
-    ASSERT_LE(3, clatBpfFd);
+    ASSERT_GE(clatBpfFd, 3);
 
     int tetherBpfFd = -1;
     if (extended && ingress) {
         tetherBpfFd = getTetherIngressProgFd(ethernet);
-        ASSERT_LE(3, tetherBpfFd);
+        ASSERT_GE(tetherBpfFd, 3);
     }
 
     // This attaches and detaches a clsact plus ebpf program to loopback
