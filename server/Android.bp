@@ -119,6 +119,12 @@ cc_binary {
         "system/netd/include",
     ],
     init_rc: ["netd.rc"],
+    required: [
+        "bpfloader",
+        "clatd.o",
+        "netd.o",
+        "offload.o",
+    ],
     shared_libs: [
         "android.system.net.netd@1.0",
         "android.system.net.netd@1.1",
