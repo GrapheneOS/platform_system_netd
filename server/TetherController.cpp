@@ -77,6 +77,7 @@ const char IPV4_FORWARDING_PROC_FILE[] = "/proc/sys/net/ipv4/ip_forward";
 const char IPV6_FORWARDING_PROC_FILE[] = "/proc/sys/net/ipv6/conf/all/forwarding";
 const char SEPARATOR[] = "|";
 constexpr const char kTcpBeLiberal[] = "/proc/sys/net/netfilter/nf_conntrack_tcp_be_liberal";
+constexpr const char kBpfOffloadInterface[] = "BPFOffloadInterface";
 
 // Chosen to match AID_DNS_TETHER, as made "friendly" by fs_config_generator.py.
 constexpr const char kDnsmasqUsername[] = "dns_tether";
@@ -162,16 +163,7 @@ TetherController::TetherController() {
     } else {
         setIpFwdEnabled();
     }
-
-    // Open BPF maps, ignoring errors because the device might not support BPF offload.
-    int fd = getTetherIngressMapFd();
-    if (fd != -1) {
-        mBpfIngressMap.reset(fd);
-    }
-    fd = getTetherStatsMapFd();
-    if (fd != -1) {
-        mBpfStatsMap.reset(fd);
-    }
+    maybeInitMaps();
 }
 
 bool TetherController::setIpFwdEnabled() {
@@ -202,6 +194,25 @@ bool TetherController::enableForwarding(const char* requester) {
 bool TetherController::disableForwarding(const char* requester) {
     mForwardingRequests.erase(requester);
     return setIpFwdEnabled();
+}
+
+void TetherController::maybeInitMaps() {
+    if (!bpf::isBpfSupported()) return;
+
+    // Used for parsing tether stats from BPF maps. If open the map failed, skip to open
+    // tether BPF offload maps.
+    mIfaceIndexNameMap.init(IFACE_INDEX_NAME_MAP_PATH);
+    if (!mIfaceIndexNameMap.isValid()) return;
+
+    // Open BPF maps, ignoring errors because the device might not support BPF offload.
+    int fd = getTetherIngressMapFd();
+    if (fd != -1) {
+        mBpfIngressMap.reset(fd);
+    }
+    fd = getTetherStatsMapFd();
+    if (fd != -1) {
+        mBpfStatsMap.reset(fd);
+    }
 }
 
 const std::set<std::string>& TetherController::getIpfwdRequesterList() const {
@@ -985,6 +996,29 @@ StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats() {
             return statusFromErrno(-ret, StringPrintf("failed to parse %s tether stats:\n%s",
                                                       target == V4 ? "IPv4": "IPv6",
                                                       parsedIptablesOutput.c_str()));
+        }
+    }
+
+    if (mBpfStatsMap.isValid()) {
+        const auto processTetherStats = [this, &statsList](
+                                                const uint32_t& key, const TetherStatsValue& value,
+                                                const BpfMap<uint32_t, TetherStatsValue>&) {
+            auto ifname = mIfaceIndexNameMap.readValue(key);
+            if (!ifname.ok()) {
+                // Keep on going regardless to parse as much as possible.
+                return Result<void>();
+            }
+            addStats(statsList,
+                     {kBpfOffloadInterface, ifname.value().name,
+                      static_cast<int64_t>(value.rxBytes), static_cast<int64_t>(value.rxPackets),
+                      static_cast<int64_t>(value.txBytes), static_cast<int64_t>(value.txPackets)});
+            return Result<void>();
+        };
+
+        auto ret = mBpfStatsMap.iterateWithValue(processTetherStats);
+        if (!ret.ok()) {
+            // Ignore error to return the non-BPF tether stats result.
+            ALOGE("Error processing tether stats from BPF maps: %s", ret.error().message().c_str());
         }
     }
 
