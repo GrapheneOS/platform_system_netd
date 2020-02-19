@@ -77,7 +77,6 @@ constexpr int PER_UID_STATS_ENTRIES_LIMIT = 500;
 // Otherwise, apps would be able to avoid data usage accounting entirely by filling up the
 // map with tagged traffic entries.
 constexpr int TOTAL_UID_STATS_ENTRIES_LIMIT = STATS_MAP_SIZE * 0.9;
-constexpr mode_t S_NONE = 0;
 
 static_assert(BPF_PERMISSION_INTERNET == INetd::PERMISSION_INTERNET,
               "Mismatch between BPF and AIDL permissions: PERMISSION_INTERNET");
@@ -167,20 +166,6 @@ StatusOr<std::unique_ptr<NetlinkListenerInterface>> TrafficController::makeSkDes
     return listener;
 }
 
-Status changeOwnerAndMode(const char* path, gid_t group, const char* debugName, mode_t groupMode) {
-    int ret = chown(path, AID_ROOT, group);
-    if (ret != 0) return statusFromErrno(errno, StringPrintf("change %s group failed", debugName));
-
-    // Ensure groupMode only contains group bits.
-    groupMode &= S_IRGRP | S_IWGRP;
-
-    // chmod doesn't by itself grant permission to all processes in that group to
-    // read/write the bpf map. They still need correct sepolicy.
-    ret = chmod(path, S_IRUSR | S_IWUSR | groupMode);
-    if (ret != 0) return statusFromErrno(errno, StringPrintf("change %s mode failed", debugName));
-    return netdutils::status::ok;
-}
-
 TrafficController::TrafficController()
     : mBpfEnabled(isBpfSupported()),
       mPerUidStatsEntriesLimit(PER_UID_STATS_ENTRIES_LIMIT),
@@ -193,61 +178,24 @@ TrafficController::TrafficController(uint32_t perUidLimit, uint32_t totalLimit)
 
 Status TrafficController::initMaps() {
     std::lock_guard guard(mMutex);
+
     RETURN_IF_NOT_OK(mCookieTagMap.init(COOKIE_TAG_MAP_PATH));
-    RETURN_IF_NOT_OK(
-            changeOwnerAndMode(COOKIE_TAG_MAP_PATH, AID_NET_BW_ACCT, "CookieTagMap", S_IRGRP));
-
     RETURN_IF_NOT_OK(mUidCounterSetMap.init(UID_COUNTERSET_MAP_PATH));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(UID_COUNTERSET_MAP_PATH, AID_NET_BW_ACCT,
-                                        "UidCounterSetMap", S_IRGRP));
-
     RETURN_IF_NOT_OK(mAppUidStatsMap.init(APP_UID_STATS_MAP_PATH));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(APP_UID_STATS_MAP_PATH, AID_NET_BW_STATS, "AppUidStatsMap",
-                                        S_IRGRP));
-
     RETURN_IF_NOT_OK(mStatsMapA.init(STATS_MAP_A_PATH));
-    RETURN_IF_NOT_OK(
-            changeOwnerAndMode(STATS_MAP_A_PATH, AID_NET_BW_STATS, "StatsMapA", S_IRGRP | S_IWGRP));
-
     RETURN_IF_NOT_OK(mStatsMapB.init(STATS_MAP_B_PATH));
-    RETURN_IF_NOT_OK(
-            changeOwnerAndMode(STATS_MAP_B_PATH, AID_NET_BW_STATS, "StatsMapB", S_IRGRP | S_IWGRP));
-
     RETURN_IF_NOT_OK(mIfaceIndexNameMap.init(IFACE_INDEX_NAME_MAP_PATH));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(IFACE_INDEX_NAME_MAP_PATH, AID_NET_BW_STATS,
-                                        "IfaceIndexNameMap", S_IRGRP));
-
     RETURN_IF_NOT_OK(mIfaceStatsMap.init(IFACE_STATS_MAP_PATH));
-    RETURN_IF_NOT_OK(
-            changeOwnerAndMode(IFACE_STATS_MAP_PATH, AID_NET_BW_STATS, "IfaceStatsMap", S_IRGRP));
 
     RETURN_IF_NOT_OK(mConfigurationMap.init(CONFIGURATION_MAP_PATH));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(CONFIGURATION_MAP_PATH, AID_NET_BW_STATS,
-                                        "ConfigurationMap", S_IRGRP));
     RETURN_IF_NOT_OK(
             mConfigurationMap.writeValue(UID_RULES_CONFIGURATION_KEY, DEFAULT_CONFIG, BPF_ANY));
     RETURN_IF_NOT_OK(mConfigurationMap.writeValue(CURRENT_STATS_MAP_CONFIGURATION_KEY, SELECT_MAP_A,
                                                   BPF_ANY));
 
     RETURN_IF_NOT_OK(mUidOwnerMap.init(UID_OWNER_MAP_PATH));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(UID_OWNER_MAP_PATH, AID_ROOT, "UidOwnerMap", S_NONE));
     RETURN_IF_NOT_OK(mUidOwnerMap.clear());
     RETURN_IF_NOT_OK(mUidPermissionMap.init(UID_PERMISSION_MAP_PATH));
-
-    RETURN_IF_NOT_OK(changeOwnerAndMode(TETHER_INGRESS_MAP_PATH, AID_NETWORK_STACK,
-                                        "TetherIngressMap", S_IRGRP | S_IWGRP));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(TETHER_STATS_MAP_PATH, AID_NETWORK_STACK, "TetherStatsMap",
-                                        S_IRGRP | S_IWGRP));
-
-    // The programs must be readable to process that modify iptables rules
-    RETURN_IF_NOT_OK(changeOwnerAndMode(XT_BPF_EGRESS_PROG_PATH, AID_NET_ADMIN,
-                                        "XtFilterEgressProgram", S_IRGRP));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(XT_BPF_INGRESS_PROG_PATH, AID_NET_ADMIN,
-                                        "XtFilterIngressProgram", S_IRGRP));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(XT_BPF_WHITELIST_PROG_PATH, AID_NET_ADMIN,
-                                        "XtWhitelistProgram", S_IRGRP));
-    RETURN_IF_NOT_OK(changeOwnerAndMode(XT_BPF_BLACKLIST_PROG_PATH, AID_NET_ADMIN,
-                                        "XtBlacklistProgram", S_IRGRP));
 
     return netdutils::status::ok;
 }
