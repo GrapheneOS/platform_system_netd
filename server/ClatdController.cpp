@@ -70,33 +70,6 @@ using android::netdutils::ScopedIndent;
 namespace android {
 namespace net {
 
-void ClatdController::resetEgressMap() {
-    const auto del = [](const ClatEgressKey& key, const BpfMap<ClatEgressKey, ClatEgressValue>&) {
-        ALOGW("Removing stale clat config on interface %d.", key.iif);
-        int rv = tcFilterDelDevEgressClatIpv4(key.iif);
-        if (rv < 0) ALOGE("tcFilterDelDevEgressClatIpv4() failure: %s", strerror(-rv));
-        return Result<void>();  // keep on going regardless
-    };
-    auto ret = mClatEgressMap.iterate(del);
-    if (!ret.ok()) ALOGE("mClatEgressMap.iterate() failure: %s", strerror(ret.error().code()));
-    ret = mClatEgressMap.clear();
-    if (!ret.ok()) ALOGE("mClatEgressMap.clear() failure: %s", strerror(ret.error().code()));
-}
-
-void ClatdController::resetIngressMap() {
-    const auto del = [](const ClatIngressKey& key,
-                        const BpfMap<ClatIngressKey, ClatIngressValue>&) {
-        ALOGW("Removing stale clat config on interface %d.", key.iif);
-        int rv = tcFilterDelDevIngressClatIpv6(key.iif);
-        if (rv < 0) ALOGE("tcFilterDelDevIngressClatIpv6() failure: %s", strerror(-rv));
-        return Result<void>();  // keep on going regardless
-    };
-    auto ret = mClatIngressMap.iterate(del);
-    if (!ret.ok()) ALOGE("mClatIngressMap.iterate() failure: %s", strerror(ret.error().code()));
-    ret = mClatIngressMap.clear();
-    if (!ret.ok()) ALOGE("mClatIngressMap.clear() failure: %s", strerror(ret.error().code()));
-}
-
 void ClatdController::init(void) {
     std::lock_guard guard(mutex);
 
@@ -143,8 +116,8 @@ void ClatdController::init(void) {
     }
     mClatIngressMap.reset(rv);
 
-    resetEgressMap();
-    resetIngressMap();
+    mClatEgressMap.clear();
+    mClatIngressMap.clear();
 }
 
 bool ClatdController::isIpv4AddressFree(in_addr_t addr) {
