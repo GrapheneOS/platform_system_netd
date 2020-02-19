@@ -20,10 +20,11 @@
 #include "bpf_helpers.h"
 #include "netdbpf/bpf_shared.h"
 
-DEFINE_BPF_MAP(tether_ingress_map, HASH, TetherIngressKey, TetherIngressValue, 64)
+DEFINE_BPF_MAP_GRW(tether_ingress_map, HASH, TetherIngressKey, TetherIngressValue, 64,
+                   AID_NETWORK_STACK)
 
 // Tethering stats, indexed by upstream interface.
-DEFINE_BPF_MAP(tether_stats_map, HASH, uint32_t, TetherStatsValue, 16)
+DEFINE_BPF_MAP_GRW(tether_stats_map, HASH, uint32_t, TetherStatsValue, 16, AID_NETWORK_STACK)
 
 SEC("schedcls/ingress/tether_ether")
 int sched_cls_ingress_tether_ether(struct __sk_buff* skb) {
