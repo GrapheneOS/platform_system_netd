@@ -992,6 +992,8 @@ StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats() {
 }
 
 void TetherController::maybeStartBpf(const char* extIface) {
+    if (!bpf::isBpfSupported()) return;
+
     // TODO: perhaps ignore IPv4-only interface because IPv4 traffic downstream is not supported.
     int ifIndex = if_nametoindex(extIface);
     if (!ifIndex) {
@@ -1022,6 +1024,8 @@ void TetherController::maybeStartBpf(const char* extIface) {
 }
 
 void TetherController::maybeStopBpf(const char* extIface) {
+    if (!bpf::isBpfSupported()) return;
+
     // TODO: perhaps ignore IPv4-only interface because IPv4 traffic downstream is not supported.
     int ifIndex = if_nametoindex(extIface);
     if (!ifIndex) {
