@@ -206,12 +206,14 @@ void TetherController::maybeInitMaps() {
 
     // Open BPF maps, ignoring errors because the device might not support BPF offload.
     int fd = getTetherIngressMapFd();
-    if (fd != -1) {
+    if (fd >= 0) {
         mBpfIngressMap.reset(fd);
+        mBpfIngressMap.clear();
     }
     fd = getTetherStatsMapFd();
-    if (fd != -1) {
+    if (fd >= 0) {
         mBpfStatsMap.reset(fd);
+        mBpfStatsMap.clear();
     }
 }
 
