@@ -70,8 +70,10 @@ class TetherController {
         int sendAllState(int daemonFd) const;
     } mDnsmasqState{};
 
+    // BPF maps, initialized by maybeInitMaps.
     bpf::BpfMap<TetherIngressKey, TetherIngressValue> mBpfIngressMap;
     bpf::BpfMap<uint32_t, TetherStatsValue> mBpfStatsMap;
+    bpf::BpfMap<uint32_t, IfaceValue> mIfaceIndexNameMap;
 
   public:
     TetherController();
@@ -183,6 +185,7 @@ class TetherController {
     int setForwardRules(bool set, const char *intIface, const char *extIface);
     int setTetherCountingRules(bool add, const char *intIface, const char *extIface);
 
+    void maybeInitMaps();
     void maybeStartBpf(const char* extIface);
     void maybeStopBpf(const char* extIface);
 
