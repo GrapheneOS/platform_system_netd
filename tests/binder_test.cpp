@@ -3371,3 +3371,51 @@ TEST_F(BinderTest, GetFwmarkForNetwork) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID2).isOk());
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
+
+TEST_F(BinderTest, TetherRuleDownstreamIpv6) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    // TODO: Perhaps verify invalid interface index once the netd handle the error in methods.
+    constexpr uint32_t kIfaceInt = 101;
+    constexpr uint32_t kIfaceExt = 102;
+    constexpr uint32_t kIfaceNonExistent = 103;
+
+    const std::vector<uint8_t> kAddr6 = {0x20, 0x01, 0x0d, 0xb8, 0xca, 0xfe, 0x00, 0x00,
+                                         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x88, 0x88};
+    const std::vector<uint8_t> kSrcMac = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0a};
+    const std::vector<uint8_t> kDstMac = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0b};
+
+    const std::vector<uint8_t> kInvalidAddr4 = {0xac, 0x0a, 0x0d, 0xb8};  // should be IPv6 address
+    const std::vector<uint8_t> kInvalidMac = {0xde, 0xad, 0xbe, 0xef};    // should be 6-byte length
+
+    // Invalid IP address, add rule
+    auto status = mNetd->tetherRuleAddDownstreamIpv6(kIfaceInt, kIfaceExt, kInvalidAddr4 /*bad*/,
+                                                     kSrcMac, kDstMac);
+    EXPECT_FALSE(status.isOk());
+    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+
+    // Invalid source L2 address, add rule
+    status = mNetd->tetherRuleAddDownstreamIpv6(kIfaceInt, kIfaceExt, kAddr6, kInvalidMac /*bad*/,
+                                                kDstMac);
+    EXPECT_FALSE(status.isOk());
+    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+
+    // Invalid destination L2 address, add rule
+    status = mNetd->tetherRuleAddDownstreamIpv6(kIfaceInt, kIfaceExt, kAddr6, kSrcMac,
+                                                kInvalidMac /*bad*/);
+    EXPECT_FALSE(status.isOk());
+    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+
+    // Invalid IP address, remove rule
+    status = mNetd->tetherRuleRemoveDownstreamIpv6(kIfaceExt, kInvalidAddr4 /*bad*/);
+    EXPECT_FALSE(status.isOk());
+    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+
+    // Remove non existent rule. Expect that silently return success if the rule did not exist.
+    EXPECT_TRUE(mNetd->tetherRuleRemoveDownstreamIpv6(kIfaceNonExistent, kAddr6).isOk());
+
+    // Add and remove rule normally.
+    EXPECT_TRUE(mNetd->tetherRuleAddDownstreamIpv6(kIfaceInt, kIfaceExt, kAddr6, kSrcMac, kDstMac)
+                        .isOk());
+    EXPECT_TRUE(mNetd->tetherRuleRemoveDownstreamIpv6(kIfaceExt, kAddr6).isOk());
+}
