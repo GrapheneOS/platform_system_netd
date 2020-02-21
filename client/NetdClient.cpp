@@ -51,7 +51,7 @@ namespace {
 // Keep this in sync with CMD_BUF_SIZE in FrameworkListener.cpp.
 constexpr size_t MAX_CMD_SIZE = 4096;
 // Whether sendto(), sendmsg(), sendmmsg() in libc are shimmed or not. This property is evaluated at
-// process start time and is cannot change at runtime on a given device.
+// process start time and cannot change at runtime on a given device.
 constexpr char PROPERTY_REDIRECT_SOCKET_CALLS[] = "ro.vendor.redirect_socket_calls";
 // Whether some shimmed functions dispatch FwmarkCommand or not. The property can be changed by
 // System Server at runtime. Note: accept4(), socket(), connect() are always shimmed.
@@ -80,14 +80,17 @@ SendtoFunctionType libcSendto = nullptr;
 
 static bool propertyValueIsTrue(const char* prop_name) {
     char prop_value[PROP_VALUE_MAX] = {0};
-    int length = __system_property_get(prop_name, prop_value);
-    if (length > 0 && length < PROP_VALUE_MAX) {
-        prop_value[length] = '\0';
+    if (__system_property_get(prop_name, prop_value) > 0) {
         if (strcmp(prop_value, "true") == 0) {
             return true;
         }
     }
     return false;
+}
+
+static bool redirectSocketCallsIsTrue() {
+    static bool cached_result = propertyValueIsTrue("ro.vendor.redirect_socket_calls");
+    return cached_result;
 }
 
 int checkSocket(int socketFd) {
@@ -144,9 +147,16 @@ int netdClientAccept4(int sockfd, sockaddr* addr, socklen_t* addrlen, int flags)
 int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
     const bool shouldSetFwmark = shouldMarkSocket(sockfd, addr);
     if (shouldSetFwmark) {
-        FwmarkConnectInfo connectInfo(0, 0, addr);
         FwmarkCommand command = {FwmarkCommand::ON_CONNECT, 0, 0, 0};
-        if (int error = FwmarkClient().send(&command, sockfd, &connectInfo)) {
+        int error;
+        if (redirectSocketCallsIsTrue()) {
+            FwmarkConnectInfo connectInfo(0, 0, addr);
+            error = FwmarkClient().send(&command, sockfd, &connectInfo);
+        } else {
+            error = FwmarkClient().send(&command, sockfd, nullptr);
+        }
+
+        if (error) {
             errno = -error;
             return -1;
         }
@@ -380,59 +390,46 @@ bool readResponseCode(int fd, int* result) {
         }                                       \
     } while (false);
 
+#define HOOK_ON_FUNC(remoteFunc, nativeFunc, localFunc) \
+    do {                                                \
+        if (remoteFunc && *remoteFunc) {                \
+            nativeFunc = *remoteFunc;                   \
+            *remoteFunc = localFunc;                    \
+        }                                               \
+    } while (false)
+
 // accept() just calls accept4(..., 0), so there's no need to handle accept() separately.
 extern "C" void netdClientInitAccept4(Accept4FunctionType* function) {
-    if (function && *function) {
-        libcAccept4 = *function;
-        *function = netdClientAccept4;
-    }
+    HOOK_ON_FUNC(function, libcAccept4, netdClientAccept4);
 }
 
 extern "C" void netdClientInitConnect(ConnectFunctionType* function) {
-    if (function && *function) {
-        libcConnect = *function;
-        *function = netdClientConnect;
-    }
+    HOOK_ON_FUNC(function, libcConnect, netdClientConnect);
 }
 
 extern "C" void netdClientInitSocket(SocketFunctionType* function) {
-    if (function && *function) {
-        libcSocket = *function;
-        *function = netdClientSocket;
-    }
+    HOOK_ON_FUNC(function, libcSocket, netdClientSocket);
 }
 
 extern "C" void netdClientInitSendmmsg(SendmmsgFunctionType* function) {
     if (!propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS)) {
         return;
     }
-
-    if (function && *function) {
-        libcSendmmsg = *function;
-        *function = netdClientSendmmsg;
-    }
+    HOOK_ON_FUNC(function, libcSendmmsg, netdClientSendmmsg);
 }
 
 extern "C" void netdClientInitSendmsg(SendmsgFunctionType* function) {
     if (!propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS)) {
         return;
     }
-
-    if (function && *function) {
-        libcSendmsg = *function;
-        *function = netdClientSendmsg;
-    }
+    HOOK_ON_FUNC(function, libcSendmsg, netdClientSendmsg);
 }
 
 extern "C" void netdClientInitSendto(SendtoFunctionType* function) {
     if (!propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS)) {
         return;
     }
-
-    if (function && *function) {
-        libcSendto = *function;
-        *function = netdClientSendto;
-    }
+    HOOK_ON_FUNC(function, libcSendto, netdClientSendto);
 }
 
 extern "C" void netdClientInitNetIdForResolv(NetIdForResolvFunctionType* function) {
