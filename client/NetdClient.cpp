@@ -22,6 +22,7 @@
 #include <resolv.h>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <sys/system_properties.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -49,6 +50,12 @@ namespace {
 
 // Keep this in sync with CMD_BUF_SIZE in FrameworkListener.cpp.
 constexpr size_t MAX_CMD_SIZE = 4096;
+// Whether sendto(), sendmsg(), sendmmsg() in libc are shimmed or not. This property is evaluated at
+// process start time and is cannot change at runtime on a given device.
+constexpr char PROPERTY_REDIRECT_SOCKET_CALLS[] = "ro.vendor.redirect_socket_calls";
+// Whether some shimmed functions dispatch FwmarkCommand or not. The property can be changed by
+// System Server at runtime. Note: accept4(), socket(), connect() are always shimmed.
+constexpr char PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED[] = "net.redirect_socket_calls.hooked";
 
 std::atomic_uint netIdForProcess(NETID_UNSET);
 std::atomic_uint netIdForResolv(NETID_UNSET);
@@ -58,12 +65,30 @@ typedef int (*ConnectFunctionType)(int, const sockaddr*, socklen_t);
 typedef int (*SocketFunctionType)(int, int, int);
 typedef unsigned (*NetIdForResolvFunctionType)(unsigned);
 typedef int (*DnsOpenProxyType)();
+typedef int (*SendmmsgFunctionType)(int, const mmsghdr*, unsigned int, int);
+typedef ssize_t (*SendmsgFunctionType)(int, const msghdr*, unsigned int);
+typedef int (*SendtoFunctionType)(int, const void*, size_t, int, const sockaddr*, socklen_t);
 
 // These variables are only modified at startup (when libc.so is loaded) and never afterwards, so
 // it's okay that they are read later at runtime without a lock.
 Accept4FunctionType libcAccept4 = nullptr;
 ConnectFunctionType libcConnect = nullptr;
 SocketFunctionType libcSocket = nullptr;
+SendmmsgFunctionType libcSendmmsg = nullptr;
+SendmsgFunctionType libcSendmsg = nullptr;
+SendtoFunctionType libcSendto = nullptr;
+
+static bool propertyValueIsTrue(const char* prop_name) {
+    char prop_value[PROP_VALUE_MAX] = {0};
+    int length = __system_property_get(prop_name, prop_value);
+    if (length > 0 && length < PROP_VALUE_MAX) {
+        prop_value[length] = '\0';
+        if (strcmp(prop_value, "true") == 0) {
+            return true;
+        }
+    }
+    return false;
+}
 
 int checkSocket(int socketFd) {
     if (socketFd < 0) {
@@ -119,8 +144,9 @@ int netdClientAccept4(int sockfd, sockaddr* addr, socklen_t* addrlen, int flags)
 int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
     const bool shouldSetFwmark = shouldMarkSocket(sockfd, addr);
     if (shouldSetFwmark) {
+        FwmarkConnectInfo connectInfo(0, 0, addr);
         FwmarkCommand command = {FwmarkCommand::ON_CONNECT, 0, 0, 0};
-        if (int error = FwmarkClient().send(&command, sockfd, nullptr)) {
+        if (int error = FwmarkClient().send(&command, sockfd, &connectInfo)) {
             errno = -error;
             return -1;
         }
@@ -156,6 +182,48 @@ int netdClientSocket(int domain, int type, int protocol) {
         }
     }
     return socketFd;
+}
+
+int netdClientSendmmsg(int sockfd, const mmsghdr* msgs, unsigned int msgcount, int flags) {
+    if (propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED)) {
+        const sockaddr* addr = nullptr;
+        if ((msgcount > 0) && (msgs != nullptr) && (msgs[0].msg_hdr.msg_name != nullptr)) {
+            addr = reinterpret_cast<const sockaddr*>(msgs[0].msg_hdr.msg_name);
+            if ((addr != nullptr) && (FwmarkCommand::isSupportedFamily(addr->sa_family))) {
+                FwmarkConnectInfo sendmmsgInfo(0, 0, addr);
+                FwmarkCommand command = {FwmarkCommand::ON_SENDMMSG, 0, 0, 0};
+                FwmarkClient().send(&command, sockfd, &sendmmsgInfo);
+            }
+        }
+    }
+    return libcSendmmsg(sockfd, msgs, msgcount, flags);
+}
+
+ssize_t netdClientSendmsg(int sockfd, const msghdr* msg, unsigned int flags) {
+    if (propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED)) {
+        const sockaddr* addr = nullptr;
+        if ((msg != nullptr) && (msg->msg_name != nullptr)) {
+            addr = reinterpret_cast<const sockaddr*>(msg->msg_name);
+            if ((addr != nullptr) && (FwmarkCommand::isSupportedFamily(addr->sa_family))) {
+                FwmarkConnectInfo sendmsgInfo(0, 0, addr);
+                FwmarkCommand command = {FwmarkCommand::ON_SENDMSG, 0, 0, 0};
+                FwmarkClient().send(&command, sockfd, &sendmsgInfo);
+            }
+        }
+    }
+    return libcSendmsg(sockfd, msg, flags);
+}
+
+int netdClientSendto(int sockfd, const void* buf, size_t bufsize, int flags, const sockaddr* addr,
+                     socklen_t addrlen) {
+    if (propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED)) {
+        if ((addr != nullptr) && (FwmarkCommand::isSupportedFamily(addr->sa_family))) {
+            FwmarkConnectInfo sendtoInfo(0, 0, addr);
+            FwmarkCommand command = {FwmarkCommand::ON_SENDTO, 0, 0, 0};
+            FwmarkClient().send(&command, sockfd, &sendtoInfo);
+        }
+    }
+    return libcSendto(sockfd, buf, bufsize, flags, addr, addrlen);
 }
 
 unsigned getNetworkForResolv(unsigned netId) {
@@ -331,6 +399,39 @@ extern "C" void netdClientInitSocket(SocketFunctionType* function) {
     if (function && *function) {
         libcSocket = *function;
         *function = netdClientSocket;
+    }
+}
+
+extern "C" void netdClientInitSendmmsg(SendmmsgFunctionType* function) {
+    if (!propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS)) {
+        return;
+    }
+
+    if (function && *function) {
+        libcSendmmsg = *function;
+        *function = netdClientSendmmsg;
+    }
+}
+
+extern "C" void netdClientInitSendmsg(SendmsgFunctionType* function) {
+    if (!propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS)) {
+        return;
+    }
+
+    if (function && *function) {
+        libcSendmsg = *function;
+        *function = netdClientSendmsg;
+    }
+}
+
+extern "C" void netdClientInitSendto(SendtoFunctionType* function) {
+    if (!propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS)) {
+        return;
+    }
+
+    if (function && *function) {
+        libcSendto = *function;
+        *function = netdClientSendto;
     }
 }
 
