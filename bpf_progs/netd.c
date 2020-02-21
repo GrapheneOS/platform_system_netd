@@ -313,8 +313,9 @@ DEFINE_BPF_PROG("skfilter/blacklist/xtbpf", AID_ROOT, AID_NET_ADMIN, xt_bpf_blac
 
 DEFINE_BPF_MAP(uid_permission_map, HASH, uint32_t, uint8_t, UID_OWNER_MAP_SIZE)
 
-SEC("cgroupsock/inet/create")
-int inet_socket_create(struct bpf_sock* sk) {
+DEFINE_BPF_PROG_KVER("cgroupsock/inet/create", AID_ROOT, AID_ROOT, inet_socket_create,
+                     KVER(4, 14, 0))
+(struct bpf_sock* sk) {
     uint64_t gid_uid = bpf_get_current_uid_gid();
     /*
      * A given app is guaranteed to have the same app ID in all the profiles in
