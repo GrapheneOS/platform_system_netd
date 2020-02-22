@@ -85,6 +85,15 @@ bool FwmarkServer::onDataAvailable(SocketClient* client) {
     return false;
 }
 
+static bool hasDestinationAddress(FwmarkCommand::CmdId cmdId) {
+    if (cmdId == FwmarkCommand::ON_SENDTO || cmdId == FwmarkCommand::ON_CONNECT ||
+        cmdId == FwmarkCommand::ON_SENDMSG || cmdId == FwmarkCommand::ON_SENDMMSG ||
+        cmdId == FwmarkCommand::ON_CONNECT_COMPLETE) {
+        return true;
+    }
+    return false;
+}
+
 int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
     FwmarkCommand command;
     FwmarkConnectInfo connectInfo;
@@ -103,9 +112,12 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
     memcpy(&command, buf, sizeof(command));
     memcpy(&connectInfo, buf + sizeof(command), sizeof(connectInfo));
 
-    if (!((command.cmdId != FwmarkCommand::ON_CONNECT_COMPLETE && messageLength == sizeof(command))
-            || (command.cmdId == FwmarkCommand::ON_CONNECT_COMPLETE
-            && messageLength == sizeof(command) + sizeof(connectInfo)))) {
+    size_t expected_len = sizeof(command);
+    if (hasDestinationAddress(command.cmdId)) {
+        expected_len += sizeof(connectInfo);
+    }
+
+    if (messageLength != static_cast<ssize_t>(expected_len)) {
         return -EBADMSG;
     }
 
@@ -232,6 +244,18 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
                         (ret == 0) ? strtoul(portstr, nullptr, 10) : 0, client->getUid());
             }
             break;
+        }
+
+        case FwmarkCommand::ON_SENDMMSG: {
+            return 0;
+        }
+
+        case FwmarkCommand::ON_SENDMSG: {
+            return 0;
+        }
+
+        case FwmarkCommand::ON_SENDTO: {
+            return 0;
         }
 
         case FwmarkCommand::SELECT_NETWORK: {
