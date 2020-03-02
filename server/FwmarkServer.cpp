@@ -24,6 +24,7 @@
 
 #include <android-base/cmsg.h>
 #include <android-base/logging.h>
+#include <android-base/properties.h>
 #include <binder/IServiceManager.h>
 #include <netd_resolv/resolv.h>  // NETID_UNSET
 
@@ -66,7 +67,9 @@ FwmarkServer::FwmarkServer(NetworkController* networkController, EventReporter* 
     : SocketListener(SOCKET_NAME, true),
       mNetworkController(networkController),
       mEventReporter(eventReporter),
-      mTrafficCtrl(trafficCtrl) {}
+      mTrafficCtrl(trafficCtrl),
+      mRedirectSocketCalls(
+              android::base::GetBoolProperty("ro.vendor.redirect_socket_calls", false)) {}
 
 bool FwmarkServer::onDataAvailable(SocketClient* client) {
     int socketFd = -1;
@@ -85,13 +88,14 @@ bool FwmarkServer::onDataAvailable(SocketClient* client) {
     return false;
 }
 
-static bool hasDestinationAddress(FwmarkCommand::CmdId cmdId) {
-    if (cmdId == FwmarkCommand::ON_SENDTO || cmdId == FwmarkCommand::ON_CONNECT ||
-        cmdId == FwmarkCommand::ON_SENDMSG || cmdId == FwmarkCommand::ON_SENDMMSG ||
-        cmdId == FwmarkCommand::ON_CONNECT_COMPLETE) {
-        return true;
+static bool hasDestinationAddress(FwmarkCommand::CmdId cmdId, bool redirectSocketCalls) {
+    if (redirectSocketCalls) {
+        return (cmdId == FwmarkCommand::ON_SENDTO || cmdId == FwmarkCommand::ON_CONNECT ||
+                cmdId == FwmarkCommand::ON_SENDMSG || cmdId == FwmarkCommand::ON_SENDMMSG ||
+                cmdId == FwmarkCommand::ON_CONNECT_COMPLETE);
+    } else {
+        return (cmdId == FwmarkCommand::ON_CONNECT_COMPLETE);
     }
-    return false;
 }
 
 int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
@@ -112,12 +116,12 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
     memcpy(&command, buf, sizeof(command));
     memcpy(&connectInfo, buf + sizeof(command), sizeof(connectInfo));
 
-    size_t expected_len = sizeof(command);
-    if (hasDestinationAddress(command.cmdId)) {
-        expected_len += sizeof(connectInfo);
+    size_t expectedLen = sizeof(command);
+    if (hasDestinationAddress(command.cmdId, mRedirectSocketCalls)) {
+        expectedLen += sizeof(connectInfo);
     }
 
-    if (messageLength != static_cast<ssize_t>(expected_len)) {
+    if (messageLength != static_cast<ssize_t>(expectedLen)) {
         return -EBADMSG;
     }
 
