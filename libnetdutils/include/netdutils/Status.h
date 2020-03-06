@@ -79,8 +79,9 @@ inline bool isOk(const Status& status) {
     return status.ok();
 }
 
-// For use only in tests.
-#define EXPECT_OK(status) EXPECT_TRUE((status).ok())
+// For use only in tests. Used for both Status and Status-like objects. See also isOk().
+#define EXPECT_OK(status) EXPECT_TRUE(isOk(status))
+#define ASSERT_OK(status) ASSERT_TRUE(isOk(status))
 
 // Documents that status is expected to be ok. This function may log
 // (or assert when running in debug mode) if status has an unexpected value.
