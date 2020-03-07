@@ -20,27 +20,42 @@
 #include <vector>
 
 #include <fcntl.h>
-#include <unistd.h>
-#include <sys/types.h>
+#include <inttypes.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <gtest/gtest.h>
 
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <gmock/gmock.h>
 #include <netdutils/StatusOr.h>
 
-#include "TetherController.h"
 #include "IptablesBaseTest.h"
+#include "OffloadUtils.h"
+#include "TetherController.h"
 
 using android::base::Join;
 using android::base::StringPrintf;
+using android::bpf::BpfMap;
 using android::netdutils::StatusOr;
+using ::testing::Contains;
 using TetherStats = android::net::TetherController::TetherStats;
 using TetherStatsList = android::net::TetherController::TetherStatsList;
 
 namespace android {
 namespace net {
+
+constexpr int TEST_MAP_SIZE = 10;
+
+// Comparison for TetherStats. Need to override operator== because class TetherStats doesn't have.
+// TODO: once C++20 is used, use default operator== in TetherStats and remove the overriding here.
+bool operator==(const TetherStats& lhs, const TetherStats& rhs) {
+    return lhs.intIface == rhs.intIface && lhs.extIface == rhs.extIface &&
+           lhs.rxBytes == rhs.rxBytes && lhs.txBytes == rhs.txBytes &&
+           lhs.rxPackets == rhs.rxPackets && lhs.txPackets == rhs.txPackets;
+}
 
 class TetherControllerTest : public IptablesBaseTest {
 public:
@@ -50,6 +65,42 @@ public:
 
 protected:
     TetherController mTetherCtrl;
+    BpfMap<uint32_t, IfaceValue> mFakeIfaceIndexNameMap{BPF_MAP_TYPE_HASH, TEST_MAP_SIZE};
+    BpfMap<uint32_t, TetherStatsValue> mFakeTetherStatsMap{BPF_MAP_TYPE_HASH, TEST_MAP_SIZE};
+
+    void SetUp() {
+        SKIP_IF_BPF_NOT_SUPPORTED;
+
+        ASSERT_TRUE(mFakeIfaceIndexNameMap.isValid());
+        ASSERT_TRUE(mFakeTetherStatsMap.isValid());
+
+        mTetherCtrl.mIfaceIndexNameMap = mFakeIfaceIndexNameMap;
+        ASSERT_TRUE(mTetherCtrl.mIfaceIndexNameMap.isValid());
+        mTetherCtrl.mBpfStatsMap = mFakeTetherStatsMap;
+        ASSERT_TRUE(mTetherCtrl.mBpfStatsMap.isValid());
+    }
+
+    std::string toString(const TetherStatsList& statsList) {
+        std::string result;
+        for (const auto& stats : statsList) {
+            result += StringPrintf("%s, %s, %" PRId64 ", %" PRId64 ", %" PRId64 ", %" PRId64 "\n",
+                                   stats.intIface.c_str(), stats.extIface.c_str(), stats.rxBytes,
+                                   stats.rxPackets, stats.txBytes, stats.txPackets);
+        }
+        return result;
+    }
+
+    void updateMaps(uint32_t ifaceIndex, const char* ifaceName, uint64_t rxBytes,
+                    uint64_t rxPackets, uint64_t txBytes, uint64_t txPackets) {
+        IfaceValue iface{};
+        strlcpy(iface.name, ifaceName, sizeof(iface.name));
+        ASSERT_RESULT_OK(mFakeIfaceIndexNameMap.writeValue(ifaceIndex, iface, BPF_ANY));
+
+        // {rx, tx}Errors in |tetherStats| are set zero because getTetherStats doesn't use them.
+        const TetherStatsValue tetherStats = {rxPackets, rxBytes, 0 /*unused*/,
+                                              txPackets, txBytes, 0 /*unused*/};
+        ASSERT_RESULT_OK(mFakeTetherStatsMap.writeValue(ifaceIndex, tetherStats, BPF_ANY));
+    };
 
     int setDefaults() {
         return mTetherCtrl.setDefaults();
@@ -433,6 +484,34 @@ TEST_F(TetherControllerTest, TestGetTetherStats) {
     std::string err = result.status().msg();
     ASSERT_LE(expectedError.size(), err.size());
     EXPECT_TRUE(std::equal(expectedError.rbegin(), expectedError.rend(), err.rbegin()));
+}
+
+TEST_F(TetherControllerTest, TestGetTetherStatsWithBpfTetherStatsMap) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    // Setup BPF tether stats maps. The tether stats of interface rmnet0 comes from two tether
+    // stats map items with different interface index. Therefore, need to sum up both of them
+    // for the tether stats of interface rmnet0.
+    updateMaps(101, "wlan0", 100, 10, 200, 20);
+    updateMaps(102, "rmnet0", 300, 30, 400, 40);
+    updateMaps(103, "rmnet0", 500, 50, 600, 60);
+    const TetherStats expected0("BPFOffloadInterface", "wlan0", 100, 10, 200, 20);
+    const TetherStats expected1("BPFOffloadInterface", "rmnet0", 800, 80, 1000, 100);
+
+    // Setup iptables tether counters. IPv4 and IPv6 counters are added together.
+    addIptablesRestoreOutput(kIPv4TetherCounters, kIPv6TetherCounters);
+    const TetherStats expected2("wlan0", "rmnet0", 20002002, 20027, 10002373, 10026);
+    const TetherStats expected3("bt-pan", "rmnet0", 1708806, 1450, 107471, 1040);
+
+    const StatusOr<TetherStatsList> result = mTetherCtrl.getTetherStats();
+    ASSERT_OK(result);
+    const TetherStatsList& actual = result.value();
+    ASSERT_EQ(4U, actual.size());
+    EXPECT_THAT(actual, Contains(expected0)) << toString(actual);
+    EXPECT_THAT(actual, Contains(expected1)) << toString(actual);
+    EXPECT_THAT(actual, Contains(expected2)) << toString(actual);
+    EXPECT_THAT(actual, Contains(expected3)) << toString(actual);
+    clearIptablesRestoreOutput();
 }
 
 }  // namespace net
