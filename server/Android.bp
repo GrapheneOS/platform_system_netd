@@ -176,9 +176,6 @@ cc_binary {
     ],
     sanitize: {
         cfi: true,
-        diag: {
-            cfi: true,
-        },
     },
 }
 
@@ -209,9 +206,6 @@ cc_binary {
     ],
     sanitize: {
         cfi: true,
-        diag: {
-            cfi: true,
-        },
     },
 }
 

@@ -23,9 +23,6 @@ cc_binary {
     ],
     sanitize: {
         cfi: true,
-        diag: {
-            cfi: true,
-        },
     },
 }
 
