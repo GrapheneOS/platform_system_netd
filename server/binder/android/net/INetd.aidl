@@ -1280,4 +1280,15 @@ interface INetd {
      *         cause of the failure.
      */
     TetherStatsParcel[] tetherOffloadGetStats();
+
+   /**
+    * Set a per-interface quota for tethering offload.
+    *
+    * @param ifIndex Index of upstream interface
+    * @param quotaBytes The quota defined as the number of bytes, starting from zero and counting
+     *       from *now*. A value of QUOTA_UNLIMITED (-1) indicates there is no limit.
+    * @throws ServiceSpecificException in case of failure, with an error code indicating the
+    *         cause of the failure.
+    */
+    void tetherOffloadSetInterfaceQuota(int ifIndex, long quotaBytes);
 }

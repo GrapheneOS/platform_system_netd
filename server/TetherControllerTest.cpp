@@ -502,5 +502,47 @@ TEST_F(TetherControllerTest, TestTetherOffloadGetStats) {
     clearIptablesRestoreOutput();
 }
 
+TEST_F(TetherControllerTest, TestTetherOffloadSetQuota) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    const uint32_t ifindex = 100;
+    const uint64_t minQuota = 0;
+    const uint64_t maxQuota = std::numeric_limits<int64_t>::max();
+    const uint64_t infinityQuota = std::numeric_limits<uint64_t>::max();
+
+    // Create a stats entry with zeroes in the first time set limit.
+    ASSERT_EQ(0, mTetherCtrl.setTetherOffloadInterfaceQuota(ifindex, minQuota));
+    const StatusOr<TetherOffloadStatsList> result = mTetherCtrl.getTetherOffloadStats();
+    ASSERT_OK(result);
+    const TetherOffloadStatsList& actual = result.value();
+    ASSERT_EQ(1U, actual.size());
+    EXPECT_THAT(actual, Contains(TetherOffloadStats{ifindex, 0, 0, 0, 0})) << toString(actual);
+
+    // Verify the quota with the boundary {min, max, infinity}.
+    const uint64_t rxBytes = 1000;
+    const uint64_t txBytes = 2000;
+    updateMaps(ifindex, rxBytes, 0 /*unused*/, txBytes, 0 /*unused*/);
+
+    for (const uint64_t quota : {minQuota, maxQuota, infinityQuota}) {
+        ASSERT_EQ(0, mTetherCtrl.setTetherOffloadInterfaceQuota(ifindex, quota));
+        base::Result<uint64_t> result = mFakeTetherLimitMap.readValue(ifindex);
+        ASSERT_RESULT_OK(result);
+
+        const uint64_t expectedQuota =
+                (quota == infinityQuota) ? infinityQuota : quota + rxBytes + txBytes;
+        EXPECT_EQ(expectedQuota, result.value());
+    }
+
+    // The valid range of interface index is 1..max_int64.
+    const uint32_t invalidIfindex = 0;
+    int ret = mTetherCtrl.setTetherOffloadInterfaceQuota(invalidIfindex /*bad*/, infinityQuota);
+    ASSERT_EQ(-ENODEV, ret);
+
+    // The valid range of quota is 0..max_int64 or -1 (unlimited).
+    const uint64_t invalidQuota = std::numeric_limits<int64_t>::min();
+    ret = mTetherCtrl.setTetherOffloadInterfaceQuota(ifindex, invalidQuota /*bad*/);
+    ASSERT_EQ(-ERANGE, ret);
+}
+
 }  // namespace net
 }  // namespace android
