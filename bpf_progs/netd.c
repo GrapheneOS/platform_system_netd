@@ -334,4 +334,4 @@ DEFINE_BPF_PROG_KVER("cgroupsock/inet/create", AID_ROOT, AID_ROOT, inet_socket_c
     return (*permissions & BPF_PERMISSION_INTERNET) == BPF_PERMISSION_INTERNET;
 }
 
-char _license[] SEC("license") = "Apache 2.0";
+LICENSE("Apache 2.0");
