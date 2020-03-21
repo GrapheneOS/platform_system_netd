@@ -151,4 +151,4 @@ int sched_cls_ingress_tether_rawip(struct __sk_buff* skb) {
     return do_forward(skb, false);
 }
 
-char _license[] SEC("license") = "Apache 2.0";
+LICENSE("Apache 2.0");
