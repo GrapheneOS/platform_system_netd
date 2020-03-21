@@ -28,7 +28,8 @@ DEFINE_BPF_MAP_GRW(tether_ingress_map, HASH, TetherIngressKey, TetherIngressValu
                    AID_NETWORK_STACK)
 
 // Tethering stats, indexed by upstream interface.
-DEFINE_BPF_MAP_GRW(tether_stats_map, HASH, uint32_t, TetherStatsValue, 16, AID_NETWORK_STACK)
+DEFINE_BPF_MAP_GRW(tether_stats_map, HASH, uint32_t, TetherStatsValue, IFACE_STATS_MAP_SIZE,
+                   AID_NETWORK_STACK)
 
 static inline __always_inline int do_forward(struct __sk_buff* skb, bool is_ethernet) {
     int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
@@ -150,4 +151,4 @@ int sched_cls_ingress_tether_rawip(struct __sk_buff* skb) {
     return do_forward(skb, false);
 }
 
-char _license[] SEC("license") = "Apache 2.0";
+LICENSE("Apache 2.0");

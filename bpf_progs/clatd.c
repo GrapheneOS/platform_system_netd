@@ -302,4 +302,4 @@ int sched_cls_egress_clat_rawip(struct __sk_buff* skb) {
     return bpf_redirect(v->oif, 0 /* this is effectively BPF_F_EGRESS */);
 }
 
-char _license[] SEC("license") = "Apache 2.0";
+LICENSE("Apache 2.0");
