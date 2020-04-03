@@ -85,12 +85,12 @@ static_assert(BPF_PERMISSION_UPDATE_DEVICE_STATS == INetd::PERMISSION_UPDATE_DEV
 static_assert(STATS_MAP_SIZE - TOTAL_UID_STATS_ENTRIES_LIMIT > 100,
               "The limit for stats map is to high, stats data may be lost due to overflow");
 
-#define FLAG_MSG_TRANS(result, flag, value)            \
-    do {                                               \
-        if (value & flag) {                            \
-            result.append(StringPrintf(" %s", #flag)); \
-            value &= ~flag;                            \
-        }                                              \
+#define FLAG_MSG_TRANS(result, flag, value) \
+    do {                                    \
+        if ((value) & (flag)) {             \
+            (result).append(" " #flag);     \
+            (value) &= ~(flag);             \
+        }                                   \
     } while (0)
 
 const std::string uidMatchTypeToString(uint8_t match) {
