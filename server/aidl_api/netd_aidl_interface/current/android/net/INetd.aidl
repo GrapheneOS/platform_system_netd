@@ -117,8 +117,8 @@ interface INetd {
   void networkAddRouteParcel(int netId, in android.net.RouteInfoParcel routeInfo);
   void networkUpdateRouteParcel(int netId, in android.net.RouteInfoParcel routeInfo);
   void networkRemoveRouteParcel(int netId, in android.net.RouteInfoParcel routeInfo);
-  void tetherRuleAddDownstreamIpv6(int intIfaceIndex, int extIfaceIndex, in byte[] ipAddress, in byte[] srcL2Address, in byte[] dstL2Address);
-  void tetherRuleRemoveDownstreamIpv6(int extIfaceIndex, in byte[] ipAddress);
+  void tetherOffloadRuleAdd(in android.net.TetherOffloadRuleParcel rule);
+  void tetherOffloadRuleRemove(in android.net.TetherOffloadRuleParcel rule);
   const int IPV4 = 4;
   const int IPV6 = 6;
   const int CONF = 1;
