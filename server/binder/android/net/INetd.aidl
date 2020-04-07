@@ -21,6 +21,7 @@ import android.net.InterfaceConfigurationParcel;
 import android.net.MarkMaskParcel;
 import android.net.RouteInfoParcel;
 import android.net.TetherConfigParcel;
+import android.net.TetherOffloadRuleParcel;
 import android.net.TetherStatsParcel;
 import android.net.UidRangeParcel;
 
@@ -1245,28 +1246,27 @@ interface INetd {
     void networkRemoveRouteParcel(int netId, in android.net.RouteInfoParcel routeInfo);
 
     /**
-     * Adds or updates a tethering rule to forward downstream IPv6 traffic.
+     * Adds a tethering offload rule, or updates it if it already exists.
      *
-     * @param intifaceIndex the interface index of the internal interface.
-     * @param extifaceIndex the interface index of the external interface.
-     * @param ipAddress the IPv6 address as a byte array.
-     * @param srcL2Address the source (i.e., local) L2 address as a byte array. Currently, must be a
-     *                     6-byte MAC address.
-     * @param dstL2Address the destination L2 address as a byte array. Currently, must be a 6-byte
-     *                     MAC address.
+     * Currently, only downstream /128 IPv6 entries are supported. An existing rule will be updated
+     * if the input interface and destination prefix match. Otherwise, a new rule will be created.
+     *
+     * @param rule The rule to add or update.
      * @throws ServiceSpecificException in case of failure, with an error code indicating the
      *                                  cause of the failure.
      */
-    void tetherRuleAddDownstreamIpv6(int intIfaceIndex, int extIfaceIndex, in byte[] ipAddress,
-                                     in byte[] srcL2Address, in byte[] dstL2Address);
+    void tetherOffloadRuleAdd(in TetherOffloadRuleParcel rule);
 
     /**
-     * Removes a tethering rule to forward downstream IPv6 traffic.
+     * Deletes a tethering offload rule.
      *
-     * @param extifaceIndex the interface index of the external interface.
-     * @param ipAddress the IPv6 address as a byte array.
+     * Currently, only downstream /128 IPv6 entries are supported. An existing rule will be deleted
+     * if the destination IP address and the source interface match. It is not an error if there is
+     * no matching rule to delete.
+     *
+     * @param rule The rule to delete.
      * @throws ServiceSpecificException in case of failure, with an error code indicating the
      *                                  cause of the failure.
      */
-    void tetherRuleRemoveDownstreamIpv6(int extIfaceIndex, in byte[] ipAddress);
+    void tetherOffloadRuleRemove(in TetherOffloadRuleParcel rule);
 }
