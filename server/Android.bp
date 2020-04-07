@@ -33,6 +33,7 @@ aidl_interface {
         "binder/android/net/MarkMaskParcel.aidl",
         "binder/android/net/RouteInfoParcel.aidl",
         "binder/android/net/TetherConfigParcel.aidl",
+        "binder/android/net/TetherOffloadRuleParcel.aidl",
         "binder/android/net/TetherStatsParcel.aidl",
         "binder/android/net/UidRangeParcel.aidl",
     ],
@@ -108,7 +109,7 @@ cc_library_static {
         "libpcap",
         "libqtaguid",
         "libssl",
-        "netd_aidl_interface-cpp",
+        "netd_aidl_interface-unstable-cpp",
         "netd_event_listener_interface-cpp",
     ],
     aidl: {
@@ -249,7 +250,7 @@ cc_test {
         "libnetd_server",
         "libnetd_test_tun_interface",
         "libqtaguid",
-        "netd_aidl_interface-cpp",
+        "netd_aidl_interface-unstable-cpp",
         "netd_event_listener_interface-cpp",
     ],
     shared_libs: [

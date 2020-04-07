@@ -52,6 +52,7 @@
 
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
+using android::net::TetherOffloadRuleParcel;
 using android::net::TetherStatsParcel;
 using android::net::UidRangeParcel;
 using android::netdutils::DumpWriter;
@@ -1247,20 +1248,16 @@ binder::Status NetdNativeService::getFwmarkForNetwork(int32_t netId, MarkMaskPar
     return binder::Status::ok();
 }
 
-binder::Status NetdNativeService::tetherRuleAddDownstreamIpv6(
-        int intIfaceIndex, int extIfaceIndex, const std::vector<uint8_t>& ipAddress,
-        const std::vector<uint8_t>& srcL2Address, const std::vector<uint8_t>& dstL2Address) {
+binder::Status NetdNativeService::tetherOffloadRuleAdd(const TetherOffloadRuleParcel& rule) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
 
-    return asBinderStatus(gCtls->tetherCtrl.addDownstreamIpv6Rule(
-            intIfaceIndex, extIfaceIndex, ipAddress, srcL2Address, dstL2Address));
+    return asBinderStatus(gCtls->tetherCtrl.addOffloadRule(rule));
 }
 
-binder::Status NetdNativeService::tetherRuleRemoveDownstreamIpv6(
-        int extIfaceIndex, const std::vector<uint8_t>& ipAddress) {
+binder::Status NetdNativeService::tetherOffloadRuleRemove(const TetherOffloadRuleParcel& rule) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
 
-    return asBinderStatus(gCtls->tetherCtrl.removeDownstreamIpv6Rule(extIfaceIndex, ipAddress));
+    return asBinderStatus(gCtls->tetherCtrl.removeOffloadRule(rule));
 }
 
 }  // namespace net
