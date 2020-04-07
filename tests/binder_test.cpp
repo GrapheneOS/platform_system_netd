@@ -93,6 +93,7 @@ using android::net::INetd;
 using android::net::InterfaceConfigurationParcel;
 using android::net::InterfaceController;
 using android::net::MarkMaskParcel;
+using android::net::TetherOffloadRuleParcel;
 using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
@@ -3372,7 +3373,26 @@ TEST_F(BinderTest, GetFwmarkForNetwork) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, TetherRuleDownstreamIpv6) {
+namespace {
+
+TetherOffloadRuleParcel makeTetherOffloadRule(int inputInterfaceIndex, int outputInterfaceIndex,
+                                              const std::vector<uint8_t>& destination,
+                                              int prefixLength,
+                                              const std::vector<uint8_t>& srcL2Address,
+                                              const std::vector<uint8_t>& dstL2Address) {
+    android::net::TetherOffloadRuleParcel parcel;
+    parcel.inputInterfaceIndex = inputInterfaceIndex;
+    parcel.outputInterfaceIndex = outputInterfaceIndex;
+    parcel.destination = destination;
+    parcel.prefixLength = prefixLength;
+    parcel.srcL2Address = srcL2Address;
+    parcel.dstL2Address = dstL2Address;
+    return parcel;
+}
+
+}  // namespace
+
+TEST_F(BinderTest, TetherOffloadRule) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     // TODO: Perhaps verify invalid interface index once the netd handle the error in methods.
@@ -3389,33 +3409,56 @@ TEST_F(BinderTest, TetherRuleDownstreamIpv6) {
     const std::vector<uint8_t> kInvalidMac = {0xde, 0xad, 0xbe, 0xef};    // should be 6-byte length
 
     // Invalid IP address, add rule
-    auto status = mNetd->tetherRuleAddDownstreamIpv6(kIfaceInt, kIfaceExt, kInvalidAddr4 /*bad*/,
-                                                     kSrcMac, kDstMac);
+    TetherOffloadRuleParcel rule = makeTetherOffloadRule(
+            kIfaceExt, kIfaceInt, kInvalidAddr4 /*bad*/, 128, kSrcMac, kDstMac);
+    auto status = mNetd->tetherOffloadRuleAdd(rule);
     EXPECT_FALSE(status.isOk());
-    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+    EXPECT_EQ(EAFNOSUPPORT, status.serviceSpecificErrorCode());
 
     // Invalid source L2 address, add rule
-    status = mNetd->tetherRuleAddDownstreamIpv6(kIfaceInt, kIfaceExt, kAddr6, kInvalidMac /*bad*/,
-                                                kDstMac);
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kInvalidMac /*bad*/, kDstMac);
+    status = mNetd->tetherOffloadRuleAdd(rule);
     EXPECT_FALSE(status.isOk());
-    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+    EXPECT_EQ(ENXIO, status.serviceSpecificErrorCode());
 
     // Invalid destination L2 address, add rule
-    status = mNetd->tetherRuleAddDownstreamIpv6(kIfaceInt, kIfaceExt, kAddr6, kSrcMac,
-                                                kInvalidMac /*bad*/);
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kSrcMac, kInvalidMac /*bad*/);
+    status = mNetd->tetherOffloadRuleAdd(rule);
     EXPECT_FALSE(status.isOk());
-    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+    EXPECT_EQ(ENXIO, status.serviceSpecificErrorCode());
 
     // Invalid IP address, remove rule
-    status = mNetd->tetherRuleRemoveDownstreamIpv6(kIfaceExt, kInvalidAddr4 /*bad*/);
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kInvalidAddr4 /*bad*/, 128, kSrcMac,
+                                 kDstMac);
+    status = mNetd->tetherOffloadRuleRemove(rule);
+    EXPECT_FALSE(status.isOk());
+    EXPECT_EQ(EAFNOSUPPORT, status.serviceSpecificErrorCode());
+
+    // Invalid prefix length
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 64 /*bad*/, kSrcMac, kDstMac);
+    status = mNetd->tetherOffloadRuleAdd(rule);
+    EXPECT_FALSE(status.isOk());
+    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+    status = mNetd->tetherOffloadRuleRemove(rule);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
 
+    // Invalid interface index
+    rule = makeTetherOffloadRule(kIfaceExt, 0, kAddr6, 128, kSrcMac, kDstMac);
+    status = mNetd->tetherOffloadRuleAdd(rule);
+    EXPECT_FALSE(status.isOk());
+    EXPECT_EQ(ENODEV, status.serviceSpecificErrorCode());
+    rule = makeTetherOffloadRule(0, kIfaceInt, kAddr6, 64, kSrcMac, kDstMac);
+    status = mNetd->tetherOffloadRuleRemove(rule);
+    EXPECT_FALSE(status.isOk());
+    EXPECT_EQ(ENODEV, status.serviceSpecificErrorCode());
+
     // Remove non existent rule. Expect that silently return success if the rule did not exist.
-    EXPECT_TRUE(mNetd->tetherRuleRemoveDownstreamIpv6(kIfaceNonExistent, kAddr6).isOk());
+    rule = makeTetherOffloadRule(kIfaceNonExistent, kIfaceInt, kAddr6, 128, kSrcMac, kDstMac);
+    EXPECT_TRUE(mNetd->tetherOffloadRuleRemove(rule).isOk());
 
     // Add and remove rule normally.
-    EXPECT_TRUE(mNetd->tetherRuleAddDownstreamIpv6(kIfaceInt, kIfaceExt, kAddr6, kSrcMac, kDstMac)
-                        .isOk());
-    EXPECT_TRUE(mNetd->tetherRuleRemoveDownstreamIpv6(kIfaceExt, kAddr6).isOk());
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kSrcMac, kDstMac);
+    EXPECT_TRUE(mNetd->tetherOffloadRuleAdd(rule).isOk());
+    EXPECT_TRUE(mNetd->tetherOffloadRuleRemove(rule).isOk());
 }
