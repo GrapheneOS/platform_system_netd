@@ -195,7 +195,7 @@ int netdClientSocket(int domain, int type, int protocol) {
 }
 
 int netdClientSendmmsg(int sockfd, const mmsghdr* msgs, unsigned int msgcount, int flags) {
-    if (propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED)) {
+    if (propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED) && !checkSocket(sockfd)) {
         const sockaddr* addr = nullptr;
         if ((msgcount > 0) && (msgs != nullptr) && (msgs[0].msg_hdr.msg_name != nullptr)) {
             addr = reinterpret_cast<const sockaddr*>(msgs[0].msg_hdr.msg_name);
@@ -210,7 +210,7 @@ int netdClientSendmmsg(int sockfd, const mmsghdr* msgs, unsigned int msgcount, i
 }
 
 ssize_t netdClientSendmsg(int sockfd, const msghdr* msg, unsigned int flags) {
-    if (propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED)) {
+    if (propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED) && !checkSocket(sockfd)) {
         const sockaddr* addr = nullptr;
         if ((msg != nullptr) && (msg->msg_name != nullptr)) {
             addr = reinterpret_cast<const sockaddr*>(msg->msg_name);
@@ -226,7 +226,7 @@ ssize_t netdClientSendmsg(int sockfd, const msghdr* msg, unsigned int flags) {
 
 int netdClientSendto(int sockfd, const void* buf, size_t bufsize, int flags, const sockaddr* addr,
                      socklen_t addrlen) {
-    if (propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED)) {
+    if (propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED) && !checkSocket(sockfd)) {
         if ((addr != nullptr) && (FwmarkCommand::isSupportedFamily(addr->sa_family))) {
             FwmarkConnectInfo sendtoInfo(0, 0, addr);
             FwmarkCommand command = {FwmarkCommand::ON_SENDTO, 0, 0, 0};
@@ -382,19 +382,17 @@ bool readResponseCode(int fd, int* result) {
 
 }  // namespace
 
-#define CHECK_SOCKET_IS_MARKABLE(sock)          \
-    do {                                        \
-        int err;                                \
-        if ((err = checkSocket(sock)) != 0) {   \
-            return err;                         \
-        }                                       \
-    } while (false);
+#define CHECK_SOCKET_IS_MARKABLE(sock) \
+    do {                               \
+        int err = checkSocket(sock);   \
+        if (err) return err;           \
+    } while (false)
 
 #define HOOK_ON_FUNC(remoteFunc, nativeFunc, localFunc) \
     do {                                                \
-        if (remoteFunc && *remoteFunc) {                \
-            nativeFunc = *remoteFunc;                   \
-            *remoteFunc = localFunc;                    \
+        if ((remoteFunc) && *(remoteFunc)) {            \
+            (nativeFunc) = *(remoteFunc);               \
+            *(remoteFunc) = (localFunc);                \
         }                                               \
     } while (false)
 
@@ -476,9 +474,7 @@ extern "C" int setNetworkForResolv(unsigned netId) {
 }
 
 extern "C" int protectFromVpn(int socketFd) {
-    if (socketFd < 0) {
-        return -EBADF;
-    }
+    CHECK_SOCKET_IS_MARKABLE(socketFd);
     FwmarkCommand command = {FwmarkCommand::PROTECT_FROM_VPN, 0, 0, 0};
     return FwmarkClient().send(&command, socketFd, nullptr);
 }
