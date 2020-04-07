@@ -74,3 +74,21 @@ TEST(NetdClientTest, getNetworkForDns) {
     unsigned* testNull = nullptr;
     EXPECT_EQ(-EFAULT, getNetworkForDns(testNull));
 }
+
+TEST(NetdClientTest, protectFromVpnBadFd) {
+    EXPECT_EQ(-EBADF, protectFromVpn(-1));
+}
+
+TEST(NetdClientTest, protectFromVpnUnixStream) {
+    int s = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    ASSERT_GE(s, 3);
+    EXPECT_EQ(-EAFNOSUPPORT, protectFromVpn(s));
+    close(s);
+}
+
+TEST(NetdClientTest, protectFromVpnTcp6) {
+    int s = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    ASSERT_GE(s, 3);
+    EXPECT_EQ(0, protectFromVpn(s));
+    close(s);
+}
