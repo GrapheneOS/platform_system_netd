@@ -71,6 +71,7 @@ base::Result<bool> isEthernet(const std::string& interface) {
     switch (rv) {
         case ARPHRD_ETHER:
             return true;
+        case ARPHRD_NONE:
         case ARPHRD_RAWIP:  // in Linux 4.14+ rmnet support was upstreamed and this is 519
         case 530:           // this is ARPHRD_RAWIP on some Android 4.9 kernels with rmnet
             return false;
