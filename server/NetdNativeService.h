@@ -136,12 +136,9 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
                                     const std::string& extIface) override;
     binder::Status tetherRemoveForward(const std::string& intIface,
                                        const std::string& extIface) override;
-    binder::Status tetherRuleAddDownstreamIpv6(int intIfaceIndex, int extIfaceIndex,
-                                               const std::vector<uint8_t>& ipAddress,
-                                               const std::vector<uint8_t>& srcL2Address,
-                                               const std::vector<uint8_t>& dstL2Address) override;
-    binder::Status tetherRuleRemoveDownstreamIpv6(int extIfaceIndex,
-                                                  const std::vector<uint8_t>& ipAddress) override;
+    binder::Status tetherOffloadRuleAdd(const android::net::TetherOffloadRuleParcel& rule) override;
+    binder::Status tetherOffloadRuleRemove(
+            const android::net::TetherOffloadRuleParcel& rule) override;
 
     // Interface-related commands.
     binder::Status interfaceAddAddress(const std::string &ifName,

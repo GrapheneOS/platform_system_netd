@@ -55,6 +55,8 @@
 #include "Permission.h"
 #include "TetherController.h"
 
+#include "android/net/TetherOffloadRuleParcel.h"
+
 namespace android {
 namespace net {
 
@@ -65,6 +67,7 @@ using android::base::Result;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
 using android::base::unique_fd;
+using android::net::TetherOffloadRuleParcel;
 using android::netdutils::DumpWriter;
 using android::netdutils::ScopedIndent;
 using android::netdutils::statusFromErrno;
@@ -821,47 +824,63 @@ int TetherController::disableNat(const char* intIface, const char* extIface) {
     return 0;
 }
 
-Result<void> TetherController::addDownstreamIpv6Rule(int intIfaceIndex, int extIfaceIndex,
-                                                     const std::vector<uint8_t>& ipAddress,
-                                                     const std::vector<uint8_t>& srcL2Address,
-                                                     const std::vector<uint8_t>& dstL2Address) {
+namespace {
+Result<void> validateOffloadRule(const TetherOffloadRuleParcel& rule) {
+    struct ethhdr hdr;
+
+    if (rule.inputInterfaceIndex <= 0) {
+        return Error(ENODEV) << "Invalid input interface " << rule.inputInterfaceIndex;
+    }
+    if (rule.outputInterfaceIndex <= 0) {
+        return Error(ENODEV) << "Invalid output interface " << rule.inputInterfaceIndex;
+    }
+    if (rule.prefixLength != 128) {
+        return Error(EINVAL) << "Prefix length must be 128, not " << rule.prefixLength;
+    }
+    if (rule.destination.size() != sizeof(in6_addr)) {
+        return Error(EAFNOSUPPORT) << "Invalid IP address length " << rule.destination.size();
+    }
+    if (rule.srcL2Address.size() != sizeof(hdr.h_source)) {
+        return Error(ENXIO) << "Invalid L2 src address length " << rule.srcL2Address.size();
+    }
+    if (rule.dstL2Address.size() != sizeof(hdr.h_dest)) {
+        return Error(ENXIO) << "Invalid L2 dst address length " << rule.dstL2Address.size();
+    }
+    return Result<void>();
+}
+}  // namespace
+
+Result<void> TetherController::addOffloadRule(const TetherOffloadRuleParcel& rule) {
+    Result<void> res = validateOffloadRule(rule);
+    if (!res.ok()) return res;
+
     ethhdr hdr = {
             .h_proto = htons(ETH_P_IPV6),
     };
-    if (ipAddress.size() != sizeof(in6_addr)) {
-        return Error(EINVAL) << "Invalid IP address length " << ipAddress.size();
-    }
-    if (srcL2Address.size() != sizeof(hdr.h_source)) {
-        return Error(EINVAL) << "Invalid L2 src address length " << srcL2Address.size();
-    }
-    if (dstL2Address.size() != sizeof(hdr.h_dest)) {
-        return Error(EINVAL) << "Invalid L2 dst address length " << dstL2Address.size();
-    }
-    memcpy(&hdr.h_dest, dstL2Address.data(), sizeof(hdr.h_dest));
-    memcpy(&hdr.h_source, srcL2Address.data(), sizeof(hdr.h_source));
+    memcpy(&hdr.h_dest, rule.dstL2Address.data(), sizeof(hdr.h_dest));
+    memcpy(&hdr.h_source, rule.srcL2Address.data(), sizeof(hdr.h_source));
 
+    // Only downstream supported for now.
     TetherIngressKey key = {
-            .iif = static_cast<uint32_t>(extIfaceIndex),
-            .neigh6 = *(const in6_addr*)ipAddress.data(),
+            .iif = static_cast<uint32_t>(rule.inputInterfaceIndex),
+            .neigh6 = *(const in6_addr*)rule.destination.data(),
     };
 
     TetherIngressValue value = {
-            static_cast<uint32_t>(intIfaceIndex),
+            static_cast<uint32_t>(rule.outputInterfaceIndex),
             hdr,
     };
 
     return mBpfIngressMap.writeValue(key, value, BPF_ANY);
 }
 
-Result<void> TetherController::removeDownstreamIpv6Rule(int extIfaceIndex,
-                                                        const std::vector<uint8_t>& ipAddress) {
-    if (ipAddress.size() != sizeof(in6_addr)) {
-        return Error(EINVAL) << "Invalid IP address length " << ipAddress.size();
-    }
+Result<void> TetherController::removeOffloadRule(const TetherOffloadRuleParcel& rule) {
+    Result<void> res = validateOffloadRule(rule);
+    if (!res.ok()) return res;
 
     TetherIngressKey key = {
-            .iif = static_cast<uint32_t>(extIfaceIndex),
-            .neigh6 = *(const in6_addr*)ipAddress.data(),
+            .iif = static_cast<uint32_t>(rule.inputInterfaceIndex),
+            .neigh6 = *(const in6_addr*)rule.destination.data(),
     };
 
     Result<void> ret = mBpfIngressMap.deleteValue(key);

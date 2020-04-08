@@ -30,6 +30,8 @@
 #include "bpf/BpfMap.h"
 #include "netdbpf/bpf_shared.h"
 
+#include "android/net/TetherOffloadRuleParcel.h"
+
 namespace android {
 namespace net {
 
@@ -103,13 +105,8 @@ class TetherController {
     int disableNat(const char* intIface, const char* extIface);
     int setupIptablesHooks();
 
-    base::Result<void> addDownstreamIpv6Rule(int intIfaceIndex, int extIfaceIndex,
-                                             const std::vector<uint8_t>& ipAddress,
-                                             const std::vector<uint8_t>& srcL2Address,
-                                             const std::vector<uint8_t>& dstL2Address);
-
-    base::Result<void> removeDownstreamIpv6Rule(int extifaceIndex,
-                                                const std::vector<uint8_t>& ipAddress);
+    base::Result<void> addOffloadRule(const TetherOffloadRuleParcel& rule);
+    base::Result<void> removeOffloadRule(const TetherOffloadRuleParcel& rule);
 
     class TetherStats {
       public:
