@@ -28,6 +28,11 @@ cc_library {
     sanitize: {
         cfi: true,
     },
+
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.resolv",
+    ],
 }
 
 cc_test {
