@@ -146,8 +146,9 @@ int sched_cls_ingress_tether_ether(struct __sk_buff* skb) {
     return do_forward(skb, true);
 }
 
-SEC("schedcls/ingress/tether_rawip")
-int sched_cls_ingress_tether_rawip(struct __sk_buff* skb) {
+DEFINE_BPF_PROG_KVER("schedcls/ingress/tether_rawip", AID_ROOT, AID_ROOT,
+                     sched_cls_ingress_tether_rawip, KVER(4, 14, 0))
+(struct __sk_buff* skb) {
     return do_forward(skb, false);
 }
 
