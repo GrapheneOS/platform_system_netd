@@ -17,6 +17,7 @@ filegroup {
         "InterfaceController.cpp",
         "NetlinkCommands.cpp",
         "NetlinkListener.cpp",
+        "SockDiag.cpp",
         "XfrmController.cpp",
         "TrafficController.cpp",
     ],
