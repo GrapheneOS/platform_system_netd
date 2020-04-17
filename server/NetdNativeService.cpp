@@ -1301,5 +1301,16 @@ binder::Status NetdNativeService::tetherOffloadSetInterfaceQuota(int ifIndex, in
     return statusFromErrcode(res);
 }
 
+binder::Status NetdNativeService::tetherOffloadGetAndClearStats(
+        int ifIndex, android::net::TetherStatsParcel* tetherStats) {
+    NETD_LOCKING_RPC(gCtls->tetherCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
+    const auto& stats = gCtls->tetherCtrl.getAndClearTetherOffloadStats(ifIndex);
+    if (!stats.ok()) {
+        return asBinderStatus(stats);
+    }
+    *tetherStats = toTetherStatsParcel(stats.value());
+    return binder::Status::ok();
+}
+
 }  // namespace net
 }  // namespace android
