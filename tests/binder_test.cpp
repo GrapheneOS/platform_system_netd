@@ -35,12 +35,14 @@
 #include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <openssl/base64.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 
 #include <android-base/file.h>
 #include <android-base/macros.h>
+#include <android-base/scopeguard.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android/multinetwork.h>
@@ -58,6 +60,7 @@
 #include "NetdClient.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
+#include "SockDiag.h"
 #include "TestUnsolService.h"
 #include "XfrmController.h"
 #include "android/net/INetd.h"
@@ -84,6 +87,7 @@ using android::sp;
 using android::String16;
 using android::String8;
 using android::base::Join;
+using android::base::make_scope_guard;
 using android::base::ReadFileToString;
 using android::base::StartsWith;
 using android::base::StringPrintf;
@@ -93,10 +97,12 @@ using android::net::INetd;
 using android::net::InterfaceConfigurationParcel;
 using android::net::InterfaceController;
 using android::net::MarkMaskParcel;
+using android::net::SockDiag;
 using android::net::TetherOffloadRuleParcel;
 using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
+using android::netdutils::IPAddress;
 using android::netdutils::ScopedAddrinfo;
 using android::netdutils::sSyscalls;
 using android::netdutils::Stopwatch;
@@ -105,6 +111,7 @@ static const char* IP_RULE_V4 = "-4";
 static const char* IP_RULE_V6 = "-6";
 static const int TEST_NETID1 = 65501;
 static const int TEST_NETID2 = 65502;
+static const char* DNSMASQ = "dnsmasq";
 
 // Use maximum reserved appId for applications to avoid conflict with existing
 // uids.
@@ -2076,8 +2083,6 @@ void expectTetherDnsListEquals(const std::vector<std::string>& dnsList,
 
 TEST_F(BinderTest, TetherStartStopStatus) {
     std::vector<std::string> noDhcpRange = {};
-    static const char dnsdName[] = "dnsmasq";
-
     for (bool usingLegacyDnsProxy : {true, false}) {
         android::net::TetherConfigParcel config;
         config.usingLegacyDnsProxy = usingLegacyDnsProxy;
@@ -2086,9 +2091,9 @@ TEST_F(BinderTest, TetherStartStopStatus) {
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
         SCOPED_TRACE(StringPrintf("usingLegacyDnsProxy: %d", usingLegacyDnsProxy));
         if (usingLegacyDnsProxy == true) {
-            expectProcessExists(dnsdName);
+            expectProcessExists(DNSMASQ);
         } else {
-            expectProcessDoesNotExist(dnsdName);
+            expectProcessDoesNotExist(DNSMASQ);
         }
 
         bool tetherEnabled;
@@ -2098,7 +2103,7 @@ TEST_F(BinderTest, TetherStartStopStatus) {
 
         status = mNetd->tetherStop();
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-        expectProcessDoesNotExist(dnsdName);
+        expectProcessDoesNotExist(DNSMASQ);
 
         status = mNetd->tetherIsEnabled(&tetherEnabled);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
@@ -2139,6 +2144,135 @@ TEST_F(BinderTest, TetherDnsSetList) {
     status = mNetd->tetherDnsList(&dnsList);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectTetherDnsListEquals(dnsList, testDnsAddrs);
+}
+
+namespace {
+
+std::vector<IPAddress> findDnsSockets(SockDiag* sd, unsigned numExpected) {
+    std::vector<IPAddress> listenAddrs;
+
+    // Callback lambda that finds all IPv4 sockets with source port 53.
+    auto findDnsSockets = [&](uint8_t /* proto */, const inet_diag_msg* msg) {
+        // Always return false, which means do not destroy this socket.
+        if (msg->id.idiag_sport != htons(53)) return false;
+        IPAddress addr(*(in_addr*)msg->id.idiag_src);
+        listenAddrs.push_back(addr);
+        return false;
+    };
+
+    // There is no way to know if dnsmasq has finished processing the update_interfaces command and
+    // opened listening sockets. So, just spin a few times and return the first list of sockets
+    // that is at least numExpected long.
+    // Pick a relatively large timeout to avoid flaky tests. Testing suggests that 5 attempts are
+    // sufficient for the test to pass 500 times in a row on crosshatch-eng.  Pick 10 to be safe.
+    constexpr int kMaxAttempts = 10;
+    constexpr int kSleepMs = 100;
+    for (int i = 0; i < kMaxAttempts; i++) {
+        listenAddrs.clear();
+        EXPECT_EQ(0, sd->sendDumpRequest(IPPROTO_TCP, AF_INET, 1 << TCP_LISTEN))
+                << "Failed to dump sockets, attempt " << i << " of " << kMaxAttempts;
+        sd->readDiagMsg(IPPROTO_TCP, findDnsSockets);
+        if (listenAddrs.size() >= numExpected) {
+            break;
+        }
+        usleep(kSleepMs * 1000);
+    }
+
+    return listenAddrs;
+}
+
+}  // namespace
+
+// Checks that when starting dnsmasq on an interface that no longer exists, it doesn't attempt to
+// start on other interfaces instead.
+TEST_F(BinderTest, TetherDeletedInterface) {
+    // Do this first so we don't need to clean up anything else if it fails.
+    SockDiag sd;
+    ASSERT_TRUE(sd.open()) << "Failed to open SOCK_DIAG socket";
+
+    // Create our own TunInterfaces (so we can delete them without affecting other tests), and add
+    // IP addresses to them. They must be IPv4 because tethering an interface disables and
+    // re-enables IPv6 on the interface, which clears all addresses.
+    TunInterface tun1, tun2;
+    ASSERT_EQ(0, tun1.init());
+    ASSERT_EQ(0, tun2.init());
+
+    // Clean up. It is safe to call TunInterface::destroy multiple times.
+    auto guard = android::base::make_scope_guard([&] {
+        tun1.destroy();
+        tun2.destroy();
+        mNetd->tetherStop();
+        mNetd->tetherInterfaceRemove(tun1.name());
+        mNetd->tetherInterfaceRemove(tun2.name());
+    });
+
+    IPAddress addr1, addr2;
+    ASSERT_TRUE(IPAddress::forString("192.0.2.1", &addr1));
+    ASSERT_TRUE(IPAddress::forString("192.0.2.2", &addr2));
+    EXPECT_EQ(0, tun1.addAddress(addr1.toString(), 32));
+    EXPECT_EQ(0, tun2.addAddress(addr2.toString(), 32));
+
+    // Stop tethering.
+    binder::Status status = mNetd->tetherStop();
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Start dnsmasq on an interface that doesn't exist.
+    // First, tether our tun interface...
+    status = mNetd->tetherInterfaceAdd(tun1.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectTetherInterfaceConfigureForIPv6Router(tun1.name());
+
+    // ... then delete it...
+    tun1.destroy();
+
+    // ... then start dnsmasq.
+    android::net::TetherConfigParcel config;
+    config.usingLegacyDnsProxy = true;
+    config.dhcpRanges = {};
+    status = mNetd->tetherStartWithConfiguration(config);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Wait for dnsmasq to start.
+    expectProcessExists(DNSMASQ);
+
+    // Make sure that netd thinks the interface is tethered (even though it doesn't exist).
+    std::vector<std::string> ifList;
+    status = mNetd->tetherInterfaceList(&ifList);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    ASSERT_EQ(1U, ifList.size());
+    EXPECT_EQ(tun1.name(), ifList[0]);
+
+    // Give dnsmasq some time to start up.
+    usleep(200 * 1000);
+
+    // Check that dnsmasq is not listening on any IP addresses. It shouldn't, because it was only
+    // told to run on tun1, and tun1 does not exist. Ensure it stays running and doesn't listen on
+    // any IP addresses.
+    std::vector<IPAddress> listenAddrs = findDnsSockets(&sd, 0);
+    EXPECT_EQ(0U, listenAddrs.size()) << "Unexpectedly found IPv4 socket(s) listening on port 53";
+
+    // Now add an interface to dnsmasq and check that we can see the sockets. This confirms that
+    // findDnsSockets is actually able to see sockets when they exist.
+    status = mNetd->tetherInterfaceAdd(tun2.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    in_addr loopback = {htonl(INADDR_LOOPBACK)};
+    listenAddrs = findDnsSockets(&sd, 2);
+    EXPECT_EQ(2U, listenAddrs.size()) << "Expected exactly 2 IPv4 sockets listening on port 53";
+    EXPECT_EQ(1, std::count(listenAddrs.begin(), listenAddrs.end(), addr2));
+    EXPECT_EQ(1, std::count(listenAddrs.begin(), listenAddrs.end(), IPAddress(loopback)));
+
+    // Clean up.
+    status = mNetd->tetherStop();
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    expectProcessDoesNotExist(DNSMASQ);
+
+    status = mNetd->tetherInterfaceRemove(tun1.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    status = mNetd->tetherInterfaceRemove(tun2.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 }
 
 namespace {
