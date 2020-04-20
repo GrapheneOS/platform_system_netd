@@ -62,6 +62,7 @@ aidl_interface {
     // because those interfaces are versioned.
     // These interfaces must never be versioned or OEMs will not be able to change them.
     name: "oemnetd_aidl_interface",
+    unstable: true,
     local_include_dir: "binder",
     srcs: [
         "binder/com/android/internal/net/IOemNetd.aidl",
