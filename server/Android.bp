@@ -6,6 +6,14 @@ aidl_interface {
         "binder/android/net/metrics/INetdEventListener.aidl",
     ],
     versions: ["1"],
+    backend: {
+        ndk: {
+            apex_available: [
+                "//apex_available:platform",
+                "com.android.resolv",
+            ],
+        },
+    },
 }
 
 // These are used in netd_integration_test
