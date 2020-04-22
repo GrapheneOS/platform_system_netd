@@ -986,7 +986,7 @@ int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** a
         bool add = false;
         if (!strcmp(argv[nextArg], "add")) {
             add = true;
-        } else if (strcmp(argv[nextArg], "remove")) {
+        } else if (strcmp(argv[nextArg], "remove") != 0) {
             return syntaxError(cli, "Unknown argument");
         }
         ++nextArg;
@@ -1106,7 +1106,7 @@ int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** a
                 return syntaxError(cli, "Missing netId");
             }
             netId = stringToNetId(argv[3]);
-        } else if (strcmp(argv[2], "clear")) {
+        } else if (strcmp(argv[2], "clear") != 0) {
             return syntaxError(cli, "Unknown argument");
         }
         if (Status status = mNetd->networkSetDefault(netId); !status.isOk()) {
@@ -1133,7 +1133,7 @@ int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** a
                 return syntaxError(cli, "Unknown permission");
             }
             nextArg = 5;
-        } else if (strcmp(argv[3], "clear")) {
+        } else if (strcmp(argv[3], "clear") != 0) {
             return syntaxError(cli, "Unknown argument");
         }
         if (nextArg == argc) {
