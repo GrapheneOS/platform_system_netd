@@ -304,7 +304,7 @@ int NdcDispatcher::InterfaceCmd::runCommand(NdcClient* cli, int argc, char** arg
                              false);
                 return 0;
             }
-            int enable = !strncmp(argv[3], "enable", 7);
+            int enable = !strncmp(argv[3], "enable", 6);
             Status status = mNetd->interfaceSetIPv6PrivacyExtensions(std::string(argv[2]), enable);
             if (status.isOk()) {
                 cli->sendMsg(ResponseCode::CommandOkay, "IPv6 privacy extensions changed", false);
@@ -321,7 +321,7 @@ int NdcDispatcher::InterfaceCmd::runCommand(NdcClient* cli, int argc, char** arg
                 return 0;
             }
 
-            int enable = !strncmp(argv[3], "enable", 7);
+            int enable = !strncmp(argv[3], "enable", 6);
             Status status = mNetd->interfaceSetEnableIPv6(std::string(argv[2]), enable);
             if (status.isOk()) {
                 cli->sendMsg(ResponseCode::CommandOkay, "IPv6 state changed", false);
