@@ -250,14 +250,8 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
             break;
         }
 
-        case FwmarkCommand::ON_SENDMMSG: {
-            return 0;
-        }
-
-        case FwmarkCommand::ON_SENDMSG: {
-            return 0;
-        }
-
+        case FwmarkCommand::ON_SENDMMSG:
+        case FwmarkCommand::ON_SENDMSG:
         case FwmarkCommand::ON_SENDTO: {
             return 0;
         }
