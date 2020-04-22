@@ -50,22 +50,22 @@ using android::base::Join;
 using android::base::StringPrintf;
 using android::binder::Status;
 
-#define PARSE_INT_RETURN_IF_FAIL(cli, label, intLabel, errMsg, addErrno)   \
-    do {                                                                   \
-        if (!android::base::ParseInt(label, &intLabel)) {                  \
-            errno = EINVAL;                                                \
-            cli->sendMsg(ResponseCode::OperationFailed, errMsg, addErrno); \
-            return 0;                                                      \
-        }                                                                  \
+#define PARSE_INT_RETURN_IF_FAIL(cli, label, intLabel, errMsg, addErrno)         \
+    do {                                                                         \
+        if (!android::base::ParseInt((label), &(intLabel))) {                    \
+            errno = EINVAL;                                                      \
+            (cli)->sendMsg(ResponseCode::OperationFailed, (errMsg), (addErrno)); \
+            return 0;                                                            \
+        }                                                                        \
     } while (0)
 
-#define PARSE_UINT_RETURN_IF_FAIL(cli, label, intLabel, errMsg, addErrno)  \
-    do {                                                                   \
-        if (!android::base::ParseUint(label, &intLabel)) {                 \
-            errno = EINVAL;                                                \
-            cli->sendMsg(ResponseCode::OperationFailed, errMsg, addErrno); \
-            return 0;                                                      \
-        }                                                                  \
+#define PARSE_UINT_RETURN_IF_FAIL(cli, label, intLabel, errMsg, addErrno)        \
+    do {                                                                         \
+        if (!android::base::ParseUint((label), &(intLabel))) {                   \
+            errno = EINVAL;                                                      \
+            (cli)->sendMsg(ResponseCode::OperationFailed, (errMsg), (addErrno)); \
+            return 0;                                                            \
+        }                                                                        \
     } while (0)
 
 namespace android {
