@@ -227,7 +227,7 @@ const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             "-A bw_OUTPUT -j bw_global_alert",
             // Prevents IPSec double counting (Tunnel mode and Transport mode,
             // respectively)
-            "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
+            ("-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN"),
             "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
             useBpf ? "" : "-A bw_OUTPUT -m owner --socket-exists",
 
@@ -241,7 +241,7 @@ const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             "*raw",
             // Prevents IPSec double counting (Tunnel mode and Transport mode,
             // respectively)
-            "-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN",
+            ("-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN"),
             "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN",
             useBpf ? StringPrintf("-A bw_raw_PREROUTING -m bpf --object-pinned %s",
                                   XT_BPF_INGRESS_PROG_PATH)
@@ -251,7 +251,7 @@ const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             "*mangle",
             // Prevents IPSec double counting (Tunnel mode and Transport mode,
             // respectively)
-            "-A bw_mangle_POSTROUTING -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
+            ("-A bw_mangle_POSTROUTING -o " IPSEC_IFACE_PREFIX "+ -j RETURN"),
             "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN",
             useBpf ? "" : "-A bw_mangle_POSTROUTING -m owner --socket-exists",
             StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x",
