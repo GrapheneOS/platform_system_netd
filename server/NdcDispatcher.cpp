@@ -50,22 +50,22 @@ using android::base::Join;
 using android::base::StringPrintf;
 using android::binder::Status;
 
-#define PARSE_INT_RETURN_IF_FAIL(cli, label, intLabel, errMsg, addErrno)   \
-    do {                                                                   \
-        if (!android::base::ParseInt(label, &intLabel)) {                  \
-            errno = EINVAL;                                                \
-            cli->sendMsg(ResponseCode::OperationFailed, errMsg, addErrno); \
-            return 0;                                                      \
-        }                                                                  \
+#define PARSE_INT_RETURN_IF_FAIL(cli, label, intLabel, errMsg, addErrno)         \
+    do {                                                                         \
+        if (!android::base::ParseInt((label), &(intLabel))) {                    \
+            errno = EINVAL;                                                      \
+            (cli)->sendMsg(ResponseCode::OperationFailed, (errMsg), (addErrno)); \
+            return 0;                                                            \
+        }                                                                        \
     } while (0)
 
-#define PARSE_UINT_RETURN_IF_FAIL(cli, label, intLabel, errMsg, addErrno)  \
-    do {                                                                   \
-        if (!android::base::ParseUint(label, &intLabel)) {                 \
-            errno = EINVAL;                                                \
-            cli->sendMsg(ResponseCode::OperationFailed, errMsg, addErrno); \
-            return 0;                                                      \
-        }                                                                  \
+#define PARSE_UINT_RETURN_IF_FAIL(cli, label, intLabel, errMsg, addErrno)        \
+    do {                                                                         \
+        if (!android::base::ParseUint((label), &(intLabel))) {                   \
+            errno = EINVAL;                                                      \
+            (cli)->sendMsg(ResponseCode::OperationFailed, (errMsg), (addErrno)); \
+            return 0;                                                            \
+        }                                                                        \
     } while (0)
 
 namespace android {
@@ -304,7 +304,7 @@ int NdcDispatcher::InterfaceCmd::runCommand(NdcClient* cli, int argc, char** arg
                              false);
                 return 0;
             }
-            int enable = !strncmp(argv[3], "enable", 7);
+            int enable = !strcmp(argv[3], "enable");
             Status status = mNetd->interfaceSetIPv6PrivacyExtensions(std::string(argv[2]), enable);
             if (status.isOk()) {
                 cli->sendMsg(ResponseCode::CommandOkay, "IPv6 privacy extensions changed", false);
@@ -321,7 +321,7 @@ int NdcDispatcher::InterfaceCmd::runCommand(NdcClient* cli, int argc, char** arg
                 return 0;
             }
 
-            int enable = !strncmp(argv[3], "enable", 7);
+            int enable = !strcmp(argv[3], "enable");
             Status status = mNetd->interfaceSetEnableIPv6(std::string(argv[2]), enable);
             if (status.isOk()) {
                 cli->sendMsg(ResponseCode::CommandOkay, "IPv6 state changed", false);
@@ -986,7 +986,7 @@ int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** a
         bool add = false;
         if (!strcmp(argv[nextArg], "add")) {
             add = true;
-        } else if (strcmp(argv[nextArg], "remove")) {
+        } else if (strcmp(argv[nextArg], "remove") != 0) {
             return syntaxError(cli, "Unknown argument");
         }
         ++nextArg;
@@ -1106,7 +1106,7 @@ int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** a
                 return syntaxError(cli, "Missing netId");
             }
             netId = stringToNetId(argv[3]);
-        } else if (strcmp(argv[2], "clear")) {
+        } else if (strcmp(argv[2], "clear") != 0) {
             return syntaxError(cli, "Unknown argument");
         }
         if (Status status = mNetd->networkSetDefault(netId); !status.isOk()) {
@@ -1133,7 +1133,7 @@ int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** a
                 return syntaxError(cli, "Unknown permission");
             }
             nextArg = 5;
-        } else if (strcmp(argv[3], "clear")) {
+        } else if (strcmp(argv[3], "clear") != 0) {
             return syntaxError(cli, "Unknown argument");
         }
         if (nextArg == argc) {

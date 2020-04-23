@@ -89,7 +89,7 @@ static bool propertyValueIsTrue(const char* prop_name) {
 }
 
 static bool redirectSocketCallsIsTrue() {
-    static bool cached_result = propertyValueIsTrue("ro.vendor.redirect_socket_calls");
+    static bool cached_result = propertyValueIsTrue(PROPERTY_REDIRECT_SOCKET_CALLS);
     return cached_result;
 }
 
