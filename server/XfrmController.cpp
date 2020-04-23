@@ -1261,7 +1261,7 @@ int XfrmController::fillUserSpInfo(const XfrmSpInfo& record, XfrmDirection direc
     return sizeof(*usersp);
 }
 
-int XfrmController::fillUserTemplate(const XfrmSpInfo& record, xfrm_user_tmpl* tmpl) {
+void XfrmController::fillUserTemplate(const XfrmSpInfo& record, xfrm_user_tmpl* tmpl) {
     tmpl->id.daddr = record.dstAddr;
     tmpl->id.spi = record.spi;
     tmpl->id.proto = IPPROTO_ESP;
@@ -1277,7 +1277,6 @@ int XfrmController::fillUserTemplate(const XfrmSpInfo& record, xfrm_user_tmpl* t
                                         // algos, we should find it and apply it.
                                         // I can't find one.
     tmpl->ealgos = ALGO_MASK_CRYPT_ALL; // TODO: if there's a bitmask somewhere...
-    return sizeof(xfrm_user_tmpl*);
 }
 
 int XfrmController::fillNlAttrUserTemplate(const XfrmSpInfo& record, nlattr_user_tmpl* tmpl) {
