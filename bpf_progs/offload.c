@@ -146,8 +146,23 @@ int sched_cls_ingress_tether_ether(struct __sk_buff* skb) {
     return do_forward(skb, true);
 }
 
-DEFINE_BPF_PROG_KVER("schedcls/ingress/tether_rawip", AID_ROOT, AID_ROOT,
-                     sched_cls_ingress_tether_rawip, KVER(4, 14, 0))
+// bpf_skb_change_head() is only present on 4.14+,
+//
+// Hence define a no-op stub for older kernels.
+//
+// Note: section names must be unique to prevent programs from
+// appending to each other, so instead the bpf loader will strip
+// everything past the final $ symbol when actually pinning
+// the program into the filesystem.
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/ingress/tether_rawip$stub", AID_ROOT, AID_ROOT,
+                           sched_cls_ingress_tether_rawip_stub, KVER_NONE, KVER(4, 14, 0))
+(struct __sk_buff* skb) {
+    return TC_ACT_OK;
+}
+
+// and the real implementation for newer kernels
+DEFINE_BPF_PROG_KVER("schedcls/ingress/tether_rawip$4_14", AID_ROOT, AID_ROOT,
+                     sched_cls_ingress_tether_rawip_4_14, KVER(4, 14, 0))
 (struct __sk_buff* skb) {
     return do_forward(skb, false);
 }

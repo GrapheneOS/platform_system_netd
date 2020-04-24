@@ -271,15 +271,9 @@ int NdcDispatcher::InterfaceCmd::runCommand(NdcClient* cli, int argc, char** arg
                                      true);
                         return 0;
                     }
-                } else if (!strcmp(flag, "broadcast")) {
-                    // currently ignored
-                } else if (!strcmp(flag, "multicast")) {
-                    // currently ignored
-                } else if (!strcmp(flag, "running")) {
-                    // currently ignored
-                } else if (!strcmp(flag, "loopback")) {
-                    // currently ignored
-                } else if (!strcmp(flag, "point-to-point")) {
+                } else if (!strcmp(flag, "broadcast") || !strcmp(flag, "multicast") ||
+                           !strcmp(flag, "running") || !strcmp(flag, "loopback") ||
+                           !strcmp(flag, "point-to-point")) {
                     // currently ignored
                 } else {
                     cli->sendMsg(ResponseCode::CommandParameterError, "Flag unsupported", false);
