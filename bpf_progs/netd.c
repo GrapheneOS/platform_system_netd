@@ -138,7 +138,7 @@ static inline bool skip_owner_match(struct __sk_buff* skb) {
     if (skb->protocol == htons(ETH_P_IP)) {
         offset = IP_PROTO_OFF;
         uint8_t proto, ihl;
-        uint16_t flag;
+        uint8_t flag;
         ret = bpf_skb_load_bytes(skb, offset, &proto, 1);
         if (!ret) {
             if (proto == IPPROTO_ESP) {
@@ -160,7 +160,7 @@ static inline bool skip_owner_match(struct __sk_buff* skb) {
             if (proto == IPPROTO_ESP) {
                 return true;
             } else if (proto == IPPROTO_TCP) {
-                uint16_t flag;
+                uint8_t flag;
                 ret = bpf_skb_load_bytes(skb, sizeof(struct ipv6hdr) + TCP_FLAG_OFF, &flag, 1);
                 if (ret == 0 && (flag >> RST_OFFSET & 1)) {
                     return true;
