@@ -52,6 +52,7 @@ aidl_interface {
         },
         java: {
             apex_available: [
+                "//apex_available:platform", // used from services.net
                 "com.android.bluetooth.updatable",
                 "com.android.wifi",
             ],
