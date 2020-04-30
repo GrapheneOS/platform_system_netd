@@ -212,8 +212,8 @@ static const uint32_t uidBillingMask = Fwmark::getUidBillingMask();
  * See go/ipsec-data-accounting for more information.
  */
 
-const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
-    const std::vector<std::string> ipt_basic_accounting_commands = {
+std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
+    std::vector<std::string> ipt_basic_accounting_commands = {
             "*filter",
 
             "-A bw_INPUT -j bw_global_alert",
@@ -262,7 +262,6 @@ const std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             COMMIT_AND_CLOSE};
     return ipt_basic_accounting_commands;
 }
-
 
 std::vector<std::string> toStrVec(int num, const char* const strs[]) {
     return std::vector<std::string>(strs, strs + num);
