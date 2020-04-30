@@ -1,36 +1,3 @@
-// AIDL interface between netd and services.core
-aidl_interface {
-    name: "netd_event_listener_interface",
-    local_include_dir: "binder",
-    srcs: [
-        "binder/android/net/metrics/INetdEventListener.aidl",
-    ],
-    versions: ["1"],
-    backend: {
-        ndk: {
-            apex_available: [
-                "//apex_available:platform",
-                "com.android.resolv",
-            ],
-        },
-    },
-}
-
-// These are used in netd_integration_test
-// TODO: fold these into a cc_library_static after converting netd/server to Android.bp
-filegroup {
-    name: "netd_integration_test_shared",
-    srcs: [
-        "NetdConstants.cpp",
-        "InterfaceController.cpp",
-        "NetlinkCommands.cpp",
-        "NetlinkListener.cpp",
-        "SockDiag.cpp",
-        "XfrmController.cpp",
-        "TrafficController.cpp",
-    ],
-}
-
 aidl_interface {
     name: "netd_aidl_interface",
     local_include_dir: "binder",
@@ -51,6 +18,8 @@ aidl_interface {
             gen_log: true,
         },
         java: {
+            // TODO: Remove apex_available and restrict visibility to only mainline modules that are
+            // either outside the system server or use jarjar to rename the generated AIDL classes.
             apex_available: [
                 "//apex_available:platform", // used from services.net
                 "com.android.bluetooth.updatable",
@@ -66,6 +35,23 @@ aidl_interface {
 }
 
 aidl_interface {
+    name: "netd_event_listener_interface",
+    local_include_dir: "binder",
+    srcs: [
+        "binder/android/net/metrics/INetdEventListener.aidl",
+    ],
+    versions: ["1"],
+    backend: {
+        ndk: {
+            apex_available: [
+                "//apex_available:platform",
+                "com.android.resolv",
+            ],
+        },
+    },
+}
+
+aidl_interface {
     // This interface is for OEM calls to netd and vice versa that do not exist in AOSP.
     // Those calls cannot be part of INetd.aidl and INetdUnsolicitedEventListener.aidl
     // because those interfaces are versioned.
@@ -76,6 +62,41 @@ aidl_interface {
     srcs: [
         "binder/com/android/internal/net/IOemNetd.aidl",
         "binder/com/android/internal/net/IOemNetdUnsolicitedEventListener.aidl",
+    ],
+}
+
+// Convenience build target for the version of the netd stable AIDL interface used by the platform.
+// This exists to ensure that all non-updatable code in the system server uses the same version.
+// Mixing different versions of generated classes results in code non-deterministically(?) using one
+// of the compiled-in versions, and potentially crashing when code compiled against a newer version
+// ends up using a generated class from an older version and calls methods that don't exist.
+// This must be a frozen version on REL builds and can be -unstable on development builds.
+// See http://b/143560726 for an example.
+java_library {
+    name: "netd_aidl_interfaces-platform-java",
+    static_libs: [
+        "netd_aidl_interface-java",
+        "netd_event_listener_interface-java",
+    ],
+    // TODO: remove bluetooth, which doesn't actually use netd at all.
+    apex_available: [
+        "com.android.bluetooth.updatable",
+    ],
+    sdk_version: "system_current",
+}
+
+// These are used in netd_integration_test
+// TODO: fold these into a cc_library_static after converting netd/server to Android.bp
+filegroup {
+    name: "netd_integration_test_shared",
+    srcs: [
+        "NetdConstants.cpp",
+        "InterfaceController.cpp",
+        "NetlinkCommands.cpp",
+        "NetlinkListener.cpp",
+        "SockDiag.cpp",
+        "XfrmController.cpp",
+        "TrafficController.cpp",
     ],
 }
 
