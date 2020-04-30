@@ -2163,9 +2163,9 @@ std::vector<IPAddress> findDnsSockets(SockDiag* sd, unsigned numExpected) {
     // There is no way to know if dnsmasq has finished processing the update_interfaces command and
     // opened listening sockets. So, just spin a few times and return the first list of sockets
     // that is at least numExpected long.
-    // Pick a relatively large timeout to avoid flaky tests. Testing suggests that 5 attempts are
-    // sufficient for the test to pass 500 times in a row on crosshatch-eng.  Pick 10 to be safe.
-    constexpr int kMaxAttempts = 10;
+    // Pick a relatively large timeout to avoid flaky tests, particularly when running on shared
+    // devices.
+    constexpr int kMaxAttempts = 50;
     constexpr int kSleepMs = 100;
     for (int i = 0; i < kMaxAttempts; i++) {
         listenAddrs.clear();
