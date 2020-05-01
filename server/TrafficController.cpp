@@ -705,17 +705,10 @@ Status TrafficController::removeUidInterfaceRules(const std::vector<int32_t>& ui
     return netdutils::status::ok;
 }
 
-int TrafficController::replaceUidOwnerMap(const std::string& name, bool isWhitelist,
+int TrafficController::replaceUidOwnerMap(const std::string& name, bool isWhitelist __unused,
                                           const std::vector<int32_t>& uids) {
-    FirewallRule rule;
-    FirewallType type;
-    if (isWhitelist) {
-        type = WHITELIST;
-        rule = ALLOW;
-    } else {
-        type = BLACKLIST;
-        rule = DENY;
-    }
+    // FirewallRule rule = isWhitelist ? ALLOW : DENY;
+    // FirewallType type = isWhitelist ? WHITELIST : BLACKLIST;
     Status res;
     if (!name.compare(FirewallController::LOCAL_DOZABLE)) {
         res = replaceRulesInMap(DOZABLE_MATCH, uids);
