@@ -55,7 +55,8 @@ class TransportModeSecurityAssociation;
 
 class XfrmSocket {
 public:
-    virtual void close() {
+    // called from destructor and thus cannot be virtual
+    void close() {
         if (mSock >= 0) {
             ::close(mSock);
         }
