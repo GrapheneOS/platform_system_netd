@@ -31,7 +31,7 @@ struct FwmarkConnectInfo {
         sockaddr_in6 sin6;
     } addr;
 
-    FwmarkConnectInfo() {}
+    FwmarkConnectInfo() : error(0), latencyMs(0) {}
 
     FwmarkConnectInfo(const int connectErrno, const unsigned latency, const sockaddr* saddr) {
         error = connectErrno;
