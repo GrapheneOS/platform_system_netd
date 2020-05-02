@@ -139,13 +139,11 @@ int SockDiag::sendDumpRequest(uint8_t proto, uint8_t family, const char *addrstr
     addrinfo hints = { .ai_flags = AI_NUMERICHOST };
     addrinfo *res;
     in6_addr mapped = { .s6_addr32 = { 0, 0, htonl(0xffff), 0 } };
-    int ret;
 
     // TODO: refactor the netlink parsing code out of system/core, bring it into netd, and stop
     // doing string conversions when they're not necessary.
-    if ((ret = getaddrinfo(addrstr, nullptr, &hints, &res)) != 0) {
-        return -EINVAL;
-    }
+    int ret = getaddrinfo(addrstr, nullptr, &hints, &res);
+    if (ret != 0) return -EINVAL;
 
     // So we don't have to call freeaddrinfo on every failure path.
     ScopedAddrinfo resP(res);
