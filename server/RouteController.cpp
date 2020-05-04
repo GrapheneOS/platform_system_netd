@@ -164,7 +164,7 @@ uint32_t RouteController::getRouteTableForInterfaceLocked(const char* interface)
 
     uint32_t index = if_nametoindex(interface);
     if (index == 0) {
-        ALOGE("cannot find interface %s", interface);
+        ALOGE("cannot find interface %s: %s", interface, strerror(errno));
         return RT_TABLE_UNSPEC;
     }
     index += RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX;
@@ -181,7 +181,17 @@ uint32_t RouteController::getIfIndex(const char* interface) {
         return 0;
     }
 
-    return iter->second - ROUTE_TABLE_OFFSET_FROM_INDEX;
+    // For interfaces that are not in the local network, the routing table is always the interface
+    // index plus ROUTE_TABLE_OFFSET_FROM_INDEX. But for interfaces in the local network, there's no
+    // way to know the interface index from this table. Return 0 here so callers of this method do
+    // not get confused.
+    // TODO: stop calling this method from any caller that only wants interfaces in client mode.
+    int ifindex = iter->second;
+    if (ifindex == ROUTE_TABLE_LOCAL_NETWORK) {
+        return 0;
+    }
+
+    return ifindex - ROUTE_TABLE_OFFSET_FROM_INDEX;
 }
 
 uint32_t RouteController::getRouteTableForInterface(const char* interface) {
@@ -1019,11 +1029,21 @@ int RouteController::Init(unsigned localNetId) {
 }
 
 int RouteController::addInterfaceToLocalNetwork(unsigned netId, const char* interface) {
-    return modifyLocalNetwork(netId, interface, ACTION_ADD);
+    if (int ret = modifyLocalNetwork(netId, interface, ACTION_ADD)) {
+        return ret;
+    }
+    std::lock_guard lock(sInterfaceToTableLock);
+    sInterfaceToTable[interface] = ROUTE_TABLE_LOCAL_NETWORK;
+    return 0;
 }
 
 int RouteController::removeInterfaceFromLocalNetwork(unsigned netId, const char* interface) {
-    return modifyLocalNetwork(netId, interface, ACTION_DEL);
+    if (int ret = modifyLocalNetwork(netId, interface, ACTION_DEL)) {
+        return ret;
+    }
+    std::lock_guard lock(sInterfaceToTableLock);
+    sInterfaceToTable.erase(interface);
+    return 0;
 }
 
 int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* interface,

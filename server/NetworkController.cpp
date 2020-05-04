@@ -506,12 +506,20 @@ int NetworkController::addInterfaceToNetwork(unsigned netId, const char* interfa
         return ret;
     }
 
-    int ifIndex = RouteController::getIfIndex(interface);
-    if (ifIndex) {
-        mIfindexToLastNetId[ifIndex] = netId;
-    } else {
-        // Cannot happen, since addInterface() above will have failed.
-        ALOGE("inconceivable! added interface %s with no index", interface);
+    // Only populate mIfindexToLastNetId for non-local networks, because for these getIfIndex will
+    // return 0. That's fine though, because that map is only used to prevent force-closing sockets
+    // when the same IP address is handed over from one interface to another interface that is in
+    // the same network but not in the same netId (for now this is done only on VPNs). That is not
+    // useful for the local network because IP addresses in the local network are always assigned by
+    // the device itself and never meaningful on any other network.
+    if (netId != LOCAL_NET_ID) {
+        int ifIndex = RouteController::getIfIndex(interface);
+        if (ifIndex) {
+            mIfindexToLastNetId[ifIndex] = netId;
+        } else {
+            // Cannot happen, since addInterface() above will have failed.
+            ALOGE("inconceivable! added interface %s with no index", interface);
+        }
     }
     return 0;
 }
@@ -647,7 +655,7 @@ bool NetworkController::removeInterfaceAddress(unsigned ifindex, const char* add
     }
     // Then, check for VPN handover condition
     if (mIfindexToLastNetId.find(ifindex) == mIfindexToLastNetId.end()) {
-        ALOGE("Interface index %u was never in a currently-connected netId", ifindex);
+        ALOGW("Interface index %u was never in a currently-connected non-local netId", ifindex);
         return true;
     }
     unsigned lastNetId = mIfindexToLastNetId[ifindex];
