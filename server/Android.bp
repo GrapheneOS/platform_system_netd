@@ -80,6 +80,7 @@ java_library {
     ],
     // TODO: remove bluetooth, which doesn't actually use netd at all.
     apex_available: [
+        "//apex_available:platform", // due to the dependency from services.net
         "com.android.bluetooth.updatable",
     ],
     sdk_version: "system_current",
