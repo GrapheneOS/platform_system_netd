@@ -218,4 +218,6 @@ typedef struct {
     uint64_t txErrors;
 } TetherStatsValue;
 
+#define TETHER_LIMIT_MAP_PATH BPF_PATH "/map_offload_tether_limit_map"
+
 #endif  // NETDBPF_BPF_SHARED_H
