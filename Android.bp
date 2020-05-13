@@ -5,6 +5,7 @@ cc_library_headers {
         "//apex_available:platform",
         "com.android.resolv",
     ],
+    min_sdk_version: "29",
 }
 
 cc_defaults {
