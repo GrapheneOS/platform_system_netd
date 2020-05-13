@@ -1142,7 +1142,7 @@ void TetherController::dumpBpf(DumpWriter& dw) {
         std::string dst = l2ToString(value.macHeader.h_dest, sizeof(value.macHeader.h_dest));
         inet_ntop(AF_INET6, &key.neigh6, addr, sizeof(addr));
 
-        dw.println("%d %s -> %d %s %s %04x", key.iif, addr, value.oif, src.c_str(), dst.c_str(),
+        dw.println("%u %s -> %u %s %s %04x", key.iif, addr, value.oif, src.c_str(), dst.c_str(),
                    ntohs(value.macHeader.h_proto));
 
         return Result<void>();
@@ -1158,7 +1158,7 @@ void TetherController::dumpBpf(DumpWriter& dw) {
     dw.println("BPF stats (downlink): iif -> packets bytes errors");
     const auto printStatsMap = [&dw](const uint32_t& key, const TetherStatsValue& value,
                                      const BpfMap<uint32_t, TetherStatsValue>&) {
-        dw.println("%d -> %" PRIu64 " %" PRIu64 " %" PRIu64, key, value.rxPackets, value.rxBytes,
+        dw.println("%u -> %" PRIu64 " %" PRIu64 " %" PRIu64, key, value.rxPackets, value.rxBytes,
                    value.rxErrors);
 
         return Result<void>();
