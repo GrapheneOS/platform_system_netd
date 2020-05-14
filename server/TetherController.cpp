@@ -221,6 +221,11 @@ void TetherController::maybeInitMaps() {
         mBpfStatsMap.reset(fd);
         mBpfStatsMap.clear();
     }
+    fd = getTetherLimitMapFd();
+    if (fd >= 0) {
+        mBpfLimitMap.reset(fd);
+        mBpfLimitMap.clear();
+    }
 }
 
 const std::set<std::string>& TetherController::getIpfwdRequesterList() const {
@@ -1129,7 +1134,7 @@ std::string l2ToString(const uint8_t* addr, size_t len) {
 }  // namespace
 
 void TetherController::dumpBpf(DumpWriter& dw) {
-    if (!mBpfIngressMap.isValid() || !mBpfStatsMap.isValid()) {
+    if (!mBpfIngressMap.isValid() || !mBpfStatsMap.isValid() || !mBpfLimitMap.isValid()) {
         dw.println("BPF not supported");
         return;
     }
@@ -1142,7 +1147,7 @@ void TetherController::dumpBpf(DumpWriter& dw) {
         std::string dst = l2ToString(value.macHeader.h_dest, sizeof(value.macHeader.h_dest));
         inet_ntop(AF_INET6, &key.neigh6, addr, sizeof(addr));
 
-        dw.println("%d %s -> %d %s %s %04x", key.iif, addr, value.oif, src.c_str(), dst.c_str(),
+        dw.println("%u %s -> %u %s %s %04x", key.iif, addr, value.oif, src.c_str(), dst.c_str(),
                    ntohs(value.macHeader.h_proto));
 
         return Result<void>();
@@ -1158,7 +1163,7 @@ void TetherController::dumpBpf(DumpWriter& dw) {
     dw.println("BPF stats (downlink): iif -> packets bytes errors");
     const auto printStatsMap = [&dw](const uint32_t& key, const TetherStatsValue& value,
                                      const BpfMap<uint32_t, TetherStatsValue>&) {
-        dw.println("%d -> %" PRIu64 " %" PRIu64 " %" PRIu64, key, value.rxPackets, value.rxBytes,
+        dw.println("%u -> %" PRIu64 " %" PRIu64 " %" PRIu64, key, value.rxPackets, value.rxBytes,
                    value.rxErrors);
 
         return Result<void>();
@@ -1168,6 +1173,21 @@ void TetherController::dumpBpf(DumpWriter& dw) {
     ret = mBpfStatsMap.iterateWithValue(printStatsMap);
     if (!ret.ok()) {
         dw.println("Error printing BPF stats map: %s", ret.error().message().c_str());
+    }
+    dw.decIndent();
+
+    dw.println("BPF limit: iif -> bytes");
+    const auto printLimitMap = [&dw](const uint32_t& key, const uint64_t& value,
+                                     const BpfMap<uint32_t, uint64_t>&) {
+        dw.println("%u -> %" PRIu64, key, value);
+
+        return Result<void>();
+    };
+
+    dw.incIndent();
+    ret = mBpfLimitMap.iterateWithValue(printLimitMap);
+    if (!ret.ok()) {
+        dw.println("Error printing BPF limit map: %s", ret.error().message().c_str());
     }
     dw.decIndent();
 }

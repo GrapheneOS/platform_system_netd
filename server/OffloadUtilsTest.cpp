@@ -192,6 +192,15 @@ TEST_F(OffloadUtilsTest, GetTetherStatsMapFd) {
     close(fd);
 }
 
+TEST_F(OffloadUtilsTest, GetTetherLimitMapFd) {
+    SKIP_IF_BPF_NOT_SUPPORTED;
+
+    int fd = getTetherLimitMapFd();
+    ASSERT_GE(fd, 3);  // 0,1,2 - stdin/out/err, thus fd >= 3
+    EXPECT_EQ(FD_CLOEXEC, fcntl(fd, F_GETFD));
+    close(fd);
+}
+
 // The SKIP_IF_BPF_NOT_SUPPORTED macro is effectively a check for 4.9+ kernel
 // combined with a launched on P device.  Ie. it's a test for 4.9-P or better.
 

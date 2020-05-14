@@ -67,17 +67,21 @@ protected:
     TetherController mTetherCtrl;
     BpfMap<uint32_t, IfaceValue> mFakeIfaceIndexNameMap{BPF_MAP_TYPE_HASH, TEST_MAP_SIZE};
     BpfMap<uint32_t, TetherStatsValue> mFakeTetherStatsMap{BPF_MAP_TYPE_HASH, TEST_MAP_SIZE};
+    BpfMap<uint32_t, uint64_t> mFakeTetherLimitMap{BPF_MAP_TYPE_HASH, TEST_MAP_SIZE};
 
     void SetUp() {
         SKIP_IF_BPF_NOT_SUPPORTED;
 
         ASSERT_TRUE(mFakeIfaceIndexNameMap.isValid());
         ASSERT_TRUE(mFakeTetherStatsMap.isValid());
+        ASSERT_TRUE(mFakeTetherLimitMap.isValid());
 
         mTetherCtrl.mIfaceIndexNameMap = mFakeIfaceIndexNameMap;
         ASSERT_TRUE(mTetherCtrl.mIfaceIndexNameMap.isValid());
         mTetherCtrl.mBpfStatsMap = mFakeTetherStatsMap;
         ASSERT_TRUE(mTetherCtrl.mBpfStatsMap.isValid());
+        mTetherCtrl.mBpfLimitMap = mFakeTetherLimitMap;
+        ASSERT_TRUE(mTetherCtrl.mBpfLimitMap.isValid());
     }
 
     std::string toString(const TetherStatsList& statsList) {
