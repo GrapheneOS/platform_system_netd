@@ -195,7 +195,12 @@ class IPAddress {
 
 class IPPrefix {
   public:
-    // TODO: "static forString(...)" using NetdConstants' parsePrefix().
+    static bool forString(const std::string& repr, IPPrefix* prefix);
+    static IPPrefix forString(const std::string& repr) {
+        IPPrefix prefix;
+        if (!forString(repr, &prefix)) return IPPrefix();
+        return prefix;
+    }
 
     IPPrefix() = default;
     IPPrefix(const IPPrefix&) = default;
