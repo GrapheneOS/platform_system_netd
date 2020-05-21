@@ -16,6 +16,8 @@
 
 #include "netdutils/InternetAddresses.h"
 
+#include <string>
+
 #include <android-base/stringprintf.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -121,6 +123,28 @@ IPPrefix::IPPrefix(const IPAddress& ip, int length) : IPPrefix(ip) {
 bool IPPrefix::isUninitialized() const noexcept {
     static const internal_::compact_ipdata empty{};
     return mData == empty;
+}
+
+bool IPPrefix::forString(const std::string& repr, IPPrefix* prefix) {
+    size_t index = repr.find('/');
+    if (index == std::string::npos) return false;
+
+    // Parse the IP address.
+    IPAddress ip;
+    if (!IPAddress::forString(repr.substr(0, index), &ip)) return false;
+
+    // Parse the prefix length. Can't use base::ParseUint because it accepts non-base 10 input.
+    const char* prefixString = repr.c_str() + index + 1;
+    if (!isdigit(*prefixString)) return false;
+    char* endptr;
+    unsigned long prefixlen = strtoul(prefixString, &endptr, 10);
+    if (*endptr != '\0') return false;
+
+    uint8_t maxlen = (ip.family() == AF_INET) ? 32 : 128;
+    if (prefixlen > maxlen) return false;
+
+    *prefix = IPPrefix(ip, prefixlen);
+    return true;
 }
 
 std::string IPPrefix::toString() const noexcept {
