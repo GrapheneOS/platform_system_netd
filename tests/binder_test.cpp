@@ -3475,6 +3475,9 @@ int32_t createIpv6SocketAndCheckMark(int type, const in6_addr& dstAddr) {
 }  // namespace
 
 TEST_F(BinderTest, GetFwmarkForNetwork) {
+    // Save current default network.
+    ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
+
     in6_addr v6Addr = {
             {// 2001:db8:cafe::8888
              .u6_addr8 = {0x20, 0x01, 0x0d, 0xb8, 0xca, 0xfe, 0, 0, 0, 0, 0, 0, 0, 0, 0x88, 0x88}}};
