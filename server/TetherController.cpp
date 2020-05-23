@@ -1058,6 +1058,49 @@ StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats() {
     return statsList;
 }
 
+// Use UINT64_MAX (~0uLL) for unlimited.
+Result<void> TetherController::setBpfLimit(uint32_t ifIndex, uint64_t limit) {
+    // The common case is an update, where the stats already exist,
+    // hence we read first, even though writing with BPF_NOEXIST
+    // first would make the code simpler.
+    uint64_t rxBytes, txBytes;
+    auto statsEntry = mBpfStatsMap.readValue(ifIndex);
+
+    if (statsEntry.ok()) {
+        // Ok, there was a stats entry.
+        rxBytes = statsEntry.value().rxBytes;
+        txBytes = statsEntry.value().txBytes;
+    } else if (statsEntry.error().code() == ENOENT) {
+        // No stats entry - create one with zeroes.
+        TetherStatsValue stats = {};
+        // This function is the *only* thing that can create entries.
+        auto ret = mBpfStatsMap.writeValue(ifIndex, stats, BPF_NOEXIST);
+        if (!ret.ok()) {
+            ALOGE("mBpfStatsMap.writeValue failure: %s", strerror(ret.error().code()));
+            return ret;
+        }
+        rxBytes = 0;
+        txBytes = 0;
+    } else {
+        // Other error while trying to get stats entry.
+        return statsEntry.error();
+    }
+
+    // rxBytes + txBytes won't overflow even at 5gbps for ~936 years.
+    uint64_t newLimit = rxBytes + txBytes + limit;
+
+    // if adding limit (e.g., if limit is UINT64_MAX) caused overflow: clamp to 'infinity'
+    if (newLimit < rxBytes + txBytes) newLimit = ~0uLL;
+
+    auto ret = mBpfLimitMap.writeValue(ifIndex, newLimit, BPF_ANY);
+    if (!ret.ok()) {
+        ALOGE("mBpfLimitMap.writeValue failure: %s", strerror(ret.error().code()));
+        return ret;
+    }
+
+    return {};
+}
+
 void TetherController::maybeStartBpf(const char* extIface) {
     if (!bpf::isBpfSupported()) return;
 
@@ -1088,6 +1131,9 @@ void TetherController::maybeStartBpf(const char* extIface) {
               isEthernet.value(), strerror(-rv));
         return;
     }
+
+    // For now we just set data limit to 'infinity' ie. unlimited.
+    setBpfLimit(ifIndex, ~0uLL);
 }
 
 void TetherController::maybeStopBpf(const char* extIface) {
