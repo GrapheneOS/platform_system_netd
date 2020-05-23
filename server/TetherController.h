@@ -183,6 +183,7 @@ class TetherController {
     int setForwardRules(bool set, const char *intIface, const char *extIface);
     int setTetherCountingRules(bool add, const char *intIface, const char *extIface);
 
+    base::Result<void> setBpfLimit(uint32_t ifIndex, uint64_t limit);
     void maybeInitMaps();
     void maybeStartBpf(const char* extIface);
     void maybeStopBpf(const char* extIface);
