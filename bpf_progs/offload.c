@@ -69,19 +69,17 @@ static inline __always_inline int do_forward(struct __sk_buff* skb, bool is_ethe
     // If we don't find any offload information then simply let the core stack handle it...
     if (!v) return TC_ACT_OK;
 
-    uint32_t stat_k = skb->ifindex;
+    uint32_t stat_and_limit_k = skb->ifindex;
 
-    TetherStatsValue* stat_v = bpf_tether_stats_map_lookup_elem(&stat_k);
+    TetherStatsValue* stat_v = bpf_tether_stats_map_lookup_elem(&stat_and_limit_k);
 
-    // If we don't have anywhere to put stats, create an empty entry.
-    if (!stat_v) {
-        TetherStatsValue emptyStats = {};
-        bpf_tether_stats_map_update_elem(&stat_k, &emptyStats, BPF_NOEXIST);
-        stat_v = bpf_tether_stats_map_lookup_elem(&stat_k);
-    }
-
-    // If we *still* don't have anywhere to put stats, then abort...
+    // If we don't have anywhere to put stats, then abort...
     if (!stat_v) return TC_ACT_OK;
+
+    uint64_t* limit_v = bpf_tether_limit_map_lookup_elem(&stat_and_limit_k);
+
+    // If we don't have a limit, then abort...
+    if (!limit_v) return TC_ACT_OK;
 
     // This is approximate handling of tcp/ip overhead for incoming LRO/GRO packets:
     // mtu of 1500 is not necessarily correct, but worst case we simply undercount,
@@ -100,6 +98,14 @@ static inline __always_inline int do_forward(struct __sk_buff* skb, bool is_ethe
         packets = (payload + mss - 1) / mss;
         bytes = tcp_overhead * packets + payload;
     }
+
+    // Are we past the limit?  If so, then abort...
+    // Note: will not overflow since u64 is 936 years even at 5Gbps.
+    // Do not drop here.  Offload is just that, whenever we fail to handle
+    // a packet we let the core stack deal with things.
+    // (The core stack needs to handle limits correctly anyway,
+    // since we don't offload all traffic in both directions)
+    if (stat_v->rxBytes + stat_v->txBytes + bytes > *limit_v) return TC_ACT_OK;
 
     if (!is_ethernet) {
         is_ethernet = true;
