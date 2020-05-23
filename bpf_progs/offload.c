@@ -81,19 +81,22 @@ static inline __always_inline int do_forward(struct __sk_buff* skb, bool is_ethe
     // If we don't have a limit, then abort...
     if (!limit_v) return TC_ACT_OK;
 
-    // This is approximate handling of tcp/ip overhead for incoming LRO/GRO packets:
-    // mtu of 1500 is not necessarily correct, but worst case we simply undercount,
-    // which is still better then not accounting for this overhead at all.
-    // Note: this really shouldn't be device mtu at all, but rather should be derived
-    // from this particular connection's mss - which requires a much newer kernel.
-    const int mtu = 1500;
+    // Required IPv6 minimum mtu is 1280, below that not clear what we should do, abort...
+    const int pmtu = v->pmtu;
+    if (pmtu < IPV6_MIN_MTU) return TC_ACT_OK;
+
+    // Approximate handling of TCP/IPv6 overhead for incoming LRO/GRO packets: default
+    // outbound path mtu of 1500 is not necessarily correct, but worst case we simply
+    // undercount, which is still better then not accounting for this overhead at all.
+    // Note: this really shouldn't be device/path mtu at all, but rather should be
+    // derived from this particular connection's mss (ie. from gro segment size).
+    // This would require a much newer kernel with newer ebpf accessors.
+    // (This is also blindly assuming 12 bytes of tcp timestamp option in tcp header)
     uint64_t packets = 1;
     uint64_t bytes = skb->len;
-    if (bytes > mtu) {
-        const bool is_ipv6 = (skb->protocol == htons(ETH_P_IPV6));
-        const int ip_overhead = (is_ipv6 ? sizeof(struct ipv6hdr) : sizeof(struct iphdr));
-        const int tcp_overhead = ip_overhead + sizeof(struct tcphdr) + 12;
-        const int mss = mtu - tcp_overhead;
+    if (bytes > pmtu) {
+        const int tcp_overhead = sizeof(struct ipv6hdr) + sizeof(struct tcphdr) + 12;
+        const int mss = pmtu - tcp_overhead;
         const uint64_t payload = bytes - tcp_overhead;
         packets = (payload + mss - 1) / mss;
         bytes = tcp_overhead * packets + payload;
