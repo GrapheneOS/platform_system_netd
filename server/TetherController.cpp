@@ -870,8 +870,9 @@ Result<void> TetherController::addOffloadRule(const TetherOffloadRuleParcel& rul
     };
 
     TetherIngressValue value = {
-            static_cast<uint32_t>(rule.outputInterfaceIndex),
-            hdr,
+            .oif = static_cast<uint32_t>(rule.outputInterfaceIndex),
+            .macHeader = hdr,
+            .pmtu = 1500,  // TODO: don't just blindly use this default
     };
 
     return mBpfIngressMap.writeValue(key, value, BPF_ANY);
@@ -1185,7 +1186,7 @@ void TetherController::dumpBpf(DumpWriter& dw) {
         return;
     }
 
-    dw.println("BPF ingress map: iif v6addr -> oif srcmac dstmac ethertype");
+    dw.println("BPF ingress map: iif v6addr -> oif srcmac dstmac ethertype [pmtu]");
     const auto printIngressMap = [&dw](const TetherIngressKey& key, const TetherIngressValue& value,
                                        const BpfMap<TetherIngressKey, TetherIngressValue>&) {
         char addr[INET6_ADDRSTRLEN];
@@ -1193,8 +1194,8 @@ void TetherController::dumpBpf(DumpWriter& dw) {
         std::string dst = l2ToString(value.macHeader.h_dest, sizeof(value.macHeader.h_dest));
         inet_ntop(AF_INET6, &key.neigh6, addr, sizeof(addr));
 
-        dw.println("%u %s -> %u %s %s %04x", key.iif, addr, value.oif, src.c_str(), dst.c_str(),
-                   ntohs(value.macHeader.h_proto));
+        dw.println("%u %s -> %u %s %s %04x [%u]", key.iif, addr, value.oif, src.c_str(),
+                   dst.c_str(), ntohs(value.macHeader.h_proto), value.pmtu);
 
         return Result<void>();
     };
