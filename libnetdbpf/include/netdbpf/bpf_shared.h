@@ -205,6 +205,7 @@ typedef struct {
     // because all downstream types that are currently supported (WiFi, USB, Bluetooth and
     // Ethernet) have 6-byte MAC addresses.
     struct ethhdr macHeader;  // includes dst/src mac and ethertype
+    uint16_t pmtu;            // The maximum L3 output path/route mtu
 } TetherIngressValue;
 
 #define TETHER_STATS_MAP_PATH BPF_PATH "/map_offload_tether_stats_map"
