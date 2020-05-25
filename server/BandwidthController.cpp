@@ -243,8 +243,7 @@ std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             // respectively)
             ("-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN"),
             "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN",
-            useBpf ? StringPrintf("-A bw_raw_PREROUTING -m bpf --object-pinned %s",
-                                  XT_BPF_INGRESS_PROG_PATH)
+            useBpf ? "-A bw_raw_PREROUTING -m bpf --object-pinned " XT_BPF_INGRESS_PROG_PATH
                    : "-A bw_raw_PREROUTING -m owner --socket-exists",
             "COMMIT",
 
@@ -256,8 +255,7 @@ std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             useBpf ? "" : "-A bw_mangle_POSTROUTING -m owner --socket-exists",
             StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x",
                          uidBillingMask),  // Clear the mark before sending this packet
-            useBpf ? StringPrintf("-A bw_mangle_POSTROUTING -m bpf --object-pinned %s",
-                                  XT_BPF_EGRESS_PROG_PATH)
+            useBpf ? "-A bw_mangle_POSTROUTING -m bpf --object-pinned " XT_BPF_EGRESS_PROG_PATH
                    : "",
             COMMIT_AND_CLOSE};
     return ipt_basic_accounting_commands;
