@@ -274,6 +274,12 @@ int bpf_cgroup_egress(struct __sk_buff* skb) {
 
 DEFINE_BPF_PROG("skfilter/egress/xtbpf", AID_ROOT, AID_NET_ADMIN, xt_bpf_egress_prog)
 (struct __sk_buff* skb) {
+    // Clat daemon does not generate new traffic, all its traffic is accounted for already
+    // on the v4-* interfaces (except for the 20 (or 28) extra bytes of IPv6 vs IPv4 overhead,
+    // but that can be corrected for later when merging v4-foo stats into interface foo's).
+    uint32_t sock_uid = bpf_get_socket_uid(skb);
+    if (sock_uid == AID_CLAT) return BPF_NOMATCH;
+
     uint32_t key = skb->ifindex;
     update_iface_stats_map(skb, BPF_EGRESS, &key);
     return BPF_MATCH;
@@ -281,6 +287,11 @@ DEFINE_BPF_PROG("skfilter/egress/xtbpf", AID_ROOT, AID_NET_ADMIN, xt_bpf_egress_
 
 DEFINE_BPF_PROG("skfilter/ingress/xtbpf", AID_ROOT, AID_NET_ADMIN, xt_bpf_ingress_prog)
 (struct __sk_buff* skb) {
+    // Clat daemon traffic is not accounted by virtue of iptables raw prerouting drop rule
+    // (in clat_raw_PREROUTING chain), which triggers before this (in bw_raw_PREROUTING chain).
+    // It will be accounted for on the v4-* clat interface instead.
+    // Keep that in mind when moving this out of iptables xt_bpf and into tc ingress (or xdp).
+
     uint32_t key = skb->ifindex;
     update_iface_stats_map(skb, BPF_INGRESS, &key);
     return BPF_MATCH;
