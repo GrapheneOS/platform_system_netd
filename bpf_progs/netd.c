@@ -184,7 +184,7 @@ static __always_inline BpfConfig getConfig(uint32_t configKey) {
 static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid, int direction) {
     if (skip_owner_match(skb)) return BPF_PASS;
 
-    if ((uid <= MAX_SYSTEM_UID) && (uid >= MIN_SYSTEM_UID)) return BPF_PASS;
+    if (is_system_uid(uid)) return BPF_PASS;
 
     BpfConfig enabledRules = getConfig(UID_RULES_CONFIGURATION_KEY);
 
