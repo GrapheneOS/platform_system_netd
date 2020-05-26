@@ -39,4 +39,7 @@ parcelable TetherOffloadRuleParcel {
 
     /** The destination link-layer address. Currently, must be a 6-byte MAC address. */
     byte[] dstL2Address;
+
+    /** The outbound path mtu. */
+    int pmtu = 1500;
 }

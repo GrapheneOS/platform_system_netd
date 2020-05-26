@@ -24,4 +24,5 @@ parcelable TetherOffloadRuleParcel {
   int prefixLength;
   byte[] srcL2Address;
   byte[] dstL2Address;
+  int pmtu = 1500;
 }
