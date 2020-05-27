@@ -76,9 +76,9 @@ const std::string ACCOUNT_RULES_WITHOUT_BPF =
         "*mangle\n"
         "-A bw_mangle_POSTROUTING -o ipsec+ -j RETURN\n"
         "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN\n"
-        "-A bw_mangle_POSTROUTING -m owner --socket-exists\n"
         "-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x100000\n"
-        "\n"
+        "-A bw_mangle_POSTROUTING -m owner --owner-uid clat -j RETURN\n"
+        "-A bw_mangle_POSTROUTING -m owner --socket-exists\n"
         "COMMIT\n";
 
 const std::string ACCOUNT_RULES_WITH_BPF =
@@ -109,8 +109,8 @@ const std::string ACCOUNT_RULES_WITH_BPF =
         "*mangle\n"
         "-A bw_mangle_POSTROUTING -o ipsec+ -j RETURN\n"
         "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN\n"
-        "\n"
-        "-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x100000\n" +
+        "-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x100000\n"
+        "-A bw_mangle_POSTROUTING -m owner --owner-uid clat -j RETURN\n" +
         StringPrintf("-A bw_mangle_POSTROUTING -m bpf --object-pinned %s\n",
                      XT_BPF_EGRESS_PROG_PATH) +
         "COMMIT\n";
