@@ -221,6 +221,8 @@ std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             "-A bw_INPUT -p esp -j RETURN",
             StringPrintf("-A bw_INPUT -m mark --mark 0x%x/0x%x -j RETURN", uidBillingMask,
                          uidBillingMask),
+            // This is ingress application UID xt_qtaguid (pre-ebpf) accounting,
+            // for bpf this is handled out of cgroup hooks instead.
             useBpf ? "" : "-A bw_INPUT -m owner --socket-exists",
             StringPrintf("-A bw_INPUT -j MARK --or-mark 0x%x", uidBillingMask),
 
@@ -229,6 +231,8 @@ std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             // respectively)
             ("-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN"),
             "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
+            // This is egress application UID xt_qtaguid (pre-ebpf) accounting,
+            // for bpf this is handled out of cgroup hooks instead.
             useBpf ? "" : "-A bw_OUTPUT -m owner --socket-exists",
 
             "-A bw_costly_shared -j bw_penalty_box",
@@ -243,6 +247,17 @@ std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             // respectively)
             ("-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN"),
             "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN",
+            // This is ingress interface accounting. There is no need to do anything specific
+            // for 464xlat here, because we only ever account 464xlat traffic on the clat
+            // interface and later correct for overhead (+20 bytes/packet).
+            //
+            // Note: eBPF offloaded packets never hit base interface's ip6tables, and non
+            // offloaded packets (which when using xt_qtaguid means all packets, because
+            // clat eBPF offload does not work on xt_qtaguid devices) are dropped in
+            // clat_raw_PREROUTING.
+            //
+            // Hence we will never double count and additional corrections are not needed.
+            // We can simply take the sum of base and stacked (+20B/pkt) interface counts.
             useBpf ? "-A bw_raw_PREROUTING -m bpf --object-pinned " XT_BPF_INGRESS_PROG_PATH
                    : "-A bw_raw_PREROUTING -m owner --socket-exists",
             "COMMIT",
@@ -252,11 +267,16 @@ std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             // respectively)
             ("-A bw_mangle_POSTROUTING -o " IPSEC_IFACE_PREFIX "+ -j RETURN"),
             "-A bw_mangle_POSTROUTING -m policy --pol ipsec --dir out -j RETURN",
-            useBpf ? "" : "-A bw_mangle_POSTROUTING -m owner --socket-exists",
-            StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x",
-                         uidBillingMask),  // Clear the mark before sending this packet
+            // Clear the uid billing done (egress) mark before sending this packet
+            StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x", uidBillingMask),
+            // Packets from the clat daemon have already been counted on egress through the
+            // stacked v4-* interface.
+            "-A bw_mangle_POSTROUTING -m owner --owner-uid clat -j RETURN",
+            // This is egress interface accounting: we account 464xlat traffic only on
+            // the clat interface (as offloaded packets never hit base interface's ip6tables)
+            // and later sum base and stacked with overhead (+20B/pkt) in higher layers
             useBpf ? "-A bw_mangle_POSTROUTING -m bpf --object-pinned " XT_BPF_EGRESS_PROG_PATH
-                   : "",
+                   : "-A bw_mangle_POSTROUTING -m owner --socket-exists",
             COMMIT_AND_CLOSE};
     return ipt_basic_accounting_commands;
 }
