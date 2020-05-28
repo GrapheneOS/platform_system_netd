@@ -60,6 +60,7 @@ const std::string ACCOUNT_RULES_WITHOUT_BPF =
         "-A bw_OUTPUT -j bw_global_alert\n"
         "-A bw_OUTPUT -o ipsec+ -j RETURN\n"
         "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN\n"
+        "-A bw_OUTPUT -m owner --uid-owner clat -j RETURN\n"
         "-A bw_OUTPUT -m owner --socket-exists\n"
         "-A bw_costly_shared -j bw_penalty_box\n"
         "\n"
@@ -89,8 +90,9 @@ const std::string ACCOUNT_RULES_WITH_BPF =
         "\n"
         "-A bw_INPUT -j MARK --or-mark 0x100000\n"
         "-A bw_OUTPUT -j bw_global_alert\n"
-        "-A bw_OUTPUT -o ipsec+ -j RETURN\n"
-        "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN\n"
+        "\n"
+        "\n"
+        "\n"
         "\n"
         "-A bw_costly_shared -j bw_penalty_box\n" +
         StringPrintf("-I bw_penalty_box -m bpf --object-pinned %s -j REJECT\n",
