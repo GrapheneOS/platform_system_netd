@@ -229,8 +229,12 @@ std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             "-A bw_OUTPUT -j bw_global_alert",
             // Prevents IPSec double counting (Tunnel mode and Transport mode,
             // respectively)
-            ("-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN"),
-            "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
+            useBpf ? "" : "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
+            useBpf ? "" : "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
+            // Don't count clat traffic, as it has already been counted (and subject to
+            // costly / happy_box / data_saver / penalty_box etc. based on the real UID)
+            // on the stacked interface.
+            useBpf ? "" : "-A bw_OUTPUT -m owner --uid-owner clat -j RETURN",
             // This is egress application UID xt_qtaguid (pre-ebpf) accounting,
             // for bpf this is handled out of cgroup hooks instead.
             useBpf ? "" : "-A bw_OUTPUT -m owner --socket-exists",

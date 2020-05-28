@@ -223,6 +223,12 @@ static __always_inline inline void update_stats_with_config(struct __sk_buff* sk
 
 static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int direction) {
     uint32_t sock_uid = bpf_get_socket_uid(skb);
+    // Always allow and never count clat traffic. Only the IPv4 traffic on the stacked
+    // interface is accounted for and subject to usage restrictions.
+    if (sock_uid == AID_CLAT) {
+        return BPF_PASS;
+    }
+
     int match = bpf_owner_match(skb, sock_uid, direction);
     if ((direction == BPF_EGRESS) && (match == BPF_DROP)) {
         // If an outbound packet is going to be dropped, we do not count that
