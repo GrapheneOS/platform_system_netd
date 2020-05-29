@@ -30,6 +30,7 @@
 #include <string>
 #include <vector>
 
+#include <DnsProxydProtocol.h>  // NETID_USE_LOCAL_NAMESERVERS
 #include <android-base/parseint.h>
 #include <android-base/unique_fd.h>
 
