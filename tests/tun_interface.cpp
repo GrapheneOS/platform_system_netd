@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * tun_interface.cpp - creates tun interfaces for testing purposes
+ * tun_interface.cpp - creates tun or tap interfaces for testing purposes
  */
 
 #include <string>
@@ -48,7 +48,7 @@ using android::base::unique_fd;
 namespace android {
 namespace net {
 
-int TunInterface::init(const std::string& ifName) {
+int TunInterface::init(const std::string& ifName, bool isTap) {
     // Generate a random ULA address pair.
     arc4random_buf(&mSrcAddr, sizeof(mSrcAddr));
     mSrcAddr.s6_addr[0] = 0xfd;
@@ -80,8 +80,9 @@ int TunInterface::init(const std::string& ifName) {
     }
     mIfName.resize(9);
 
+    flags = IFF_NO_PI | (isTap ? IFF_TAP : IFF_TUN);
     struct ifreq ifr = {
-        .ifr_ifru = { .ifru_flags = IFF_TUN },
+            .ifr_ifru = {.ifru_flags = static_cast<short>(flags)},
     };
     strlcpy(ifr.ifr_name, mIfName.c_str(), sizeof(ifr.ifr_name));
 
@@ -106,6 +107,7 @@ int TunInterface::init(const std::string& ifName) {
     if (int ret = ifc_enable(ifr.ifr_name)) {
         return ret;
     }
+
     return 0;
 }
 
