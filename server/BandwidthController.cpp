@@ -229,8 +229,12 @@ std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             "-A bw_OUTPUT -j bw_global_alert",
             // Prevents IPSec double counting (Tunnel mode and Transport mode,
             // respectively)
-            ("-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN"),
-            "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
+            useBpf ? "" : "-A bw_OUTPUT -o " IPSEC_IFACE_PREFIX "+ -j RETURN",
+            useBpf ? "" : "-A bw_OUTPUT -m policy --pol ipsec --dir out -j RETURN",
+            // Don't count clat traffic, as it has already been counted (and subject to
+            // costly / happy_box / data_saver / penalty_box etc. based on the real UID)
+            // on the stacked interface.
+            useBpf ? "" : "-A bw_OUTPUT -m owner --uid-owner clat -j RETURN",
             // This is egress application UID xt_qtaguid (pre-ebpf) accounting,
             // for bpf this is handled out of cgroup hooks instead.
             useBpf ? "" : "-A bw_OUTPUT -m owner --socket-exists",
@@ -271,7 +275,7 @@ std::vector<std::string> getBasicAccountingCommands(const bool useBpf) {
             StringPrintf("-A bw_mangle_POSTROUTING -j MARK --set-mark 0x0/0x%x", uidBillingMask),
             // Packets from the clat daemon have already been counted on egress through the
             // stacked v4-* interface.
-            "-A bw_mangle_POSTROUTING -m owner --owner-uid clat -j RETURN",
+            "-A bw_mangle_POSTROUTING -m owner --uid-owner clat -j RETURN",
             // This is egress interface accounting: we account 464xlat traffic only on
             // the clat interface (as offloaded packets never hit base interface's ip6tables)
             // and later sum base and stacked with overhead (+20B/pkt) in higher layers
