@@ -3638,16 +3638,25 @@ TEST_F(BinderTest, TetherOffloadForwarding) {
 
     constexpr const char* kDownstreamPrefix = "2001:db8:2::/64";
 
-    ipv6hdr hdr = {
-            .version = 6,
-            .payload_len = 0,
-            .nexthdr = 59,  // No next header.
-            .hop_limit = 64,
-            .saddr = {{{0x20, 0x01, 0x0d, 0xb8, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x01}}},
-            .daddr = {{{0x20, 0x01, 0x0d, 0xb8, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x0f, 0x00, 0xca, 0xfe}}},
+    // 1486-byte packet.
+    // TODO: increase to 1500 bytes when kernels are fixed.
+    struct packet {
+        ipv6hdr hdr;
+        char data[1446];
+    } __attribute__((packed)) pkt = {
+            .hdr =
+                    {
+                            .version = 6,
+                            .payload_len = htons(1446),
+                            .nexthdr = 59,  // No next header.
+                            .hop_limit = 64,
+                            .saddr = {{{0x20, 0x01, 0x0d, 0xb8, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+                                        0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}},
+                            .daddr = {{{0x20, 0x01, 0x0d, 0xb8, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
+                                        0x00, 0x00, 0x0f, 0x00, 0xca, 0xfe}}},
+                    },
     };
+    ASSERT_EQ(1486U, sizeof(pkt));
 
     // Use one of the test's tun interfaces as upstream.
     // It must be part of a network or it will not have the clsact attached.
@@ -3683,8 +3692,8 @@ TEST_F(BinderTest, TetherOffloadForwarding) {
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 
     std::vector<uint8_t> kDummyMac = {02, 00, 00, 00, 00, 00};
-    uint8_t* daddr = reinterpret_cast<uint8_t*>(&hdr.daddr);
-    std::vector<uint8_t> dstAddr(daddr, daddr + sizeof(hdr.daddr));
+    uint8_t* daddr = reinterpret_cast<uint8_t*>(&pkt.hdr.daddr);
+    std::vector<uint8_t> dstAddr(daddr, daddr + sizeof(pkt.hdr.daddr));
 
     TetherOffloadRuleParcel rule = makeTetherOffloadRule(sTun.ifindex(), tap.ifindex(), dstAddr,
                                                          128, kDummyMac, kDummyMac);
@@ -3692,12 +3701,13 @@ TEST_F(BinderTest, TetherOffloadForwarding) {
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 
     // Receive a packet on sTun.
-    EXPECT_EQ((ssize_t)sizeof(hdr), write(fd1, &hdr, sizeof(hdr)));
+    EXPECT_EQ((ssize_t)sizeof(pkt), write(fd1, &pkt, sizeof(pkt)));
 
-    // Expect a packet identical to hdr, except with a TTL of 63.
-    ipv6hdr hdr2 = hdr;
-    hdr2.hop_limit = hdr.hop_limit - 1;
-    EXPECT_TRUE(expectPacket(fd2, (uint8_t*)&hdr2, sizeof(hdr2)));
+    // Expect a packet identical to pkt, except with a TTL of 63.
+    struct packet pkt2 = pkt;
+    ASSERT_EQ(1486U, sizeof(pkt));
+    pkt2.hdr.hop_limit = pkt.hdr.hop_limit - 1;
+    EXPECT_TRUE(expectPacket(fd2, (uint8_t*)&pkt2, sizeof(pkt2)));
 
     // Clean up.
     EXPECT_TRUE(mNetd->tetherOffloadRuleRemove(rule).isOk());
