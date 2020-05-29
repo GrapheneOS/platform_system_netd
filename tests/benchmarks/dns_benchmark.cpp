@@ -43,13 +43,12 @@
 #include <benchmark/benchmark.h>
 
 #include "NetdClient.h"
-#include "dns_responder_client.h"
+#include "dns_responder_client_ndk.h"
 
 using android::base::StringPrintf;
 
 constexpr int MIN_THREADS = 1;
 constexpr int MAX_THREADS = 32;
-constexpr int MAXNS = 4;
 
 class DnsFixture : public ::benchmark::Fixture {
 protected:
