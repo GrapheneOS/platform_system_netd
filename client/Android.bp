@@ -19,6 +19,7 @@ cc_library {
         "NetdClient.cpp",
     ],
     header_libs: [
+        "dnsproxyd_protocol_headers", // NETID_USE_LOCAL_NAMESERVERS
         "libnetd_client_headers",
         "libbase_headers", // for unique_fd.h
         "libnetd_resolv_headers",

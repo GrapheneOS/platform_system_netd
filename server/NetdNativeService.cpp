@@ -35,12 +35,10 @@
 #include <utils/Errors.h>
 #include <utils/String16.h>
 
-#include "BinderUtil.h"
 #include "Controllers.h"
 #include "Fwmark.h"
 #include "InterfaceController.h"
 #include "NetdNativeService.h"
-#include "NetdPermissions.h"
 #include "OemNetdListener.h"
 #include "Permission.h"
 #include "Process.h"
@@ -48,6 +46,8 @@
 #include "SockDiag.h"
 #include "UidRanges.h"
 #include "android/net/BnNetd.h"
+#include "binder_utils/BinderUtil.h"
+#include "binder_utils/NetdPermissions.h"
 #include "netid_client.h"  // NETID_UNSET
 
 using android::base::StringPrintf;
