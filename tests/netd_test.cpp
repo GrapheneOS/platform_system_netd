@@ -60,26 +60,26 @@ static void nsTest(int flags, bool success, thread_t newThread) {
 }
 
 // Test kernel configuration option CONFIG_NAMESPACES=y
-TEST(NetdNamespaceTest, CheckMountNamespaceSupport) {
+TEST(NetdNamespaceTest, DISABLED_CheckMountNamespaceSupport) {
     nsTest(CLONE_NEWNS, true, thread);
 }
 
 // Test kernel configuration option CONFIG_UTS_NS=y
-TEST(NetdNamespaceTest, CheckUTSNamespaceSupport) {
+TEST(NetdNamespaceTest, DISABLED_CheckUTSNamespaceSupport) {
     nsTest(CLONE_NEWUTS, true, thread);
 }
 
 // Test kernel configuration option CONFIG_NET_NS=y
-TEST(NetdNamespaceTest, CheckNetworkNamespaceSupport) {
+TEST(NetdNamespaceTest, DISABLED_CheckNetworkNamespaceSupport) {
     nsTest(CLONE_NEWNET, true, thread);
 }
 
 // Test kernel configuration option CONFIG_USER_NS=n
-TEST(NetdNamespaceTest, /*DISABLED_*/ CheckNoUserNamespaceSupport) {
+TEST(NetdNamespaceTest, DISABLED_CheckNoUserNamespaceSupport) {
     nsTest(CLONE_NEWUSER, false, thread);
 }
 
 // Test for all of the above
-TEST(NetdNamespaceTest, CheckFullNamespaceSupport) {
+TEST(NetdNamespaceTest, DISABLED_CheckFullNamespaceSupport) {
     nsTest(CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWNET, true, thread);
 }
