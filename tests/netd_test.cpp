@@ -16,6 +16,7 @@
  */
 
 #include <errno.h>
+#include <sched.h>
 #include <sys/capability.h>
 
 #include <gtest/gtest.h>
@@ -32,4 +33,53 @@ TEST(NetdSELinuxTest, CheckProperMTULabels) {
     // NOLINTNEXTLINE(cert-env33-c)
     ASSERT_EQ(W_EXITCODE(1, 0), system("ls -Z /sys/class/net/*/mtu | egrep -q -v "
                                        "'^u:object_r:sysfs_net:s0 /sys/class/net/'"));
+}
+
+// Trivial thread function that simply immediately terminates successfully.
+static int thread(void*) {
+    return 0;
+}
+
+typedef int (*thread_t)(void*);
+
+static void nsTest(int flags, bool success, thread_t newThread) {
+    // We need a minimal stack, but not clear if it will grow up or down,
+    // So allocate 2 pages and give a pointer to the middle.
+    static char stack[PAGE_SIZE * 2];
+    errno = 0;
+    // VFORK: if thread is successfully created, then kernel will wait for it
+    // to terminate before we resume -> hence static stack is safe to reuse.
+    int tid = clone(newThread, &stack[PAGE_SIZE], flags | CLONE_VFORK, NULL);
+    if (success) {
+        ASSERT_EQ(errno, 0);
+        ASSERT_GE(tid, 0);
+    } else {
+        ASSERT_EQ(errno, EINVAL);
+        ASSERT_EQ(tid, -1);
+    }
+}
+
+// Test kernel configuration option CONFIG_NAMESPACES=y
+TEST(NetdNamespaceTest, CheckMountNamespaceSupport) {
+    nsTest(CLONE_NEWNS, true, thread);
+}
+
+// Test kernel configuration option CONFIG_UTS_NS=y
+TEST(NetdNamespaceTest, CheckUTSNamespaceSupport) {
+    nsTest(CLONE_NEWUTS, true, thread);
+}
+
+// Test kernel configuration option CONFIG_NET_NS=y
+TEST(NetdNamespaceTest, CheckNetworkNamespaceSupport) {
+    nsTest(CLONE_NEWNET, true, thread);
+}
+
+// Test kernel configuration option CONFIG_USER_NS=n
+TEST(NetdNamespaceTest, /*DISABLED_*/ CheckNoUserNamespaceSupport) {
+    nsTest(CLONE_NEWUSER, false, thread);
+}
+
+// Test for all of the above
+TEST(NetdNamespaceTest, CheckFullNamespaceSupport) {
+    nsTest(CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWNET, true, thread);
 }
