@@ -32,6 +32,7 @@
 #include <ifaddrs.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
+#include <net/ethernet.h>
 #include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -41,6 +42,7 @@
 #include <sys/types.h>
 
 #include <android-base/file.h>
+#include <android-base/format.h>
 #include <android-base/macros.h>
 #include <android-base/scopeguard.h>
 #include <android-base/stringprintf.h>
@@ -3598,4 +3600,122 @@ TEST_F(BinderTest, TetherOffloadRule) {
     rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kSrcMac, kDstMac);
     EXPECT_TRUE(mNetd->tetherOffloadRuleAdd(rule).isOk());
     EXPECT_TRUE(mNetd->tetherOffloadRuleRemove(rule).isOk());
+}
+
+static bool expectPacket(int fd, uint8_t* ipPacket, ssize_t ipLen) {
+    constexpr bool kDebug = false;
+
+    uint8_t buf[ETHER_HDR_LEN + 1500];
+
+    // Wait a bit to ensure that the packet we're interested in has arrived.
+    // TODO: speed this up.
+    usleep(100 * 1000);
+
+    ssize_t bytesRead;
+    ssize_t expectedLen = ipLen + ETHER_HDR_LEN;
+    while ((bytesRead = read(fd, buf, sizeof(buf))) >= 0) {
+        if (kDebug) {
+            std::cerr << fmt::format(
+                    "Expected: {:02x}\n  Actual: {:02x}\n",
+                    fmt::join(ipPacket, ipPacket + ipLen, " "),
+                    fmt::join(buf + ETHER_HDR_LEN, buf + ETHER_HDR_LEN + ipLen, " "));
+        }
+
+        if (bytesRead != expectedLen) {
+            continue;
+        }
+
+        if (!memcmp(ipPacket, buf + ETHER_HDR_LEN, ipLen)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+TEST_F(BinderTest, TetherOffloadForwarding) {
+    SKIP_IF_EXTENDED_BPF_NOT_SUPPORTED;
+
+    constexpr const char* kDownstreamPrefix = "2001:db8:2::/64";
+
+    // 1486-byte packet.
+    // TODO: increase to 1500 bytes when kernels are fixed.
+    struct packet {
+        ipv6hdr hdr;
+        char data[1446];
+    } __attribute__((packed)) pkt = {
+            .hdr =
+                    {
+                            .version = 6,
+                            .payload_len = htons(1446),
+                            .nexthdr = 59,  // No next header.
+                            .hop_limit = 64,
+                            .saddr = {{{0x20, 0x01, 0x0d, 0xb8, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+                                        0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}},
+                            .daddr = {{{0x20, 0x01, 0x0d, 0xb8, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
+                                        0x00, 0x00, 0x0f, 0x00, 0xca, 0xfe}}},
+                    },
+    };
+    ASSERT_EQ(1486U, sizeof(pkt));
+
+    // Use one of the test's tun interfaces as upstream.
+    // It must be part of a network or it will not have the clsact attached.
+    EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+    int fd1 = sTun.getFdForTesting();
+
+    // Create our own tap as a downstream.
+    TunInterface tap;
+    ASSERT_EQ(0, tap.init(true /* isTap */));
+    ASSERT_LE(tap.name().size(), static_cast<size_t>(IFNAMSIZ));
+    int fd2 = tap.getFdForTesting();
+
+    // Set it to nonblocking so that expectPacket can work.
+    int flags = fcntl(fd2, F_GETFL, 0);
+    fcntl(fd2, F_SETFL, flags | O_NONBLOCK);
+
+    // Downstream interface setup. Add to local network, add directly-connected route, etc.
+    binder::Status status = mNetd->networkAddInterface(INetd::LOCAL_NET_ID, tap.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    status = mNetd->tetherInterfaceAdd(tap.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    expectTetherInterfaceConfigureForIPv6Router(tap.name());
+
+    // Can't easily use INetd::NEXTHOP_NONE because it is a String16 constant. Use "" instead.
+    status = mNetd->networkAddRoute(INetd::LOCAL_NET_ID, tap.name(), kDownstreamPrefix, "");
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Set up forwarding. All methods take intIface first and extIface second.
+    status = mNetd->tetherAddForward(tap.name(), sTun.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    status = mNetd->ipfwdAddInterfaceForward(tap.name(), sTun.name());
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    std::vector<uint8_t> kDummyMac = {02, 00, 00, 00, 00, 00};
+    uint8_t* daddr = reinterpret_cast<uint8_t*>(&pkt.hdr.daddr);
+    std::vector<uint8_t> dstAddr(daddr, daddr + sizeof(pkt.hdr.daddr));
+
+    TetherOffloadRuleParcel rule = makeTetherOffloadRule(sTun.ifindex(), tap.ifindex(), dstAddr,
+                                                         128, kDummyMac, kDummyMac);
+    status = mNetd->tetherOffloadRuleAdd(rule);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Receive a packet on sTun.
+    EXPECT_EQ((ssize_t)sizeof(pkt), write(fd1, &pkt, sizeof(pkt)));
+
+    // Expect a packet identical to pkt, except with a TTL of 63.
+    struct packet pkt2 = pkt;
+    ASSERT_EQ(1486U, sizeof(pkt));
+    pkt2.hdr.hop_limit = pkt.hdr.hop_limit - 1;
+    EXPECT_TRUE(expectPacket(fd2, (uint8_t*)&pkt2, sizeof(pkt2)));
+
+    // Clean up.
+    EXPECT_TRUE(mNetd->tetherOffloadRuleRemove(rule).isOk());
+    EXPECT_TRUE(mNetd->ipfwdRemoveInterfaceForward(tap.name(), sTun.name()).isOk());
+    EXPECT_TRUE(mNetd->tetherRemoveForward(tap.name(), sTun.name()).isOk());
+    EXPECT_TRUE(mNetd->networkRemoveRoute(INetd::LOCAL_NET_ID, tap.name(), kDownstreamPrefix, "")
+                        .isOk());
+    EXPECT_TRUE(mNetd->tetherInterfaceRemove(tap.name()).isOk());
+    EXPECT_TRUE(mNetd->networkRemoveInterface(INetd::LOCAL_NET_ID, tap.name()).isOk());
+    EXPECT_TRUE(mNetd->networkRemoveInterface(TEST_NETID1, sTun.name()).isOk());
 }
