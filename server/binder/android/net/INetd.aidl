@@ -192,7 +192,7 @@ interface INetd {
      * Return tethering statistics.
      *
      * @return an array of TetherStatsParcel, where each entry contains the upstream interface
-     *         name and its tethering statistics.
+     *         name and its tethering statistics since netd startup.
      *         There will only ever be one entry for a given interface.
      * @throws ServiceSpecificException in case of failure, with an error code indicating the
      *         cause of the failure.
@@ -1269,4 +1269,15 @@ interface INetd {
      *                                  cause of the failure.
      */
     void tetherOffloadRuleRemove(in TetherOffloadRuleParcel rule);
+
+    /**
+     * Return BPF tethering offload statistics.
+     *
+     * @return an array of TetherStatsParcel's, where each entry contains the upstream interface
+     *         index and its tethering statistics since tethering was first started.
+     *         There will only ever be one entry for a given interface index.
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *         cause of the failure.
+     */
+    TetherStatsParcel[] tetherOffloadGetStats();
 }

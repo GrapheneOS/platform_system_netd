@@ -23,4 +23,5 @@ parcelable TetherStatsParcel {
   long rxPackets;
   long txBytes;
   long txPackets;
+  int ifIndex = 0;
 }

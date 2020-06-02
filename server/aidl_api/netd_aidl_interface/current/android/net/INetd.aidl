@@ -119,6 +119,7 @@ interface INetd {
   void networkRemoveRouteParcel(int netId, in android.net.RouteInfoParcel routeInfo);
   void tetherOffloadRuleAdd(in android.net.TetherOffloadRuleParcel rule);
   void tetherOffloadRuleRemove(in android.net.TetherOffloadRuleParcel rule);
+  android.net.TetherStatsParcel[] tetherOffloadGetStats();
   const int IPV4 = 4;
   const int IPV6 = 6;
   const int CONF = 1;
