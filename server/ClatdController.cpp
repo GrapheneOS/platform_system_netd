@@ -418,22 +418,19 @@ ClatdController::ClatdTracker* ClatdController::getClatdTracker(const std::strin
 int ClatdController::ClatdTracker::init(unsigned networkId, const std::string& interface,
                                         const std::string& v4interface,
                                         const std::string& nat64Prefix) {
-    netId = networkId;
-
-    fwmark.netId = netId;
+    fwmark.netId = networkId;
     fwmark.explicitlySelected = true;
     fwmark.protectedFromVpn = true;
     fwmark.permission = PERMISSION_SYSTEM;
 
     snprintf(fwmarkString, sizeof(fwmarkString), "0x%x", fwmark.intValue);
-    snprintf(netIdString, sizeof(netIdString), "%u", netId);
     strlcpy(iface, interface.c_str(), sizeof(iface));
     ifIndex = if_nametoindex(iface);
     strlcpy(v4iface, v4interface.c_str(), sizeof(v4iface));
     v4ifIndex = if_nametoindex(v4iface);
 
-    // Pass in everything that clatd needs: interface, a netid to use for DNS lookups, a fwmark for
-    // outgoing packets, the NAT64 prefix, and the IPv4 and IPv6 addresses.
+    // Pass in everything that clatd needs: interface, a fwmark for outgoing packets, the NAT64
+    // prefix, and the IPv4 and IPv6 addresses.
     // Validate the prefix and strip off the prefix length.
     uint8_t family;
     uint8_t prefixLen;
@@ -539,7 +536,6 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
     // clang-format off
     const char* args[] = {progname.c_str(),
                           "-i", tracker.iface,
-                          "-n", tracker.netIdString,
                           "-m", tracker.fwmarkString,
                           "-p", tracker.pfx96String,
                           "-4", tracker.v4Str,
@@ -686,14 +682,14 @@ void ClatdController::dumpIngress(DumpWriter& dw) {
 
 void ClatdController::dumpTrackers(DumpWriter& dw) {
     ScopedIndent trackerIndent(dw);
-    dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr v4iif[v4iface] [netId]");
+    dw.println("Trackers: iif[iface] nat64Prefix v6Addr -> v4Addr v4iif[v4iface] [fwmark]");
 
     ScopedIndent trackerDetailIndent(dw);
     for (const auto& pair : mClatdTrackers) {
         const ClatdTracker& tracker = pair.second;
-        dw.println("%u[%s] %s/96 %s -> %s %u[%s] [%u]", tracker.ifIndex, tracker.iface,
+        dw.println("%u[%s] %s/96 %s -> %s %u[%s] [%s]", tracker.ifIndex, tracker.iface,
                    tracker.pfx96String, tracker.v6Str, tracker.v4Str, tracker.v4ifIndex,
-                   tracker.v4iface, tracker.netId);
+                   tracker.v4iface, tracker.fwmarkString);
     }
 }
 
