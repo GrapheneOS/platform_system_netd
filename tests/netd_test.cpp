@@ -259,8 +259,7 @@ TEST(NetdBpfTest, testBpfSkbChangeHeadAboveMTU) {
     // Iterate over all packet sizes from minimal ipv6 packet to mtu.
     // Tethering ebpf program should forward the packet from tun to tap interface.
     // TUN is L3, TAP is L2, so it will add a 14 byte ethernet header.
-    // TODO: remove -ETH_HLEN once all kernels are fixed and prebuilts published
-    for (int pkt_size = 40; pkt_size <= mtu - ETH_HLEN; ++pkt_size) {
+    for (int pkt_size = 40; pkt_size <= mtu; ++pkt_size) {
         rv = write(tun, pkt, pkt_size);
         ASSERT_EQ(errno, 0);
         ASSERT_EQ(rv, pkt_size);

@@ -3638,16 +3638,16 @@ TEST_F(BinderTest, TetherOffloadForwarding) {
 
     constexpr const char* kDownstreamPrefix = "2001:db8:2::/64";
 
-    // 1486-byte packet.
-    // TODO: increase to 1500 bytes when kernels are fixed.
+    // 1500-byte packet.
+    constexpr unsigned short kPayloadLen = 1500 - sizeof(ipv6hdr);
     struct packet {
         ipv6hdr hdr;
-        char data[1446];
+        char data[kPayloadLen];
     } __attribute__((packed)) pkt = {
             .hdr =
                     {
                             .version = 6,
-                            .payload_len = htons(1446),
+                            .payload_len = htons(kPayloadLen),
                             .nexthdr = 59,  // No next header.
                             .hop_limit = 64,
                             .saddr = {{{0x20, 0x01, 0x0d, 0xb8, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
@@ -3656,7 +3656,7 @@ TEST_F(BinderTest, TetherOffloadForwarding) {
                                         0x00, 0x00, 0x0f, 0x00, 0xca, 0xfe}}},
                     },
     };
-    ASSERT_EQ(1486U, sizeof(pkt));
+    ASSERT_EQ(1500U, sizeof(pkt));
 
     // Use one of the test's tun interfaces as upstream.
     // It must be part of a network or it will not have the clsact attached.
@@ -3705,7 +3705,7 @@ TEST_F(BinderTest, TetherOffloadForwarding) {
 
     // Expect a packet identical to pkt, except with a TTL of 63.
     struct packet pkt2 = pkt;
-    ASSERT_EQ(1486U, sizeof(pkt));
+    ASSERT_EQ(1500U, sizeof(pkt));
     pkt2.hdr.hop_limit = pkt.hdr.hop_limit - 1;
     EXPECT_TRUE(expectPacket(fd2, (uint8_t*)&pkt2, sizeof(pkt2)));
 
