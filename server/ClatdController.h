@@ -63,8 +63,6 @@ class ClatdController {
         char v4iface[IFNAMSIZ];
         Fwmark fwmark;
         char fwmarkString[UINT32_STRLEN];
-        unsigned netId;
-        char netIdString[UINT32_STRLEN];
         in_addr v4;
         char v4Str[INET_ADDRSTRLEN];
         in6_addr v6;
