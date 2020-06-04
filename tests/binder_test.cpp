@@ -125,9 +125,9 @@ constexpr int BASE_UID = AID_USER_OFFSET * 5;
 static const std::string NO_SOCKET_ALLOW_RULE("! owner UID match 0-4294967294");
 static const std::string ESP_ALLOW_RULE("esp");
 
-class BinderTest : public ::testing::Test {
+class NetdBinderTest : public ::testing::Test {
   public:
-    BinderTest() {
+    NetdBinderTest() {
         sp<IServiceManager> sm = android::defaultServiceManager();
         sp<IBinder> binder = sm->getService(String16("netd"));
         if (binder != nullptr) {
@@ -178,8 +178,8 @@ class BinderTest : public ::testing::Test {
     static TunInterface sTun2;
 };
 
-TunInterface BinderTest::sTun;
-TunInterface BinderTest::sTun2;
+TunInterface NetdBinderTest::sTun;
+TunInterface NetdBinderTest::sTun2;
 
 class TimedOperation : public Stopwatch {
   public:
@@ -192,7 +192,7 @@ class TimedOperation : public Stopwatch {
     std::string mName;
 };
 
-TEST_F(BinderTest, IsAlive) {
+TEST_F(NetdBinderTest, IsAlive) {
     TimedOperation t("isAlive RPC");
     bool isAlive = false;
     mNetd->isAlive(&isAlive);
@@ -209,7 +209,7 @@ static bool iptablesEspAllowRuleExists(const char *chainName){
            iptablesRuleExists(IP6TABLES_PATH, chainName, ESP_ALLOW_RULE);
 }
 
-TEST_F(BinderTest, FirewallReplaceUidChain) {
+TEST_F(NetdBinderTest, FirewallReplaceUidChain) {
     SKIP_IF_BPF_SUPPORTED;
 
     std::string chainName = StringPrintf("netd_binder_test_%u", arc4random_uniform(10000));
@@ -262,7 +262,7 @@ TEST_F(BinderTest, FirewallReplaceUidChain) {
     EXPECT_EQ(false, ret);
 }
 
-TEST_F(BinderTest, IpSecTunnelInterface) {
+TEST_F(NetdBinderTest, IpSecTunnelInterface) {
     const struct TestData {
         const std::string family;
         const std::string deviceName;
@@ -304,7 +304,7 @@ TEST_F(BinderTest, IpSecTunnelInterface) {
     }
 }
 
-TEST_F(BinderTest, IpSecSetEncapSocketOwner) {
+TEST_F(NetdBinderTest, IpSecSetEncapSocketOwner) {
     unique_fd uniqueFd(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
     android::os::ParcelFileDescriptor sockFd(std::move(uniqueFd));
 
@@ -331,7 +331,7 @@ static const int ADDRESS_FAMILIES[] = {AF_INET, AF_INET6};
 
 #define RETURN_FALSE_IF_NEQ(_expect_, _ret_) \
         do { if ((_expect_) != (_ret_)) return false; } while(false)
-bool BinderTest::allocateIpSecResources(bool expectOk, int32_t* spi) {
+bool NetdBinderTest::allocateIpSecResources(bool expectOk, int32_t* spi) {
     android::netdutils::Status status = XfrmController::ipSecAllocateSpi(0, "::", "::1", 123, spi);
     SCOPED_TRACE(status);
     RETURN_FALSE_IF_NEQ(status.ok(), expectOk);
@@ -347,7 +347,7 @@ bool BinderTest::allocateIpSecResources(bool expectOk, int32_t* spi) {
                                .ok();
 }
 
-TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV4) {
+TEST_F(NetdBinderTest, XfrmDualSelectorTunnelModePoliciesV4) {
     android::binder::Status status;
 
     // Repeat to ensure cleanup and recreation works correctly
@@ -371,7 +371,7 @@ TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV4) {
     }
 }
 
-TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV6) {
+TEST_F(NetdBinderTest, XfrmDualSelectorTunnelModePoliciesV6) {
     binder::Status status;
 
     // Repeat to ensure cleanup and recreation works correctly
@@ -395,7 +395,7 @@ TEST_F(BinderTest, XfrmDualSelectorTunnelModePoliciesV6) {
     }
 }
 
-TEST_F(BinderTest, XfrmControllerInit) {
+TEST_F(NetdBinderTest, XfrmControllerInit) {
     android::netdutils::Status status;
     status = XfrmController::Init();
     SCOPED_TRACE(status);
@@ -482,7 +482,7 @@ int getDataSaverState() {
     return enabled6;
 }
 
-TEST_F(BinderTest, BandwidthEnableDataSaver) {
+TEST_F(NetdBinderTest, BandwidthEnableDataSaver) {
     const int wasEnabled = getDataSaverState();
     ASSERT_NE(-1, wasEnabled);
 
@@ -543,7 +543,7 @@ UidRangeParcel makeUidRangeParcel(int start, int stop) {
 
 }  // namespace
 
-TEST_F(BinderTest, NetworkInterfaces) {
+TEST_F(NetdBinderTest, NetworkInterfaces) {
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
     EXPECT_EQ(EEXIST, mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE)
                               .serviceSpecificErrorCode());
@@ -560,7 +560,7 @@ TEST_F(BinderTest, NetworkInterfaces) {
     EXPECT_EQ(ENONET, mNetd->networkDestroy(TEST_NETID1).serviceSpecificErrorCode());
 }
 
-TEST_F(BinderTest, NetworkUidRules) {
+TEST_F(NetdBinderTest, NetworkUidRules) {
     const uint32_t RULE_PRIORITY_SECURE_VPN = 12000;
 
     EXPECT_TRUE(mNetd->networkCreateVpn(TEST_NETID1, true).isOk());
@@ -587,7 +587,7 @@ TEST_F(BinderTest, NetworkUidRules) {
     EXPECT_EQ(ENONET, mNetd->networkDestroy(TEST_NETID1).serviceSpecificErrorCode());
 }
 
-TEST_F(BinderTest, NetworkRejectNonSecureVpn) {
+TEST_F(NetdBinderTest, NetworkRejectNonSecureVpn) {
     constexpr uint32_t RULE_PRIORITY = 12500;
 
     std::vector<UidRangeParcel> uidRanges = {makeUidRangeParcel(BASE_UID + 150, BASE_UID + 224),
@@ -615,8 +615,8 @@ TEST_F(BinderTest, NetworkRejectNonSecureVpn) {
 }
 
 // Create a socket pair that isLoopbackSocket won't think is local.
-void BinderTest::fakeRemoteSocketPair(unique_fd* clientSocket, unique_fd* serverSocket,
-                                      unique_fd* acceptedSocket) {
+void NetdBinderTest::fakeRemoteSocketPair(unique_fd* clientSocket, unique_fd* serverSocket,
+                                          unique_fd* acceptedSocket) {
     serverSocket->reset(socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0));
     struct sockaddr_in6 server6 = { .sin6_family = AF_INET6, .sin6_addr = sTun.dstAddr() };
     ASSERT_EQ(0, bind(*serverSocket, (struct sockaddr *) &server6, sizeof(server6)));
@@ -659,7 +659,7 @@ void checkSocketpairClosed(int clientSocket, int acceptedSocket) {
     EXPECT_EQ(ECONNRESET, err);
 }
 
-TEST_F(BinderTest, SocketDestroy) {
+TEST_F(NetdBinderTest, SocketDestroy) {
     unique_fd clientSocket, serverSocket, acceptedSocket;
     ASSERT_NO_FATAL_FAILURE(fakeRemoteSocketPair(&clientSocket, &serverSocket, &acceptedSocket));
 
@@ -805,7 +805,7 @@ static bool interfaceHasAddress(
 
 }  // namespace
 
-TEST_F(BinderTest, InterfaceAddRemoveAddress) {
+TEST_F(NetdBinderTest, InterfaceAddRemoveAddress) {
     static const struct TestData {
         const char *addrString;
         const int   prefixLength;
@@ -874,7 +874,7 @@ TEST_F(BinderTest, InterfaceAddRemoveAddress) {
     tun.destroy();
 }
 
-TEST_F(BinderTest, GetProcSysNet) {
+TEST_F(NetdBinderTest, GetProcSysNet) {
     const char LOOPBACK[] = "lo";
     static const struct {
         const int ipversion;
@@ -913,7 +913,7 @@ TEST_F(BinderTest, GetProcSysNet) {
     }
 }
 
-TEST_F(BinderTest, SetProcSysNet) {
+TEST_F(NetdBinderTest, SetProcSysNet) {
     static const struct {
         const int ipversion;
         const int which;
@@ -948,7 +948,7 @@ TEST_F(BinderTest, SetProcSysNet) {
     }
 }
 
-TEST_F(BinderTest, GetSetProcSysNet) {
+TEST_F(NetdBinderTest, GetSetProcSysNet) {
     const int ipversion = INetd::IPV6;
     const int category = INetd::NEIGH;
     const std::string& tun = sTun.name();
@@ -1006,7 +1006,7 @@ std::vector<int64_t> getStatsVectorByIf(const std::vector<TetherStatsParcel>& st
 
 }  // namespace
 
-TEST_F(BinderTest, TetherGetStats) {
+TEST_F(NetdBinderTest, TetherGetStats) {
     expectNoTestCounterRules();
 
     // TODO: fold this into more comprehensive tests once we have binder RPCs for enabling and
@@ -1113,7 +1113,7 @@ void expectIdletimerInterfaceRuleNotExists(const std::string& ifname, int timeou
 
 }  // namespace
 
-TEST_F(BinderTest, IdletimerAddRemoveInterface) {
+TEST_F(NetdBinderTest, IdletimerAddRemoveInterface) {
     // TODO: We will get error in if expectIdletimerInterfaceRuleNotExists if there are the same
     // rule in the table. Because we only check the result after calling remove function. We might
     // check the actual rule which is removed by our function (maybe compare the results between
@@ -1177,7 +1177,7 @@ void expectStrictSetUidReject(const int uid) {
 
 }  // namespace
 
-TEST_F(BinderTest, StrictSetUidCleartextPenalty) {
+TEST_F(NetdBinderTest, StrictSetUidCleartextPenalty) {
     binder::Status status;
     int32_t uid = randomUid();
 
@@ -1242,7 +1242,7 @@ void expectProcessDoesNotExist(const std::string& processName) {
 
 }  // namespace
 
-TEST_F(BinderTest, ClatdStartStop) {
+TEST_F(NetdBinderTest, ClatdStartStop) {
     binder::Status status;
 
     const std::string clatdName = StringPrintf("clatd-%s", sTun.name().c_str());
@@ -1362,7 +1362,7 @@ void expectIpfwdRuleNotExists(const char* fromIf, const char* toIf) {
 
 }  // namespace
 
-TEST_F(BinderTest, TestIpfwdEnableDisableStatusForwarding) {
+TEST_F(NetdBinderTest, TestIpfwdEnableDisableStatusForwarding) {
     // Get ipfwd requester list from Netd
     std::vector<std::string> requesterList;
     binder::Status status = mNetd->ipfwdGetRequesterList(&requesterList);
@@ -1415,7 +1415,7 @@ TEST_F(BinderTest, TestIpfwdEnableDisableStatusForwarding) {
     }
 }
 
-TEST_F(BinderTest, TestIpfwdAddRemoveInterfaceForward) {
+TEST_F(NetdBinderTest, TestIpfwdAddRemoveInterfaceForward) {
   // Add test physical network
   EXPECT_TRUE(
       mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
@@ -1551,7 +1551,7 @@ void expectBandwidthManipulateSpecialAppRuleDoesNotExist(const char* chain, int 
 
 }  // namespace
 
-TEST_F(BinderTest, BandwidthSetRemoveInterfaceQuota) {
+TEST_F(NetdBinderTest, BandwidthSetRemoveInterfaceQuota) {
     long testQuotaBytes = 5550;
 
     // Add test physical network
@@ -1570,7 +1570,7 @@ TEST_F(BinderTest, BandwidthSetRemoveInterfaceQuota) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, BandwidthSetRemoveInterfaceAlert) {
+TEST_F(NetdBinderTest, BandwidthSetRemoveInterfaceAlert) {
     long testAlertBytes = 373;
     // Add test physical network
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
@@ -1594,7 +1594,7 @@ TEST_F(BinderTest, BandwidthSetRemoveInterfaceAlert) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, BandwidthSetGlobalAlert) {
+TEST_F(NetdBinderTest, BandwidthSetGlobalAlert) {
     int64_t testAlertBytes = 2097200;
 
     binder::Status status = mNetd->bandwidthSetGlobalAlert(testAlertBytes);
@@ -1607,7 +1607,7 @@ TEST_F(BinderTest, BandwidthSetGlobalAlert) {
     expectBandwidthGlobalAlertRuleExists(testAlertBytes);
 }
 
-TEST_F(BinderTest, BandwidthManipulateSpecialApp) {
+TEST_F(NetdBinderTest, BandwidthManipulateSpecialApp) {
     SKIP_IF_BPF_SUPPORTED;
 
     int32_t uid = randomUid();
@@ -1774,7 +1774,7 @@ void expectNetworkPermissionIptablesRuleExists(const char* ifName, int permissio
 
 }  // namespace
 
-TEST_F(BinderTest, NetworkAddRemoveRouteUserPermission) {
+TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
     static const struct {
         const char* ipVersion;
         const char* testDest;
@@ -1959,7 +1959,7 @@ TEST_F(BinderTest, NetworkAddRemoveRouteUserPermission) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, NetworkPermissionDefault) {
+TEST_F(NetdBinderTest, NetworkPermissionDefault) {
     // Add test physical network
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
@@ -1996,7 +1996,7 @@ TEST_F(BinderTest, NetworkPermissionDefault) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, NetworkSetProtectAllowDeny) {
+TEST_F(NetdBinderTest, NetworkSetProtectAllowDeny) {
     binder::Status status = mNetd->networkSetProtectAllow(TEST_UID1);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     bool ret = false;
@@ -2083,7 +2083,7 @@ void expectTetherDnsListEquals(const std::vector<std::string>& dnsList,
 
 }  // namespace
 
-TEST_F(BinderTest, TetherStartStopStatus) {
+TEST_F(NetdBinderTest, TetherStartStopStatus) {
     std::vector<std::string> noDhcpRange = {};
     for (bool usingLegacyDnsProxy : {true, false}) {
         android::net::TetherConfigParcel config;
@@ -2113,7 +2113,7 @@ TEST_F(BinderTest, TetherStartStopStatus) {
     }
 }
 
-TEST_F(BinderTest, TetherInterfaceAddRemoveList) {
+TEST_F(NetdBinderTest, TetherInterfaceAddRemoveList) {
     // TODO: verify if dnsmasq update interface successfully
 
     binder::Status status = mNetd->tetherInterfaceAdd(sTun.name());
@@ -2134,7 +2134,7 @@ TEST_F(BinderTest, TetherInterfaceAddRemoveList) {
     expectTetherInterfaceNotExists(ifList, sTun.name());
 }
 
-TEST_F(BinderTest, TetherDnsSetList) {
+TEST_F(NetdBinderTest, TetherDnsSetList) {
     // TODO: verify if dnsmasq update dns successfully
     std::vector<std::string> testDnsAddrs = {"192.168.1.37", "213.137.100.3",
                                              "fe80::1%" + sTun.name()};
@@ -2187,7 +2187,7 @@ std::vector<IPAddress> findDnsSockets(SockDiag* sd, unsigned numExpected) {
 
 // Checks that when starting dnsmasq on an interface that no longer exists, it doesn't attempt to
 // start on other interfaces instead.
-TEST_F(BinderTest, TetherDeletedInterface) {
+TEST_F(NetdBinderTest, TetherDeletedInterface) {
     // Do this first so we don't need to clean up anything else if it fails.
     SockDiag sd;
     ASSERT_TRUE(sd.open()) << "Failed to open SOCK_DIAG socket";
@@ -2443,7 +2443,7 @@ void expectFirewallChildChainsLastRuleDoesNotExist(const char* chainRule) {
 
 }  // namespace
 
-TEST_F(BinderTest, FirewallSetFirewallType) {
+TEST_F(NetdBinderTest, FirewallSetFirewallType) {
     binder::Status status = mNetd->firewallSetFirewallType(INetd::FIREWALL_WHITELIST);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectFirewallWhitelistMode();
@@ -2470,7 +2470,7 @@ TEST_F(BinderTest, FirewallSetFirewallType) {
     expectFirewallBlacklistMode();
 }
 
-TEST_F(BinderTest, FirewallSetInterfaceRule) {
+TEST_F(NetdBinderTest, FirewallSetInterfaceRule) {
     // setinterfaceRule is not supported in BLACKLIST MODE
     binder::Status status = mNetd->firewallSetFirewallType(INetd::FIREWALL_BLACKLIST);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
@@ -2496,7 +2496,7 @@ TEST_F(BinderTest, FirewallSetInterfaceRule) {
     expectFirewallBlacklistMode();
 }
 
-TEST_F(BinderTest, FirewallSetUidRule) {
+TEST_F(NetdBinderTest, FirewallSetUidRule) {
     SKIP_IF_BPF_SUPPORTED;
 
     int32_t uid = randomUid();
@@ -2572,7 +2572,7 @@ TEST_F(BinderTest, FirewallSetUidRule) {
     expectFirewallBlacklistMode();
 }
 
-TEST_F(BinderTest, FirewallEnableDisableChildChains) {
+TEST_F(NetdBinderTest, FirewallEnableDisableChildChains) {
     SKIP_IF_BPF_SUPPORTED;
 
     binder::Status status = mNetd->firewallEnableChildChain(INetd::FIREWALL_CHAIN_DOZABLE, true);
@@ -2788,7 +2788,7 @@ void expectTunFlags(const InterfaceConfigurationParcel& interfaceCfg) {
 
 }  // namespace
 
-TEST_F(BinderTest, InterfaceList) {
+TEST_F(NetdBinderTest, InterfaceList) {
     std::vector<std::string> interfaceListResult;
 
     binder::Status status = mNetd->interfaceGetList(&interfaceListResult);
@@ -2796,7 +2796,7 @@ TEST_F(BinderTest, InterfaceList) {
     expectInterfaceList(interfaceListResult);
 }
 
-TEST_F(BinderTest, InterfaceGetCfg) {
+TEST_F(NetdBinderTest, InterfaceGetCfg) {
     InterfaceConfigurationParcel interfaceCfgResult;
 
     // Add test physical network
@@ -2812,7 +2812,7 @@ TEST_F(BinderTest, InterfaceGetCfg) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, InterfaceSetCfg) {
+TEST_F(NetdBinderTest, InterfaceSetCfg) {
     const std::string testAddr = "192.0.2.3";
     const int testPrefixLength = 24;
     std::vector<std::string> upFlags = {"up"};
@@ -2839,7 +2839,7 @@ TEST_F(BinderTest, InterfaceSetCfg) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, InterfaceSetIPv6PrivacyExtensions) {
+TEST_F(NetdBinderTest, InterfaceSetIPv6PrivacyExtensions) {
     // enable
     binder::Status status = mNetd->interfaceSetIPv6PrivacyExtensions(sTun.name(), true);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
@@ -2851,7 +2851,7 @@ TEST_F(BinderTest, InterfaceSetIPv6PrivacyExtensions) {
     expectInterfaceIPv6PrivacyExtensions(sTun.name(), false);
 }
 
-TEST_F(BinderTest, InterfaceClearAddr) {
+TEST_F(NetdBinderTest, InterfaceClearAddr) {
     const std::string testAddr = "192.0.2.3";
     const int testPrefixLength = 24;
     std::vector<std::string> noFlags{};
@@ -2873,7 +2873,7 @@ TEST_F(BinderTest, InterfaceClearAddr) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, InterfaceSetEnableIPv6) {
+TEST_F(NetdBinderTest, InterfaceSetEnableIPv6) {
     // Add test physical network
     EXPECT_TRUE(mNetd->networkCreatePhysical(TEST_NETID1, INetd::PERMISSION_NONE).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
@@ -2892,7 +2892,7 @@ TEST_F(BinderTest, InterfaceSetEnableIPv6) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, InterfaceSetMtu) {
+TEST_F(NetdBinderTest, InterfaceSetMtu) {
     const int testMtu = 1200;
 
     // Add test physical network
@@ -2992,7 +2992,7 @@ void expectNatDisable() {
 
 }  // namespace
 
-TEST_F(BinderTest, TetherForwardAddRemove) {
+TEST_F(NetdBinderTest, TetherForwardAddRemove) {
     binder::Status status = mNetd->tetherAddForward(sTun.name(), sTun2.name());
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectNatEnable(sTun.name(), sTun2.name());
@@ -3033,7 +3033,7 @@ void updateAndCheckTcpBuffer(sp<INetd>& netd, TripleInt& rmemValues, TripleInt& 
 
 }  // namespace
 
-TEST_F(BinderTest, TcpBufferSet) {
+TEST_F(NetdBinderTest, TcpBufferSet) {
     TripleInt rmemValue = readProcFileToTripleInt(TCP_RMEM_PROC_FILE);
     TripleInt testRmemValue{rmemValue[0] + 42, rmemValue[1] + 42, rmemValue[2] + 42};
     TripleInt wmemValue = readProcFileToTripleInt(TCP_WMEM_PROC_FILE);
@@ -3061,7 +3061,7 @@ void checkUidsInPermissionMap(std::vector<int32_t>& uids, bool exist) {
 
 }  // namespace
 
-TEST_F(BinderTest, TestInternetPermission) {
+TEST_F(NetdBinderTest, TestInternetPermission) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     std::vector<int32_t> appUids = {TEST_UID1, TEST_UID2};
@@ -3074,7 +3074,7 @@ TEST_F(BinderTest, TestInternetPermission) {
     checkUidsInPermissionMap(appUids, false);
 }
 
-TEST_F(BinderTest, UnsolEvents) {
+TEST_F(NetdBinderTest, UnsolEvents) {
     auto testUnsolService = android::net::TestUnsolService::start();
     std::string oldTunName = sTun.name();
     std::string newTunName = "unsolTest";
@@ -3113,7 +3113,7 @@ TEST_F(BinderTest, UnsolEvents) {
     sTun.init();
 }
 
-TEST_F(BinderTest, NDC) {
+TEST_F(NetdBinderTest, NDC) {
     struct Command {
         const std::string cmdString;
         const std::string expectedResult;
@@ -3212,7 +3212,7 @@ TEST_F(BinderTest, NDC) {
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
 
-TEST_F(BinderTest, OemNetdRelated) {
+TEST_F(NetdBinderTest, OemNetdRelated) {
     sp<IBinder> binder;
     binder::Status status = mNetd->getOemNetd(&binder);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
@@ -3265,8 +3265,8 @@ TEST_F(BinderTest, OemNetdRelated) {
     }
 }
 
-void BinderTest::createVpnNetworkWithUid(bool secure, uid_t uid, int vpnNetId,
-                                         int fallthroughNetId) {
+void NetdBinderTest::createVpnNetworkWithUid(bool secure, uid_t uid, int vpnNetId,
+                                             int fallthroughNetId) {
     // Re-init sTun* to ensure route rule exists.
     sTun.destroy();
     sTun.init();
@@ -3439,14 +3439,14 @@ void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable
 
 }  // namespace
 
-TEST_F(BinderTest, SecureVPNFallthrough) {
+TEST_F(NetdBinderTest, SecureVPNFallthrough) {
     createVpnNetworkWithUid(true /* secure */, TEST_UID1);
     // Get current default network NetId
     ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
     expectVpnFallthroughWorks(mNetd.get(), false /* bypassable */, TEST_UID1, sTun, sTun2);
 }
 
-TEST_F(BinderTest, BypassableVPNFallthrough) {
+TEST_F(NetdBinderTest, BypassableVPNFallthrough) {
     createVpnNetworkWithUid(false /* secure */, TEST_UID1);
     // Get current default network NetId
     ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
@@ -3476,7 +3476,7 @@ int32_t createIpv6SocketAndCheckMark(int type, const in6_addr& dstAddr) {
 
 }  // namespace
 
-TEST_F(BinderTest, GetFwmarkForNetwork) {
+TEST_F(NetdBinderTest, GetFwmarkForNetwork) {
     // Save current default network.
     ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
 
@@ -3531,7 +3531,7 @@ TetherOffloadRuleParcel makeTetherOffloadRule(int inputInterfaceIndex, int outpu
 
 }  // namespace
 
-TEST_F(BinderTest, TetherOffloadRule) {
+TEST_F(NetdBinderTest, TetherOffloadRule) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
     // TODO: Perhaps verify invalid interface index once the netd handle the error in methods.
@@ -3633,7 +3633,7 @@ static bool expectPacket(int fd, uint8_t* ipPacket, ssize_t ipLen) {
     return false;
 }
 
-TEST_F(BinderTest, TetherOffloadForwarding) {
+TEST_F(NetdBinderTest, TetherOffloadForwarding) {
     SKIP_IF_EXTENDED_BPF_NOT_SUPPORTED;
 
     constexpr const char* kDownstreamPrefix = "2001:db8:2::/64";
