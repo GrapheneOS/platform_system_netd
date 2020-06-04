@@ -97,27 +97,10 @@ filegroup {
         "InterfaceController.cpp",
         "NetlinkCommands.cpp",
         "NetlinkListener.cpp",
+        "OffloadUtils.cpp",
         "SockDiag.cpp",
         "XfrmController.cpp",
         "TrafficController.cpp",
-    ],
-}
-
-// For use by netd, netd_integration_test and netd_unit_test
-cc_library_static {
-    name: "libnetd_offloadutils",
-    defaults: ["netd_defaults"],
-    include_dirs: [
-        "system/netd/include",
-    ],
-    srcs: [
-        "OffloadUtils.cpp",
-    ],
-    shared_libs: [
-        "libbpf_android",
-        "libbase",
-        "libnetdbpf",
-        "libnetdutils",
     ],
 }
 
@@ -142,6 +125,7 @@ cc_library_static {
         "NetlinkCommands.cpp",
         "NetlinkListener.cpp",
         "NetlinkManager.cpp",
+        "OffloadUtils.cpp",
         "RouteController.cpp",
         "SockDiag.cpp",
         "StrictController.cpp",
@@ -212,7 +196,6 @@ cc_binary {
         "oemnetd_aidl_interface-cpp",
     ],
     static_libs: [
-        "libnetd_offloadutils",
         "libnetd_server",
     ],
     srcs: [
@@ -301,7 +284,6 @@ cc_test {
     ],
     static_libs: [
         "libgmock",
-        "libnetd_offloadutils",
         "libnetd_server",
         "libnetd_test_tun_interface",
         "libqtaguid",
