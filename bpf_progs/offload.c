@@ -59,6 +59,12 @@ static inline __always_inline int do_forward(struct __sk_buff* skb, bool is_ethe
     // Let the kernel's stack handle these cases and generate appropriate ICMP errors.
     if (ip6->hop_limit <= 1) return TC_ACT_OK;
 
+    // Protect against forwarding packets sourced from ::1 or fe80::/64 or other weirdness.
+    __be32 src32 = ip6->saddr.s6_addr32[0];
+    if (src32 != htonl(0x0064ff9b) &&                        // 64:ff9b:/32 incl. XLAT464 WKP
+        (src32 & htonl(0xe0000000)) != htonl(0x20000000))    // 2000::/3 Global Unicast
+        return TC_ACT_OK;
+
     TetherIngressKey k = {
             .iif = skb->ifindex,
             .neigh6 = ip6->daddr,
