@@ -95,7 +95,6 @@ cc_test {
         "libbpf_android",
         "libnetdbpf",
         "libnetdutils",
-        "libnetd_offloadutils",
         "libqtaguid",
         "netd_aidl_interface-unstable-cpp",
         "netd_event_listener_interface-cpp",
