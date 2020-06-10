@@ -84,6 +84,10 @@ constexpr const char kTcpBeLiberal[] = "/proc/sys/net/netfilter/nf_conntrack_tcp
 // Chosen to match AID_DNS_TETHER, as made "friendly" by fs_config_generator.py.
 constexpr const char kDnsmasqUsername[] = "dns_tether";
 
+// A value used by interface quota indicates there is no limit.
+// Sync from frameworks/base/core/java/android/net/netstats/provider/NetworkStatsProvider.java
+constexpr int64_t QUOTA_UNLIMITED = -1;
+
 bool writeToFile(const char* filename, const char* value) {
     int fd = open(filename, O_WRONLY | O_CLOEXEC);
     if (fd < 0) {
@@ -1135,6 +1139,27 @@ void TetherController::maybeStopBpf(const char* extIface) {
     if (rv < 0) {
         ALOGE("tcFilterDelDevIngressTether(%d[%s]) failure: %s", ifIndex, extIface, strerror(-rv));
     }
+}
+
+int TetherController::setTetherOffloadInterfaceQuota(int ifIndex, int64_t maxBytes) {
+    if (!mBpfStatsMap.isValid() || !mBpfLimitMap.isValid()) return -ENOTSUP;
+
+    if (ifIndex <= 0) return -ENODEV;
+
+    if (maxBytes < QUOTA_UNLIMITED) {
+        ALOGE("Invalid bytes value. Must be -1 (unlimited) or 0..max_int64.");
+        return -ERANGE;
+    }
+
+    // Note that a value of unlimited quota (-1) indicates simply max_uint64.
+    const auto res = setBpfLimit(static_cast<uint32_t>(ifIndex), static_cast<uint64_t>(maxBytes));
+    if (!res.ok()) {
+        ALOGE("Fail to set quota %" PRId64 " for interface index %d: %s", maxBytes, ifIndex,
+              strerror(res.error().code()));
+        return -res.error().code();
+    }
+
+    return 0;
 }
 
 void TetherController::dumpIfaces(DumpWriter& dw) {

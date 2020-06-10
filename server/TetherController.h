@@ -108,6 +108,8 @@ class TetherController {
     base::Result<void> addOffloadRule(const TetherOffloadRuleParcel& rule);
     base::Result<void> removeOffloadRule(const TetherOffloadRuleParcel& rule);
 
+    int setTetherOffloadInterfaceQuota(int ifIndex, int64_t maxBytes);
+
     class TetherStats {
       public:
         TetherStats() = default;
