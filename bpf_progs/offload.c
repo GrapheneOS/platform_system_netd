@@ -28,13 +28,11 @@ DEFINE_BPF_MAP_GRW(tether_ingress_map, HASH, TetherIngressKey, TetherIngressValu
                    AID_NETWORK_STACK)
 
 // Tethering stats, indexed by upstream interface.
-DEFINE_BPF_MAP_GRW(tether_stats_map, HASH, uint32_t, TetherStatsValue, IFACE_STATS_MAP_SIZE,
-                   AID_NETWORK_STACK)
+DEFINE_BPF_MAP_GRW(tether_stats_map, HASH, uint32_t, TetherStatsValue, 16, AID_NETWORK_STACK)
 
 // Tethering data limit, indexed by upstream interface.
 // (tethering allowed when stats[iif].rxBytes + stats[iif].txBytes < limit[iif])
-DEFINE_BPF_MAP_GRW(tether_limit_map, HASH, uint32_t, uint64_t, IFACE_STATS_MAP_SIZE,
-                   AID_NETWORK_STACK)
+DEFINE_BPF_MAP_GRW(tether_limit_map, HASH, uint32_t, uint64_t, 16, AID_NETWORK_STACK)
 
 static inline __always_inline int do_forward(struct __sk_buff* skb, bool is_ethernet) {
     int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
