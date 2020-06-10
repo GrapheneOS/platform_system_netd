@@ -844,6 +844,9 @@ Result<void> validateOffloadRule(const TetherOffloadRuleParcel& rule) {
     if (rule.dstL2Address.size() != sizeof(hdr.h_dest)) {
         return Error(ENXIO) << "Invalid L2 dst address length " << rule.dstL2Address.size();
     }
+    if (rule.pmtu < IPV6_MIN_MTU || rule.pmtu > 0xFFFF) {
+        return Error(EINVAL) << "Invalid IPv6 path mtu " << rule.pmtu;
+    }
     return Result<void>();
 }
 }  // namespace
@@ -867,7 +870,7 @@ Result<void> TetherController::addOffloadRule(const TetherOffloadRuleParcel& rul
     TetherIngressValue value = {
             .oif = static_cast<uint32_t>(rule.outputInterfaceIndex),
             .macHeader = hdr,
-            .pmtu = 1500,  // TODO: don't just blindly use this default
+            .pmtu = static_cast<uint16_t>(rule.pmtu),
     };
 
     return mBpfIngressMap.writeValue(key, value, BPF_ANY);
