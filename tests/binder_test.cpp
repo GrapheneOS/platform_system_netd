@@ -3712,14 +3712,26 @@ TEST_F(NetdBinderTest, TetherOffloadForwarding) {
     status = mNetd->tetherOffloadRuleAdd(rule);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 
+    // Set data limit to one byte less than two packets.
+    // If you get rid of the '- 1' then the second packet will get forwarded
+    // and the EXPECT_FALSE(expectPacket(...)) a dozen lines down will fail.
+    status = mNetd->tetherOffloadSetInterfaceQuota(sTun.ifindex(), sizeof(pkt) * 2 - 1);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
     // Receive a packet on sTun.
     EXPECT_EQ((ssize_t)sizeof(pkt), write(fd1, &pkt, sizeof(pkt)));
 
     // Expect a packet identical to pkt, except with a TTL of 63.
     struct packet pkt2 = pkt;
-    ASSERT_EQ(1500U, sizeof(pkt));
+    ASSERT_EQ(1500U, sizeof(pkt2));
     pkt2.hdr.hop_limit = pkt.hdr.hop_limit - 1;
     EXPECT_TRUE(expectPacket(fd2, (uint8_t*)&pkt2, sizeof(pkt2)));
+
+    // Receive a second packet on sTun.
+    EXPECT_EQ((ssize_t)sizeof(pkt), write(fd1, &pkt, sizeof(pkt)));
+
+    // Should fail to forward due to quota limit.
+    EXPECT_FALSE(expectPacket(fd2, (uint8_t*)&pkt2, sizeof(pkt2)));
 
     // Clean up.
     EXPECT_TRUE(mNetd->tetherOffloadRuleRemove(rule).isOk());
