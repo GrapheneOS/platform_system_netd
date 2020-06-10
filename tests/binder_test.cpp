@@ -3735,6 +3735,16 @@ TEST_F(NetdBinderTest, TetherOffloadForwarding) {
 
     // Clean up.
     EXPECT_TRUE(mNetd->tetherOffloadRuleRemove(rule).isOk());
+
+    TetherStatsParcel tetherStats;
+    EXPECT_TRUE(mNetd->tetherOffloadGetAndClearStats(sTun.ifindex(), &tetherStats).isOk());
+    EXPECT_EQ("", tetherStats.iface);
+    EXPECT_EQ(static_cast<int64_t>(sizeof(pkt)), tetherStats.rxBytes);
+    EXPECT_EQ(1, tetherStats.rxPackets);
+    EXPECT_EQ(0, tetherStats.txBytes);
+    EXPECT_EQ(0, tetherStats.txPackets);
+    EXPECT_EQ(sTun.ifindex(), tetherStats.ifIndex);
+
     EXPECT_TRUE(mNetd->ipfwdRemoveInterfaceForward(tap.name(), sTun.name()).isOk());
     EXPECT_TRUE(mNetd->tetherRemoveForward(tap.name(), sTun.name()).isOk());
     EXPECT_TRUE(mNetd->networkRemoveRoute(INetd::LOCAL_NET_ID, tap.name(), kDownstreamPrefix, "")
