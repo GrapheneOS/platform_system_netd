@@ -1123,9 +1123,6 @@ void TetherController::maybeStartBpf(const char* extIface) {
               isEthernet.value(), strerror(-rv));
         return;
     }
-
-    // For now we just set data limit to 'infinity' ie. unlimited.
-    setBpfLimit(ifIndex, ~0uLL);
 }
 
 void TetherController::maybeStopBpf(const char* extIface) {
