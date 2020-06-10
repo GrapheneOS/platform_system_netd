@@ -436,6 +436,8 @@ binder::Status NetdNativeService::tetherApplyDnsInterfaces(bool *ret) {
 
 namespace {
 
+constexpr const int UNUSED_IFINDEX = 0;
+
 void tetherAddStatsByInterface(TetherController::TetherStats* tetherStatsParcel,
                                const TetherController::TetherStats& tetherStats) {
     if (tetherStatsParcel->extIface == tetherStats.extIface) {
@@ -453,6 +455,7 @@ TetherStatsParcel toTetherStatsParcel(const TetherController::TetherStats& stats
     result.rxPackets = stats.rxPackets;
     result.txBytes = stats.txBytes;
     result.txPackets = stats.txPackets;
+    result.ifIndex = UNUSED_IFINDEX;
     return result;
 }
 
@@ -1258,6 +1261,38 @@ binder::Status NetdNativeService::tetherOffloadRuleRemove(const TetherOffloadRul
     ENFORCE_NETWORK_STACK_PERMISSIONS();
 
     return asBinderStatus(gCtls->tetherCtrl.removeOffloadRule(rule));
+}
+
+namespace {
+
+constexpr const char UNUSED_IFNAME[] = "";
+
+TetherStatsParcel toTetherStatsParcel(const TetherController::TetherOffloadStats& stats) {
+    TetherStatsParcel result;
+    result.iface = UNUSED_IFNAME;
+    result.rxBytes = stats.rxBytes;
+    result.rxPackets = stats.rxPackets;
+    result.txBytes = stats.txBytes;
+    result.txPackets = stats.txPackets;
+    result.ifIndex = stats.ifIndex;
+    return result;
+}
+
+}  // namespace
+
+binder::Status NetdNativeService::tetherOffloadGetStats(
+        std::vector<TetherStatsParcel>* tetherStatsParcelVec) {
+    NETD_LOCKING_RPC(gCtls->tetherCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
+
+    tetherStatsParcelVec->clear();
+    const auto& statsList = gCtls->tetherCtrl.getTetherOffloadStats();
+    if (!isOk(statsList)) {
+        return asBinderStatus(statsList);
+    }
+    for (const auto& stats : statsList.value()) {
+        tetherStatsParcelVec->push_back(toTetherStatsParcel(stats));
+    }
+    return binder::Status::ok();
 }
 
 }  // namespace net
