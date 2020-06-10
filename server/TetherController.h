@@ -151,6 +151,7 @@ class TetherController {
 
     netdutils::StatusOr<TetherStatsList> getTetherStats();
     netdutils::StatusOr<TetherOffloadStatsList> getTetherOffloadStats();
+    base::Result<TetherOffloadStats> getAndClearTetherOffloadStats(int ifIndex);
 
     /*
      * extraProcessingInfo: contains raw parsed data, and error info.

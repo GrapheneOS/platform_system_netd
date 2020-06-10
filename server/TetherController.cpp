@@ -1162,6 +1162,46 @@ int TetherController::setTetherOffloadInterfaceQuota(int ifIndex, int64_t maxByt
     return 0;
 }
 
+Result<TetherController::TetherOffloadStats> TetherController::getAndClearTetherOffloadStats(
+        int ifIndex) {
+    if (!mBpfStatsMap.isValid() || !mBpfLimitMap.isValid()) return Error(ENOTSUP);
+
+    if (ifIndex <= 0) {
+        return Error(ENODEV) << "Invalid interface " << ifIndex;
+    }
+
+    // getAndClearTetherOffloadStats is called after all offload rules have already been deleted
+    // for the given upstream interface. Before starting to do cleanup stuff in this function, use
+    // synchronizeKernelRCU to make sure that all the current running eBPF programs are finished
+    // on all CPUs, especially the unfinished packet processing. After synchronizeKernelRCU
+    // returned, we can safely read or delete on the stats map or the limit map.
+    if (int res = bpf::synchronizeKernelRCU()) {
+        // Error log but don't return error. Do as much cleanup as possible.
+        ALOGE("synchronize_rcu() failed: %s", strerror(-res));
+    }
+
+    const auto stats = mBpfStatsMap.readValue(ifIndex);
+    if (!stats.ok()) {
+        return Error(stats.error().code()) << "Fail to get stats for interface index " << ifIndex;
+    }
+
+    auto res = mBpfStatsMap.deleteValue(ifIndex);
+    if (!res.ok()) {
+        return Error(res.error().code()) << "Fail to delete stats for interface index " << ifIndex;
+    }
+
+    res = mBpfLimitMap.deleteValue(ifIndex);
+    if (!res.ok()) {
+        return Error(res.error().code()) << "Fail to delete limit for interface index " << ifIndex;
+    }
+
+    return TetherOffloadStats{.ifIndex = static_cast<int>(ifIndex),
+                              .rxBytes = static_cast<int64_t>(stats.value().rxBytes),
+                              .rxPackets = static_cast<int64_t>(stats.value().rxPackets),
+                              .txBytes = static_cast<int64_t>(stats.value().txBytes),
+                              .txPackets = static_cast<int64_t>(stats.value().txPackets)};
+}
+
 void TetherController::dumpIfaces(DumpWriter& dw) {
     dw.println("Interface pairs:");
 

@@ -1291,4 +1291,22 @@ interface INetd {
     *         cause of the failure.
     */
     void tetherOffloadSetInterfaceQuota(int ifIndex, long quotaBytes);
+
+    /**
+     * Return BPF tethering offload statistics and clear the stats for a given upstream.
+     *
+     * Must only be called once all offload rules have already been deleted for the given upstream
+     * interface. The existing stats will be fetched and returned. The stats and the limit for the
+     * given upstream interface will be deleted as well.
+     *
+     * The stats and limit for a given upstream interface must be initialized (using
+     * tetherOffloadSetInterfaceQuota) before any offload will occur on that interface.
+     *
+     * @param ifIndex Index of upstream interface.
+     * @return TetherStatsParcel, which contains the given upstream interface index and its
+     *         tethering statistics since tethering was first started on that upstream interface.
+     * @throws ServiceSpecificException in case of failure, with an error code indicating the
+     *                                  cause of the failure.
+     */
+     TetherStatsParcel tetherOffloadGetAndClearStats(int ifIndex);
 }
