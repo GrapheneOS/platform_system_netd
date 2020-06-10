@@ -76,7 +76,6 @@ class TetherController {
     bpf::BpfMap<TetherIngressKey, TetherIngressValue> mBpfIngressMap;
     bpf::BpfMap<uint32_t, TetherStatsValue> mBpfStatsMap;
     bpf::BpfMap<uint32_t, uint64_t> mBpfLimitMap;
-    bpf::BpfMap<uint32_t, IfaceValue> mIfaceIndexNameMap;
 
   public:
     TetherController();
@@ -137,9 +136,19 @@ class TetherController {
         }
     };
 
+    struct TetherOffloadStats {
+        int ifIndex;
+        int64_t rxBytes;
+        int64_t rxPackets;
+        int64_t txBytes;
+        int64_t txPackets;
+    };
+
     typedef std::vector<TetherStats> TetherStatsList;
+    typedef std::vector<TetherOffloadStats> TetherOffloadStatsList;
 
     netdutils::StatusOr<TetherStatsList> getTetherStats();
+    netdutils::StatusOr<TetherOffloadStatsList> getTetherOffloadStats();
 
     /*
      * extraProcessingInfo: contains raw parsed data, and error info.
