@@ -1235,7 +1235,7 @@ void TetherController::dumpBpf(DumpWriter& dw) {
         return;
     }
 
-    dw.println("BPF ingress map: iif v6addr -> oif srcmac dstmac ethertype [pmtu]");
+    dw.println("BPF ingress map: iif(iface) v6addr -> oif(iface) srcmac dstmac ethertype [pmtu]");
     const auto printIngressMap = [&dw](const TetherIngressKey& key, const TetherIngressValue& value,
                                        const BpfMap<TetherIngressKey, TetherIngressValue>&) {
         char addr[INET6_ADDRSTRLEN];
@@ -1243,8 +1243,12 @@ void TetherController::dumpBpf(DumpWriter& dw) {
         std::string dst = l2ToString(value.macHeader.h_dest, sizeof(value.macHeader.h_dest));
         inet_ntop(AF_INET6, &key.neigh6, addr, sizeof(addr));
 
-        dw.println("%u %s -> %u %s %s %04x [%u]", key.iif, addr, value.oif, src.c_str(),
-                   dst.c_str(), ntohs(value.macHeader.h_proto), value.pmtu);
+        char iifStr[IFNAMSIZ] = "?";
+        char oifStr[IFNAMSIZ] = "?";
+        if_indextoname(key.iif, iifStr);
+        if_indextoname(value.oif, oifStr);
+        dw.println("%u(%s) %s -> %u(%s) %s %s %04x [%u]", key.iif, iifStr, addr, value.oif, oifStr,
+                   src.c_str(), dst.c_str(), ntohs(value.macHeader.h_proto), value.pmtu);
 
         return Result<void>();
     };
@@ -1256,11 +1260,13 @@ void TetherController::dumpBpf(DumpWriter& dw) {
     }
     dw.decIndent();
 
-    dw.println("BPF stats (downlink): iif -> packets bytes errors");
+    dw.println("BPF stats (downlink): iif(iface) -> packets bytes errors");
     const auto printStatsMap = [&dw](const uint32_t& key, const TetherStatsValue& value,
                                      const BpfMap<uint32_t, TetherStatsValue>&) {
-        dw.println("%u -> %" PRIu64 " %" PRIu64 " %" PRIu64, key, value.rxPackets, value.rxBytes,
-                   value.rxErrors);
+        char iifStr[IFNAMSIZ] = "?";
+        if_indextoname(key, iifStr);
+        dw.println("%u(%s) -> %" PRIu64 " %" PRIu64 " %" PRIu64, key, iifStr, value.rxPackets,
+                   value.rxBytes, value.rxErrors);
 
         return Result<void>();
     };
@@ -1272,10 +1278,12 @@ void TetherController::dumpBpf(DumpWriter& dw) {
     }
     dw.decIndent();
 
-    dw.println("BPF limit: iif -> bytes");
+    dw.println("BPF limit: iif(iface) -> bytes");
     const auto printLimitMap = [&dw](const uint32_t& key, const uint64_t& value,
                                      const BpfMap<uint32_t, uint64_t>&) {
-        dw.println("%u -> %" PRIu64, key, value);
+        char iifStr[IFNAMSIZ] = "?";
+        if_indextoname(key, iifStr);
+        dw.println("%u(%s) -> %" PRIu64, key, iifStr, value);
 
         return Result<void>();
     };
