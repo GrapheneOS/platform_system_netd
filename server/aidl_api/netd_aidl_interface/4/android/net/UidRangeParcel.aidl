@@ -17,11 +17,7 @@
 
 package android.net;
 /* @hide */
-parcelable TetherStatsParcel {
-  @utf8InCpp String iface;
-  long rxBytes;
-  long rxPackets;
-  long txBytes;
-  long txPackets;
-  int ifIndex = 0;
+parcelable UidRangeParcel {
+  int start;
+  int stop;
 }

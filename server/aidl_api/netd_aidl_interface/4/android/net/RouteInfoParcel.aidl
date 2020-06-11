@@ -16,12 +16,9 @@
 // later when a module using the interface is updated, e.g., Mainline modules.
 
 package android.net;
-/* @hide */
-parcelable TetherStatsParcel {
-  @utf8InCpp String iface;
-  long rxBytes;
-  long rxPackets;
-  long txBytes;
-  long txPackets;
-  int ifIndex = 0;
+parcelable RouteInfoParcel {
+  @utf8InCpp String destination;
+  @utf8InCpp String ifName;
+  @utf8InCpp String nextHop;
+  int mtu;
 }

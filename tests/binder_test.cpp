@@ -3515,7 +3515,7 @@ TetherOffloadRuleParcel makeTetherOffloadRule(int inputInterfaceIndex, int outpu
                                               const std::vector<uint8_t>& destination,
                                               int prefixLength,
                                               const std::vector<uint8_t>& srcL2Address,
-                                              const std::vector<uint8_t>& dstL2Address) {
+                                              const std::vector<uint8_t>& dstL2Address, int pmtu) {
     android::net::TetherOffloadRuleParcel parcel;
     parcel.inputInterfaceIndex = inputInterfaceIndex;
     parcel.outputInterfaceIndex = outputInterfaceIndex;
@@ -3523,6 +3523,7 @@ TetherOffloadRuleParcel makeTetherOffloadRule(int inputInterfaceIndex, int outpu
     parcel.prefixLength = prefixLength;
     parcel.srcL2Address = srcL2Address;
     parcel.dstL2Address = dstL2Address;
+    parcel.pmtu = pmtu;
     return parcel;
 }
 
@@ -3546,32 +3547,34 @@ TEST_F(NetdBinderTest, TetherOffloadRule) {
 
     // Invalid IP address, add rule
     TetherOffloadRuleParcel rule = makeTetherOffloadRule(
-            kIfaceExt, kIfaceInt, kInvalidAddr4 /*bad*/, 128, kSrcMac, kDstMac);
+            kIfaceExt, kIfaceInt, kInvalidAddr4 /*bad*/, 128, kSrcMac, kDstMac, 1500);
     auto status = mNetd->tetherOffloadRuleAdd(rule);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(EAFNOSUPPORT, status.serviceSpecificErrorCode());
 
     // Invalid source L2 address, add rule
-    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kInvalidMac /*bad*/, kDstMac);
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kInvalidMac /*bad*/, kDstMac,
+                                 1500);
     status = mNetd->tetherOffloadRuleAdd(rule);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(ENXIO, status.serviceSpecificErrorCode());
 
     // Invalid destination L2 address, add rule
-    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kSrcMac, kInvalidMac /*bad*/);
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kSrcMac, kInvalidMac /*bad*/,
+                                 1500);
     status = mNetd->tetherOffloadRuleAdd(rule);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(ENXIO, status.serviceSpecificErrorCode());
 
     // Invalid IP address, remove rule
-    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kInvalidAddr4 /*bad*/, 128, kSrcMac,
-                                 kDstMac);
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kInvalidAddr4 /*bad*/, 128, kSrcMac, kDstMac,
+                                 1500);
     status = mNetd->tetherOffloadRuleRemove(rule);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(EAFNOSUPPORT, status.serviceSpecificErrorCode());
 
     // Invalid prefix length
-    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 64 /*bad*/, kSrcMac, kDstMac);
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 64 /*bad*/, kSrcMac, kDstMac, 1500);
     status = mNetd->tetherOffloadRuleAdd(rule);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
@@ -3580,21 +3583,33 @@ TEST_F(NetdBinderTest, TetherOffloadRule) {
     EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
 
     // Invalid interface index
-    rule = makeTetherOffloadRule(kIfaceExt, 0, kAddr6, 128, kSrcMac, kDstMac);
+    rule = makeTetherOffloadRule(kIfaceExt, 0, kAddr6, 128, kSrcMac, kDstMac, 1500);
     status = mNetd->tetherOffloadRuleAdd(rule);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(ENODEV, status.serviceSpecificErrorCode());
-    rule = makeTetherOffloadRule(0, kIfaceInt, kAddr6, 64, kSrcMac, kDstMac);
+    rule = makeTetherOffloadRule(0, kIfaceInt, kAddr6, 64, kSrcMac, kDstMac, 1500);
     status = mNetd->tetherOffloadRuleRemove(rule);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(ENODEV, status.serviceSpecificErrorCode());
 
+    // Invalid pmtu (too low)
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kSrcMac, kDstMac, 1279);
+    status = mNetd->tetherOffloadRuleAdd(rule);
+    EXPECT_FALSE(status.isOk());
+    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+
+    // Invalid pmtu (too high)
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kSrcMac, kDstMac, 65536);
+    status = mNetd->tetherOffloadRuleAdd(rule);
+    EXPECT_FALSE(status.isOk());
+    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+
     // Remove non existent rule. Expect that silently return success if the rule did not exist.
-    rule = makeTetherOffloadRule(kIfaceNonExistent, kIfaceInt, kAddr6, 128, kSrcMac, kDstMac);
+    rule = makeTetherOffloadRule(kIfaceNonExistent, kIfaceInt, kAddr6, 128, kSrcMac, kDstMac, 1500);
     EXPECT_TRUE(mNetd->tetherOffloadRuleRemove(rule).isOk());
 
     // Add and remove rule normally.
-    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kSrcMac, kDstMac);
+    rule = makeTetherOffloadRule(kIfaceExt, kIfaceInt, kAddr6, 128, kSrcMac, kDstMac, 1500);
     EXPECT_TRUE(mNetd->tetherOffloadRuleAdd(rule).isOk());
     EXPECT_TRUE(mNetd->tetherOffloadRuleRemove(rule).isOk());
 }
@@ -3693,8 +3708,14 @@ TEST_F(NetdBinderTest, TetherOffloadForwarding) {
     std::vector<uint8_t> dstAddr(daddr, daddr + sizeof(pkt.hdr.daddr));
 
     TetherOffloadRuleParcel rule = makeTetherOffloadRule(sTun.ifindex(), tap.ifindex(), dstAddr,
-                                                         128, kDummyMac, kDummyMac);
+                                                         128, kDummyMac, kDummyMac, sizeof(pkt));
     status = mNetd->tetherOffloadRuleAdd(rule);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Set data limit to one byte less than two packets.
+    // If you get rid of the '- 1' then the second packet will get forwarded
+    // and the EXPECT_FALSE(expectPacket(...)) a dozen lines down will fail.
+    status = mNetd->tetherOffloadSetInterfaceQuota(sTun.ifindex(), sizeof(pkt) * 2 - 1);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 
     // Receive a packet on sTun.
@@ -3702,12 +3723,28 @@ TEST_F(NetdBinderTest, TetherOffloadForwarding) {
 
     // Expect a packet identical to pkt, except with a TTL of 63.
     struct packet pkt2 = pkt;
-    ASSERT_EQ(1500U, sizeof(pkt));
+    ASSERT_EQ(1500U, sizeof(pkt2));
     pkt2.hdr.hop_limit = pkt.hdr.hop_limit - 1;
     EXPECT_TRUE(expectPacket(fd2, (uint8_t*)&pkt2, sizeof(pkt2)));
 
+    // Receive a second packet on sTun.
+    EXPECT_EQ((ssize_t)sizeof(pkt), write(fd1, &pkt, sizeof(pkt)));
+
+    // Should fail to forward due to quota limit.
+    EXPECT_FALSE(expectPacket(fd2, (uint8_t*)&pkt2, sizeof(pkt2)));
+
     // Clean up.
     EXPECT_TRUE(mNetd->tetherOffloadRuleRemove(rule).isOk());
+
+    TetherStatsParcel tetherStats;
+    EXPECT_TRUE(mNetd->tetherOffloadGetAndClearStats(sTun.ifindex(), &tetherStats).isOk());
+    EXPECT_EQ("", tetherStats.iface);
+    EXPECT_EQ(static_cast<int64_t>(sizeof(pkt)), tetherStats.rxBytes);
+    EXPECT_EQ(1, tetherStats.rxPackets);
+    EXPECT_EQ(0, tetherStats.txBytes);
+    EXPECT_EQ(0, tetherStats.txPackets);
+    EXPECT_EQ(sTun.ifindex(), tetherStats.ifIndex);
+
     EXPECT_TRUE(mNetd->ipfwdRemoveInterfaceForward(tap.name(), sTun.name()).isOk());
     EXPECT_TRUE(mNetd->tetherRemoveForward(tap.name(), sTun.name()).isOk());
     EXPECT_TRUE(mNetd->networkRemoveRoute(INetd::LOCAL_NET_ID, tap.name(), kDownstreamPrefix, "")

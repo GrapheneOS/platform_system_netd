@@ -17,11 +17,12 @@
 
 package android.net;
 /* @hide */
-parcelable TetherStatsParcel {
-  @utf8InCpp String iface;
-  long rxBytes;
-  long rxPackets;
-  long txBytes;
-  long txPackets;
-  int ifIndex = 0;
+parcelable TetherOffloadRuleParcel {
+  int inputInterfaceIndex;
+  int outputInterfaceIndex;
+  byte[] destination;
+  int prefixLength;
+  byte[] srcL2Address;
+  byte[] dstL2Address;
+  int pmtu = 1500;
 }
