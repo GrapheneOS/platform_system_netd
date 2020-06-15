@@ -352,3 +352,4 @@ DEFINE_BPF_PROG_KVER("cgroupsock/inet/create", AID_ROOT, AID_ROOT, inet_socket_c
 }
 
 LICENSE("Apache 2.0");
+CRITICAL("netd");
