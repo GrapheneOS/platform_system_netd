@@ -186,3 +186,4 @@ DEFINE_BPF_PROG_KVER("schedcls/ingress/tether_rawip$4_14", AID_ROOT, AID_ROOT,
 }
 
 LICENSE("Apache 2.0");
+CRITICAL("netd");
