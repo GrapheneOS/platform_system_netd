@@ -303,3 +303,4 @@ int sched_cls_egress_clat_rawip(struct __sk_buff* skb) {
 }
 
 LICENSE("Apache 2.0");
+CRITICAL("netd");
