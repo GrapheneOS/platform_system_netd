@@ -60,6 +60,7 @@ constexpr char PROPERTY_REDIRECT_SOCKET_CALLS_HOOKED[] = "net.redirect_socket_ca
 
 std::atomic_uint netIdForProcess(NETID_UNSET);
 std::atomic_uint netIdForResolv(NETID_UNSET);
+std::atomic_bool allowNetworkingForProcess(true);
 
 typedef int (*Accept4FunctionType)(int, sockaddr*, socklen_t*, int);
 typedef int (*ConnectFunctionType)(int, const sockaddr*, socklen_t);
@@ -182,6 +183,11 @@ int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
 }
 
 int netdClientSocket(int domain, int type, int protocol) {
+    // Block creating AF_INET/AF_INET6 socket if networking is not allowed.
+    if (FwmarkCommand::isSupportedFamily(domain) && !allowNetworkingForProcess.load()) {
+        errno = EPERM;
+        return -1;
+    }
     int socketFd = libcSocket(domain, type, protocol);
     if (socketFd == -1) {
         return -1;
@@ -285,6 +291,13 @@ int dns_open_proxy() {
         return -1;
     }
 
+    // If networking is not allowed, dns_open_proxy should just fail here.
+    // Then eventually, the DNS related functions in local mode will get
+    // EPERM while creating socket.
+    if (!allowNetworkingForProcess.load()) {
+        errno = EPERM;
+        return -1;
+    }
     const auto socketFunc = libcSocket ? libcSocket : socket;
     int s = socketFunc(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (s == -1) {
@@ -591,6 +604,10 @@ extern "C" int resNetworkResult(int fd, int* rcode, uint8_t* answer, size_t ansl
 
 extern "C" void resNetworkCancel(int fd) {
     close(fd);
+}
+
+extern "C" void setAllowNetworkingForProcess(bool allowNetworking) {
+    allowNetworkingForProcess.store(allowNetworking);
 }
 
 extern "C" int getNetworkForDns(unsigned* dnsNetId) {

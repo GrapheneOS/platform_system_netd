@@ -40,6 +40,8 @@ int setNetworkForUser(uid_t uid, int socketFd);
 
 int queryUserAccess(uid_t uid, unsigned netId);
 
+void setAllowNetworkingForProcess(bool allowNetworking);
+
 int tagSocket(int socketFd, uint32_t tag, uid_t uid);
 
 int untagSocket(int socketFd);
