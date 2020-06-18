@@ -69,7 +69,7 @@ class NetlinkListenerTest : public testing::Test {
     void SetUp() {
         SKIP_IF_BPF_NOT_SUPPORTED;
 
-        mCookieTagMap.reset(android::bpf::mapRetrieve(COOKIE_TAG_MAP_PATH, 0));
+        mCookieTagMap.reset(android::bpf::mapRetrieveRW(COOKIE_TAG_MAP_PATH));
         ASSERT_TRUE(mCookieTagMap.isValid());
     }
 
