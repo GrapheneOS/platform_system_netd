@@ -202,7 +202,7 @@ Status TrafficController::initMaps() {
 
 static Status attachProgramToCgroup(const char* programPath, const unique_fd& cgroupFd,
                                     bpf_attach_type type) {
-    unique_fd cgroupProg(bpfFdGet(programPath, 0));
+    unique_fd cgroupProg(retrieveProgram(programPath));
     if (cgroupProg == -1) {
         int ret = errno;
         ALOGE("Failed to get program from %s: %s", programPath, strerror(ret));
