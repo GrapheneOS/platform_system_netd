@@ -48,46 +48,45 @@ int hardwareAddressType(const std::string& interface);
 base::Result<bool> isEthernet(const std::string& interface);
 
 inline int getClatEgressMapFd(void) {
-    const int fd = bpf::bpfFdGet(CLAT_EGRESS_MAP_PATH, 0);
+    const int fd = bpf::mapRetrieveRW(CLAT_EGRESS_MAP_PATH);
     return (fd == -1) ? -errno : fd;
 }
 
 inline int getClatEgressProgFd(bool with_ethernet_header) {
-    const int fd = bpf::bpfFdGet(
-            with_ethernet_header ? CLAT_EGRESS_PROG_ETHER_PATH : CLAT_EGRESS_PROG_RAWIP_PATH, 0);
+    const int fd = bpf::retrieveProgram(with_ethernet_header ? CLAT_EGRESS_PROG_ETHER_PATH
+                                                             : CLAT_EGRESS_PROG_RAWIP_PATH);
     return (fd == -1) ? -errno : fd;
 }
 
 inline int getClatIngressMapFd(void) {
-    const int fd = bpf::bpfFdGet(CLAT_INGRESS_MAP_PATH, 0);
+    const int fd = bpf::mapRetrieveRW(CLAT_INGRESS_MAP_PATH);
     return (fd == -1) ? -errno : fd;
 }
 
 inline int getClatIngressProgFd(bool with_ethernet_header) {
-    const int fd = bpf::bpfFdGet(
-            with_ethernet_header ? CLAT_INGRESS_PROG_ETHER_PATH : CLAT_INGRESS_PROG_RAWIP_PATH, 0);
+    const int fd = bpf::retrieveProgram(with_ethernet_header ? CLAT_INGRESS_PROG_ETHER_PATH
+                                                             : CLAT_INGRESS_PROG_RAWIP_PATH);
     return (fd == -1) ? -errno : fd;
 }
 
 inline int getTetherIngressMapFd(void) {
-    const int fd = bpf::bpfFdGet(TETHER_INGRESS_MAP_PATH, 0);
+    const int fd = bpf::mapRetrieveRW(TETHER_INGRESS_MAP_PATH);
     return (fd == -1) ? -errno : fd;
 }
 
 inline int getTetherIngressProgFd(bool with_ethernet_header) {
-    const int fd = bpf::bpfFdGet(
-            with_ethernet_header ? TETHER_INGRESS_PROG_ETHER_PATH : TETHER_INGRESS_PROG_RAWIP_PATH,
-            0);
+    const int fd = bpf::retrieveProgram(with_ethernet_header ? TETHER_INGRESS_PROG_ETHER_PATH
+                                                             : TETHER_INGRESS_PROG_RAWIP_PATH);
     return (fd == -1) ? -errno : fd;
 }
 
 inline int getTetherStatsMapFd(void) {
-    const int fd = bpf::bpfFdGet(TETHER_STATS_MAP_PATH, 0);
+    const int fd = bpf::mapRetrieveRW(TETHER_STATS_MAP_PATH);
     return (fd == -1) ? -errno : fd;
 }
 
 inline int getTetherLimitMapFd(void) {
-    const int fd = bpf::bpfFdGet(TETHER_LIMIT_MAP_PATH, 0);
+    const int fd = bpf::mapRetrieveRW(TETHER_LIMIT_MAP_PATH);
     return (fd == -1) ? -errno : fd;
 }
 
