@@ -71,6 +71,7 @@ cc_test {
         ":netd_integration_test_shared",
         "binder_test.cpp",
         "bpf_base_test.cpp",
+        "netd_client_test.cpp",
         "netd_test.cpp",
         "netlink_listener_test.cpp",
     ],

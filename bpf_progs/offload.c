@@ -164,25 +164,40 @@ int sched_cls_ingress_tether_ether(struct __sk_buff* skb) {
     return do_forward(skb, true);
 }
 
-// bpf_skb_change_head() is only present on 4.14+,
+// Note: section names must be unique to prevent programs from appending to each other,
+// so instead the bpf loader will strip everything past the final $ symbol when actually
+// pinning the program into the filesystem.
 //
-// Hence define a no-op stub for older kernels.
+// bpf_skb_change_head() is only present on 4.14+ and 2 trivial kernel patches are needed:
+//   ANDROID: net: bpf: Allow TC programs to call BPF_FUNC_skb_change_head
+//   ANDROID: net: bpf: permit redirect from ingress L3 to egress L2 devices at near max mtu
+// (the first of those has already been upstreamed)
 //
-// Note: section names must be unique to prevent programs from
-// appending to each other, so instead the bpf loader will strip
-// everything past the final $ symbol when actually pinning
-// the program into the filesystem.
-DEFINE_BPF_PROG_KVER_RANGE("schedcls/ingress/tether_rawip$stub", AID_ROOT, AID_ROOT,
-                           sched_cls_ingress_tether_rawip_stub, KVER_NONE, KVER(4, 14, 0))
-(struct __sk_buff* skb) {
-    return TC_ACT_OK;
-}
-
-// and the real implementation for newer kernels
-DEFINE_BPF_PROG_KVER("schedcls/ingress/tether_rawip$4_14", AID_ROOT, AID_ROOT,
-                     sched_cls_ingress_tether_rawip_4_14, KVER(4, 14, 0))
+// 5.4 kernel support was only added to Android Common Kernel in R,
+// and thus a 5.4 kernel always supports this.
+//
+// Hence, this mandatory (must load successfully) implementation for 5.4+ kernels:
+DEFINE_BPF_PROG_KVER("schedcls/ingress/tether_rawip$5_4", AID_ROOT, AID_ROOT,
+                     sched_cls_ingress_tether_rawip_5_4, KVER(5, 4, 0))
 (struct __sk_buff* skb) {
     return do_forward(skb, false);
+}
+
+// and this identical optional (may fail to load) implementation for [4.14..5.4) patched kernels:
+DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/ingress/tether_rawip$4_14", AID_ROOT, AID_ROOT,
+                                    sched_cls_ingress_tether_rawip_4_14, KVER(4, 14, 0),
+                                    KVER(5, 4, 0))
+(struct __sk_buff* skb) {
+    return do_forward(skb, false);
+}
+
+// and define a no-op stub for [4.9,4.14) and unpatched [4.14,5.4) kernels.
+// (if the above real 4.14+ program loaded successfully, then bpfloader will have already pinned
+// it at the same location this one would be pinned at and will thus skip loading this stub)
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/ingress/tether_rawip$stub", AID_ROOT, AID_ROOT,
+                           sched_cls_ingress_tether_rawip_stub, KVER_NONE, KVER(5, 4, 0))
+(struct __sk_buff* skb) {
+    return TC_ACT_OK;
 }
 
 LICENSE("Apache 2.0");
