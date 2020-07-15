@@ -26,6 +26,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// bionic kernel uapi linux/udp.h header is munged...
+#define __kernel_udphdr udphdr
+#include <linux/udp.h>
+
 #include "bpf_helpers.h"
 #include "bpf_net_helpers.h"
 #include "netdbpf/bpf_shared.h"
@@ -226,9 +230,18 @@ int sched_cls_egress_clat_rawip(struct __sk_buff* skb) {
 
     switch (ip4->protocol) {
         case IPPROTO_TCP:  // For TCP & UDP the checksum neutrality of the chosen IPv6
-        case IPPROTO_UDP:  // address means there is no need to update their checksums.
-        case IPPROTO_GRE:  // We do not need to bother looking at GRE/ESP headers,
-        case IPPROTO_ESP:  // since there is never a checksum to update.
+        case IPPROTO_GRE:  // address means there is no need to update their checksums.
+        case IPPROTO_ESP:  // We do not need to bother looking at GRE/ESP headers,
+            break;         // since there is never a checksum to update.
+
+        case IPPROTO_UDP:  // See above comment, but must also have UDP header...
+            if (data + sizeof(*ip4) + sizeof(struct udphdr) > data_end) return TC_ACT_OK;
+            const struct udphdr* uh = (const struct udphdr*)(ip4 + 1);
+            // If IPv4/UDP checksum is 0 then fallback to clatd so it can calculate the
+            // checksum.  Otherwise the network or more likely the NAT64 gateway might
+            // drop the packet because in most cases IPv6/UDP packets with a zero checksum
+            // are invalid. See RFC 6935.  TODO: calculate checksum via bpf_csum_diff()
+            if (!uh->check) return TC_ACT_OK;
             break;
 
         default:  // do not know how to handle anything else
