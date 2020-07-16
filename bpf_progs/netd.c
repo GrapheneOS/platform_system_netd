@@ -30,6 +30,7 @@
 #include "netdbpf/bpf_shared.h"
 
 // This is defined for cgroup bpf filter only.
+#define BPF_DROP_UNLESS_DNS 2
 #define BPF_PASS 1
 #define BPF_DROP 0
 
@@ -206,7 +207,7 @@ static inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid, int direc
     if (direction == BPF_INGRESS && (uidRules & IIF_MATCH)) {
         // Drops packets not coming from lo nor the whitelisted interface
         if (allowed_iif && skb->ifindex != 1 && skb->ifindex != allowed_iif) {
-            return BPF_DROP;
+            return BPF_DROP_UNLESS_DNS;
         }
     }
     return BPF_PASS;
@@ -245,6 +246,17 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
     } else {
         uid = sock_uid;
         tag = 0;
+    }
+
+// Workaround for secureVPN with VpnIsolation enabled, refer to b/159994981 for details.
+// Keep TAG_SYSTEM_DNS in sync with DnsResolver/include/netd_resolv/resolv.h
+// and TrafficStatsConstants.java
+#define TAG_SYSTEM_DNS 0xFFFFFF82
+    if (tag == TAG_SYSTEM_DNS && uid == AID_DNS) {
+        uid = sock_uid;
+        if (match == BPF_DROP_UNLESS_DNS) match = BPF_PASS;
+    } else {
+        if (match == BPF_DROP_UNLESS_DNS) match = BPF_DROP;
     }
 
     StatsKey key = {.uid = uid, .tag = tag, .counterSet = 0, .ifaceIndex = skb->ifindex};
