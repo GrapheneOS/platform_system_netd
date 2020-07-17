@@ -83,6 +83,8 @@ void logCallback(const char* msg) {
 }
 
 int tagSocketCallback(int sockFd, uint32_t tag, uid_t uid, pid_t) {
+    // Workaround for secureVPN with VpnIsolation enabled, refer to b/159994981 for details.
+    if (tag == TAG_SYSTEM_DNS) uid = AID_DNS;
     return gCtls->trafficCtrl.tagSocket(sockFd, tag, uid, geteuid());
 }
 
