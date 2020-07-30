@@ -880,6 +880,9 @@ read_len:
             else
                 break;
         }
+        LOG(WARNING) << __func__ << ": resplen " << resplen << " exceeds buf size " << anssiz;
+        // return size should never exceed container size
+        resplen = anssiz;
     }
     /*
      * If the calling application has bailed out of
@@ -890,7 +893,7 @@ read_len:
      */
     if (hp->id != anhp->id) {
         LOG(DEBUG) << __func__ << ": ld answer (unexpected):";
-        res_pquery(ans, (resplen > anssiz) ? anssiz : resplen);
+        res_pquery(ans, resplen);
         goto read_len;
     }
 

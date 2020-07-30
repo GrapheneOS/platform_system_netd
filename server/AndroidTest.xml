@@ -14,6 +14,7 @@
      limitations under the License.
 -->
 <configuration description="Config for netd_unit_test">
+    <target_preparer class="com.android.tradefed.targetprep.RootTargetPreparer"/>
     <target_preparer class="com.android.tradefed.targetprep.PushFilePreparer">
         <option name="cleanup" value="true" />
         <option name="push" value="netd_unit_test->/data/local/tmp/netd_unit_test" />
