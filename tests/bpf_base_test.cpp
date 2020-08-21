@@ -66,7 +66,7 @@ TEST_F(BpfBasicTest, TestCgroupMounted) {
 #else
     ASSERT_EQ(true, CgroupGetControllerPath(CGROUPV2_CONTROLLER_NAME, nullptr));
     // Constant derived from //system/core/libprocessgroup/profiles/cgroups.json
-    cg2_path = "/dev/cg2_bpf";
+    cg2_path = "/sys/fs/cgroup";
 #endif
     ASSERT_EQ(0, access(cg2_path.c_str(), R_OK));
     ASSERT_EQ(0, access((cg2_path + "/cgroup.controllers").c_str(), R_OK));
