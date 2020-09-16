@@ -196,16 +196,11 @@ Status setProperty(const std::string& key, const std::string& val) {
 namespace android {
 namespace net {
 std::mutex InterfaceController::mutex;
-static const bool stable_secret_disabled = true;
 
 android::netdutils::Status InterfaceController::enableStablePrivacyAddresses(
         const std::string& iface,
         const GetPropertyFn& getProperty,
         const SetPropertyFn& setProperty) {
-    if (stable_secret_disabled) {
-        return statusFromErrno(EOPNOTSUPP, "stable_secret support disabled by GrapheneOS");
-    }
-
     const auto& sys = sSyscalls.get();
     const std::string procTarget = std::string(ipv6_proc_path) + "/" + iface + "/stable_secret";
     auto procFd = sys.open(procTarget, O_CLOEXEC | O_WRONLY);
