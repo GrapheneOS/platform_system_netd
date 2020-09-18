@@ -304,4 +304,5 @@ cc_test {
         "libsysutils",
         "libutils",
     ],
+    // tidy: false,  // cuts test build time by almost 1 minute
 }
