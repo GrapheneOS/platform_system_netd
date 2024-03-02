@@ -103,6 +103,50 @@ TEST(KernelTest, TestKernel419) {
     ASSERT_TRUE(bpf::isAtLeastKernelVersion(4, 19, 0));
 }
 
+static bool isKernel(unsigned major, unsigned minor) {
+    return bpf::isAtLeastKernelVersion(major, minor, 0)
+        && !bpf::isAtLeastKernelVersion(major, minor + 1, 0);
+}
+
+TEST(KernelTest, TestIsLTS) {
+    ASSERT_TRUE(
+        isKernel(4, 19) ||
+        isKernel(5, 4) ||
+        isKernel(5, 10) ||
+        isKernel(5, 15) ||
+        isKernel(6, 1) ||
+        isKernel(6, 6));
+}
+
+static bool ifIsKernelThenMinLTS(unsigned major, unsigned minor, unsigned sub) {
+    if (!isKernel(major, minor)) return true;
+    return bpf::isAtLeastKernelVersion(major, minor, sub);
+}
+
+TEST(KernelTest, TestMinRequiredLTS_4_19) {
+    ASSERT_TRUE(ifIsKernelThenMinLTS(4, 19, 236));
+}
+
+TEST(KernelTest, TestMinRequiredLTS_5_4) {
+    ASSERT_TRUE(ifIsKernelThenMinLTS(5, 4, 186));
+}
+
+TEST(KernelTest, TestMinRequiredLTS_5_10) {
+    ASSERT_TRUE(ifIsKernelThenMinLTS(5, 10, 199));
+}
+
+TEST(KernelTest, TestMinRequiredLTS_5_15) {
+    ASSERT_TRUE(ifIsKernelThenMinLTS(5, 15, 136));
+}
+
+TEST(KernelTest, TestMinRequiredLTS_6_1) {
+    ASSERT_TRUE(ifIsKernelThenMinLTS(6, 1, 57));
+}
+
+TEST(KernelTest, TestMinRequiredLTS_6_6) {
+    ASSERT_TRUE(ifIsKernelThenMinLTS(6, 6, 0));
+}
+
 TEST(KernelTest, TestSupportsCommonUsbEthernetDongles) {
     KernelConfigVerifier configVerifier;
     if (!configVerifier.hasModule("CONFIG_USB")) GTEST_SKIP() << "Exempt without USB support.";
