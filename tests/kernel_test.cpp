@@ -118,34 +118,17 @@ TEST(KernelTest, TestIsLTS) {
         isKernel(6, 6));
 }
 
-static bool ifIsKernelThenMinLTS(unsigned major, unsigned minor, unsigned sub) {
-    if (!isKernel(major, minor)) return true;
-    return bpf::isAtLeastKernelVersion(major, minor, sub);
-}
+#define ifIsKernelThenMinLTS(major, minor, sub) do { \
+  if (!isKernel((major), (minor))) GTEST_SKIP() << "Not for this kernel major/minor version."; \
+  ASSERT_TRUE(bpf::isAtLeastKernelVersion((major), (minor), (sub))); \
+} while (0)
 
-TEST(KernelTest, TestMinRequiredLTS_4_19) {
-    ASSERT_TRUE(ifIsKernelThenMinLTS(4, 19, 236));
-}
-
-TEST(KernelTest, TestMinRequiredLTS_5_4) {
-    ASSERT_TRUE(ifIsKernelThenMinLTS(5, 4, 186));
-}
-
-TEST(KernelTest, TestMinRequiredLTS_5_10) {
-    ASSERT_TRUE(ifIsKernelThenMinLTS(5, 10, 199));
-}
-
-TEST(KernelTest, TestMinRequiredLTS_5_15) {
-    ASSERT_TRUE(ifIsKernelThenMinLTS(5, 15, 136));
-}
-
-TEST(KernelTest, TestMinRequiredLTS_6_1) {
-    ASSERT_TRUE(ifIsKernelThenMinLTS(6, 1, 57));
-}
-
-TEST(KernelTest, TestMinRequiredLTS_6_6) {
-    ASSERT_TRUE(ifIsKernelThenMinLTS(6, 6, 0));
-}
+TEST(KernelTest, TestMinRequiredLTS_4_19) { ifIsKernelThenMinLTS(4, 19, 236); }
+TEST(KernelTest, TestMinRequiredLTS_5_4)  { ifIsKernelThenMinLTS(5, 4, 186); }
+TEST(KernelTest, TestMinRequiredLTS_5_10) { ifIsKernelThenMinLTS(5, 10, 199); }
+TEST(KernelTest, TestMinRequiredLTS_5_15) { ifIsKernelThenMinLTS(5, 15, 136); }
+TEST(KernelTest, TestMinRequiredLTS_6_1)  { ifIsKernelThenMinLTS(6, 1, 57); }
+TEST(KernelTest, TestMinRequiredLTS_6_6)  { ifIsKernelThenMinLTS(6, 6, 0); }
 
 TEST(KernelTest, TestSupportsCommonUsbEthernetDongles) {
     KernelConfigVerifier configVerifier;
