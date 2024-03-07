@@ -147,14 +147,6 @@ cc_defaults {
     ],
 }
 
-install_symlink {
-    name: "ethtool_symlink",
-    symlink_target: "/apex/com.android.tethering/bin/ethtool",
-    // installed_location is relative to /system because that's the default partition for soong
-    // modules, unless we add something like `system_ext_specific: true` like in hwservicemanager.
-    installed_location: "bin/ethtool",
-}
-
 cc_binary {
     name: "netd",
     defaults: [
@@ -163,8 +155,7 @@ cc_binary {
     init_rc: ["netd.rc"],
     vintf_fragments: ["android.system.net.netd-service.xml"],
     required: [
-        "netbpfload",
-        "ethtool_symlink",
+        "mainline_tethering_platform_components",
     ],
     srcs: [
         "main.cpp",
