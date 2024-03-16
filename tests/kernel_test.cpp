@@ -74,6 +74,11 @@ TEST(KernelTest, TestRateLimitingSupport) {
     EXPECT_TRUE(configVerifier.hasOption("CONFIG_BPF_JIT"));
 }
 
+TEST(KernelTest, TestRequireBpfUnprivDefaultOn) {
+    KernelConfigVerifier configVerifier;
+    EXPECT_FALSE(configVerifier.hasOption("CONFIG_BPF_UNPRIV_DEFAULT_OFF"));
+}
+
 TEST(KernelTest, TestBpfJitAlwaysOn) {
     // 32-bit arm & x86 kernels aren't capable of JIT-ing all of our BPF code,
     if (bpf::isKernel32Bit()) GTEST_SKIP() << "Exempt on 32-bit kernel.";
