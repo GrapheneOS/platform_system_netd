@@ -25,14 +25,12 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
 #include <vector>
-
-#define __STDC_FORMAT_MACROS 1
-#include <inttypes.h>
 
 #include <sys/socket.h>
 #include <sys/stat.h>
