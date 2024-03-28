@@ -123,9 +123,15 @@ TEST(KernelTest, TestIsLTS) {
         isKernel(6, 6));
 }
 
+static bool isGSI() {
+    // From //system/gsid/libgsi.cpp IsGsiRunning()
+    return !access("/metadata/gsi/dsu/booted", F_OK);
+}
+
 #define ifIsKernelThenMinLTS(major, minor, sub) do { \
-  if (!isKernel((major), (minor))) GTEST_SKIP() << "Not for this kernel major/minor version."; \
-  ASSERT_TRUE(bpf::isAtLeastKernelVersion((major), (minor), (sub))); \
+    if (isGSI()) GTEST_SKIP() << "Test is meaningless on GSI."; \
+    if (!isKernel((major), (minor))) GTEST_SKIP() << "Not for this kernel major/minor version."; \
+    ASSERT_TRUE(bpf::isAtLeastKernelVersion((major), (minor), (sub))); \
 } while (0)
 
 TEST(KernelTest, TestMinRequiredLTS_4_19) { ifIsKernelThenMinLTS(4, 19, 236); }
