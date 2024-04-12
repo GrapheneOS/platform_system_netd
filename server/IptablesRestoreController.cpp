@@ -126,6 +126,7 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
     int stdout_pipe[2];
     int stderr_pipe[2];
 
+    // Assumes stdin, stdout, stderr are already in use.
     if (pipe2(stdin_pipe,  O_CLOEXEC) == -1 ||
         pipe2(stdout_pipe, O_NONBLOCK | O_CLOEXEC) == -1 ||
         pipe2(stderr_pipe, O_NONBLOCK | O_CLOEXEC) == -1) {
@@ -147,6 +148,7 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
         // stdin_pipe[0] : The read end of the stdin pipe.
         // stdout_pipe[1] : The write end of the stdout pipe.
         // stderr_pipe[1] : The write end of the stderr pipe.
+        // Note: dup2 does not set O_CLOEXEC. std*_pipe[*] is closed by execl.
         if (dup2(stdin_pipe[0], 0) == -1 ||
             dup2(stdout_pipe[1], 1) == -1 ||
             dup2(stderr_pipe[1], 2) == -1) {
@@ -170,16 +172,17 @@ IptablesProcess* IptablesRestoreController::forkAndExec(const IptablesProcessTyp
         return nullptr;
     }
 
-    // The parent process. Writes to stdout and stderr and reads from stdin.
-    // stdin_pipe[0] : The read end of the stdin pipe.
-    // stdout_pipe[1] : The write end of the stdout pipe.
-    // stderr_pipe[1] : The write end of the stderr pipe.
+    // The parent process.
+
     if (close(stdin_pipe[0]) == -1 ||
         close(stdout_pipe[1]) == -1 ||
         close(stderr_pipe[1]) == -1) {
         ALOGW("close() failed: %s", strerror(errno));
     }
 
+    // stdin_pipe[1] : The write end of the stdin pipe.
+    // stdout_pipe[0] : The read end of the stdout pipe.
+    // stderr_pipe[0] : The read end of the stderr pipe.
     return new IptablesProcess(type,
             child_pid.value(), stdin_pipe[1], stdout_pipe[0], stderr_pipe[0]);
 }
