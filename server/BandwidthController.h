@@ -55,9 +55,6 @@ public:
     int setGlobalAlertInForwardChain();
     int removeGlobalAlertInForwardChain();
 
-    int setSharedAlert(int64_t bytes);
-    int removeSharedAlert();
-
     int setInterfaceAlert(const std::string& iface, int64_t bytes);
     int removeInterfaceAlert(const std::string& iface);
 
@@ -123,7 +120,6 @@ public:
     static const char *jumpToString(IptJumpOp jumpHandling);
 
     int64_t mSharedQuotaBytes = 0;
-    int64_t mSharedAlertBytes = 0;
     int64_t mGlobalAlertBytes = 0;
 
     std::map<std::string, QuotaInfo> mQuotaIfaces;
