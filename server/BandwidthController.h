@@ -34,7 +34,6 @@ public:
     int setupIptablesHooks();
 
     int enableBandwidthControl();
-    int disableBandwidthControl();
     int enableDataSaver(bool enable);
 
     int setInterfaceSharedQuota(const std::string& iface, int64_t bytes);

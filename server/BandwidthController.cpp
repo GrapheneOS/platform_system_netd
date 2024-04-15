@@ -287,12 +287,6 @@ int BandwidthController::enableBandwidthControl() {
     return iptablesRestoreFunction(V4V6, commands, nullptr);
 }
 
-int BandwidthController::disableBandwidthControl() {
-
-    flushCleanTables(false);
-    return 0;
-}
-
 std::string BandwidthController::makeDataSaverCommand(IptablesTarget target, bool enable) {
     std::string cmd;
     const char *chainName = "bw_data_saver";

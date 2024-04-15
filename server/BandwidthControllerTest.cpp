@@ -204,26 +204,6 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
     expectSetupCommands(expectedClean, expectedAccounting);
 }
 
-TEST_F(BandwidthControllerTest, TestDisableBandwidthControl) {
-    // Pretend some bw_costly_shared_<iface> rules already exist...
-    addIptablesRestoreOutput(
-        "-P OUTPUT ACCEPT\n"
-        "-N bw_costly_rmnet_data0\n"
-        "-N bw_costly_shared\n"
-        "-N unrelated\n"
-        "-N bw_costly_rmnet_data7\n");
-
-    // ... and expect that they be flushed.
-    std::string expectedCleanCmds =
-        "*filter\n"
-        ":bw_costly_rmnet_data0 -\n"
-        ":bw_costly_rmnet_data7 -\n"
-        "COMMIT\n";
-
-    mBw.disableBandwidthControl();
-    expectSetupCommands(expectedCleanCmds, "");
-}
-
 TEST_F(BandwidthControllerTest, TestEnableDataSaver) {
     mBw.enableDataSaver(true);
     std::string expected4 =
