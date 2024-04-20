@@ -113,11 +113,6 @@ int FirewallController::resetFirewall(void) {
     return flushRules();
 }
 
-int FirewallController::isFirewallEnabled(void) {
-    // TODO: verify that rules are still in place near top
-    return -1;
-}
-
 int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
     if (mFirewallType == DENYLIST) {
         // Unsupported in DENYLIST mode

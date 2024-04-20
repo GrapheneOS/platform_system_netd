@@ -44,7 +44,6 @@ public:
 
   int setFirewallType(FirewallType);
   int resetFirewall(void);
-  int isFirewallEnabled(void);
 
   /* Match traffic going in/out over the given iface. */
   int setInterfaceRule(const char*, FirewallRule);
