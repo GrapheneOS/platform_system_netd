@@ -143,9 +143,9 @@ public:
     // Returns true if we should destroy sockets on this address.
     bool removeInterfaceAddress(unsigned ifIndex, const char* address);
 
-    bool canProtect(uid_t uid) const;
-    void allowProtect(uid_t uid);
-    void denyProtect(uid_t uid);
+    bool canProtect(uid_t uid, unsigned netId) const;
+    void allowProtect(uid_t uid, unsigned netId);
+    void denyProtect(uid_t uid, unsigned netId);
 
     void dump(netdutils::DumpWriter& dw);
     int setNetworkAllowlist(const std::vector<netd::aidl::NativeUidRangeConfig>& rangeConfigs);
@@ -162,7 +162,8 @@ public:
     unsigned getNetworkForConnectLocked(uid_t uid) const;
     unsigned getNetworkForInterfaceLocked(const char* interface) const;
     unsigned getNetworkForInterfaceLocked(const int ifIndex) const;
-    bool canProtectLocked(uid_t uid) const;
+    bool isProtectableLocked(uid_t uid, unsigned netId) const;
+    bool canProtectLocked(uid_t uid, unsigned netId) const;
     bool isVirtualNetworkLocked(unsigned netId) const;
     VirtualNetwork* getVirtualNetworkForUserLocked(uid_t uid) const;
     Network* getPhysicalOrUnreachableNetworkForUserLocked(uid_t uid) const;
@@ -187,7 +188,14 @@ public:
     unsigned mDefaultNetId;
     std::map<unsigned, Network*> mNetworks;  // Map keys are NetIds.
     std::map<uid_t, Permission> mUsers;
-    std::set<uid_t> mProtectableUsers;
+    // Set of <UID, netId> pairs that specify which UIDs can protect sockets and bypass
+    // VPNs. For each pair:
+    //
+    // - If the netId is NETID_UNSET, then the UID can call protectFromVpn and can
+    //   bypass VPNs by explicitly selecting any network.
+    // - Otherwise, the UID can bypass VPNs only by explicitly selecting the specified
+    //   network, and cannot call protectFromVpn on its sockets.
+    std::set<std::pair<uid_t, unsigned>> mProtectableUsers;
     // Map interface (ifIndex) to its current NetId, or the last NetId if the interface was removed
     // from the network and not added to another network. This state facilitates the interface to
     // NetId lookup during RTM_DELADDR (NetworkController::removeInterfaceAddress), when the

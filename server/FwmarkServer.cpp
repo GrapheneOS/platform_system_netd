@@ -250,13 +250,16 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
                     return ret;
                 }
                 fwmark.explicitlySelected = true;
-                fwmark.protectedFromVpn = mNetworkController->canProtect(client->getUid());
+                fwmark.protectedFromVpn =
+                        mNetworkController->canProtect(client->getUid(), command.netId);
             }
             break;
         }
 
         case FwmarkCommand::PROTECT_FROM_VPN: {
-            if (!mNetworkController->canProtect(client->getUid())) {
+            // TODO: Add support to specify netId in protectFromVpn(). Currently, NetdClient always
+            // passes NETID_UNSET
+            if (!mNetworkController->canProtect(client->getUid(), fwmark.netId)) {
                 LOG(ERROR) << "uid " << client->getUid() << " protect from VPN failed.";
                 return -EPERM;
             }

@@ -1092,19 +1092,19 @@ binder::Status NetdNativeService::networkClearPermissionForUser(const std::vecto
 
 binder::Status NetdNativeService::networkSetProtectAllow(int32_t uid) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    gCtls->netCtrl.allowProtect((uid_t) uid);
+    gCtls->netCtrl.allowProtect((uid_t)uid, NETID_UNSET);
     return binder::Status::ok();
 }
 
 binder::Status NetdNativeService::networkSetProtectDeny(int32_t uid) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    gCtls->netCtrl.denyProtect((uid_t) uid);
+    gCtls->netCtrl.denyProtect((uid_t)uid, NETID_UNSET);
     return binder::Status::ok();
 }
 
 binder::Status NetdNativeService::networkCanProtect(int32_t uid, bool* ret) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    *ret = gCtls->netCtrl.canProtect((uid_t) uid);
+    *ret = gCtls->netCtrl.canProtect((uid_t)uid, NETID_UNSET);
     return binder::Status::ok();
 }
 
