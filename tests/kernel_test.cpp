@@ -108,19 +108,8 @@ TEST(KernelTest, TestKernel419) {
     ASSERT_TRUE(bpf::isAtLeastKernelVersion(4, 19, 0));
 }
 
-static bool isKernel(unsigned major, unsigned minor) {
-    return bpf::isAtLeastKernelVersion(major, minor, 0)
-        && !bpf::isAtLeastKernelVersion(major, minor + 1, 0);
-}
-
 TEST(KernelTest, TestIsLTS) {
-    ASSERT_TRUE(
-        isKernel(4, 19) ||
-        isKernel(5, 4) ||
-        isKernel(5, 10) ||
-        isKernel(5, 15) ||
-        isKernel(6, 1) ||
-        isKernel(6, 6));
+    ASSERT_TRUE(bpf::isLtsKernel());
 }
 
 static bool isGSI() {
@@ -130,7 +119,7 @@ static bool isGSI() {
 
 #define ifIsKernelThenMinLTS(major, minor, sub) do { \
     if (isGSI()) GTEST_SKIP() << "Test is meaningless on GSI."; \
-    if (!isKernel((major), (minor))) GTEST_SKIP() << "Not for this kernel major/minor version."; \
+    if (!bpf::isKernelVersion((major), (minor))) GTEST_SKIP() << "Not for this LTS ver."; \
     ASSERT_TRUE(bpf::isAtLeastKernelVersion((major), (minor), (sub))); \
 } while (0)
 
