@@ -172,6 +172,14 @@ static const in6_addr V6_ADDR = {
 
 typedef enum { ALL_EXIST, NONE_EXIST } ExistMode;
 
+static void clearQueue(int tunFd) {
+    char buf[4096];
+    int ret;
+    do {
+        ret = read(tunFd, buf, sizeof(buf));
+    } while (ret > 0);
+}
+
 class NetdBinderTest : public NetNativeTestBase {
   public:
     NetdBinderTest() {
@@ -184,6 +192,11 @@ class NetdBinderTest : public NetNativeTestBase {
 
     void SetUp() override {
         ASSERT_NE(nullptr, mNetd.get());
+        // drain tun interfaces before every test.
+        clearQueue(sTun.getFdForTesting());
+        clearQueue(sTun2.getFdForTesting());
+        clearQueue(sTun3.getFdForTesting());
+        clearQueue(sTun4.getFdForTesting());
     }
 
     void TearDown() override {
@@ -215,6 +228,10 @@ class NetdBinderTest : public NetNativeTestBase {
         ASSERT_LE(sTun2.name().size(), static_cast<size_t>(IFNAMSIZ));
         ASSERT_LE(sTun3.name().size(), static_cast<size_t>(IFNAMSIZ));
         ASSERT_LE(sTun4.name().size(), static_cast<size_t>(IFNAMSIZ));
+
+        // Wait for initial IPv6 packets (MLD, DAD, and RS) to be sent on tuns, so they can be
+        // drained in SetUp().
+        sleep(1);
     }
 
     static void TearDownTestCase() {
@@ -3717,14 +3734,6 @@ void NetdBinderTest::createVpnAndAppDefaultNetworkWithUid(
 }
 
 namespace {
-
-void clearQueue(int tunFd) {
-    char buf[4096];
-    int ret;
-    do {
-        ret = read(tunFd, buf, sizeof(buf));
-    } while (ret > 0);
-}
 
 void checkDataReceived(int udpSocket, int tunFd, sockaddr* dstAddr, int addrLen) {
     char buf[4096] = {};
