@@ -247,23 +247,27 @@ void Controllers::initChildChains() {
 }
 
 static void setupConnmarkIptablesHooks() {
-    // Create NFMASK alias to prevent further line breaks.
-    constexpr unsigned NFMASK = CONNMARK_FWMARK_MASK; // 0x000FFFFF;
-
     // Rules to store parts of the fwmark (namely: netId, explicitlySelected, protectedFromVpn,
     // permission) in connmark.
     // Only saves the mark if no mark has been set before.
-    const std::vector<std::string> cmd = {
-            "*mangle",
-            StringPrintf("-A %s -m connmark --mark 0/0x%x "
-                         "-j CONNMARK --save-mark --ctmask 0x%x --nfmask 0x%x",
-                         CONNMARK_MANGLE_INPUT, NFMASK, ~NFMASK, NFMASK),
-            StringPrintf("-A %s -m connmark --mark 0/0x%x "
-                         "-j CONNMARK --save-mark --ctmask 0x%x --nfmask 0x%x",
-                         CONNMARK_MANGLE_OUTPUT, NFMASK, ~NFMASK, NFMASK),
-            "COMMIT\n",
-    };
-    execIptablesRestore(V4V6, Join(cmd, '\n'));
+    static_assert(std::string_view(CONNMARK_MANGLE_INPUT) == "connmark_mangle_INPUT");
+    static_assert(std::string_view(CONNMARK_MANGLE_OUTPUT) == "connmark_mangle_OUTPUT");
+    static_assert(CONNMARK_FWMARK_MASK == 0x000FFFFF);
+    const std::string cmd(
+            // CONNMARK:
+            // --save-mark [--nfmask nfmask] [--ctmask ctmask]
+            // Copy the packet mark (nfmark) to the connection mark (ctmark) using the given
+            // masks. The new nfmark value is determined as follows:
+            // ctmark = (ctmark & ~ctmask) ^ (nfmark & nfmask)
+            // i.e. ctmask defines what bits to clear and nfmask what bits of the nfmark to
+            // XOR into the ctmark. ctmask and nfmask default to 0xFFFFFFFF.
+            "*mangle\n"
+            "-A connmark_mangle_INPUT -m connmark --mark 0/0x000FFFFF "
+            "-j CONNMARK --save-mark --ctmask 0x000FFFFF --nfmask 0x000FFFFF\n"
+            "-A connmark_mangle_OUTPUT -m connmark --mark 0/0x000FFFFF "
+            "-j CONNMARK --save-mark --ctmask 0x000FFFFF --nfmask 0x000FFFFF\n"
+            "COMMIT\n");
+    execIptablesRestore(V4V6, cmd);
 }
 
 void Controllers::initIptablesRules() {
