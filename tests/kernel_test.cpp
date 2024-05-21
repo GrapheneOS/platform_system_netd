@@ -108,6 +108,11 @@ TEST(KernelTest, TestKernel419) {
     ASSERT_TRUE(bpf::isAtLeastKernelVersion(4, 19, 0));
 }
 
+// RiscV is not yet supported: make it fail VTS.
+TEST(KernelTest, TestNotRiscV) {
+    ASSERT_TRUE(!bpf::isRiscV());
+}
+
 TEST(KernelTest, TestIsLTS) {
     ASSERT_TRUE(bpf::isLtsKernel());
 }
