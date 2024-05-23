@@ -144,8 +144,8 @@ public:
     bool removeInterfaceAddress(unsigned ifIndex, const char* address);
 
     bool canProtect(uid_t uid, unsigned netId) const;
-    void allowProtect(uid_t uid, unsigned netId);
-    void denyProtect(uid_t uid, unsigned netId);
+    int allowProtect(uid_t uid, unsigned netId);
+    int denyProtect(uid_t uid, unsigned netId);
 
     void dump(netdutils::DumpWriter& dw);
     int setNetworkAllowlist(const std::vector<netd::aidl::NativeUidRangeConfig>& rangeConfigs);

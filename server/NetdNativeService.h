@@ -103,6 +103,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status networkClearPermissionForUser(const std::vector<int32_t>& uids) override;
     binder::Status networkSetProtectAllow(int32_t uid) override;
     binder::Status networkSetProtectDeny(int32_t uid) override;
+    binder::Status networkAllowBypassVpnOnNetwork(bool allow, int32_t uid, int32_t netId) override;
     // For test (internal use only).
     binder::Status networkGetDefault(int32_t* netId) override;
     binder::Status networkCanProtect(int32_t uid, bool* ret) override;

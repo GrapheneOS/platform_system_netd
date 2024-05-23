@@ -142,8 +142,8 @@ int NetworkController::DelegateImpl::modifyFallthrough(const std::string& physic
 }
 
 NetworkController::NetworkController() :
-        mDelegateImpl(new NetworkController::DelegateImpl(this)), mDefaultNetId(NETID_UNSET),
-        mProtectableUsers({std::make_pair(AID_VPN, NETID_UNSET)}) {
+      mDelegateImpl(new NetworkController::DelegateImpl(this)), mDefaultNetId(NETID_UNSET),
+      mProtectableUsers({std::make_pair(AID_VPN, NETID_UNSET)}) {
     gLog.info("enter NetworkController ctor");
     mNetworks[LOCAL_NET_ID] = new LocalNetwork(LOCAL_NET_ID);
     mNetworks[DUMMY_NET_ID] = new DummyNetwork(DUMMY_NET_ID);
@@ -734,14 +734,14 @@ bool NetworkController::canProtect(uid_t uid, unsigned netId) const {
     return canProtectLocked(uid, netId);
 }
 
-void NetworkController::allowProtect(uid_t uid, unsigned netId) {
+int NetworkController::allowProtect(uid_t uid, unsigned netId) {
     ScopedWLock lock(mRWLock);
-    mProtectableUsers.emplace(std::make_pair(uid, netId));
+    return mProtectableUsers.emplace(std::make_pair(uid, netId)).second ? 0 : -EEXIST;
 }
 
-void NetworkController::denyProtect(uid_t uid, unsigned netId) {
+int NetworkController::denyProtect(uid_t uid, unsigned netId) {
     ScopedWLock lock(mRWLock);
-    mProtectableUsers.erase(std::make_pair(uid, netId));
+    return mProtectableUsers.erase(std::make_pair(uid, netId)) ? 0 : -ENOENT;
 }
 
 void NetworkController::dump(DumpWriter& dw) {

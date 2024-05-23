@@ -1108,6 +1108,18 @@ binder::Status NetdNativeService::networkCanProtect(int32_t uid, bool* ret) {
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::networkAllowBypassVpnOnNetwork(bool allow, int32_t uid,
+                                                                 int32_t netId) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    int err;
+    if (allow) {
+        err = gCtls->netCtrl.allowProtect((uid_t)uid, netId);
+    } else {
+        err = gCtls->netCtrl.denyProtect((uid_t)uid, netId);
+    }
+    return statusFromErrcode(err);
+}
+
 binder::Status NetdNativeService::trafficSetNetPermForUids(int32_t, const std::vector<int32_t>&) {
     DEPRECATED;
 }

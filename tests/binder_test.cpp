@@ -5644,3 +5644,117 @@ TEST_F(NetdBinderTest, V6LinkLocalFwmark) {
     EXPECT_EQ(3, write(a1, "foo", 3)) << "errno:" << errno;
     EXPECT_EQ(3, read(c1, buf, sizeof(buf))) << "errno:" << errno;
 }
+
+/**
+ * This test sets up three networks:
+ * - SYSTEM_DEFAULT_NETID -> sTun
+ * - OTHER_NETID -> sTun2
+ * - VPN_NETID -> sTun3
+ */
+TEST_F(NetdBinderTest, BypassVpnWithNetId) {
+    static constexpr unsigned OTHER_NETID = TEST_NETID2;
+    static const sockaddr_in6 addr = {
+            .sin6_family = AF_INET6,
+            .sin6_port = 42,
+            .sin6_addr = V6_ADDR,
+    };
+    createVpnAndOtherPhysicalNetwork(SYSTEM_DEFAULT_NETID, OTHER_NETID, VPN_NETID, true /*secure*/);
+    ASSERT_TRUE(mNetd->networkAddUidRanges(VPN_NETID, {makeUidRangeParcel(TEST_UID1)}).isOk());
+
+    {
+        ScopedUidChange change(TEST_UID1);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM, 0));
+        // No network selected for the socket: data is received on VPN network.
+        checkDataReceived(sock, sTun3.getFdForTesting(), (sockaddr*)&addr, sizeof(addr));
+    }
+
+    {
+        ScopedUidChange change(TEST_UID1);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM, 0));
+        EXPECT_EQ(0, setNetworkForSocket(VPN_NETID, sock));
+        EXPECT_EQ(-EPERM, setNetworkForSocket(SYSTEM_DEFAULT_NETID, sock));
+        EXPECT_EQ(-EPERM, setNetworkForSocket(OTHER_NETID, sock));
+
+        // No permission to use OTHER_NETID: data is received on VPN network.
+        checkDataReceived(sock, sTun3.getFdForTesting(), (sockaddr*)&addr, sizeof(addr));
+    }
+
+    mNetd->networkAllowBypassVpnOnNetwork(true /* allow */, TEST_UID1, OTHER_NETID);
+    auto guard = android::base::make_scope_guard([this] {
+        mNetd->networkAllowBypassVpnOnNetwork(false /* allow */, TEST_UID1, OTHER_NETID);
+    });
+
+    {
+        ScopedUidChange change(TEST_UID1);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM, 0));
+        EXPECT_EQ(0, setNetworkForSocket(VPN_NETID, sock));
+        EXPECT_EQ(-EPERM, setNetworkForSocket(SYSTEM_DEFAULT_NETID, sock));
+        EXPECT_EQ(0, setNetworkForSocket(OTHER_NETID, sock));
+
+        // Permission to use OTHER_NETID and OTHER_NETID is selected for socket: data is received on
+        // OTHER network.
+        checkDataReceived(sock, sTun2.getFdForTesting(), (sockaddr*)&addr, sizeof(addr));
+    }
+}
+
+/**
+ * This test sets up three networks:
+ * - SYSTEM_DEFAULT_NETID -> sTun
+ * - OTHER_NETID -> sTun2
+ * - VPN_NETID -> sTun3
+ */
+TEST_F(NetdBinderTest, BypassVpnWithNetIdOverlappingRules) {
+    static constexpr unsigned OTHER_NETID = TEST_NETID2;
+    createVpnAndOtherPhysicalNetwork(SYSTEM_DEFAULT_NETID, OTHER_NETID, VPN_NETID, true /*secure*/);
+    ASSERT_TRUE(mNetd->networkAddUidRanges(VPN_NETID, {makeUidRangeParcel(TEST_UID1)}).isOk());
+
+    // Check default network permissions.
+    {
+        ScopedUidChange change(TEST_UID1);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM, 0));
+        EXPECT_EQ(0, setNetworkForSocket(VPN_NETID, sock));
+        EXPECT_EQ(-EPERM, setNetworkForSocket(SYSTEM_DEFAULT_NETID, sock));
+        EXPECT_EQ(-EPERM, setNetworkForSocket(OTHER_NETID, sock));
+    }
+
+    // Careful: only use EXPECT_*() so the test cleans up after itself on failure.
+    // Exempt TEST_UID1 from VPN on OTHER_NETID
+    mNetd->networkAllowBypassVpnOnNetwork(true /* allow */, TEST_UID1, OTHER_NETID);
+    {
+        ScopedUidChange change(TEST_UID1);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM, 0));
+        EXPECT_EQ(0, setNetworkForSocket(VPN_NETID, sock));
+        EXPECT_EQ(-EPERM, setNetworkForSocket(SYSTEM_DEFAULT_NETID, sock));
+        EXPECT_EQ(0, setNetworkForSocket(OTHER_NETID, sock));
+    }
+
+    // Exempt TEST_UID1 from VPN on all networks.
+    mNetd->networkSetProtectAllow(TEST_UID1);
+    {
+        ScopedUidChange change(TEST_UID1);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM, 0));
+        EXPECT_EQ(0, setNetworkForSocket(VPN_NETID, sock));
+        EXPECT_EQ(0, setNetworkForSocket(SYSTEM_DEFAULT_NETID, sock));
+        EXPECT_EQ(0, setNetworkForSocket(OTHER_NETID, sock));
+    }
+
+    // Remove network-specific exemption
+    mNetd->networkAllowBypassVpnOnNetwork(false /* allow */, TEST_UID1, OTHER_NETID);
+    {
+        ScopedUidChange change(TEST_UID1);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM, 0));
+        EXPECT_EQ(0, setNetworkForSocket(VPN_NETID, sock));
+        EXPECT_EQ(0, setNetworkForSocket(SYSTEM_DEFAULT_NETID, sock));
+        EXPECT_EQ(0, setNetworkForSocket(OTHER_NETID, sock));
+    }
+
+    // Remove global exemption
+    mNetd->networkSetProtectDeny(TEST_UID1);
+    {
+        ScopedUidChange change(TEST_UID1);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM, 0));
+        EXPECT_EQ(0, setNetworkForSocket(VPN_NETID, sock));
+        EXPECT_EQ(-EPERM, setNetworkForSocket(SYSTEM_DEFAULT_NETID, sock));
+        EXPECT_EQ(-EPERM, setNetworkForSocket(OTHER_NETID, sock));
+    }
+}
