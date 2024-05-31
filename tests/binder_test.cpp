@@ -1784,13 +1784,13 @@ void expectNetworkPermissionIptablesRuleExists(const char* ifName, int permissio
     std::string networkIncomingPacketMarkRule = "";
     switch (permission) {
         case INetd::PERMISSION_NONE:
-            networkIncomingPacketMarkRule = "MARK xset 0x3ffdd/0xffefffff";
+            networkIncomingPacketMarkRule = "MARK xset 0x3ffdd/0x7fefffff";
             break;
         case INetd::PERMISSION_NETWORK:
-            networkIncomingPacketMarkRule = "MARK xset 0x7ffdd/0xffefffff";
+            networkIncomingPacketMarkRule = "MARK xset 0x7ffdd/0x7fefffff";
             break;
         case INetd::PERMISSION_SYSTEM:
-            networkIncomingPacketMarkRule = "MARK xset 0xfffdd/0xffefffff";
+            networkIncomingPacketMarkRule = "MARK xset 0xfffdd/0x7fefffff";
             break;
     }
 

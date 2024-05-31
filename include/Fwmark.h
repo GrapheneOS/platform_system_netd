@@ -40,6 +40,12 @@ union Fwmark {
         m.uidBillingDone = true;
         return m.intValue;
     }
+
+    static inline uint32_t getIngressCpuWakeupMask() {
+        Fwmark m;
+        m.ingress_cpu_wakeup = true;
+        return m.intValue;
+    }
 };
 
 static const unsigned FWMARK_NET_ID_MASK = 0xffff;

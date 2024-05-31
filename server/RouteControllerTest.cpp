@@ -114,7 +114,7 @@ TEST_F(RouteControllerTest, TestRouteFlush) {
 }
 
 TEST_F(RouteControllerTest, TestModifyIncomingPacketMark) {
-  uint32_t mask = ~Fwmark::getUidBillingMask();
+  uint32_t mask = Fwmark::getUidBillingMask() | Fwmark::getIngressCpuWakeupMask();
 
   static constexpr int TEST_NETID = 30;
   EXPECT_EQ(0, modifyIncomingPacketMark(TEST_NETID, "netdtest0",
@@ -122,14 +122,14 @@ TEST_F(RouteControllerTest, TestModifyIncomingPacketMark) {
   expectIptablesRestoreCommands({StringPrintf(
       "-t mangle -A routectrl_mangle_INPUT -i netdtest0 -j MARK --set-mark "
       "0x3001e/0x%x",
-      mask)});
+      ~mask)});
 
   EXPECT_EQ(0, modifyIncomingPacketMark(TEST_NETID, "netdtest0",
                                         PERMISSION_NONE, false));
   expectIptablesRestoreCommands({StringPrintf(
       "-t mangle -D routectrl_mangle_INPUT -i netdtest0 -j MARK --set-mark "
       "0x3001e/0x%x",
-      mask)});
+      ~mask)});
 }
 
 bool hasLocalInterfaceInRouteTable(const char* iface) {
