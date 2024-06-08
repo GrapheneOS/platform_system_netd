@@ -15,6 +15,8 @@
  *
  */
 
+#include <unistd.h>
+
 #include <gtest/gtest.h>
 #include <vintf/VintfObject.h>
 
@@ -117,9 +119,13 @@ TEST(KernelTest, TestIsLTS) {
     ASSERT_TRUE(bpf::isLtsKernel());
 }
 
+static bool exists(const char* filename) {
+    return !access(filename, F_OK);
+}
+
 static bool isGSI() {
     // From //system/gsid/libgsi.cpp IsGsiRunning()
-    return !access("/metadata/gsi/dsu/booted", F_OK);
+    return exists("/metadata/gsi/dsu/booted");
 }
 
 #define ifIsKernelThenMinLTS(major, minor, sub) do { \
@@ -134,6 +140,12 @@ TEST(KernelTest, TestMinRequiredLTS_5_10) { ifIsKernelThenMinLTS(5, 10, 199); }
 TEST(KernelTest, TestMinRequiredLTS_5_15) { ifIsKernelThenMinLTS(5, 15, 136); }
 TEST(KernelTest, TestMinRequiredLTS_6_1)  { ifIsKernelThenMinLTS(6, 1, 57); }
 TEST(KernelTest, TestMinRequiredLTS_6_6)  { ifIsKernelThenMinLTS(6, 6, 0); }
+
+TEST(KernelTest, TestSupportsAcceptRaMinLft) {
+    if (isGSI()) GTEST_SKIP() << "Meaningless on GSI due to ancient kernels.";
+    if (!bpf::isAtLeastKernelVersion(5, 10, 0)) GTEST_SKIP() << "Too old base kernel.";
+    ASSERT_TRUE(exists("/proc/sys/net/ipv6/conf/default/accept_ra_min_lft"));
+}
 
 TEST(KernelTest, TestSupportsCommonUsbEthernetDongles) {
     KernelConfigVerifier configVerifier;
