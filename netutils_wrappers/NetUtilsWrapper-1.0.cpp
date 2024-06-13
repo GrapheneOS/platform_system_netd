@@ -61,7 +61,7 @@ const char *EXPECTED_REGEXPS[] = {
     CMD "ndc ipfwd (add|remove) .*" VENDOR_IFACE,
 
     // Manage vendor iptables rules.
-    CMD "ip(6)?tables -w.* (-A|-D|-F|-I|-N|-X) " VENDOR_CHAIN,
+    CMD "ip(6)?tables -w.* (-A|-C|-D|-F|-I|-N|-X) " VENDOR_CHAIN,
     CMD "ip(6)?tables -w.* (-i|-o) " VENDOR_IFACE,
 
     // Manage IPsec state.
