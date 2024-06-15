@@ -21,6 +21,7 @@
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
 #include "Permission.h"
+#include "Process.h"
 
 using android::fuzzService;
 using android::net::gCtls;
@@ -35,6 +36,7 @@ extern "C" int LLVMFuzzerInitialize(int /**argc*/, char /****argv*/) {
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+    android::net::process::blockSigPipe();
     auto service = new NetdNativeService();
     fuzzService(service, FuzzedDataProvider(data, size));
 
