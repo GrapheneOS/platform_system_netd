@@ -503,14 +503,6 @@ extern "C" int untagSocket(int socketFd) {
     return FwmarkClient().send(&command, socketFd, nullptr);
 }
 
-extern "C" int setCounterSet(uint32_t, uid_t) {
-    return -ENOTSUP;
-}
-
-extern "C" int deleteTagData(uint32_t, uid_t) {
-    return -ENOTSUP;
-}
-
 extern "C" int resNetworkQuery(unsigned netId, const char* dname, int ns_class, int ns_type,
                                uint32_t flags) {
     std::vector<uint8_t> buf(MAX_CMD_SIZE, 0);

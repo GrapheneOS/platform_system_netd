@@ -139,7 +139,6 @@ cc_defaults {
         "NetworkController.cpp",
         "OemNetdListener.cpp",
         "PhysicalNetwork.cpp",
-        "PppController.cpp",
         "Process.cpp",
         "UnreachableNetwork.cpp",
         "VirtualNetwork.cpp",

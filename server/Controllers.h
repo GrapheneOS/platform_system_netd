@@ -24,7 +24,6 @@
 #include "InterfaceController.h"
 #include "IptablesRestoreController.h"
 #include "NetworkController.h"
-#include "PppController.h"
 #include "StrictController.h"
 #include "TcpSocketMonitor.h"
 #include "TetherController.h"
@@ -41,7 +40,6 @@ class Controllers {
 
     NetworkController netCtrl;
     TetherController tetherCtrl;
-    PppController pppCtrl;
     BandwidthController bandwidthCtrl;
     IdletimerController idletimerCtrl;
     FirewallController firewallCtrl;
