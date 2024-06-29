@@ -232,7 +232,7 @@ int TetherController::startTethering(bool usingLegacyDnsProxy, int num_addrs, ch
     char markStr[UINT32_HEX_STRLEN];
     snprintf(markStr, sizeof(markStr), "0x%x", fwmark.intValue);
 
-    std::vector<const std::string> argVector = {
+    std::vector<std::string> argVector = {
             "/system/bin/dnsmasq",
             "--keep-in-foreground",
             "--no-resolv",
