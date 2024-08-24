@@ -88,6 +88,13 @@ TEST(KernelTest, TestBpfJitAlwaysOn) {
     ASSERT_TRUE(configVerifier.hasOption("CONFIG_BPF_JIT_ALWAYS_ON"));
 }
 
+TEST(KernelTest, TestHaveEfficientUnalignedAccess) {
+    // Turns out the bpf verifier is stricter if you don't have this option.
+    // At least *some* of our bpf code fails to verify without it.
+    KernelConfigVerifier configVerifier;
+    ASSERT_TRUE(configVerifier.hasOption("CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS"));
+}
+
 /* Android 14/U should only launch on 64-bit kernels
  *   T launches on 5.10/5.15
  *   U launches on 5.15/6.1
