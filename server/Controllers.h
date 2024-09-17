@@ -20,6 +20,7 @@
 #include "BandwidthController.h"
 #include "EventReporter.h"
 #include "FirewallController.h"
+#include "MulticastFirewallController.h"
 #include "IdletimerController.h"
 #include "InterfaceController.h"
 #include "IptablesRestoreController.h"
@@ -43,6 +44,7 @@ class Controllers {
     BandwidthController bandwidthCtrl;
     IdletimerController idletimerCtrl;
     FirewallController firewallCtrl;
+    MulticastFirewallController multicastFirewallCtrl;
     StrictController strictCtrl;
     EventReporter eventReporter;
     IptablesRestoreController iptablesRestoreCtrl;
