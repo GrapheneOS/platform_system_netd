@@ -209,8 +209,8 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
 
 uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) const {
     Fwmark fwmark;
-    fwmark.protectedFromVpn = true;
-    fwmark.permission = PERMISSION_SYSTEM;
+    fwmark.protectedFromVpn = canProtectLocked(uid, *netId);
+    fwmark.permission = getPermissionForUserLocked(uid);
 
     Network* appDefaultNetwork = getPhysicalOrUnreachableNetworkForUserLocked(uid);
     unsigned defaultNetId = appDefaultNetwork ? appDefaultNetwork->getNetId() : mDefaultNetId;
@@ -248,6 +248,7 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
         if (virtualNetwork && resolv_has_nameservers(virtualNetwork->getNetId())) {
             *netId = virtualNetwork->getNetId();
+            fwmark.explicitlySelected = true;
         } else {
             // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
             // http://b/27560555
