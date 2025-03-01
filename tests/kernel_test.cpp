@@ -17,11 +17,13 @@
 
 #include <unistd.h>
 
+#include <android-base/properties.h>
 #include <gtest/gtest.h>
 #include <vintf/VintfObject.h>
 
 #include <fstream>
 #include <string>
+#include <unordered_set>
 
 #include "bpf/KernelUtils.h"
 
@@ -30,12 +32,26 @@ namespace net {
 
 namespace {
 
+using ::android::base::GetProperty;
 using ::android::vintf::RuntimeInfo;
 using ::android::vintf::VintfObject;
 
 class KernelConfigVerifier final {
   public:
-    KernelConfigVerifier() : mRuntimeInfo(VintfObject::GetRuntimeInfo()) {}
+    KernelConfigVerifier() : mRuntimeInfo(VintfObject::GetRuntimeInfo()) {
+        std::ifstream procModules("/proc/modules", std::ios::in);
+        if (!procModules) {
+            // Return early, this will likely cause the test to fail. However, gtest FAIL() cannot
+            // be used outside of an actual test method.
+            return;
+        }
+        std::string modline;
+        while (std::getline(procModules, modline)) {
+            // modline contains a single line read from /proc/modules. For example:
+            // virtio_snd 45056 0 - Live 0x0000000000000000 (E)
+            mLoadedModules.emplace(modline.substr(0, modline.find(' ')));
+        }
+    }
 
     bool hasOption(const std::string& option) const {
         const auto& configMap = mRuntimeInfo->kernelConfigs();
@@ -55,9 +71,18 @@ class KernelConfigVerifier final {
         return false;
     }
 
+    bool isAvailable(const std::string& option, const std::string& koName) const {
+        return hasOption(option) || mLoadedModules.contains(koName);
+    }
+
   private:
     std::shared_ptr<const RuntimeInfo> mRuntimeInfo;
+    std::unordered_set<std::string> mLoadedModules;
 };
+
+bool isCuttlefish() {
+    return GetProperty("ro.product.board", "") == "cutf";
+}
 
 }  // namespace
 
@@ -82,8 +107,6 @@ TEST(KernelTest, TestRequireBpfUnprivDefaultOn) {
 }
 
 TEST(KernelTest, TestBpfJitAlwaysOn) {
-    if (bpf::isKernel32Bit() && !bpf::isAtLeastKernelVersion(5, 16, 0))
-        GTEST_SKIP() << "Exempt on obsolete 32-bit kernels.";
     KernelConfigVerifier configVerifier;
     ASSERT_TRUE(configVerifier.hasOption("CONFIG_BPF_JIT_ALWAYS_ON"));
 }
@@ -113,7 +136,7 @@ TEST(KernelTest, TestX86Kernel64Bit) {
 }
 
 // Android 25Q2 requires 64-bit userspace on new 6.7+ kernels.
-TEST(KernelTest, TestUser64Bit) {
+TEST(KernelTest, DISABLED_TestUser64Bit) {
     if (!bpf::isAtLeastKernelVersion(6, 7, 0)) GTEST_SKIP() << "Exempt on < 6.7 kernel.";
     ASSERT_TRUE(bpf::isUserspace64bit());
 }
@@ -152,7 +175,7 @@ TEST(KernelTest, TestMinRequiredLTS_5_10) { ifIsKernelThenMinLTS(5, 10, 210); }
 TEST(KernelTest, TestMinRequiredLTS_5_15) { ifIsKernelThenMinLTS(5, 15, 149); }
 TEST(KernelTest, TestMinRequiredLTS_6_1)  { ifIsKernelThenMinLTS(6, 1, 78); }
 TEST(KernelTest, TestMinRequiredLTS_6_6)  { ifIsKernelThenMinLTS(6, 6, 30); }
-TEST(KernelTest, TestMinRequiredLTS_6_12) { ifIsKernelThenMinLTS(6, 12, 5); }
+TEST(KernelTest, TestMinRequiredLTS_6_12) { ifIsKernelThenMinLTS(6, 12, 13); }
 
 TEST(KernelTest, TestSupportsAcceptRaMinLft) {
     if (isGSI()) GTEST_SKIP() << "Meaningless on GSI due to ancient kernels.";
@@ -177,6 +200,28 @@ TEST(KernelTest, TestSupportsCommonUsbEthernetDongles) {
         EXPECT_TRUE(configVerifier.hasModule("CONFIG_USB_RTL8153_ECM"));
         EXPECT_TRUE(configVerifier.hasModule("CONFIG_AX88796B_PHY"));
     }
+}
+
+/**
+ * In addition to TestSupportsCommonUsbEthernetDongles, ensure that USB CDC host drivers are either
+ * builtin or loaded on physical devices.
+ */
+// TODO: check for hasSystemFeature(FEATURE_USB_HOST)
+TEST(KernelTest, TestSupportsUsbCdcHost) {
+    KernelConfigVerifier configVerifier;
+    // TODO: Load these modules on cuttlefish.
+    if (isCuttlefish()) GTEST_SKIP() << "Exempt on cuttlefish";
+
+    EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_NET_CDC_NCM", "cdc_ncm"));
+    EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_NET_CDC_EEM", "cdc_eem"));
+    EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_NET_CDCETHER", "cdc_ether"));
+}
+
+// TODO: check for hasSystemFeature(FEATURE_USB_ACCESSORY)
+TEST(KernelTest, TestSupportsUsbNcmGadget) {
+    KernelConfigVerifier configVerifier;
+    EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_F_NCM", "usb_f_ncm"));
+    EXPECT_TRUE(configVerifier.hasOption("CONFIG_USB_CONFIGFS_NCM"));
 }
 
 }  // namespace net

@@ -462,6 +462,7 @@ extern "C" unsigned getNetworkForProcess() {
 
 extern "C" int setNetworkForSocket(unsigned netId, int socketFd) {
     CHECK_SOCKET_IS_MARKABLE(socketFd);
+    netId &= ~NETID_USE_LOCAL_NAMESERVERS;
     FwmarkCommand command = {FwmarkCommand::SELECT_NETWORK, netId, 0, 0};
     return FwmarkClient().send(&command, socketFd, nullptr);
 }
