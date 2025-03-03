@@ -5628,6 +5628,8 @@ TEST_F(NetdBinderTest, BypassVpnWithNetId) {
         ScopedUidChange change(TEST_UID1);
         unique_fd sock(socket(AF_INET6, SOCK_DGRAM, 0));
         EXPECT_EQ(0, setNetworkForSocket(VPN_NETID, sock));
+        // 0x80000000 is NETID_USE_LOCAL_NAMESERVERS and should just be ignored
+        EXPECT_EQ(0, setNetworkForSocket(VPN_NETID | 0x80000000, sock));
         EXPECT_EQ(-EPERM, setNetworkForSocket(SYSTEM_DEFAULT_NETID, sock));
         EXPECT_EQ(-EPERM, setNetworkForSocket(OTHER_NETID, sock));
 
