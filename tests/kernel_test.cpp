@@ -183,6 +183,24 @@ TEST(KernelTest, TestSupportsAcceptRaMinLft) {
     ASSERT_TRUE(exists("/proc/sys/net/ipv6/conf/default/accept_ra_min_lft"));
 }
 
+TEST(KernelTest, TestSupportsBpfLsm) {
+    if (isGSI()) GTEST_SKIP() << "Meaningless on GSI due to ancient kernels.";
+    if (!bpf::isAtLeastKernelVersion(5, 16, 0)) GTEST_SKIP() << "Too old base kernel.";
+    // TODO: verify this on cuttlefish as well.
+    if (isCuttlefish()) GTEST_SKIP() << "Exempt on cuttlefish";
+    KernelConfigVerifier configVerifier;
+    ASSERT_TRUE(configVerifier.hasOption("CONFIG_BPF_LSM"));
+}
+
+// https://source.android.com/docs/compatibility/15/android-15-cdd#7452_ipv6 C-0-6
+// MUST provide third-party applications with direct IPv6 connectivity to the
+// network when connected to an IPv6 network, without any form of address
+// or port translation happening locally on the device.
+TEST(KernelTest, TestNoIpv6Nat) {
+    KernelConfigVerifier configVerifier;
+    ASSERT_FALSE(configVerifier.hasOption("CONFIG_IP6_NF_NAT"));
+}
+
 TEST(KernelTest, TestSupportsCommonUsbEthernetDongles) {
     KernelConfigVerifier configVerifier;
     if (!configVerifier.hasModule("CONFIG_USB")) GTEST_SKIP() << "Exempt without USB support.";
