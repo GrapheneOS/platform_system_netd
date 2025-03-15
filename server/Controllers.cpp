@@ -60,6 +60,7 @@ static constexpr char CONNMARK_MANGLE_OUTPUT[] = "connmark_mangle_OUTPUT";
 static const std::vector<const char*> FILTER_INPUT = {
         // Bandwidth should always be early in input chain, to make sure we
         // correctly count incoming traffic against data plan.
+        OEM_IPTABLES_FILTER_INPUT,
         BandwidthController::LOCAL_INPUT,
         FirewallController::LOCAL_INPUT,
 };
