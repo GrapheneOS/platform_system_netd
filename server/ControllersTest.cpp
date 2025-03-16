@@ -74,6 +74,8 @@ TEST_F(ControllersTest, TestInitIptablesRules) {
              "*filter\n"
              ":INPUT -\n"
              "-F INPUT\n"
+             ":oem_in -\n"
+             "-A INPUT -j oem_in\n"
              ":bw_INPUT -\n"
              "-A INPUT -j bw_INPUT\n"
              ":fw_INPUT -\n"

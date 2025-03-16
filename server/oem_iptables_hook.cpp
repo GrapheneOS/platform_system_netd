@@ -35,6 +35,7 @@ const char OEM_SCRIPT_PATH[] = "/system/bin/oem-iptables-init.sh";
 bool oemCleanupHooks() {
     static const std::string cmd4 =
             "*filter\n"
+            ":oem_in -\n"
             ":oem_out -\n"
             ":oem_fwd -\n"
             "COMMIT\n"
@@ -44,6 +45,7 @@ bool oemCleanupHooks() {
 
     static const std::string cmd6 =
             "*filter\n"
+            ":oem_in -\n"
             ":oem_out -\n"
             ":oem_fwd -\n"
             "COMMIT\n";
