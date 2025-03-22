@@ -468,7 +468,7 @@ int NetworkController::createVirtualNetwork(unsigned netId, bool secure, NativeV
         return -EEXIST;
     }
 
-    if (vpnType < NativeVpnType::SERVICE || NativeVpnType::OEM < vpnType) {
+    if (vpnType < NativeVpnType::SERVICE || NativeVpnType::OEM_LEGACY < vpnType) {
         ALOGE("invalid vpnType %d", static_cast<int>(vpnType));
         return -EINVAL;
     }
