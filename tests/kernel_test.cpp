@@ -185,9 +185,7 @@ TEST(KernelTest, TestSupportsAcceptRaMinLft) {
 
 TEST(KernelTest, TestSupportsBpfLsm) {
     if (isGSI()) GTEST_SKIP() << "Meaningless on GSI due to ancient kernels.";
-    if (!bpf::isAtLeastKernelVersion(5, 16, 0)) GTEST_SKIP() << "Too old base kernel.";
-    // TODO: verify this on cuttlefish as well.
-    if (isCuttlefish()) GTEST_SKIP() << "Exempt on cuttlefish";
+    if (!bpf::isAtLeastKernelVersion(6, 2, 0)) GTEST_SKIP() << "Too old base kernel.";
     KernelConfigVerifier configVerifier;
     ASSERT_TRUE(configVerifier.hasOption("CONFIG_BPF_LSM"));
 }
