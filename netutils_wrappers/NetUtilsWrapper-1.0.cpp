@@ -70,6 +70,7 @@ const char *EXPECTED_REGEXPS[] = {
     // Manage vendor interfaces.
     CMD "tc .* dev " VENDOR_IFACE,
     CMD "ip( -4| -6)? (addr|address) (add|del|delete|flush).* dev " VENDOR_IFACE,
+    CMD "ip link set dev " VENDOR_IFACE,
 
     // Other activities observed on current devices. In future releases, these should be supported
     // in a way that is less likely to interfere with general Android networking behaviour.
