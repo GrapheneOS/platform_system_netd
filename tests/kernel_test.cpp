@@ -15,6 +15,7 @@
  *
  */
 
+#include <time.h>
 #include <unistd.h>
 
 #include <android-base/properties.h>
@@ -238,6 +239,17 @@ TEST(KernelTest, TestSupportsUsbNcmGadget) {
     KernelConfigVerifier configVerifier;
     EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_F_NCM", "usb_f_ncm"));
     EXPECT_TRUE(configVerifier.hasOption("CONFIG_USB_CONFIGFS_NCM"));
+}
+
+TEST(KernelTest, TimeDoesNotOverflow) {
+    errno = 0;
+    time_t now = time(nullptr);
+    ASSERT_NE(now, -1);  // Check if time() failed
+    ASSERT_EQ(errno, 0);  // Check if errno was set (shouldn't be on success)
+
+    ASSERT_GE(now, 1744912772);  // 2025-04-17 17:59:32 UTC
+    time_t future = now + 10 * 365 * 24 * 60 * 60; // 10 years
+    ASSERT_GE(future, now);  // check for wrap-around
 }
 
 }  // namespace net
