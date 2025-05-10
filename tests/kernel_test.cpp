@@ -122,10 +122,10 @@ TEST(KernelTest, TestHaveEfficientUnalignedAccess) {
 /* Android 14/U should only launch on 64-bit kernels
  *   T launches on 5.10/5.15
  *   U launches on 5.15/6.1
- * So >=5.16 implies isKernel64Bit()
+ * So >=5.16 has always implied isKernel64Bit(),
+ * but with 25Q3 we make it unconditional.
  */
 TEST(KernelTest, TestKernel64Bit) {
-    if (!bpf::isAtLeastKernelVersion(5, 16, 0)) GTEST_SKIP() << "Exempt on < 5.16 kernel.";
     ASSERT_TRUE(bpf::isKernel64Bit());
 }
 
@@ -142,9 +142,9 @@ TEST(KernelTest, DISABLED_TestUser64Bit) {
     ASSERT_TRUE(bpf::isUserspace64bit());
 }
 
-// Android 25Q2 requires 5.4+
-TEST(KernelTest, TestKernel54) {
-    ASSERT_TRUE(bpf::isAtLeastKernelVersion(5, 4, 0));
+// Android 25Q3 requires 5.10+
+TEST(KernelTest, TestKernel510) {
+    ASSERT_TRUE(bpf::isAtLeastKernelVersion(5, 10, 0));
 }
 
 // RiscV is not yet supported: make it fail VTS.
@@ -180,7 +180,6 @@ TEST(KernelTest, TestMinRequiredLTS_6_12) { ifIsKernelThenMinLTS(6, 12, 13); }
 
 TEST(KernelTest, TestSupportsAcceptRaMinLft) {
     if (isGSI()) GTEST_SKIP() << "Meaningless on GSI due to ancient kernels.";
-    if (!bpf::isAtLeastKernelVersion(5, 10, 0)) GTEST_SKIP() << "Too old base kernel.";
     ASSERT_TRUE(exists("/proc/sys/net/ipv6/conf/default/accept_ra_min_lft"));
 }
 
