@@ -41,7 +41,7 @@
 
 // List of net utils wrapped by this program
 // The list MUST be in descending order of string length
-const char *netcmds[] = {
+static const char *const netcmds[] = {
     "ip6tables",
     "iptables",
     "ndc",
@@ -51,7 +51,7 @@ const char *netcmds[] = {
 };
 
 // List of regular expressions of expected commands.
-const char *EXPECTED_REGEXPS[] = {
+static const char *const EXPECTED_REGEXPS[] = {
 #define CMD "^" SYSTEM_DIRNAME
     // Create, delete, and manage OEM networks.
     CMD "ndc network (create|destroy) (oem|handle)[0-9]+( |$)",

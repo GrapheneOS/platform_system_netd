@@ -55,7 +55,7 @@ uint16_t bindAndListen(int s) {
 }
 
 const char *tcpStateName(uint8_t state) {
-    static const char *states[] = {
+    static const char *const states[] = {
         "???",
         "TCP_ESTABLISHED",
         "TCP_SYN_SENT",

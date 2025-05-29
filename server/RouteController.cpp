@@ -120,7 +120,7 @@ constexpr bool IMPLICIT = false;
 // END CONSTANTS ----------------------------------------------------------------------------------
 
 static const char* actionName(uint16_t action) {
-    static const char *ops[4] = {"adding", "deleting", "getting", "???"};
+    static const char *const ops[4] = {"adding", "deleting", "getting", "???"};
     return ops[action % 4];
 }
 

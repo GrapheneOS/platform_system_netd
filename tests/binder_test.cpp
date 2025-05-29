@@ -1877,7 +1877,7 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
 
     // This should ba aligned with V4_FIXED_LOCAL_PREFIXES in system/netd/server/RouteController.cpp
     // An expandable array for fixed local prefix though it's only one element now.
-    static const char* kV4LocalPrefixes[] = {"224.0.0.0/24"};
+    static const char* const kV4LocalPrefixes[] = {"224.0.0.0/24"};
 
     // Add test physical network
     const auto& config = makeNativeNetworkConfig(TEST_NETID1, NativeNetworkType::PHYSICAL,

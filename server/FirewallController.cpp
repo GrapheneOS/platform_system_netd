@@ -44,16 +44,16 @@ namespace net {
 
 auto FirewallController::execIptablesRestore = ::execIptablesRestore;
 
-const char* FirewallController::TABLE = "filter";
+const char FirewallController::TABLE[] = "filter";
 
-const char* FirewallController::LOCAL_INPUT = "fw_INPUT";
-const char* FirewallController::LOCAL_OUTPUT = "fw_OUTPUT";
-const char* FirewallController::LOCAL_FORWARD = "fw_FORWARD";
+const char FirewallController::LOCAL_INPUT[] = "fw_INPUT";
+const char FirewallController::LOCAL_OUTPUT[] = "fw_OUTPUT";
+const char FirewallController::LOCAL_FORWARD[] = "fw_FORWARD";
 
 // ICMPv6 types that are required for any form of IPv6 connectivity to work. Note that because the
 // fw_dozable chain is called from both INPUT and OUTPUT, this includes both packets that we need
 // to be able to send (e.g., RS, NS), and packets that we need to receive (e.g., RA, NA).
-const char* FirewallController::ICMPV6_TYPES[] = {
+const char* const FirewallController::ICMPV6_TYPES[] = {
     "packet-too-big",
     "router-solicitation",
     "router-advertisement",

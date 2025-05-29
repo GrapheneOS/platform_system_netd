@@ -52,13 +52,13 @@ public:
 
   static std::string makeCriticalCommands(IptablesTarget target, const char* chainName);
 
-  static const char* TABLE;
+  static const char TABLE[];
 
-  static const char* LOCAL_INPUT;
-  static const char* LOCAL_OUTPUT;
-  static const char* LOCAL_FORWARD;
+  static const char LOCAL_INPUT[];
+  static const char LOCAL_OUTPUT[];
+  static const char LOCAL_FORWARD[];
 
-  static const char* ICMPV6_TYPES[];
+  static const char* const ICMPV6_TYPES[];
 
   std::mutex lock;
 
