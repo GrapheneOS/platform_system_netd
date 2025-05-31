@@ -29,9 +29,8 @@
 
 #include <android-base/strings.h>
 #include <cutils/misc.h>  // FIRST_APPLICATION_UID
-#include <netd_resolv/resolv.h>
 #include <net/if.h>
-#include "log/log.h"
+#include <netd_resolv/resolv.h>
 
 #include "Controllers.h"
 #include "DummyNetwork.h"
@@ -42,11 +41,16 @@
 #include "TcUtils.h"
 #include "UnreachableNetwork.h"
 #include "VirtualNetwork.h"
+#include "log/log.h"
 #include "netdutils/DumpWriter.h"
 #include "netdutils/Utils.h"
 #include "netid_client.h"
 
 #define DBG 0
+
+#include <android_net_platform_flags.h>
+
+namespace netflags = android::net::platform::flags;
 
 using android::netdutils::DumpWriter;
 using android::netdutils::getIfaceNames;
@@ -670,6 +674,9 @@ int NetworkController::removeRoute(unsigned netId, const char* interface, const 
 }
 
 void NetworkController::addInterfaceAddress(unsigned ifIndex, const char* address) {
+    if (netflags::connectivity_service_destroy_socket()) {
+        return;
+    }
     ScopedWLock lock(mRWLock);
     if (ifIndex == 0) {
         ALOGE("Attempting to add address %s without ifindex", address);
@@ -680,6 +687,10 @@ void NetworkController::addInterfaceAddress(unsigned ifIndex, const char* addres
 
 // Returns whether we should call SOCK_DESTROY on the removed address.
 bool NetworkController::removeInterfaceAddress(unsigned ifindex, const char* address) {
+    if (netflags::connectivity_service_destroy_socket()) {
+        // SOCK_DESTROY on the removed address will be triggered from Connectivity module.
+        return false;
+    }
     ScopedWLock lock(mRWLock);
     // First, update mAddressToIfindices map
     auto ifindicesIter = mAddressToIfindices.find(address);
@@ -787,14 +798,16 @@ void NetworkController::dump(DumpWriter& dw) {
     }
     dw.decIndent();
 
-    dw.blankline();
-    dw.println("Interface addresses:");
-    dw.incIndent();
-    for (const auto& i : mAddressToIfindices) {
-        dw.println("address: %s ifindices: [%s]", i.first.c_str(),
-                android::base::Join(i.second, ", ").c_str());
+    if (!netflags::connectivity_service_destroy_socket()) {
+        dw.blankline();
+        dw.println("Interface addresses:");
+        dw.incIndent();
+        for (const auto& i : mAddressToIfindices) {
+            dw.println("address: %s ifindices: [%s]", i.first.c_str(),
+                       android::base::Join(i.second, ", ").c_str());
+        }
+        dw.decIndent();
     }
-    dw.decIndent();
 
     dw.blankline();
     dw.println("Permission of users:");
