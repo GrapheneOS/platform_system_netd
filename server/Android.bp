@@ -118,11 +118,13 @@ cc_defaults {
         "mdns_aidl_interface-V1-cpp",
         "netd_event_listener_interface-V1-cpp",
         "oemnetd_aidl_interface-cpp",
+        "libaconfig_storage_read_api_cc",
     ],
     static_libs: [
         "libip_checksum",
         "libnetd_server",
         "libtcutils",
+        "android.net.platform.flags-aconfig-cc",
     ],
     srcs: [
         "DummyNetwork.cpp",

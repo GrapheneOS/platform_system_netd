@@ -21,7 +21,10 @@
 #include "RouteController.h"
 #include "SockDiag.h"
 
+#include <android_net_platform_flags.h>
 #include "log/log.h"
+
+namespace netflags = android::net::platform::flags;
 
 namespace android::net {
 
@@ -70,6 +73,11 @@ Permission PhysicalNetwork::getPermission() const {
 }
 
 int PhysicalNetwork::destroySocketsLackingPermission(Permission permission) {
+    if (netflags::connectivity_service_destroy_socket()) {
+        // This will be done in ConnectivityService.
+        return 0;
+    }
+
     if (permission == PERMISSION_NONE) return 0;
 
     SockDiag sd;

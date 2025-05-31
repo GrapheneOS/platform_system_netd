@@ -208,8 +208,8 @@ public:
     // TODO: Does not track IP addresses present when netd is started or restarts after a crash.
     // This is not a problem for its intended use (tracking IP addresses on VPN interfaces), but
     // we should fix it.
+    // This map is deprecated, if flag connectivityServiceDestroySocket is enabled.
     std::unordered_map<std::string, std::unordered_set<unsigned>> mAddressToIfindices;
-
 };
 
 }  // namespace android::net
