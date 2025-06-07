@@ -148,8 +148,10 @@ int netdClientAccept4(int sockfd, sockaddr* addr, socklen_t* addrlen, int flags)
 }
 
 int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
-    const bool shouldSetFwmark = shouldMarkSocket(sockfd, addr);
-    if (shouldSetFwmark) {
+    if (!shouldMarkSocket(sockfd, addr)) {
+        // get this out of the way to avoid initializing a stopwatch
+        return libcConnect(sockfd, addr, addrlen);
+    } else {
         FwmarkCommand command = {FwmarkCommand::ON_CONNECT, 0, 0, 0};
         FwmarkConnectInfo connectInfo(0, 0, addr);
         int error = FwmarkClient().send(&command, sockfd, &connectInfo);
@@ -159,21 +161,22 @@ int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
             return -1;
         }
     }
+
     // Latency measurement does not include time of sending commands to Fwmark
     Stopwatch s;
     const int ret = libcConnect(sockfd, addr, addrlen);
     // Save errno so it isn't clobbered by sending ON_CONNECT_COMPLETE
     const int connectErrno = errno;
     const auto latencyMs = static_cast<unsigned>(s.timeTakenUs() / 1000);
+
     // Send an ON_CONNECT_COMPLETE command that includes sockaddr and connect latency for reporting
-    if (shouldSetFwmark) {
-        FwmarkConnectInfo connectInfo(ret == 0 ? 0 : connectErrno, latencyMs, addr);
-        // TODO: get the netId from the socket mark once we have continuous benchmark runs
-        FwmarkCommand command = {FwmarkCommand::ON_CONNECT_COMPLETE, /* netId (ignored) */ 0,
-                                 /* uid (filled in by the server) */ 0, 0};
-        // Ignore return value since it's only used for logging
-        FwmarkClient().send(&command, sockfd, &connectInfo);
-    }
+    FwmarkConnectInfo connectInfo(ret == 0 ? 0 : connectErrno, latencyMs, addr);
+    // TODO: get the netId from the socket mark once we have continuous benchmark runs
+    FwmarkCommand command = {FwmarkCommand::ON_CONNECT_COMPLETE, /* netId (ignored) */ 0,
+                             /* uid (filled in by the server) */ 0, 0};
+    // Ignore return value since it's only used for logging
+    FwmarkClient().send(&command, sockfd, &connectInfo);
+
     errno = connectErrno;
     return ret;
 }
