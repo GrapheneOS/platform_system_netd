@@ -53,6 +53,7 @@
 #include <android-base/strings.h>
 #include <android-base/test_utils.h>
 #include <android/multinetwork.h>
+#include <android_net_platform_flags.h>
 #include <binder/IPCThreadState.h>
 #include <bpf/KernelUtils.h>
 #include <com/android/internal/net/BnOemNetdUnsolicitedEventListener.h>
@@ -90,6 +91,7 @@
 #define NAT_TABLE "nat"
 
 namespace binder = android::binder;
+namespace netflags = android::net::platform::flags;
 
 using android::IBinder;
 using android::IServiceManager;
@@ -996,6 +998,9 @@ void checkSocketpairClosed(int clientSocket, int acceptedSocket) {
 }
 
 TEST_F(NetdBinderTest, SocketDestroyLinkLocal) {
+    if (netflags::connectivity_service_destroy_socket()) {
+        return;
+    }
     // Add the same link-local address to two interfaces.
     const char* kLinkLocalAddress = "fe80::ace:d00d";
 

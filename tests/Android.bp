@@ -95,6 +95,7 @@ cc_test {
     include_dirs: ["system/netd/server"],
     header_libs: ["bpf_headers"],
     shared_libs: [
+        "libaconfig_storage_read_api_cc",
         "libbase",
         "libbinder",
         "libbinder_ndk",
@@ -109,6 +110,7 @@ cc_test {
         "libvintf",
     ],
     static_libs: [
+        "android.net.platform.flags-aconfig-cc",
         "libcap",
         "libnetd_test_tun_interface",
         "libnetd_test_unsol_service",
