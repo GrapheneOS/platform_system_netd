@@ -516,11 +516,13 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
     unique_fd sock(socket(sockFamily, SOCK_STREAM | SOCK_CLOEXEC, 0));
 
     EXPECT_CALL(mockSyscalls, getsockname(_, _, _))
-        .WillOnce(DoAll(SetArgPointee<1>(socketaddr), Return(netdutils::status::ok)));
+            .Times(2)
+            .WillRepeatedly(DoAll(SetArgPointee<1>(socketaddr), Return(netdutils::status::ok)));
 
     EXPECT_CALL(mockSyscalls, setsockopt(_, _, _, _, _))
-        .WillOnce(DoAll(WithArg<3>(Invoke(SavePolicy)), SaveArg<4>(&optlen),
-                        Return(netdutils::status::ok)));
+            .Times(2)
+            .WillRepeatedly(DoAll(WithArg<3>(Invoke(SavePolicy)), SaveArg<4>(&optlen),
+                                  Return(netdutils::status::ok)));
 
     XfrmController ctrl(params.xfrmInterfacesEnabled);
     Status res = ctrl.ipSecApplyTransportModeTransform(sock, 1 /* resourceId */,
@@ -532,6 +534,20 @@ TEST_P(XfrmControllerParameterizedTest, TestIpSecApplyTransportModeTransform) {
 
     EXPECT_EQ(1 /* resourceId */, static_cast<int>(policy.tmpl.reqid));
     EXPECT_EQ(htonl(DROID_SPI), policy.tmpl.id.spi);
+
+    expectAddressEquals(xfrmFamily, localAddr, policy.tmpl.saddr);
+    expectAddressEquals(xfrmFamily, remoteAddr, policy.tmpl.id.daddr);
+
+    res = ctrl.ipSecApplyTransportModeTransform(sock, 1 /* resourceId */,
+                                                static_cast<int>(XfrmDirection::IN), localAddr,
+                                                remoteAddr, DROID_SPI);
+    EXPECT_TRUE(isOk(res)) << res;
+    EXPECT_EQ(sizeof(Policy), optlen);
+
+    EXPECT_EQ(1 /* resourceId */, static_cast<int>(policy.tmpl.reqid));
+
+    // Input SPI is always set to zero regardless of what is sent.
+    EXPECT_EQ(0, static_cast<int>(policy.tmpl.id.spi));
 
     expectAddressEquals(xfrmFamily, localAddr, policy.tmpl.saddr);
     expectAddressEquals(xfrmFamily, remoteAddr, policy.tmpl.id.daddr);

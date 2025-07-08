@@ -774,8 +774,11 @@ netdutils::Status XfrmController::ipSecApplyTransportModeTransform(
     struct sockaddr_storage saddr = ret.value();
 
     XfrmSpInfo spInfo{};
-    netdutils::Status status = fillXfrmCommonInfo(sourceAddress, destinationAddress, spi, 0, 0,
-                                                  transformId, 0, &spInfo);
+    netdutils::Status status =
+            fillXfrmCommonInfo(sourceAddress, destinationAddress,
+                               direction == static_cast<int32_t>(XfrmDirection::OUT) ? spi : 0, 0,
+                               0, transformId, 0, &spInfo);
+
     if (!isOk(status)) {
         ALOGE("Couldn't build SA ID %s", __FUNCTION__);
         return status;
