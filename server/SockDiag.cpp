@@ -370,7 +370,7 @@ int SockDiag::destroyLiveSockets(const DestroyFilter& destroyFilter, const char 
 int SockDiag::getLiveTcpInfos(const TcpInfoReader& tcpInfoReader) {
     const int proto = IPPROTO_TCP;
     const uint32_t states = (1 << TCP_ESTABLISHED) | (1 << TCP_SYN_SENT) | (1 << TCP_SYN_RECV);
-    const uint8_t extensions = (1 << INET_DIAG_MEMINFO); // flag for dumping struct tcp_info.
+    const uint8_t extensions = (1 << (INET_DIAG_INFO - 1)); // flag for dumping struct tcp_info.
 
     iovec iov[] = {
         { nullptr, 0 },
