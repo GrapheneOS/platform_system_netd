@@ -97,6 +97,28 @@ TEST(NetdSELinuxTest, CheckProperBpfLabels) {
     assertBpfContext("/sys/fs/bpf/loader", "fs_bpf_loader");
 }
 
+TEST(NetdSELinuxTest, CheckProperBpfloaderLabels) {
+    // Use 'find' cli utility to find any files with the 'bpfloader_exec' context.
+    // This is most likely 'u:object_r:bpfloader_exec:s0' but use a glob.
+    // The expected output of the find command is:
+    //   /apex/com.android.tethering/bin/netbpfload
+    //   /apex/com.android.uprobestats/bin/uprobestatsbpfload
+    //   /apex/com.android.tethering@.../bin/netbpfload
+    //   /apex/com.android.uprobestats@.../bin/uprobestatsbpfload
+    // We run this through a regexp filter via 'egrep -q -v' which returns
+    //   0 on non empty output
+    //   1 on empty output
+    // We expect 1/empty as we filter everything out that we do expect.
+    const char * const cmd = "find / -context '*:bpfloader_exec:*' 2>/dev/null | "
+        "egrep -q -v '^/apex/com[.]android[.]uprobestats(@[0-9]+)?/bin/uprobestatsbpfload$|"
+                     "^/apex/com[.]android[.]tethering(@[0-9]+)?/bin/netbpfload$'";
+
+    // NOLINTNEXTLINE(cert-env33-c)
+    ASSERT_EQ(W_EXITCODE(1, 0), system(cmd)) << cmd << " - did not return fail(1)"
+        " - are there extra files labeled bpfloader_exec?"
+        " You can use 'find / -context *:bpfloader_exec:* 2>/dev/null' to check.";
+}
+
 // Trivial thread function that simply immediately terminates successfully.
 static int thread(void*) {
     return 0;

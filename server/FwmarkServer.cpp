@@ -220,7 +220,9 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
                 char portstr[sizeof("65535")];
                 static_assert(sizeof(addrstr) >= 62);
                 static_assert(sizeof(portstr) >= 6);
-                const int ret = getnameinfo(&connectInfo.addr.s, sizeof(connectInfo.addr.s),
+                // Note we need sizeof(connectInfo.addr) here because sizeof(connectInfo.addr.s)
+                // is only 16!!!  'struct sockaddr' is *not* 'struct sockaddr_storage'.
+                const int ret = getnameinfo(&connectInfo.addr.s, sizeof(connectInfo.addr),
                         addrstr, sizeof(addrstr), portstr, sizeof(portstr),
                         NI_NUMERICHOST | NI_NUMERICSERV);
 
