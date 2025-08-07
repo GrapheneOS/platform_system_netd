@@ -4014,7 +4014,7 @@ TEST_F(NetdBinderTest, TestServiceDump) {
     testData.push_back(
             {StringPrintf("networkAddRouteParcel(65123, RouteInfoParcel{destination:"
                           " 2001:db8:dead:beef::/64, ifName: %s, nextHop: fe80::dead:beef,"
-                          " mtu: 1234})",
+                          " mtu: 1234, isLocalRoute: false})",
                           sTun.name().c_str()),
              "networkAddRouteParcel.*65123.*dead:beef"});
 
