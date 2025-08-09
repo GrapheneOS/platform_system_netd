@@ -60,6 +60,8 @@ void serverLoop(int dnsProxyFd) {
 }
 
 void expectAllowNetworkingForProcess() {
+    EXPECT_EQ(true, getAllowNetworkingForProcess());
+
     // netdClientSocket
     android::base::unique_fd ipv4(socketFuncPtr(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0)),
             ipv6(socketFuncPtr(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0));
@@ -72,6 +74,8 @@ void expectAllowNetworkingForProcess() {
 }
 
 void expectNotAllowNetworkingForProcess() {
+    EXPECT_EQ(false, getAllowNetworkingForProcess());
+
     // netdClientSocket
     android::base::unique_fd unixSocket(socketFuncPtr(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0));
     EXPECT_LE(3, unixSocket);
