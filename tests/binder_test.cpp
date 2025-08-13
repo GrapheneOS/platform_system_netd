@@ -1165,7 +1165,7 @@ static bool interfaceHasAddress(
     }
 
     for (struct ifaddrs *addr = ifaddrsList; addr != nullptr; addr = addr->ifa_next) {
-        if (std::string(addr->ifa_name) != ifname ||
+        if (addr->ifa_name == nullptr || std::string((char* _Nonnull)addr->ifa_name) != ifname ||
             addr->ifa_addr == nullptr ||
             addr->ifa_addr->sa_family != addrinfoList->ai_addr->sa_family) {
             continue;

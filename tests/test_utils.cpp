@@ -84,7 +84,7 @@ android::status_t runBinderCommand(const std::string serviceName, const std::str
 
     const std::vector<std::string> args = Split(command, " ");
     android::Vector<String16> argVec;
-    for (const auto arg : args) {
+    for (const auto& arg : args) {
         argVec.add(String16(arg.data(), arg.size()));
     }
     return IBinder::shellCommand(service, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, argVec,
