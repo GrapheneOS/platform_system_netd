@@ -162,11 +162,13 @@ public:
     // route that's blocked), "throw" (to indicate the lack of a match), or a regular IP address.
     [[nodiscard]] static int addRoute(const char* interface, const char* destination,
                                       const char* nexthop, TableType tableType, int mtu,
-                                      int priority);
+                                      int priority, bool isLocalRoute);
     [[nodiscard]] static int removeRoute(const char* interface, const char* destination,
-                                         const char* nexthop, TableType tableType, int priority);
+                                         const char* nexthop, TableType tableType, int priority,
+                                         bool isLocalRoute);
     [[nodiscard]] static int updateRoute(const char* interface, const char* destination,
-                                         const char* nexthop, TableType tableType, int mtu);
+                                         const char* nexthop, TableType tableType, int mtu,
+                                         bool isLocalRoute);
 
     [[nodiscard]] static int enableTethering(const char* inputInterface,
                                              const char* outputInterface);
@@ -228,7 +230,7 @@ public:
     static int modifyUnreachableNetwork(unsigned netId, const UidRangeMap& uidRangeMap, bool add);
     static int modifyRoute(uint16_t action, uint16_t flags, const char* interface,
                            const char* destination, const char* nexthop, TableType tableType,
-                           int mtu, int priority, bool isLocal);
+                           int mtu, int priority, bool isLocalRoute);
     static int modifyTetheredNetwork(uint16_t action, const char* inputInterface,
                                      const char* outputInterface);
     static int modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId,
@@ -241,7 +243,6 @@ public:
 
     static int modifyUidLocalNetworkRule(const char* interface, uid_t uidStart, uid_t uidEnd,
                                          bool add);
-    static bool isLocalRoute(TableType tableType, const char* destination, const char* nexthop);
     static bool isWithinIpv4LocalPrefix(const char* addrstr);
     static int addFixedLocalRoutes(const char* interface);
 };

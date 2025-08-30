@@ -1456,24 +1456,14 @@ bool RouteController::isWithinIpv4LocalPrefix(const char* dst) {
     return false;
 }
 
-bool RouteController::isLocalRoute(TableType tableType, const char* destination,
-                                   const char* nexthop) {
-    IPPrefix prefix = IPPrefix::forString(destination);
-    return nexthop == nullptr && tableType == RouteController::INTERFACE &&
-           // Skip default route to prevent network being modeled as point-to-point interfaces.
-           ((prefix.family() == AF_INET6 && prefix != IPPrefix::forString("::/0")) ||
-            // Skip adding non-target local network range.
-            (prefix.family() == AF_INET && isWithinIpv4LocalPrefix(destination)));
-}
-
 int RouteController::addRoute(const char* interface, const char* destination, const char* nexthop,
-                              TableType tableType, int mtu, int priority) {
+                              TableType tableType, int mtu, int priority, bool isLocalRoute) {
     if (int ret = modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface, destination,
                               nexthop, tableType, mtu, priority, false /* isLocal */)) {
         return ret;
     }
 
-    if (isLocalRoute(tableType, destination, nexthop)) {
+    if (isLocalRoute) {
         return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface, destination,
                            nexthop, tableType, mtu, priority, true /* isLocal */);
     }
@@ -1482,13 +1472,14 @@ int RouteController::addRoute(const char* interface, const char* destination, co
 }
 
 int RouteController::removeRoute(const char* interface, const char* destination,
-                                 const char* nexthop, TableType tableType, int priority) {
+                                 const char* nexthop, TableType tableType, int priority,
+                                 bool isLocalRoute) {
     if (int ret = modifyRoute(RTM_DELROUTE, NETLINK_REQUEST_FLAGS, interface, destination, nexthop,
                               tableType, 0 /* mtu */, priority, false /* isLocal */)) {
         return ret;
     }
 
-    if (isLocalRoute(tableType, destination, nexthop)) {
+    if (isLocalRoute) {
         return modifyRoute(RTM_DELROUTE, NETLINK_REQUEST_FLAGS, interface, destination, nexthop,
                            tableType, 0 /* mtu */, priority, true /* isLocal */);
     }
@@ -1496,13 +1487,14 @@ int RouteController::removeRoute(const char* interface, const char* destination,
 }
 
 int RouteController::updateRoute(const char* interface, const char* destination,
-                                 const char* nexthop, TableType tableType, int mtu) {
+                                 const char* nexthop, TableType tableType, int mtu,
+                                 bool isLocalRoute) {
     if (int ret = modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_REPLACE_FLAGS, interface, destination,
                               nexthop, tableType, mtu, 0 /* priority */, false /* isLocal */)) {
         return ret;
     }
 
-    if (isLocalRoute(tableType, destination, nexthop)) {
+    if (isLocalRoute) {
         return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_REPLACE_FLAGS, interface, destination,
                            nexthop, tableType, mtu, 0 /* priority */, true /* isLocal */);
     }

@@ -279,6 +279,10 @@ class NetdBinderTest : public NetNativeTestBase {
             std::vector<UidRangeParcel>&& appDefaultUidRanges,
             std::vector<UidRangeParcel>&& vpnUidRanges);
 
+    bool isWithinIpv4LocalPrefix(const char* dst);
+
+    bool isLocalRoute(int netId, const char* destination, const char* nexthop);
+
   protected:
     // Use -1 to represent that default network was not modified because
     // real netId must be an unsigned value.
@@ -288,6 +292,7 @@ class NetdBinderTest : public NetNativeTestBase {
     static TunInterface sTun2;
     static TunInterface sTun3;
     static TunInterface sTun4;
+    const static android::netdutils::IPPrefix V4_LOCAL_PREFIXES[];
 
   private:
     static void setBackgroundNetworkingEnabledForUid(int uid, bool enabled) {
@@ -301,6 +306,34 @@ TunInterface NetdBinderTest::sTun;
 TunInterface NetdBinderTest::sTun2;
 TunInterface NetdBinderTest::sTun3;
 TunInterface NetdBinderTest::sTun4;
+const android::netdutils::IPPrefix NetdBinderTest::V4_LOCAL_PREFIXES[] = {
+        android::netdutils::IPPrefix::forString("169.254.0.0/16"),  // Link Local
+        android::netdutils::IPPrefix::forString("100.64.0.0/10"),   // CGNAT
+        android::netdutils::IPPrefix::forString("10.0.0.0/8"),      // RFC1918
+        android::netdutils::IPPrefix::forString("172.16.0.0/12"),   // RFC1918
+        android::netdutils::IPPrefix::forString("192.168.0.0/16")   // RFC1918
+};
+
+bool NetdBinderTest::isWithinIpv4LocalPrefix(const char* dst) {
+    for (android::netdutils::IPPrefix addr : V4_LOCAL_PREFIXES) {
+        if (addr.contains(android::netdutils::IPPrefix::forString(dst))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool NetdBinderTest::isLocalRoute(int netId, const char* destination, const char* nexthop) {
+    android::netdutils::IPPrefix prefix = android::netdutils::IPPrefix::forString(destination);
+    return (nexthop == nullptr || (strcmp(nexthop, "") == 0)) && netId != INetd::LOCAL_NET_ID &&
+           // Skip default route to prevent the default route on point-to-point interfaces
+           // from being considered local.
+           ((prefix.family() == AF_INET6 &&
+             prefix != android::netdutils::IPPrefix::forString("::/0")) ||
+            // For IPv4, a route is considered local if its destination falls within
+            // a defined set of local network prefixes.
+            (prefix.family() == AF_INET && isWithinIpv4LocalPrefix(destination)));
+}
 
 class TimedOperation : public Stopwatch {
   public:
@@ -1672,6 +1705,20 @@ void expectNetworkRouteExistsWithMtu(const char* ipVersion, const std::string& i
             << "] in table " << table;
 }
 
+android::net::RouteInfoParcel createRouteParcel(const std::string& interfaceName,
+                                                const std::string& destination,
+                                                const std::string& nextHop, int32_t mtu = 0,
+                                                bool isLocalRoute = false) {
+    android::net::RouteInfoParcel parcel;
+    parcel.ifName = interfaceName;
+    parcel.destination = destination;
+    parcel.nextHop = nextHop;
+    parcel.mtu = mtu;
+    parcel.isLocalRoute = isLocalRoute;
+
+    return parcel;
+}
+
 void expectVpnLocalExclusionRuleExists(const std::string& ifName, bool expectExists) {
     std::string tableName = std::string(ifName + "_local");
     // Check if rule exists
@@ -1828,6 +1875,90 @@ void expectProcessDoesNotExist(const std::string& processName) {
 
 }  // namespace
 
+TEST_F(NetdBinderTest, AddRouteForLocalRoute) {
+    static const struct {
+        const char* ipVersion;
+        const char* testDest;
+        const char* testNextHop;
+    } kTestData[] = {{IP_RULE_V6, "fe80::/64", ""},          {IP_RULE_V6, "2001:db8:cafe::/48", ""},
+                     {IP_RULE_V6, "2001:db8:ca00::/40", ""}, {IP_RULE_V4, "192.168.0.0/16", ""},
+                     {IP_RULE_V4, "192.168.0.0/24", ""},     {IP_RULE_V4, "100.64.0.0/10", ""},
+                     {IP_RULE_V4, "100.64.0.0/16", ""},      {IP_RULE_V4, "172.16.0.0/12", ""},
+                     {IP_RULE_V4, "172.16.0.0/16", ""},      {IP_RULE_V4, "169.254.0.0/16", ""},
+                     {IP_RULE_V4, "169.254.0.0/20", ""},     {IP_RULE_V4, "169.254.3.0/24", ""},
+                     {IP_RULE_V4, "10.0.0.0/8", ""},         {IP_RULE_V4, "10.0.0.0/16", ""},
+                     {IP_RULE_V4, "10.251.0.0/16", ""},      {IP_RULE_V4, "10.251.250.0/24", ""}};
+
+    // Add test physical network
+    const auto& config = makeNativeNetworkConfig(TEST_NETID1, NativeNetworkType::PHYSICAL,
+                                                 INetd::PERMISSION_NONE, false, false);
+    EXPECT_TRUE(mNetd->networkCreate(config).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    std::string localTableName = std::string(sTun.name() + "_local");
+
+    // Test adding and removing local routes
+    for (size_t i = 0; i < std::size(kTestData); i++) {
+        const auto& td = kTestData[i];
+        SCOPED_TRACE(StringPrintf("case ip:%s, dest:%s, nextHop:%s", td.ipVersion, td.testDest,
+                                  td.testNextHop));
+
+        android::net::RouteInfoParcel parcel =
+                createRouteParcel(sTun.name(), td.testDest, td.testNextHop, 1337, true);
+        binder::Status status = mNetd->networkAddRouteParcel(TEST_NETID1, parcel);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+        // Verify routes in Tun route table
+        expectNetworkRouteExistsWithMtu(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                        std::to_string(parcel.mtu), sTun.name().c_str());
+        // Verify routes in local table
+        expectNetworkRouteExistsWithMtu(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                        std::to_string(parcel.mtu), localTableName.c_str());
+
+        status = mNetd->networkRemoveRouteParcel(TEST_NETID1, parcel);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        // Routes should be removed from the table
+        expectNetworkRouteDoesNotExistWithMtu(td.ipVersion, sTun.name(), td.testDest,
+                                              td.testNextHop, std::to_string(parcel.mtu),
+                                              sTun.name().c_str());
+        expectNetworkRouteDoesNotExistWithMtu(td.ipVersion, sTun.name(), td.testDest,
+                                              td.testNextHop, std::to_string(parcel.mtu),
+                                              localTableName.c_str());
+    }
+
+    // Test adding and removing non-local routes
+    for (size_t i = 0; i < std::size(kTestData); i++) {
+        const auto& td = kTestData[i];
+        SCOPED_TRACE(StringPrintf("case ip:%s, dest:%s, nextHop:%s", td.ipVersion, td.testDest,
+                                  td.testNextHop));
+
+        android::net::RouteInfoParcel parcel =
+                createRouteParcel(sTun.name(), td.testDest, td.testNextHop, 1337, false);
+        binder::Status status = mNetd->networkAddRouteParcel(TEST_NETID1, parcel);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+        expectNetworkRouteExistsWithMtu(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                        std::to_string(parcel.mtu), sTun.name().c_str());
+        // Verify routes should not be present in local table as isLocalRoute is set to false
+        expectNetworkRouteDoesNotExistWithMtu(td.ipVersion, sTun.name(), td.testDest,
+                                              td.testNextHop, std::to_string(parcel.mtu),
+                                              localTableName.c_str());
+
+        status = mNetd->networkRemoveRouteParcel(TEST_NETID1, parcel);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        // Routes should be removed from the table
+        expectNetworkRouteDoesNotExistWithMtu(td.ipVersion, sTun.name(), td.testDest,
+                                              td.testNextHop, std::to_string(parcel.mtu),
+                                              sTun.name().c_str());
+        expectNetworkRouteDoesNotExistWithMtu(td.ipVersion, sTun.name(), td.testDest,
+                                              td.testNextHop, std::to_string(parcel.mtu),
+                                              localTableName.c_str());
+    }
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
 TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
     static const struct {
         const char* ipVersion;
@@ -1909,8 +2040,9 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
     for (size_t i = 0; i < std::size(kDirectlyConnectedRoutes); i++) {
         const auto& td = kDirectlyConnectedRoutes[i];
 
-        binder::Status status =
-                mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        android::net::RouteInfoParcel parcel =
+                createRouteParcel(sTun.name(), td.testDest, td.testNextHop, 0, true);
+        binder::Status status = mNetd->networkAddRouteParcel(TEST_NETID1, parcel);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
         expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
                                  sTun.name().c_str());
@@ -1923,8 +2055,9 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
         const auto& td = kTestData[i];
         SCOPED_TRACE(StringPrintf("case ip:%s, dest:%s, nexHop:%s, expect:%d", td.ipVersion,
                                   td.testDest, td.testNextHop, td.expectInLocalTable));
-        binder::Status status =
-                mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        android::net::RouteInfoParcel parcel = createRouteParcel(
+                sTun.name(), td.testDest, td.testNextHop, 0, td.expectInLocalTable);
+        binder::Status status = mNetd->networkAddRouteParcel(TEST_NETID1, parcel);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
         // Verify routes in local table
         if (td.expectInLocalTable) {
@@ -1935,7 +2068,7 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
                                            localTableName.c_str());
         }
 
-        status = mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        status = mNetd->networkRemoveRouteParcel(TEST_NETID1, parcel);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
         expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
                                        localTableName.c_str());
@@ -1943,7 +2076,9 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
 
     for (size_t i = 0; i < std::size(kDirectlyConnectedRoutes); i++) {
         const auto& td = kDirectlyConnectedRoutes[i];
-        status = mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        android::net::RouteInfoParcel parcel =
+                createRouteParcel(sTun.name(), td.testDest, td.testNextHop);
+        status = mNetd->networkRemoveRouteParcel(TEST_NETID1, parcel);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     }
 
@@ -2293,8 +2428,9 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
         const auto& td = kTestDataWithNextHop[i];
 
         // All route for test tun will disappear once the tun interface is deleted.
-        binder::Status status =
-                mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        android::net::RouteInfoParcel parcel =
+                createRouteParcel(sTun.name(), td.testDest, td.testNextHop);
+        binder::Status status = mNetd->networkAddRouteParcel(TEST_NETID1, parcel);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
         expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
                                  sTun.name().c_str());
@@ -2321,8 +2457,9 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
     for (size_t i = 0; i < std::size(kTestData); i++) {
         const auto& td = kTestData[i];
 
-        binder::Status status =
-                mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        android::net::RouteInfoParcel parcel =
+                createRouteParcel(sTun.name(), td.testDest, td.testNextHop);
+        binder::Status status = mNetd->networkAddRouteParcel(TEST_NETID1, parcel);
         if (td.expectSuccess) {
             EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
             expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
@@ -2332,7 +2469,7 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
             EXPECT_NE(0, status.serviceSpecificErrorCode());
         }
 
-        status = mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        status = mNetd->networkRemoveRouteParcel(TEST_NETID1, parcel);
         if (td.expectSuccess) {
             EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
             expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
@@ -2403,11 +2540,8 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
         const auto& td = kTestData[i];
         int mtu = (i % 2) ? 1480 : 1280;
 
-        android::net::RouteInfoParcel parcel;
-        parcel.ifName = sTun.name();
-        parcel.destination = td.testDest;
-        parcel.nextHop = td.testNextHop;
-        parcel.mtu = mtu;
+        android::net::RouteInfoParcel parcel =
+                createRouteParcel(sTun.name(), td.testDest, td.testNextHop, mtu);
         binder::Status status = mNetd->networkAddRouteParcel(TEST_NETID1, parcel);
         if (td.expectSuccess) {
             EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
@@ -2455,11 +2589,8 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
             continue;
         }
 
-        android::net::RouteInfoParcel parcel;
-        parcel.ifName = sTun.name();
-        parcel.destination = td.testDest;
-        parcel.nextHop = td.testNextHop;
-        parcel.mtu = 1280;
+        android::net::RouteInfoParcel parcel =
+                createRouteParcel(sTun.name(), td.testDest, td.testNextHop, 1280);
         binder::Status status = mNetd->networkAddRouteParcel(TEST_NETID1, parcel);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
         expectNetworkRouteExistsWithMtu(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
@@ -3630,12 +3761,15 @@ void NetdBinderTest::createVpnNetworkWithUid(bool secure, uid_t uid, int vpnNetI
     EXPECT_TRUE(mNetd->networkAddInterface(vpnNetId, sTun2.name()).isOk());
 
     // Add default route to fallthroughNetwork
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
+    android::net::RouteInfoParcel parcel1 = createRouteParcel(sTun.name(), "::/0", "");
+    android::net::RouteInfoParcel parcel2 = createRouteParcel(sTun2.name(), "2001:db8::/32", "");
+    android::net::RouteInfoParcel parcel3 = createRouteParcel(sTun3.name(), "::/0", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID1, parcel1).isOk());
     // Add limited route
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID2, sTun2.name(), "2001:db8::/32", "").isOk());
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID2, parcel2).isOk());
 
     // Also add default route to non-default network for per app default use.
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID3, sTun3.name(), "::/0", "").isOk());
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID3, parcel3).isOk());
 }
 
 void NetdBinderTest::createAndSetDefaultNetwork(int netId, const std::string& interface,
@@ -3662,10 +3796,12 @@ void NetdBinderTest::createPhysicalNetwork(int netId, const std::string& interfa
 // 2. Create another physical network on sTun2.
 void NetdBinderTest::createDefaultAndOtherPhysicalNetwork(int defaultNetId, int otherNetId) {
     createAndSetDefaultNetwork(defaultNetId, sTun.name());
-    EXPECT_TRUE(mNetd->networkAddRoute(defaultNetId, sTun.name(), "::/0", "").isOk());
+    android::net::RouteInfoParcel parcel1 = createRouteParcel(sTun.name(), "::/0", "");
+    android::net::RouteInfoParcel parcel2 = createRouteParcel(sTun2.name(), "::/0", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(defaultNetId, parcel1).isOk());
 
     createPhysicalNetwork(otherNetId, sTun2.name());
-    EXPECT_TRUE(mNetd->networkAddRoute(otherNetId, sTun2.name(), "::/0", "").isOk());
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(otherNetId, parcel2).isOk());
 }
 
 // 1. Create a system default network and a physical network.
@@ -3678,7 +3814,8 @@ void NetdBinderTest::createVpnAndOtherPhysicalNetwork(int systemDefaultNetId, in
                                           INetd::PERMISSION_NONE, secure, false);
     EXPECT_TRUE(mNetd->networkCreate(config).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(vpnNetId, sTun3.name()).isOk());
-    EXPECT_TRUE(mNetd->networkAddRoute(vpnNetId, sTun3.name(), "2001:db8::/32", "").isOk());
+    android::net::RouteInfoParcel parcel = createRouteParcel(sTun3.name(), "2001:db8::/32", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(vpnNetId, parcel).isOk());
 }
 
 // 1. Create system default network, a physical network (for per-app default), and a VPN.
@@ -3945,7 +4082,8 @@ TEST_F(NetdBinderTest, GetFwmarkForNetwork) {
                                           INetd::PERMISSION_NONE, false, false);
     EXPECT_TRUE(mNetd->networkCreate(config).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "2001:db8::/32", "").isOk());
+    android::net::RouteInfoParcel parcel = createRouteParcel(sTun.name(), "2001:db8::/32", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID1, parcel).isOk());
     EXPECT_TRUE(mNetd->networkSetDefault(TEST_NETID1).isOk());
     // Add test physical network 2
     config.netId = TEST_NETID2;
@@ -4005,11 +4143,8 @@ TEST_F(NetdBinderTest, TestServiceDump) {
     testData.push_back({StringPrintf("networkAddInterface(65123, %s)", sTun.name().c_str()),
                         StringPrintf("networkAddInterface.*65123.*%s", sTun.name().c_str())});
 
-    android::net::RouteInfoParcel parcel;
-    parcel.ifName = sTun.name();
-    parcel.destination = "2001:db8:dead:beef::/64";
-    parcel.nextHop = "fe80::dead:beef";
-    parcel.mtu = 1234;
+    android::net::RouteInfoParcel parcel =
+            createRouteParcel(sTun.name(), "2001:db8:dead:beef::/64", "fe80::dead:beef", 1234);
     EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_DUMP_NETID, parcel).isOk());
     testData.push_back(
             {StringPrintf("networkAddRouteParcel(65123, RouteInfoParcel{destination:"
@@ -4722,6 +4857,7 @@ std::vector<std::string> SYSTEM_DEFAULT_ROUTES = {"192.168.0.0/16", "0.0.0.0/0",
 // For both IPv4 and IPv6, the first route is local, the second is not.
 std::vector<std::string> APP_DEFAULT_ROUTES = {"172.16.0.0/16", "0.0.0.0/0", "2607:f0d0:1234::/48",
                                                "::/0"};
+
 void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
         int systemDefaultNetId, int appDefaultNetId, int vpnNetId, int otherNetId, bool secure,
         bool testV6, bool differentLocalRoutes, std::vector<UidRangeParcel>&& appDefaultUidRanges,
@@ -4734,7 +4870,9 @@ void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
 
     // Setup system default routing.
     for (const auto& route : SYSTEM_DEFAULT_ROUTES) {
-        EXPECT_TRUE(mNetd->networkAddRoute(systemDefaultNetId, sTun.name(), route, "").isOk());
+        android::net::RouteInfoParcel parcel = createRouteParcel(
+                sTun.name(), route, "", 0, isLocalRoute(systemDefaultNetId, route.c_str(), ""));
+        EXPECT_TRUE(mNetd->networkAddRouteParcel(systemDefaultNetId, parcel).isOk());
     }
 
     // Create another physical network on sTun2 as per app default network
@@ -4744,7 +4882,9 @@ void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
     std::vector<std::string> appDefaultRoutes =
             (differentLocalRoutes ? APP_DEFAULT_ROUTES : SYSTEM_DEFAULT_ROUTES);
     for (const auto& route : appDefaultRoutes) {
-        EXPECT_TRUE(mNetd->networkAddRoute(appDefaultNetId, sTun2.name(), route, "").isOk());
+        android::net::RouteInfoParcel parcel = createRouteParcel(
+                sTun2.name(), route, "", 0, isLocalRoute(appDefaultNetId, route.c_str(), ""));
+        EXPECT_TRUE(mNetd->networkAddRouteParcel(appDefaultNetId, parcel).isOk());
     }
 
     // Create a bypassable VPN on sTun3.
@@ -4755,21 +4895,24 @@ void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
 
     // Setup vpn routing.
     for (const auto& route : SYSTEM_DEFAULT_ROUTES) {
-        EXPECT_TRUE(mNetd->networkAddRoute(vpnNetId, sTun3.name(), route, "").isOk());
+        android::net::RouteInfoParcel parcel = createRouteParcel(
+                sTun3.name(), route, "", 0, isLocalRoute(vpnNetId, route.c_str(), ""));
+        EXPECT_TRUE(mNetd->networkAddRouteParcel(vpnNetId, parcel).isOk());
     }
 
     // Create another interface that is neither system default nor the app default to make sure
     // the traffic won't be mis-routed.
     createPhysicalNetwork(otherNetId, sTun4.name());
-    EXPECT_TRUE(mNetd->networkAddRoute(otherNetId, sTun4.name(), testV6 ? "::/0" : "0.0.0.0/0", "")
-                        .isOk());
+    android::net::RouteInfoParcel parcel =
+            createRouteParcel(sTun4.name(), testV6 ? "::/0" : "0.0.0.0/0", "", 0,
+                              isLocalRoute(otherNetId, testV6 ? "::/0" : "0.0.0.0/0", ""));
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(otherNetId, parcel).isOk());
     // Add per-app uid ranges.
     EXPECT_TRUE(mNetd->networkAddUidRanges(appDefaultNetId, appDefaultUidRanges).isOk());
 
     // Add VPN uid ranges.
     EXPECT_TRUE(mNetd->networkAddUidRanges(vpnNetId, vpnUidRanges).isOk());
 }
-
 // Rules are in approximately the following order for bypassable VPNs that allow local network
 // access:
 //    - Local routes to the per-app default network (UID guarded)
@@ -4930,9 +5073,11 @@ TEST_F(NetdBinderTest, UidRangeSubPriority_ValidateInputs) {
 // and removed.
 TEST_F(NetdBinderTest, UidRangeSubPriority_VerifyPhysicalNwIpRules) {
     createPhysicalNetwork(TEST_NETID1, sTun.name());
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
+    android::net::RouteInfoParcel parcel1 = createRouteParcel(sTun.name(), "::/0", "");
+    android::net::RouteInfoParcel parcel2 = createRouteParcel(sTun2.name(), "::/0", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID1, parcel1).isOk());
     createPhysicalNetwork(TEST_NETID2, sTun2.name());
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID2, sTun2.name(), "::/0", "").isOk());
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID2, parcel2).isOk());
 
     // Adds priority 1 setting
     NativeUidRangeConfig uidRangeConfig1 = makeNativeUidRangeConfig(
@@ -5081,7 +5226,8 @@ TEST_F(NetdBinderTest, UidRangeSubPriority_ImplicitlySelectNetwork) {
     createVpnAndOtherPhysicalNetwork(SYSTEM_DEFAULT_NETID, APP_DEFAULT_1_NETID, VPN_NETID,
                                      /*isSecureVPN=*/false);
     createPhysicalNetwork(APP_DEFAULT_2_NETID, sTun4.name());
-    EXPECT_TRUE(mNetd->networkAddRoute(APP_DEFAULT_2_NETID, sTun4.name(), "::/0", "").isOk());
+    android::net::RouteInfoParcel parcel = createRouteParcel(sTun4.name(), "::/0", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(APP_DEFAULT_2_NETID, parcel).isOk());
 
     for (const auto& td : kTestData) {
         NativeUidRangeConfig uidRangeConfig =
@@ -5144,7 +5290,8 @@ class PerAppNetworkPermissionsTest : public NetdBinderTest {
 TEST_F(PerAppNetworkPermissionsTest, HasExplicitAccess) {
     // TEST_NETID1 -> restricted network
     createPhysicalNetwork(TEST_NETID1, sTun.name(), INetd::PERMISSION_SYSTEM);
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
+    android::net::RouteInfoParcel parcel = createRouteParcel(sTun.name(), "::/0", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID1, parcel).isOk());
 
     // Change uid to uid without PERMISSION_SYSTEM
     ScopedUidChange testUid(TEST_UID1);
@@ -5170,7 +5317,8 @@ TEST_F(PerAppNetworkPermissionsTest, HasExplicitAccess) {
 TEST_F(PerAppNetworkPermissionsTest, HasImplicitAccess) {
     // TEST_NETID1 -> restricted network
     createPhysicalNetwork(TEST_NETID1, sTun.name(), INetd::PERMISSION_SYSTEM);
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
+    android::net::RouteInfoParcel parcel = createRouteParcel(sTun.name(), "::/0", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID1, parcel).isOk());
 
     // Change uid to uid without PERMISSION_SYSTEM
     ScopedUidChange testUid(TEST_UID1);
@@ -5195,10 +5343,13 @@ TEST_F(PerAppNetworkPermissionsTest, HasImplicitAccess) {
 TEST_F(PerAppNetworkPermissionsTest, DoesNotAffectDefaultNetworkSelection) {
     // TEST_NETID1 -> default network
     // TEST_NETID2 -> restricted network
+    android::net::RouteInfoParcel parcel1 = createRouteParcel(sTun.name(), "::/0", "");
+    android::net::RouteInfoParcel parcel2 = createRouteParcel(sTun2.name(), "::/0", "");
+
     createPhysicalNetwork(TEST_NETID1, sTun.name(), INetd::PERMISSION_NONE);
     createPhysicalNetwork(TEST_NETID2, sTun2.name(), INetd::PERMISSION_SYSTEM);
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID2, sTun2.name(), "::/0", "").isOk());
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID1, parcel1).isOk());
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID2, parcel2).isOk());
     mNetd->networkSetDefault(TEST_NETID1);
 
     changeNetworkPermissionForUid(TEST_NETID2, TEST_UID1, true /*add*/);
@@ -5218,8 +5369,10 @@ TEST_F(PerAppNetworkPermissionsTest, PermissionDoesNotAffectPerAppDefaultNetwork
     // TEST_NETID2 -> restricted network
     createPhysicalNetwork(TEST_NETID1, sTun.name(), INetd::PERMISSION_SYSTEM);
     createPhysicalNetwork(TEST_NETID2, sTun2.name(), INetd::PERMISSION_SYSTEM);
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID2, sTun2.name(), "::/0", "").isOk());
+    android::net::RouteInfoParcel parcel1 = createRouteParcel(sTun.name(), "::/0", "");
+    android::net::RouteInfoParcel parcel2 = createRouteParcel(sTun2.name(), "::/0", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID1, parcel1).isOk());
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID2, parcel2).isOk());
 
     auto nativeUidRangeConfig = makeNativeUidRangeConfig(
             TEST_NETID1, {makeUidRangeParcel(TEST_UID1, TEST_UID1)}, 0 /*subPriority*/);
@@ -5241,8 +5394,10 @@ TEST_F(PerAppNetworkPermissionsTest, PermissionOnlyAffectsUid) {
     // TEST_NETID2 -> restricted network
     createPhysicalNetwork(TEST_NETID1, sTun.name(), INetd::PERMISSION_SYSTEM);
     createPhysicalNetwork(TEST_NETID2, sTun2.name(), INetd::PERMISSION_SYSTEM);
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
-    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID2, sTun2.name(), "::/0", "").isOk());
+    android::net::RouteInfoParcel parcel1 = createRouteParcel(sTun.name(), "::/0", "");
+    android::net::RouteInfoParcel parcel2 = createRouteParcel(sTun2.name(), "::/0", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID1, parcel1).isOk());
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(TEST_NETID2, parcel2).isOk());
 
     // test that neither TEST_UID1, nor TEST_UID2 have access without permission
     {
@@ -5308,9 +5463,11 @@ TEST_F(NetdBinderTest, PerProfileNetworkPermission) {
     // creates 4 networks
     createDefaultAndOtherPhysicalNetwork(SYSTEM_DEFAULT_NETID, ENTERPRISE_NETID_1);
     createPhysicalNetwork(ENTERPRISE_NETID_2, sTun3.name());
-    EXPECT_TRUE(mNetd->networkAddRoute(ENTERPRISE_NETID_2, sTun3.name(), "::/0", "").isOk());
+    android::net::RouteInfoParcel parcel1 = createRouteParcel(sTun3.name(), "::/0", "");
+    android::net::RouteInfoParcel parcel2 = createRouteParcel(sTun4.name(), "::/0", "");
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(ENTERPRISE_NETID_2, parcel1).isOk());
     createPhysicalNetwork(ENTERPRISE_NETID_3, sTun4.name());
-    EXPECT_TRUE(mNetd->networkAddRoute(ENTERPRISE_NETID_3, sTun4.name(), "::/0", "").isOk());
+    EXPECT_TRUE(mNetd->networkAddRouteParcel(ENTERPRISE_NETID_3, parcel2).isOk());
 
     // profile#1
     // UidRanges::SUB_PRIORITY_HIGHEST + 20 = PREFERENCE_ORDER_PROFILE, which is defined in
@@ -5467,7 +5624,8 @@ class ScopedIfaceRouteOperation {
 
     binder::Status addRoute(int32_t netId, const std::string& iface, const std::string& destination,
                             const std::string& nextHop) {
-        const binder::Status status = mNetd->networkAddRoute(netId, iface, destination, nextHop);
+        android::net::RouteInfoParcel parcel = createRouteParcel(iface, destination, nextHop);
+        const binder::Status status = mNetd->networkAddRouteParcel(netId, parcel);
         if (status.isOk()) {
             mCmds.push_back(std::make_tuple(netId, iface, destination, nextHop));
         }
@@ -5485,8 +5643,9 @@ class ScopedIfaceRouteOperation {
                                                                  std::get<1>(cmd));
                                },
                                [&](RouteCmd& cmd) {
-                                   mNetd->networkRemoveRoute(std::get<0>(cmd), std::get<1>(cmd),
-                                                             std::get<2>(cmd), std::get<3>(cmd));
+                                   android::net::RouteInfoParcel parcel = createRouteParcel(
+                                           std::get<1>(cmd), std::get<2>(cmd), std::get<3>(cmd));
+                                   mNetd->networkRemoveRouteParcel(std::get<0>(cmd), parcel);
                                },
                        },
                        *iter);

@@ -968,8 +968,13 @@ int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** a
                          : mNetd->networkRemoveLegacyRoute(netId, interface, destination, nexthop,
                                                            uid);
         } else {
-            status = add ? mNetd->networkAddRoute(netId, interface, destination, nexthop)
-                         : mNetd->networkRemoveRoute(netId, interface, destination, nexthop);
+            android::net::RouteInfoParcel parcel;
+            parcel.ifName = interface;
+            parcel.destination = destination;
+            parcel.nextHop = nexthop;
+
+            status = add ? mNetd->networkAddRouteParcel(netId, parcel)
+                         : mNetd->networkRemoveRouteParcel(netId, parcel);
         }
 
         if (!status.isOk()) {

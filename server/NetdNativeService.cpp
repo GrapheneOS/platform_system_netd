@@ -935,11 +935,10 @@ binder::Status NetdNativeService::networkAddRouteParcel(int32_t netId,
     ENFORCE_NETWORK_STACK_PERMISSIONS();
     bool legacy = false;
     uid_t uid = 0;  // UID is only meaningful for legacy routes.
-
     // convert Parcel to parameters
     int res = gCtls->netCtrl.addRoute(netId, route.ifName.c_str(), route.destination.c_str(),
                                       route.nextHop.empty() ? nullptr : route.nextHop.c_str(),
-                                      legacy, uid, route.mtu);
+                                      legacy, uid, route.mtu, route.isLocalRoute);
     return statusFromErrcode(res);
 }
 
@@ -953,36 +952,30 @@ binder::Status NetdNativeService::networkUpdateRouteParcel(int32_t netId,
     // convert Parcel to parameters
     int res = gCtls->netCtrl.updateRoute(netId, route.ifName.c_str(), route.destination.c_str(),
                                          route.nextHop.empty() ? nullptr : route.nextHop.c_str(),
-                                         legacy, uid, route.mtu);
+                                         legacy, uid, route.mtu, route.isLocalRoute);
     return statusFromErrcode(res);
 }
 
 binder::Status NetdNativeService::networkRemoveRouteParcel(int32_t netId,
                                                            const RouteInfoParcel& route) {
-    return networkRemoveRoute(netId, route.ifName, route.destination, route.nextHop);
-}
-
-binder::Status NetdNativeService::networkAddRoute(int32_t netId, const std::string& ifName,
-                                                  const std::string& destination,
-                                                  const std::string& nextHop) {
     // Public methods of NetworkController are thread-safe.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
     bool legacy = false;
     uid_t uid = 0;  // UID is only meaningful for legacy routes.
-    int res = gCtls->netCtrl.addRoute(netId, ifName.c_str(), destination.c_str(),
-                                      nextHop.empty() ? nullptr : nextHop.c_str(), legacy, uid, 0);
+    int res = gCtls->netCtrl.removeRoute(netId, route.ifName.c_str(), route.destination.c_str(),
+                                         route.nextHop.empty() ? nullptr : route.nextHop.c_str(),
+                                         legacy, uid, route.isLocalRoute);
     return statusFromErrcode(res);
 }
 
-binder::Status NetdNativeService::networkRemoveRoute(int32_t netId, const std::string& ifName,
-                                                     const std::string& destination,
-                                                     const std::string& nextHop) {
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-    bool legacy = false;
-    uid_t uid = 0;  // UID is only meaningful for legacy routes.
-    int res = gCtls->netCtrl.removeRoute(netId, ifName.c_str(), destination.c_str(),
-                                         nextHop.empty() ? nullptr : nextHop.c_str(), legacy, uid);
-    return statusFromErrcode(res);
+binder::Status NetdNativeService::networkAddRoute(int32_t, const std::string&, const std::string&,
+                                                  const std::string&) {
+    DEPRECATED;
+}
+
+binder::Status NetdNativeService::networkRemoveRoute(int32_t, const std::string&,
+                                                     const std::string&, const std::string&) {
+    DEPRECATED;
 }
 
 binder::Status NetdNativeService::networkAddLegacyRoute(int32_t netId, const std::string& ifName,
@@ -992,7 +985,7 @@ binder::Status NetdNativeService::networkAddLegacyRoute(int32_t netId, const std
     bool legacy = true;
     int res = gCtls->netCtrl.addRoute(netId, ifName.c_str(), destination.c_str(),
                                       nextHop.empty() ? nullptr : nextHop.c_str(), legacy,
-                                      (uid_t)uid, 0);
+                                      (uid_t)uid, 0, false);
     return statusFromErrcode(res);
 }
 
@@ -1004,7 +997,7 @@ binder::Status NetdNativeService::networkRemoveLegacyRoute(int32_t netId, const 
     bool legacy = true;
     int res = gCtls->netCtrl.removeRoute(netId, ifName.c_str(), destination.c_str(),
                                          nextHop.empty() ? nullptr : nextHop.c_str(), legacy,
-                                         (uid_t) uid);
+                                         (uid_t)uid, false);
     return statusFromErrcode(res);
 }
 
