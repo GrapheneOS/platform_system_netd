@@ -23,6 +23,7 @@
 
 union Fwmark {
     uint32_t intValue;
+    // LINT.IfChange
     struct {
         unsigned netId          : 16;
         bool explicitlySelected :  1;
@@ -33,6 +34,7 @@ union Fwmark {
         unsigned vendor         :  2;  // reserved for vendor
         bool ingress_cpu_wakeup :  1;  // reserved for config_networkWakeupPacketMark/Mask
     };
+    // LINT.ThenChange(//packages/modules/Connectivity/test/cts/net/src/android/net/cts/NetworkAgentTest.kt)
     constexpr Fwmark() : intValue(0) {}
 
     static inline uint32_t getUidBillingMask() {

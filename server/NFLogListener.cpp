@@ -219,7 +219,7 @@ StatusOr<std::unique_ptr<NFLogListener>> makeNFLogListener() {
             std::make_unique<NetlinkListener>(std::move(event), std::move(sock), "NFLogListener");
     const auto sendFn = [&listener](const Slice msg) { return listener->send(msg); };
     RETURN_IF_NOT_OK(cfgCmdPfUnbind(sendFn));
-    return std::unique_ptr<NFLogListener>(new NFLogListener(std::move(listener)));
+    return std::make_unique<NFLogListener>(std::move(listener));
 }
 
 }  // namespace net
