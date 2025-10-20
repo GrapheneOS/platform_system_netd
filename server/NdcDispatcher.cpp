@@ -26,7 +26,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#include <cinttypes>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -129,19 +129,19 @@ NdcDispatcher::NdcDispatcher() {
         LOG(LOGLEVEL) << "Unable to get binder service";
         exit(1);
     }
-    registerCmd(new InterfaceCmd());
-    registerCmd(new IpFwdCmd());
-    registerCmd(new TetherCmd());
-    registerCmd(new NatCmd());
-    registerCmd(new BandwidthControlCmd());
-    registerCmd(new IdletimerControlCmd());
-    registerCmd(new FirewallCmd());
-    registerCmd(new NetworkCommand());
-    registerCmd(new StrictCmd());
+    registerCmd(std::make_unique<InterfaceCmd>());
+    registerCmd(std::make_unique<IpFwdCmd>());
+    registerCmd(std::make_unique<TetherCmd>());
+    registerCmd(std::make_unique<NatCmd>());
+    registerCmd(std::make_unique<BandwidthControlCmd>());
+    registerCmd(std::make_unique<IdletimerControlCmd>());
+    registerCmd(std::make_unique<FirewallCmd>());
+    registerCmd(std::make_unique<NetworkCommand>());
+    registerCmd(std::make_unique<StrictCmd>());
 }
 
-void NdcDispatcher::registerCmd(NdcNetdCommand* cmd) {
-    mCommands.push_back(cmd);
+void NdcDispatcher::registerCmd(std::unique_ptr<NdcNetdCommand>&& cmd) {
+    mCommands.emplace_back(std::move(cmd));
 }
 
 int NdcDispatcher::dispatchCommand(int argc, char** argv) {
@@ -149,7 +149,7 @@ int NdcDispatcher::dispatchCommand(int argc, char** argv) {
         mNdc.sendMsg(500, "Command too long", false);
     }
 
-    for (const auto* c : mCommands) {
+    for (const auto& c : mCommands) {
         if (c->getCommand() == argv[0]) {
             if (c->runCommand(&mNdc, argc, argv)) {
                 mNdc.sendMsg(500, "Handler error", true);
@@ -968,8 +968,13 @@ int NdcDispatcher::NetworkCommand::runCommand(NdcClient* cli, int argc, char** a
                          : mNetd->networkRemoveLegacyRoute(netId, interface, destination, nexthop,
                                                            uid);
         } else {
-            status = add ? mNetd->networkAddRoute(netId, interface, destination, nexthop)
-                         : mNetd->networkRemoveRoute(netId, interface, destination, nexthop);
+            android::net::RouteInfoParcel parcel;
+            parcel.ifName = interface;
+            parcel.destination = destination;
+            parcel.nextHop = nexthop;
+
+            status = add ? mNetd->networkAddRouteParcel(netId, parcel)
+                         : mNetd->networkRemoveRouteParcel(netId, parcel);
         }
 
         if (!status.isOk()) {

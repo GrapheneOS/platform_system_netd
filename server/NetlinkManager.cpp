@@ -15,6 +15,7 @@
  */
 
 #include <errno.h>
+#include <memory>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -119,14 +120,13 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
         }
     }
 
-    NetlinkHandler *handler = new NetlinkHandler(this, *sock, format);
+    auto handler = std::make_unique<NetlinkHandler>(this, *sock, format);
     if (handler->start()) {
         ALOGE("Unable to start NetlinkHandler: %s", strerror(errno));
-        close(*sock);
         return nullptr;
     }
 
-    return handler;
+    return handler.release();
 }
 
 int NetlinkManager::start() {

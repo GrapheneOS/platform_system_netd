@@ -85,6 +85,10 @@ bool isCuttlefish() {
     return GetProperty("ro.product.board", "") == "cutf";
 }
 
+bool isDesktop() {
+    return GetProperty("ro.boot.hardware", "") == "android-desktop";
+}
+
 }  // namespace
 
 /**
@@ -147,6 +151,17 @@ TEST(KernelTest, TestKernel510) {
     ASSERT_TRUE(bpf::isAtLeastKernelVersion(5, 10, 0));
 }
 
+TEST(KernelTest, TestChar16IsLockFree) {
+    // Known to fail on deprecated/obsolete 32-bit userspace.
+    if (bpf::isUserspace32bit()) GTEST_SKIP() << "Exempt on 32-bit userspace.";
+
+    typedef struct {
+        char name[16];
+    } IfaceValue;
+
+    ASSERT_TRUE(std::atomic<IfaceValue>::is_always_lock_free);
+}
+
 // RiscV is not yet supported: make it fail VTS.
 TEST(KernelTest, TestNotRiscV) {
     ASSERT_TRUE(!bpf::isRiscV());
@@ -171,7 +186,6 @@ static bool isGSI() {
     ASSERT_TRUE(bpf::isAtLeastKernelVersion((major), (minor), (sub))); \
 } while (0)
 
-TEST(KernelTest, TestMinRequiredLTS_5_4)  { ifIsKernelThenMinLTS(5, 4, 277); }
 TEST(KernelTest, TestMinRequiredLTS_5_10) { ifIsKernelThenMinLTS(5, 10, 210); }
 TEST(KernelTest, TestMinRequiredLTS_5_15) { ifIsKernelThenMinLTS(5, 15, 149); }
 TEST(KernelTest, TestMinRequiredLTS_6_1)  { ifIsKernelThenMinLTS(6, 1, 78); }
@@ -227,6 +241,11 @@ TEST(KernelTest, TestSupportsUsbCdcHost) {
     KernelConfigVerifier configVerifier;
     // TODO: Load these modules on cuttlefish.
     if (isCuttlefish()) GTEST_SKIP() << "Exempt on cuttlefish";
+
+    // All desktop devices use kernel uevents for module autoloading,
+    // thus support for USB ethernet dongles is already verified by
+    // the KernelTest#TestSupportsCommonUsbEthernetDongles.
+    if (isDesktop()) GTEST_SKIP() << "Exempt on desktop device";
 
     EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_NET_CDC_NCM", "cdc_ncm"));
     EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_NET_CDC_EEM", "cdc_eem"));

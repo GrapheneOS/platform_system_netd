@@ -36,6 +36,7 @@
 #include "DummyNetwork.h"
 #include "Fwmark.h"
 #include "LocalNetwork.h"
+#include "NetdConstants.h"
 #include "PhysicalNetwork.h"
 #include "RouteController.h"
 #include "TcUtils.h"
@@ -153,16 +154,18 @@ NetworkController::NetworkController() :
     mNetworks[DUMMY_NET_ID] = new DummyNetwork(DUMMY_NET_ID);
     mNetworks[UNREACHABLE_NET_ID] = new UnreachableNetwork(UNREACHABLE_NET_ID);
 
-    // Clear all clsact stubs on all interfaces.
-    // TODO: perhaps only remove the clsact on the interface which is added by
-    // RouteController::addInterfaceToPhysicalNetwork. Currently, the netd only
-    // attach the clsact to the interface for the physical network.
-    const auto& ifaces = getIfaceNames();
-    if (isOk(ifaces)) {
-        for (const std::string& iface : ifaces.value()) {
-            if (int ifIndex = if_nametoindex(iface.c_str())) {
-                // Ignore the error because the interface might not have a clsact.
-                tcQdiscDelDevClsact(ifIndex);
+    if (!netflags::connectivity_service_modify_qdisc_clsact()) {
+        // Clear all clsact stubs on all interfaces.
+        // TODO: perhaps only remove the clsact on the interface which is added by
+        // RouteController::addInterfaceToPhysicalNetwork. Currently, the netd only
+        // attach the clsact to the interface for the physical network.
+        const auto& ifaces = getIfaceNames();
+        if (isOk(ifaces)) {
+            for (const std::string& iface : ifaces.value()) {
+                if (int ifIndex = if_nametoindex(iface.c_str())) {
+                    // Ignore the error because the interface might not have a clsact.
+                    tcQdiscDelDevClsact(ifIndex);
+                }
             }
         }
     }
@@ -659,18 +662,23 @@ int NetworkController::removeUsersFromNetwork(unsigned netId, const UidRanges& u
 }
 
 int NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,
-                                const char* nexthop, bool legacy, uid_t uid, int mtu) {
-    return modifyRoute(netId, interface, destination, nexthop, ROUTE_ADD, legacy, uid, mtu);
+                                const char* nexthop, bool legacy, uid_t uid, int mtu,
+                                bool isLocalRoute) {
+    return modifyRoute(netId, interface, destination, nexthop, ROUTE_ADD, legacy, uid, mtu,
+                       isLocalRoute);
 }
 
 int NetworkController::updateRoute(unsigned netId, const char* interface, const char* destination,
-                                   const char* nexthop, bool legacy, uid_t uid, int mtu) {
-    return modifyRoute(netId, interface, destination, nexthop, ROUTE_UPDATE, legacy, uid, mtu);
+                                   const char* nexthop, bool legacy, uid_t uid, int mtu,
+                                   bool isLocalRoute) {
+    return modifyRoute(netId, interface, destination, nexthop, ROUTE_UPDATE, legacy, uid, mtu,
+                       isLocalRoute);
 }
 
 int NetworkController::removeRoute(unsigned netId, const char* interface, const char* destination,
-                                   const char* nexthop, bool legacy, uid_t uid) {
-    return modifyRoute(netId, interface, destination, nexthop, ROUTE_REMOVE, legacy, uid, 0);
+                                   const char* nexthop, bool legacy, uid_t uid, bool isLocalRoute) {
+    return modifyRoute(netId, interface, destination, nexthop, ROUTE_REMOVE, legacy, uid, 0,
+                       isLocalRoute);
 }
 
 void NetworkController::addInterfaceAddress(unsigned ifIndex, const char* address) {
@@ -975,7 +983,7 @@ int NetworkController::checkUserNetworkAccessLocked(uid_t uid, unsigned netId) c
 
 int NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
                                    const char* nexthop, enum RouteOperation op, bool legacy,
-                                   uid_t uid, int mtu) {
+                                   uid_t uid, int mtu, bool isLocalRoute) {
     ScopedRLock lock(mRWLock);
 
     if (!isValidNetworkLocked(netId)) {
@@ -1008,12 +1016,13 @@ int NetworkController::modifyRoute(unsigned netId, const char* interface, const 
     switch (op) {
         case ROUTE_ADD:
             return RouteController::addRoute(interface, destination, nexthop, tableType, mtu,
-                                             0 /* priority */);
+                                             0 /* priority */, isLocalRoute);
         case ROUTE_UPDATE:
-            return RouteController::updateRoute(interface, destination, nexthop, tableType, mtu);
+            return RouteController::updateRoute(interface, destination, nexthop, tableType, mtu,
+                                                isLocalRoute);
         case ROUTE_REMOVE:
             return RouteController::removeRoute(interface, destination, nexthop, tableType,
-                                                0 /* priority */);
+                                                0 /* priority */, isLocalRoute);
     }
     return -EINVAL;
 }

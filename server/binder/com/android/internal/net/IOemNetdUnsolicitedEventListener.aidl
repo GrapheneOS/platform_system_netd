@@ -17,7 +17,7 @@
 package com.android.internal.net;
 
 /**
- * {@hide}
+ * @hide
  */
 oneway interface IOemNetdUnsolicitedEventListener {
 

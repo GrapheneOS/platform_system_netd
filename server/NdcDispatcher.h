@@ -17,6 +17,7 @@
 #ifndef _NDC_DISPATCHER_H__
 #define _NDC_DISPATCHER_H__
 
+#include <memory>
 #include <string>
 
 #include <android-base/logging.h>
@@ -72,10 +73,10 @@ class NdcDispatcher {
     NdcClient mNdc;
 
     int dispatchCommand(int argc, char** argv);
-    void registerCmd(NdcNetdCommand* cmd);
+    void registerCmd(std::unique_ptr<NdcNetdCommand>&& cmd);
 
   private:
-    std::vector<NdcNetdCommand*> mCommands;
+    std::vector<std::unique_ptr<NdcNetdCommand>> mCommands;
 
     class InterfaceCmd : public NdcNetdCommand {
       public:

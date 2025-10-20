@@ -18,7 +18,7 @@ package com.android.internal.net;
 
 import com.android.internal.net.IOemNetdUnsolicitedEventListener;
 
-/** {@hide} */
+/** @hide */
 interface IOemNetd {
    /**
     * Returns true if the service is responding.
