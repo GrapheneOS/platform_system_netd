@@ -53,7 +53,6 @@ cc_defaults {
         "-Werror=implicit-fallthrough",
         "-Werror=sometimes-uninitialized",
         "-Werror=conditional-uninitialized",
-        "-Wnullable-to-nonnull-conversion",
         "-Wsign-compare",
         "-Wthread-safety",
         "-Wunused-parameter",
