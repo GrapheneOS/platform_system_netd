@@ -20,6 +20,7 @@
 
 #define BPF_MAP_MAKE_VISIBLE_FOR_TESTING
 #include "bpf/BpfMap.h"
+#include "bpf/BpfUtils.h"
 
 constexpr uint32_t TEST_MAP_SIZE = 10000;
 
