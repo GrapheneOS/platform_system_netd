@@ -161,10 +161,10 @@ std::set<std::string> Controllers::findExistingChildChains(const IptablesTarget 
 }
 
 /* static */
-void Controllers::createChildChains(IptablesTarget target, const char* table,
-                                    const char* parentChain,
-                                    const std::vector<const char*>& childChains,
-                                    bool exclusive) {
+int Controllers::createChildChains(IptablesTarget target, const char* table,
+                                   const char* parentChain,
+                                   const std::vector<const char*>& childChains,
+                                   bool exclusive) {
     std::string command = StringPrintf("*%s\n", table);
 
     // We cannot just clear all the chains we create because vendor code modifies filter OUTPUT and
@@ -198,7 +198,7 @@ void Controllers::createChildChains(IptablesTarget target, const char* table,
         }
     }
     command += "COMMIT\n";
-    execIptablesRestore(target, command);
+    return execIptablesRestore(target, command);
 }
 
 Controllers::Controllers()
@@ -220,7 +220,7 @@ Controllers::Controllers()
     InterfaceController::initializeAll();
 }
 
-void Controllers::initChildChains() {
+int Controllers::initChildChains() {
     /*
      * This is the only time we touch top-level chains in iptables; controllers
      * should only mutate rules inside of their children chains, as created by
@@ -232,22 +232,25 @@ void Controllers::initChildChains() {
      */
 
     // Create chains for child modules.
-    createChildChains(V4V6, "filter", "INPUT", FILTER_INPUT, true);
-    createChildChains(V4V6, "filter", "FORWARD", FILTER_FORWARD, true);
-    createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING, true);
-    createChildChains(V4V6, "mangle", "FORWARD", MANGLE_FORWARD, true);
-    createChildChains(V4V6, "mangle", "INPUT", MANGLE_INPUT, true);
-    createChildChains(V4V6, "mangle", "OUTPUT", MANGLE_OUTPUT, true);
-    createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING, true);
-    createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING, true);
+    int res = 0;
+    res |= createChildChains(V4V6, "filter", "INPUT", FILTER_INPUT, true);
+    res |= createChildChains(V4V6, "filter", "FORWARD", FILTER_FORWARD, true);
+    res |= createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING, true);
+    res |= createChildChains(V4V6, "mangle", "FORWARD", MANGLE_FORWARD, true);
+    res |= createChildChains(V4V6, "mangle", "INPUT", MANGLE_INPUT, true);
+    res |= createChildChains(V4V6, "mangle", "OUTPUT", MANGLE_OUTPUT, true);
+    res |= createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING, true);
+    res |= createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING, true);
 
-    createChildChains(V4, "filter", "OUTPUT", FILTER_OUTPUT, false);
-    createChildChains(V6, "filter", "OUTPUT", FILTER_OUTPUT, false);
-    createChildChains(V4, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
-    createChildChains(V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
+    res |= createChildChains(V4, "filter", "OUTPUT", FILTER_OUTPUT, false);
+    res |= createChildChains(V6, "filter", "OUTPUT", FILTER_OUTPUT, false);
+    res |= createChildChains(V4, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
+    res |= createChildChains(V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING, false);
+
+    return res;
 }
 
-static void setupConnmarkIptablesHooks() {
+static int setupConnmarkIptablesHooks() {
     // Rules to store parts of the fwmark (namely: netId, explicitlySelected, protectedFromVpn,
     // permission) in connmark.
     // Only saves the mark if no mark has been set before.
@@ -268,55 +271,61 @@ static void setupConnmarkIptablesHooks() {
             "-A connmark_mangle_OUTPUT -m connmark --mark 0/0x000FFFFF "
             "-j CONNMARK --save-mark --ctmask 0x000FFFFF --nfmask 0x000FFFFF\n"
             "COMMIT\n");
-    execIptablesRestore(V4V6, cmd);
+    return execIptablesRestore(V4V6, cmd);
 }
 
-void Controllers::initIptablesRules() {
+int Controllers::initIptablesRules() {
     Stopwatch s;
-    initChildChains();
+    int res = 0;
+    res |= initChildChains();
     gLog.info("Creating child chains: %" PRId64 "us", s.getTimeAndResetUs());
 
     // Let each module setup their child chains
-    setupOemIptablesHook();
+    res |= setupOemIptablesHook();
     gLog.info("Setting up OEM hooks: %" PRId64 "us", s.getTimeAndResetUs());
 
     /* When enabled, DROPs all packets except those matching rules. */
-    firewallCtrl.setupIptablesHooks();
+    res |= firewallCtrl.setupIptablesHooks();
     gLog.info("Setting up FirewallController hooks: %" PRId64 "us", s.getTimeAndResetUs());
 
     /* Does DROPs in FORWARD by default */
-    tetherCtrl.setupIptablesHooks();
+    res |= tetherCtrl.setupIptablesHooks();
     gLog.info("Setting up TetherController hooks: %" PRId64 "us", s.getTimeAndResetUs());
 
     /*
      * Does REJECT in INPUT, OUTPUT. Does counting also.
      * No DROP/REJECT allowed later in netfilter-flow hook order.
      */
-    bandwidthCtrl.setupIptablesHooks();
+    res |= bandwidthCtrl.setupIptablesHooks();
     gLog.info("Setting up BandwidthController hooks: %" PRId64 "us", s.getTimeAndResetUs());
 
     /*
      * Counts in nat: PREROUTING, POSTROUTING.
      * No DROP/REJECT allowed later in netfilter-flow hook order.
      */
-    idletimerCtrl.setupIptablesHooks();
+    res |= !idletimerCtrl.setupIptablesHooks();
     gLog.info("Setting up IdletimerController hooks: %" PRId64 "us", s.getTimeAndResetUs());
 
     /*
      * Add rules for detecting IPv6/IPv4 TCP/UDP connections with TLS/DTLS header
      */
-    strictCtrl.setupIptablesHooks();
+    res |= strictCtrl.setupIptablesHooks();
     gLog.info("Setting up StrictController hooks: %" PRId64 "us", s.getTimeAndResetUs());
 
     /*
      * Add rules for storing netid in connmark.
      */
-    setupConnmarkIptablesHooks();
+    res |= setupConnmarkIptablesHooks();
     gLog.info("Setting up connmark hooks: %" PRId64 "us", s.getTimeAndResetUs());
+
+    return res;
 }
 
 void Controllers::init() {
-    initIptablesRules();
+    if (initIptablesRules()) {
+        gLog.error("Failed to initialize iptables rules");
+        exit(1);
+    }
     Stopwatch s;
 
     if (int ret = bandwidthCtrl.enableBandwidthControl()) {
@@ -326,20 +335,20 @@ void Controllers::init() {
         // As such simply exit netd.  This may crash loop the system, but by failing
         // to bootup we will trigger rollback and thus this offers us protection against
         // a mainline update breaking things.
-        exit(1);
+        exit(2);
     }
     gLog.info("Enabling bandwidth control: %" PRId64 "us", s.getTimeAndResetUs());
 
     if (int ret = RouteController::Init(NetworkController::LOCAL_NET_ID)) {
         gLog.error("Failed to initialize RouteController (%s)", strerror(-ret));
-        exit(2);
+        exit(3);
     }
     gLog.info("Initializing RouteController: %" PRId64 "us", s.getTimeAndResetUs());
 
     netdutils::Status xStatus = XfrmController::Init();
     if (!isOk(xStatus)) {
         gLog.error("Failed to initialize XfrmController (%s)", netdutils::toString(xStatus).c_str());
-        exit(3);
+        exit(4);
     };
     gLog.info("Initializing XfrmController: %" PRId64 "us", s.getTimeAndResetUs());
 }

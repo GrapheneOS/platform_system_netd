@@ -23,6 +23,6 @@
 #define OEM_IPTABLES_NAT_PREROUTING "oem_nat_pre"
 #define OEM_IPTABLES_MANGLE_POSTROUTING "oem_mangle_post"
 
-void setupOemIptablesHook();
+int setupOemIptablesHook();
 
 #endif

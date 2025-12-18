@@ -14,5 +14,6 @@
  * limitations under the License.
  */
 
-void setupOemIptablesHook() {
+int setupOemIptablesHook() {
+    return 0;
 }
