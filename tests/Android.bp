@@ -124,6 +124,7 @@ cc_test {
         "netd_event_listener_interface-V1-cpp",
         "oemnetd_aidl_interface-cpp",
     ],
+    test_config: "AndroidTest.xml",
     compile_multilib: "both",
     multilib: {
         lib32: {
