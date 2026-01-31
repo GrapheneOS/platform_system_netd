@@ -1,4 +1,8 @@
+on bpf-progs-loaded
+    start netd
+
 service netd /system/bin/netd
+    disabled # only started once bpf programs are loaded
     class main
     capabilities CHOWN DAC_OVERRIDE DAC_READ_SEARCH FOWNER IPC_LOCK KILL NET_ADMIN NET_BIND_SERVICE NET_RAW SETUID SETGID
     user root
