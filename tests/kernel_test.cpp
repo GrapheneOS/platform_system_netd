@@ -26,7 +26,7 @@
 #include <string>
 #include <unordered_set>
 
-#include "bpf/KernelUtils.h"
+#include "bpf/BpfUtils.h"
 
 namespace android {
 namespace net {
@@ -80,14 +80,6 @@ class KernelConfigVerifier final {
     std::shared_ptr<const RuntimeInfo> mRuntimeInfo;
     std::unordered_set<std::string> mLoadedModules;
 };
-
-bool isCuttlefish() {
-    return GetProperty("ro.product.board", "") == "cutf";
-}
-
-bool isDesktop() {
-    return GetProperty("ro.boot.hardware", "") == "android-desktop";
-}
 
 }  // namespace
 
@@ -191,6 +183,7 @@ TEST(KernelTest, TestMinRequiredLTS_5_15) { ifIsKernelThenMinLTS(5, 15, 149); }
 TEST(KernelTest, TestMinRequiredLTS_6_1)  { ifIsKernelThenMinLTS(6, 1, 78); }
 TEST(KernelTest, TestMinRequiredLTS_6_6)  { ifIsKernelThenMinLTS(6, 6, 30); }
 TEST(KernelTest, TestMinRequiredLTS_6_12) { ifIsKernelThenMinLTS(6, 12, 13); }
+TEST(KernelTest, TestMinRequiredLTS_6_18) { ifIsKernelThenMinLTS(6, 18, 4); }
 
 TEST(KernelTest, TestSupportsAcceptRaMinLft) {
     if (isGSI()) GTEST_SKIP() << "Meaningless on GSI due to ancient kernels.";
@@ -240,12 +233,12 @@ TEST(KernelTest, TestSupportsCommonUsbEthernetDongles) {
 TEST(KernelTest, TestSupportsUsbCdcHost) {
     KernelConfigVerifier configVerifier;
     // TODO: Load these modules on cuttlefish.
-    if (isCuttlefish()) GTEST_SKIP() << "Exempt on cuttlefish";
+    if (bpf::isCuttlefish) GTEST_SKIP() << "Exempt on cuttlefish";
 
     // All desktop devices use kernel uevents for module autoloading,
     // thus support for USB ethernet dongles is already verified by
     // the KernelTest#TestSupportsCommonUsbEthernetDongles.
-    if (isDesktop()) GTEST_SKIP() << "Exempt on desktop device";
+    if (bpf::isDesktop) GTEST_SKIP() << "Exempt on desktop device";
 
     EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_NET_CDC_NCM", "cdc_ncm"));
     EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_NET_CDC_EEM", "cdc_eem"));
