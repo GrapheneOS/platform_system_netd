@@ -87,6 +87,11 @@ int MulticastFirewallController::flushRules() {
                          MULTICAST_RANGE_IPV4),
             StringPrintf("-4 -A mfw_OUTPUT -o %s -p %d -j DROP", VPN_INTERFACE_NAME,
                          IGMP_PROTOCOL_NUMBER),
+            // Some configurations rely on inbound router advertisements. As the original author
+            // of this firewall noted, this will increase the side channel surface. Stopping all
+            // side channels within the current Android environment is not feasible.
+            StringPrintf("-6 -A mfw_INPUT -i %s -p icmpv6 --icmpv6-type router-advertisement "
+                         "-j RETURN", VPN_INTERFACE_NAME),
             StringPrintf("-6 -A mfw_INPUT -i %s -d %s -j DROP", VPN_INTERFACE_NAME,
                          MULTICAST_RANGE_IPV6),
             StringPrintf("-6 -A mfw_INPUT -i %s -p icmpv6 --icmpv6-type %d -j DROP",

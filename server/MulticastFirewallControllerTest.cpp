@@ -30,6 +30,7 @@ TEST_F(MulticastFirewallControllerTest, TestFirewall) {
             "-4 -A mfw_FORWARD -p 2 -j DROP\n"
             "-4 -A mfw_OUTPUT -o tun+ -d 224.0.0.0/4 -j DROP\n"
             "-4 -A mfw_OUTPUT -o tun+ -p 2 -j DROP\n"
+            "-6 -A mfw_INPUT -i tun+ -p icmpv6 --icmpv6-type router-advertisement -j RETURN\n"
             "-6 -A mfw_INPUT -i tun+ -d ff00::/8 -j DROP\n"
             "-6 -A mfw_INPUT -i tun+ -p icmpv6 --icmpv6-type 130 -j DROP\n"
             "-6 -A mfw_INPUT -i tun+ -p icmpv6 --icmpv6-type 131 -j DROP\n"
