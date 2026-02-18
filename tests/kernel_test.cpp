@@ -178,11 +178,11 @@ static bool isGSI() {
     ASSERT_TRUE(bpf::isAtLeastKernelVersion((major), (minor), (sub))); \
 } while (0)
 
-TEST(KernelTest, TestMinRequiredLTS_5_10) { ifIsKernelThenMinLTS(5, 10, 210); }
-TEST(KernelTest, TestMinRequiredLTS_5_15) { ifIsKernelThenMinLTS(5, 15, 149); }
-TEST(KernelTest, TestMinRequiredLTS_6_1)  { ifIsKernelThenMinLTS(6, 1, 78); }
-TEST(KernelTest, TestMinRequiredLTS_6_6)  { ifIsKernelThenMinLTS(6, 6, 30); }
-TEST(KernelTest, TestMinRequiredLTS_6_12) { ifIsKernelThenMinLTS(6, 12, 13); }
+TEST(KernelTest, TestMinRequiredLTS_5_10) { ifIsKernelThenMinLTS(5, 10, 236); }
+TEST(KernelTest, TestMinRequiredLTS_5_15) { ifIsKernelThenMinLTS(5, 15, 178); }
+TEST(KernelTest, TestMinRequiredLTS_6_1)  { ifIsKernelThenMinLTS(6, 1, 128); }
+TEST(KernelTest, TestMinRequiredLTS_6_6)  { ifIsKernelThenMinLTS(6, 6, 77); }
+TEST(KernelTest, TestMinRequiredLTS_6_12) { ifIsKernelThenMinLTS(6, 12, 23); }
 TEST(KernelTest, TestMinRequiredLTS_6_18) { ifIsKernelThenMinLTS(6, 18, 9); }
 
 TEST(KernelTest, TestSupportsAcceptRaMinLft) {
@@ -214,8 +214,7 @@ TEST(KernelTest, TestSupportsCommonUsbEthernetDongles) {
     EXPECT_TRUE(configVerifier.hasModule("CONFIG_USB_NET_CDCETHER"));
     EXPECT_TRUE(configVerifier.hasModule("CONFIG_USB_NET_CDC_EEM"));
     EXPECT_TRUE(configVerifier.hasModule("CONFIG_USB_NET_CDC_NCM"));
-    if (bpf::isAtLeastKernelVersion(5, 4, 0))
-        EXPECT_TRUE(configVerifier.hasModule("CONFIG_USB_NET_AQC111"));
+    EXPECT_TRUE(configVerifier.hasModule("CONFIG_USB_NET_AQC111"));
 
     EXPECT_TRUE(configVerifier.hasModule("CONFIG_USB_RTL8152"));
     EXPECT_TRUE(configVerifier.hasModule("CONFIG_USB_RTL8150"));

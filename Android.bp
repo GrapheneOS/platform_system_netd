@@ -28,10 +28,9 @@ cc_library_headers {
     export_include_dirs: ["include/binder_utils"],
     apex_available: [
         "//apex_available:platform",
-        "com.android.resolv",
         "com.android.tethering",
     ],
-    min_sdk_version: "29",
+    min_sdk_version: "31",
 }
 
 cc_library_headers {
@@ -41,8 +40,8 @@ cc_library_headers {
         "//apex_available:platform",
         "com.android.tethering",
     ],
-    sdk_version: "29",
-    min_sdk_version: "29",
+    sdk_version: "31",
+    min_sdk_version: "31",
 }
 
 cc_defaults {
