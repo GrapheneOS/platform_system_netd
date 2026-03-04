@@ -242,8 +242,12 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         // servers (through the default network). Otherwise, the query is guaranteed to fail.
         // http://b/29498052
         Network *network = getNetworkLocked(*netId);
-        if (network && network->isVirtual() && !resolv_has_nameservers(*netId)) {
-            *netId = defaultNetId;
+        if (network && network->isVirtual()) {
+            if (!resolv_has_nameservers(*netId)) {
+                *netId = defaultNetId;
+            } else {
+                fwmark.protectedFromVpn = false;
+            }
         }
     } else {
         // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
@@ -253,7 +257,7 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
         if (virtualNetwork && resolv_has_nameservers(virtualNetwork->getNetId())) {
             *netId = virtualNetwork->getNetId();
-            fwmark.explicitlySelected = true;
+            fwmark.protectedFromVpn = false;
         } else {
             // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
             // http://b/27560555
