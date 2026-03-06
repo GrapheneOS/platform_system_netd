@@ -30,11 +30,13 @@
 #include <gtest/gtest.h>
 
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 
 #define LOG_TAG "NetdTest"
 
 #include "TcUtils.h"
+#include "test_utils.h"
 
 namespace android {
 namespace net {
@@ -65,10 +67,13 @@ TEST(NetUtilsWrapperTest, TestFileCapabilities) {
 //   genfscon sysfs /devices/platform/11110000.usb/11110000.dwc3/gadget/net u:object_r:sysfs_net:s0
 TEST(NetdSELinuxTest, CheckProperMTULabels) {
     // Since we expect the egrep regexp to filter everything out,
-    // we thus expect no matches and thus a return code of 1
-    // NOLINTNEXTLINE(cert-env33-c)
-    ASSERT_EQ(W_EXITCODE(1, 0), system("ls -Z /sys/class/net/*/mtu | egrep -q -v "
-                                       "'^u:object_r:sysfs_net:s0 /sys/class/net/'"));
+    // we thus expect no matches and thus an empty output.
+    const char* cmd =
+            "ls -Z /sys/class/net/*/mtu | egrep -v "
+            "'^u:object_r:sysfs_net:s0 /sys/class/net/'";
+    auto mislabeled = runCommand(cmd);
+    ASSERT_EQ("", android::base::Join(mislabeled, "\n"))
+            << "The above files should be labeled with u:object_r:sysfs_net:s0";
 }
 
 static void assertBpfContext(const char* const target, const char* const label) {
@@ -105,18 +110,18 @@ TEST(NetdSELinuxTest, CheckProperBpfloaderLabels) {
     //   /apex/com.android.uprobestats/bin/uprobestatsbpfload
     //   /apex/com.android.tethering@.../bin/netbpfload
     //   /apex/com.android.uprobestats@.../bin/uprobestatsbpfload
-    // We run this through a regexp filter via 'egrep -q -v' which returns
+    // We run this through a regexp filter via 'egrep -v' which returns
     //   0 on non empty output
     //   1 on empty output
-    // We expect 1/empty as we filter everything out that we do expect.
-    const char * const cmd = "find / -context '*:bpfloader_exec:*' 2>/dev/null | "
-        "egrep -q -v '^/apex/com[.]android[.]uprobestats(@[0-9]+)?/bin/uprobestatsbpfload$|"
-                     "^/apex/com[.]android[.]tethering(@[0-9]+)?/bin/netbpfload$'";
+    // We expect empty output as we filter everything out that we do expect.
+    const char* const cmd =
+            "find / -context '*:bpfloader_exec:*' 2>/dev/null | "
+            "egrep -v '^/apex/com[.]android[.]uprobestats(@[0-9]+)?/bin/uprobestatsbpfload$|"
+            "^/apex/com[.]android[.]tethering(@[0-9]+)?/bin/netbpfload$'";
 
-    // NOLINTNEXTLINE(cert-env33-c)
-    ASSERT_EQ(W_EXITCODE(1, 0), system(cmd)) << cmd << " - did not return fail(1)"
-        " - are there extra files labeled bpfloader_exec?"
-        " You can use 'find / -context *:bpfloader_exec:* 2>/dev/null' to check.";
+    auto mislabeled = runCommand(cmd);
+    ASSERT_EQ("", android::base::Join(mislabeled, "\n"))
+            << "The above files are unexpectedly labeled bpfloader_exec";
 }
 
 // Trivial thread function that simply immediately terminates successfully.
