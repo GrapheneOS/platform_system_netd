@@ -124,6 +124,7 @@ public:
                                         int32_t subPriority);
     [[nodiscard]] int removeUsersFromNetwork(unsigned netId, const UidRanges& uidRanges,
                                              int32_t subPriority);
+    [[nodiscard]] int updateLockdownVpnUids(bool add, const UidRanges& uidRanges);
 
     // |nexthop| can be NULL (to indicate a directly-connected route), "unreachable" (to indicate a
     // route that's blocked), "throw" (to indicate the lack of a match), or a regular IP address.
@@ -211,6 +212,8 @@ public:
     // we should fix it.
     // This map is deprecated, if flag connectivityServiceDestroySocket is enabled.
     std::unordered_map<std::string, std::unordered_set<unsigned>> mAddressToIfindices;
+
+    UidRanges mVpnLockdownUids;
 };
 
 }  // namespace android::net

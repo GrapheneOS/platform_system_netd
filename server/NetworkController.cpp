@@ -664,6 +664,23 @@ int NetworkController::removeUsersFromNetwork(unsigned netId, const UidRanges& u
     return network->removeUsers(uidRanges, subPriority);
 }
 
+int NetworkController::updateLockdownVpnUids(bool add, const UidRanges& uidRanges) {
+    ScopedWLock lock(mRWLock);
+    if (add) {
+        mVpnLockdownUids.add(uidRanges);
+        // The caller should not send overlapping ranges, and if they do then hasUid won't work
+        // properly and a leak could occur.
+        if (mVpnLockdownUids.overlapsSelf()) {
+            ALOGE("Lockdown VPN uid ranges are overlapping: %s",
+                  mVpnLockdownUids.toString().c_str());
+            return -EINVAL;
+        }
+    } else {
+        mVpnLockdownUids.remove(uidRanges);
+    }
+    return 0;
+}
+
 int NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,
                                 const char* nexthop, bool legacy, uid_t uid, int mtu,
                                 bool isLocalRoute) {
