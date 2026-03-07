@@ -50,6 +50,7 @@
 #define DBG 0
 
 #include <android_net_platform_flags.h>
+#include <Fwmark.h>
 
 namespace netflags = android::net::platform::flags;
 
@@ -210,6 +211,25 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
 
     mDefaultNetId = netId;
     return 0;
+}
+
+// This complements the default DNS server leak solution added in getNetworkForDnsLocked(). This
+// gets called much earlier in the DNS request execution. Both solutions do currently suffice on
+// their own.
+bool NetworkController::checkLockdownVpnBlockingDns(android_net_context* netcontext) const {
+    ScopedRLock lock(mRWLock);
+
+    uid_t uid = netcontext->uid;
+
+    Fwmark dnsMark;
+    dnsMark.intValue = netcontext->dns_mark;
+
+    if (dnsMark.protectedFromVpn || !mVpnLockdownUids.hasUid(uid)) {
+        return false;
+    }
+
+    VirtualNetwork* userVirtualNetwork = getVirtualNetworkForUserLocked(uid);
+    return userVirtualNetwork == nullptr || userVirtualNetwork->getNetId() != netcontext->dns_netid;
 }
 
 uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) const {

@@ -101,6 +101,7 @@ public:
     unsigned getNetworkForUser(uid_t uid) const;
     unsigned getNetworkForConnect(uid_t uid) const;
     void getNetworkContext(unsigned netId, uid_t uid, struct android_net_context* netcontext) const;
+    bool checkLockdownVpnBlockingDns(android_net_context* netcontext) const;
     unsigned getNetworkForInterface(const char* interface) const;
     unsigned getNetworkForInterface(const int ifIndex) const;
     bool isVirtualNetwork(unsigned netId) const;
