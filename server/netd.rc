@@ -1,3 +1,18 @@
+# This should be similar to proper 'netd' below, this is merely a quick self test during bootup.
+# If this invocation fails during a mainline module update it should trigger a module rollback.
+service netd1shot /system/bin/netd oneshot
+    disabled # only started once bpf programs are loaded
+    class main
+    capabilities CHOWN DAC_OVERRIDE DAC_READ_SEARCH FOWNER IPC_LOCK KILL NET_ADMIN NET_BIND_SERVICE NET_RAW SETUID SETGID
+    user root
+    group root net_admin
+    rlimit memlock 1073741824 1073741824
+    updatable
+    # these two only apply to 'netd1shot'
+    oneshot
+    reboot_on_failure reboot,netd1shot-fail
+
+# Keep in sync with 'netd1shot' above.
 service netd /system/bin/netd
     disabled # only started once bpf programs are loaded
     class main
@@ -6,15 +21,16 @@ service netd /system/bin/netd
     group root net_admin
     # apparently some older kernels do not honour CAP_IPC_LOCK for eBPF map allocation
     rlimit memlock 1073741824 1073741824
+    # sockets are only needed for the 'real' netd
     socket dnsproxyd stream 0660 root inet
     socket mdns stream 0660 root system
     socket fwmarkd stream 0660 root inet
+    # netd is not updatable, but depends on libs provided by tethering apex.
+    # Mark it as updatable so init won't start it until all APEX packages are ready.
+    updatable
+    # for obvious reasons 'onrestart' doesn't apply to netd1shot above
     onrestart restart zygote
     onrestart restart zygote_secondary
-    # b/121354779: netd itself is not updatable, but on startup it dlopen()s the resolver library
-    # from the DNS resolver APEX. Mark it as updatable so init won't start it until all APEX
-    # packages are ready.
-    updatable
 
 # Moved from external/android-clat/vendor-464xlat.rc. Since
 # clatd is modularized and shipped in apex, migrate the
