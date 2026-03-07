@@ -50,6 +50,7 @@
 #define DBG 0
 
 #include <android_net_platform_flags.h>
+#include <Fwmark.h>
 
 namespace netflags = android::net::platform::flags;
 
@@ -212,6 +213,25 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
     return 0;
 }
 
+// This complements the default DNS server leak solution added in getNetworkForDnsLocked(). This
+// gets called much earlier in the DNS request execution. Both solutions do currently suffice on
+// their own.
+bool NetworkController::checkLockdownVpnBlockingDns(android_net_context* netcontext) const {
+    ScopedRLock lock(mRWLock);
+
+    uid_t uid = netcontext->uid;
+
+    Fwmark dnsMark;
+    dnsMark.intValue = netcontext->dns_mark;
+
+    if (dnsMark.protectedFromVpn || !mVpnLockdownUids.hasUid(uid)) {
+        return false;
+    }
+
+    VirtualNetwork* userVirtualNetwork = getVirtualNetworkForUserLocked(uid);
+    return userVirtualNetwork == nullptr || userVirtualNetwork->getNetId() != netcontext->dns_netid;
+}
+
 uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) const {
     Fwmark fwmark;
     fwmark.protectedFromVpn = canProtectLocked(uid, *netId);
@@ -219,6 +239,14 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
 
     Network* appDefaultNetwork = getPhysicalOrUnreachableNetworkForUserLocked(uid);
     unsigned defaultNetId = appDefaultNetwork ? appDefaultNetwork->getNetId() : mDefaultNetId;
+    if (!fwmark.protectedFromVpn && mVpnLockdownUids.hasUid(uid)) {
+        // If a uid is under a lockdown VPN, using the default network DNS servers is a DNS leak.
+        //
+        // The servers to be used for a resolution are set in resolv_populate_res_for_net(). There
+        // is no NetConfig for NETID_UNSET, so no servers will get set. Requests are terminated in
+        // res_nsend() where -ESRCH is returned due to the lack of servers.
+        defaultNetId = NETID_UNSET;
+    }
 
     // Common case: there is no VPN that applies to the user, and the query did not specify a netId.
     // Therefore, it is safe to set the explicit bit on this query and skip all the complex logic
@@ -242,8 +270,14 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         // servers (through the default network). Otherwise, the query is guaranteed to fail.
         // http://b/29498052
         Network *network = getNetworkLocked(*netId);
-        if (network && network->isVirtual() && !resolv_has_nameservers(*netId)) {
-            *netId = defaultNetId;
+        if (network && network->isVirtual()) {
+            if (!resolv_has_nameservers(*netId)) {
+                // If the VPN app itself gets here then it has made a mistake. If it wouldn't cause
+                // compatibility issues, we could save it from leaking.
+                *netId = defaultNetId;
+            } else {
+                fwmark.protectedFromVpn = false;
+            }
         }
     } else {
         // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
@@ -253,7 +287,7 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
         if (virtualNetwork && resolv_has_nameservers(virtualNetwork->getNetId())) {
             *netId = virtualNetwork->getNetId();
-            fwmark.explicitlySelected = true;
+            fwmark.protectedFromVpn = false;
         } else {
             // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
             // http://b/27560555
@@ -658,6 +692,23 @@ int NetworkController::removeUsersFromNetwork(unsigned netId, const UidRanges& u
         return ret;
     }
     return network->removeUsers(uidRanges, subPriority);
+}
+
+int NetworkController::updateLockdownVpnUids(bool add, const UidRanges& uidRanges) {
+    ScopedWLock lock(mRWLock);
+    if (add) {
+        mVpnLockdownUids.add(uidRanges);
+        // The caller should not send overlapping ranges, and if they do then hasUid won't work
+        // properly and a leak could occur.
+        if (mVpnLockdownUids.overlapsSelf()) {
+            ALOGE("Lockdown VPN uid ranges are overlapping: %s",
+                  mVpnLockdownUids.toString().c_str());
+            return -EINVAL;
+        }
+    } else {
+        mVpnLockdownUids.remove(uidRanges);
+    }
+    return 0;
 }
 
 int NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,

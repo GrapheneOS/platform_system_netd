@@ -107,6 +107,10 @@ bool evaluateDomainNameCallback(const android_net_context& netcontext, const cha
     return true;
 }
 
+bool checkLockdownVpnBlockingDnsCallback(android_net_context* netcontext) {
+    return gCtls->netCtrl.checkLockdownVpnBlockingDns(netcontext);
+}
+
 bool initDnsResolver() {
     ResolverNetdCallbacks callbacks = {
             .check_calling_permission = &checkCallingPermissionCallback,
@@ -114,6 +118,7 @@ bool initDnsResolver() {
             .log = &logCallback,
             .tagSocket = &tagSocketCallback,
             .evaluate_domain_name = &evaluateDomainNameCallback,
+            .check_lockdown_vpn_blocking_dns = &checkLockdownVpnBlockingDnsCallback,
     };
     return resolv_init(&callbacks);
 }

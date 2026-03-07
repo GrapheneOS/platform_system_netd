@@ -372,6 +372,11 @@ binder::Status NetdNativeService::networkRejectNonSecureVpn(
     } else {
         err = RouteController::removeUsersFromRejectNonSecureNetworkRule(uidRanges);
     }
+
+    if (!err) {
+        err = gCtls->netCtrl.updateLockdownVpnUids(add, uidRanges);
+    }
+
     return statusFromErrcode(err);
 }
 
