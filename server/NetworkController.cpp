@@ -219,6 +219,14 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
 
     Network* appDefaultNetwork = getPhysicalOrUnreachableNetworkForUserLocked(uid);
     unsigned defaultNetId = appDefaultNetwork ? appDefaultNetwork->getNetId() : mDefaultNetId;
+    if (!fwmark.protectedFromVpn && mVpnLockdownUids.hasUid(uid)) {
+        // If a uid is under a lockdown VPN, using the default network DNS servers is a DNS leak.
+        //
+        // The servers to be used for a resolution are set in resolv_populate_res_for_net(). There
+        // is no NetConfig for NETID_UNSET, so no servers will get set. Requests are terminated in
+        // res_nsend() where -ESRCH is returned due to the lack of servers.
+        defaultNetId = NETID_UNSET;
+    }
 
     // Common case: there is no VPN that applies to the user, and the query did not specify a netId.
     // Therefore, it is safe to set the explicit bit on this query and skip all the complex logic
@@ -244,6 +252,8 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         Network *network = getNetworkLocked(*netId);
         if (network && network->isVirtual()) {
             if (!resolv_has_nameservers(*netId)) {
+                // If the VPN app itself gets here then it has made a mistake. If it wouldn't cause
+                // compatibility issues, we could save it from leaking.
                 *netId = defaultNetId;
             } else {
                 fwmark.protectedFromVpn = false;
