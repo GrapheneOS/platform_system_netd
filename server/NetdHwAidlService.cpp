@@ -120,8 +120,8 @@ ScopedAStatus NetdHwAidlService::addRouteToOemNetwork(int64_t networkHandle,
     RETURN_IF_NOT_OEM_NETWORK(netId);
 
     auto ret = gCtls->netCtrl.addRoute(netId, ifname.c_str(), destination.c_str(),
-                                       maybeNullString(nexthop), false, INVALID_UID, 0 /* mtu */,
-                                       false);
+                                       maybeNullString(nexthop), 0 /* mtu */,
+                                       false /* isLocalRoute */);
     if (ret != 0) {
         return ScopedAStatus::fromServiceSpecificError(toHalStatus(ret));
     } else {
@@ -137,7 +137,7 @@ ScopedAStatus NetdHwAidlService::removeRouteFromOemNetwork(int64_t networkHandle
     RETURN_IF_NOT_OEM_NETWORK(netId);
 
     auto ret = gCtls->netCtrl.removeRoute(netId, ifname.c_str(), destination.c_str(),
-                                          maybeNullString(nexthop), false, INVALID_UID, false);
+                                          maybeNullString(nexthop), false /* isLocalRoute */);
     if (ret != 0) {
         return ScopedAStatus::fromServiceSpecificError(toHalStatus(ret));
     } else {

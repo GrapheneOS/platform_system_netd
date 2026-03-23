@@ -46,8 +46,6 @@ constexpr int32_t RULE_PRIORITY_PROHIBIT_NON_VPN                  = 14000;
 constexpr int32_t RULE_PRIORITY_UID_EXPLICIT_NETWORK              = 15000;
 constexpr int32_t RULE_PRIORITY_EXPLICIT_NETWORK                  = 16000;
 constexpr int32_t RULE_PRIORITY_OUTPUT_INTERFACE                  = 17000;
-constexpr int32_t RULE_PRIORITY_LEGACY_SYSTEM                     = 18000;
-constexpr int32_t RULE_PRIORITY_LEGACY_NETWORK                    = 19000;
 constexpr int32_t RULE_PRIORITY_LOCAL_NETWORK                     = 20000;
 constexpr int32_t RULE_PRIORITY_TETHERING                         = 21000;
 // Implicit rules for sockets that connected on a given network because the network was the default
@@ -93,8 +91,6 @@ public:
     enum TableType {
         INTERFACE,       // Compute the table number based on the interface index.
         LOCAL_NETWORK,   // A fixed table used for routes to directly-connected clients/peers.
-        LEGACY_NETWORK,  // Use a fixed table that's used to override the default network.
-        LEGACY_SYSTEM,   // A fixed table, only modifiable by system apps; overrides VPNs too.
     };
 
     static const int ROUTE_TABLE_OFFSET_FROM_INDEX = 1000;

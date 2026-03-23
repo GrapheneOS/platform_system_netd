@@ -131,13 +131,11 @@ public:
     // Routes are added to tables determined by the interface, so only |interface| is actually used.
     // |netId| is given only to sanity check that the interface has the correct netId.
     [[nodiscard]] int addRoute(unsigned netId, const char* interface, const char* destination,
-                               const char* nexthop, bool legacy, uid_t uid, int mtu,
-                               bool isLocalRoute);
+                               const char* nexthop, int mtu, bool isLocalRoute);
     [[nodiscard]] int updateRoute(unsigned netId, const char* interface, const char* destination,
-                                  const char* nexthop, bool legacy, uid_t uid, int mtu,
-                                  bool isLocalRoute);
+                                  const char* nexthop, int mtu, bool isLocalRoute);
     [[nodiscard]] int removeRoute(unsigned netId, const char* interface, const char* destination,
-                                  const char* nexthop, bool legacy, uid_t uid, bool isLocalRoute);
+                                  const char* nexthop, bool isLocalRoute);
 
     // Notes that the specified address has appeared on the specified interface.
     void addInterfaceAddress(unsigned ifIndex, const char* address);
@@ -174,7 +172,7 @@ public:
     [[nodiscard]] int createPhysicalNetworkLocked(unsigned netId, Permission permission,
                                                   bool local);
     [[nodiscard]] int modifyRoute(unsigned netId, const char* interface, const char* destination,
-                                  const char* nexthop, RouteOperation op, bool legacy, uid_t uid,
+                                  const char* nexthop, RouteOperation op,
                                   int mtu, bool isLocalRoute);
     [[nodiscard]] int modifyFallthroughLocked(unsigned vpnNetId, bool add);
     void updateTcpSocketMonitorPolling();

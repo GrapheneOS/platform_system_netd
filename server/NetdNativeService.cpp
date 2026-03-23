@@ -933,12 +933,10 @@ binder::Status NetdNativeService::networkAddRouteParcel(int32_t netId,
                                                         const RouteInfoParcel& route) {
     // Public methods of NetworkController are thread-safe.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    bool legacy = false;
-    uid_t uid = 0;  // UID is only meaningful for legacy routes.
     // convert Parcel to parameters
     int res = gCtls->netCtrl.addRoute(netId, route.ifName.c_str(), route.destination.c_str(),
                                       route.nextHop.empty() ? nullptr : route.nextHop.c_str(),
-                                      legacy, uid, route.mtu, route.isLocalRoute);
+                                      route.mtu, route.isLocalRoute);
     return statusFromErrcode(res);
 }
 
@@ -946,13 +944,10 @@ binder::Status NetdNativeService::networkUpdateRouteParcel(int32_t netId,
                                                            const RouteInfoParcel& route) {
     // Public methods of NetworkController are thread-safe.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    bool legacy = false;
-    uid_t uid = 0;  // UID is only meaningful for legacy routes.
-
     // convert Parcel to parameters
     int res = gCtls->netCtrl.updateRoute(netId, route.ifName.c_str(), route.destination.c_str(),
                                          route.nextHop.empty() ? nullptr : route.nextHop.c_str(),
-                                         legacy, uid, route.mtu, route.isLocalRoute);
+                                         route.mtu, route.isLocalRoute);
     return statusFromErrcode(res);
 }
 
@@ -960,11 +955,9 @@ binder::Status NetdNativeService::networkRemoveRouteParcel(int32_t netId,
                                                            const RouteInfoParcel& route) {
     // Public methods of NetworkController are thread-safe.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    bool legacy = false;
-    uid_t uid = 0;  // UID is only meaningful for legacy routes.
     int res = gCtls->netCtrl.removeRoute(netId, route.ifName.c_str(), route.destination.c_str(),
                                          route.nextHop.empty() ? nullptr : route.nextHop.c_str(),
-                                         legacy, uid, route.isLocalRoute);
+                                         route.isLocalRoute);
     return statusFromErrcode(res);
 }
 
@@ -978,27 +971,17 @@ binder::Status NetdNativeService::networkRemoveRoute(int32_t, const std::string&
     DEPRECATED;
 }
 
-binder::Status NetdNativeService::networkAddLegacyRoute(int32_t netId, const std::string& ifName,
-                                                        const std::string& destination,
-                                                        const std::string& nextHop, int32_t uid) {
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-    bool legacy = true;
-    int res = gCtls->netCtrl.addRoute(netId, ifName.c_str(), destination.c_str(),
-                                      nextHop.empty() ? nullptr : nextHop.c_str(), legacy,
-                                      (uid_t)uid, 0, false);
-    return statusFromErrcode(res);
+binder::Status NetdNativeService::networkAddLegacyRoute(int32_t, const std::string&,
+                                                        const std::string&,
+                                                        const std::string&, int32_t) {
+    DEPRECATED;
 }
 
-binder::Status NetdNativeService::networkRemoveLegacyRoute(int32_t netId, const std::string& ifName,
-                                                           const std::string& destination,
-                                                           const std::string& nextHop,
-                                                           int32_t uid) {
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-    bool legacy = true;
-    int res = gCtls->netCtrl.removeRoute(netId, ifName.c_str(), destination.c_str(),
-                                         nextHop.empty() ? nullptr : nextHop.c_str(), legacy,
-                                         (uid_t)uid, false);
-    return statusFromErrcode(res);
+binder::Status NetdNativeService::networkRemoveLegacyRoute(int32_t, const std::string&,
+                                                           const std::string&,
+                                                           const std::string&,
+                                                           int32_t) {
+    DEPRECATED;
 }
 
 binder::Status NetdNativeService::networkGetDefault(int32_t* netId) {

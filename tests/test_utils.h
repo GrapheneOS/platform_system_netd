@@ -44,6 +44,8 @@ std::vector<std::string> listIpRoutes(const char* ipVersion, const char* table);
 bool ipRouteExists(const char* ipVersion, const char* table,
                    const std::vector<std::string>& ipRouteSubstrings);
 
+bool routingTableExists(const char* table);
+
 // Require root (for seteuid).
 class ScopedUidChange {
   public:

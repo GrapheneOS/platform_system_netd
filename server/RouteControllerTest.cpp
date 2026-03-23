@@ -63,8 +63,6 @@ TEST_F(RouteControllerTest, TestGetRulePriority) {
     for (int family : {AF_INET, AF_INET6 }) {
         std::set<uint32_t> expectedPriorities = {
                 0,
-                RULE_PRIORITY_LEGACY_SYSTEM,
-                RULE_PRIORITY_LEGACY_NETWORK,
                 RULE_PRIORITY_UNREACHABLE,
         };
 

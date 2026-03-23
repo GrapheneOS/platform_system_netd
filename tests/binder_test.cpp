@@ -413,6 +413,13 @@ TEST_F(NetdBinderTest, InitialNetworksExist) {
     EXPECT_FALSE(testNetworkExistsButCannotConnect(mNetd, sTun, 77 /* not exist */));
 }
 
+TEST_F(NetdBinderTest, NoLegacyRoutingTables) {
+    EXPECT_TRUE(routingTableExists("local"));
+    EXPECT_TRUE(routingTableExists("main"));
+    EXPECT_FALSE(routingTableExists("legacy_system"));
+    EXPECT_FALSE(routingTableExists("legacy_network"));
+}
+
 TEST_F(NetdBinderTest, IpSecTunnelInterface) {
     const struct TestData {
         const std::string family;
@@ -2367,8 +2374,6 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
             {IP_RULE_V6, "2001:db8::/32", ""},
     };
 
-    static const char testTableLegacySystem[] = "legacy_system";
-    static const char testTableLegacyNetwork[] = "legacy_network";
     const int testUid = randomUid();
     const std::vector<int32_t> testUids = {testUid};
 
@@ -2409,23 +2414,17 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
         expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
                                  sTun.name().c_str());
 
-        // Add system permission for test uid, setup route to next hop in legacy system table.
+        // Add system permission for test uid. Legacy routes are unsupported.
         EXPECT_TRUE(mNetd->networkSetPermissionForUser(INetd::PERMISSION_SYSTEM, testUids).isOk());
-
         status = mNetd->networkAddLegacyRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop,
                                               testUid);
-        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-        expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
-                                 testTableLegacySystem);
+        EXPECT_EQ(binder::Status::EX_UNSUPPORTED_OPERATION, status.exceptionCode());
 
-        // Remove system permission for test uid, setup route to next hop in legacy network table.
+        // Remove system permission for test uid. Legacy routes are still unsupported.
         EXPECT_TRUE(mNetd->networkClearPermissionForUser(testUids).isOk());
-
         status = mNetd->networkAddLegacyRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop,
                                               testUid);
-        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-        expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
-                                 testTableLegacyNetwork);
+        EXPECT_EQ(binder::Status::EX_UNSUPPORTED_OPERATION, status.exceptionCode());
     }
 
     for (size_t i = 0; i < std::size(kTestData); i++) {
@@ -2461,50 +2460,22 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
 
         status = mNetd->networkAddLegacyRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop,
                                               testUid);
-        if (td.expectSuccess) {
-            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-            expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
-                                     testTableLegacySystem);
-        } else {
-            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-            EXPECT_NE(0, status.serviceSpecificErrorCode());
-        }
+        EXPECT_EQ(binder::Status::EX_UNSUPPORTED_OPERATION, status.exceptionCode());
 
         status = mNetd->networkRemoveLegacyRoute(TEST_NETID1, sTun.name(), td.testDest,
                                                  td.testNextHop, testUid);
-        if (td.expectSuccess) {
-            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-            expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
-                                           testTableLegacySystem);
-        } else {
-            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-            EXPECT_NE(0, status.serviceSpecificErrorCode());
-        }
+        EXPECT_EQ(binder::Status::EX_UNSUPPORTED_OPERATION, status.exceptionCode());
 
         // Remove system permission for test uid, route will be added into legacy network table.
         EXPECT_TRUE(mNetd->networkClearPermissionForUser(testUids).isOk());
 
         status = mNetd->networkAddLegacyRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop,
                                               testUid);
-        if (td.expectSuccess) {
-            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-            expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
-                                     testTableLegacyNetwork);
-        } else {
-            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-            EXPECT_NE(0, status.serviceSpecificErrorCode());
-        }
+        EXPECT_EQ(binder::Status::EX_UNSUPPORTED_OPERATION, status.exceptionCode());
 
         status = mNetd->networkRemoveLegacyRoute(TEST_NETID1, sTun.name(), td.testDest,
                                                  td.testNextHop, testUid);
-        if (td.expectSuccess) {
-            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
-            expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
-                                           testTableLegacyNetwork);
-        } else {
-            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
-            EXPECT_NE(0, status.serviceSpecificErrorCode());
-        }
+        EXPECT_EQ(binder::Status::EX_UNSUPPORTED_OPERATION, status.exceptionCode());
     }
 
     /*
