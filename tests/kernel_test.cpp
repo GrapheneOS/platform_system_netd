@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include <android-base/properties.h>
+#include <android-base/strings.h>
 #include <gtest/gtest.h>
 #include <vintf/VintfObject.h>
 
@@ -26,6 +27,7 @@
 #include <string>
 #include <unordered_set>
 
+#define BPF_UTILS_MORE_IS_FOO_HELPERS
 #include "bpf/BpfUtils.h"
 
 namespace android {
@@ -238,6 +240,9 @@ TEST(KernelTest, TestSupportsUsbCdcHost) {
     // thus support for USB ethernet dongles is already verified by
     // the KernelTest#TestSupportsCommonUsbEthernetDongles.
     if (bpf::isDesktop) GTEST_SKIP() << "Exempt on desktop device";
+
+    // No need for usb ethernet dongle drivers on watches
+    if (bpf::isWear()) GTEST_SKIP() << "Exempt on wear device";
 
     EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_NET_CDC_NCM", "cdc_ncm"));
     EXPECT_TRUE(configVerifier.isAvailable("CONFIG_USB_NET_CDC_EEM", "cdc_eem"));
